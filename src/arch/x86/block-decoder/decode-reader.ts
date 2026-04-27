@@ -19,9 +19,7 @@ export type DecodeRegion =
     }>;
 
 export type DecodeReader = Readonly<{
-  identity: string;
   regionAt(eip: number): DecodeRegion | undefined;
   readU8(eip: number): number | DecodeFault;
   sliceFrom(eip: number, maxBytes: number): Uint8Array<ArrayBufferLike> | DecodeFault;
 }>;
-

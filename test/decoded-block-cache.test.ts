@@ -9,11 +9,11 @@ const startAddress = 0x1000;
 const hostAddress = 0x7000_1000;
 
 test("same_reader_same_eip_decoded_once", () => {
-  const cache = new DecodedBlockCache();
-  const reader = guestReader("reader-a", [0x90, 0xc3]);
+  const reader = guestReader([0x90, 0xc3]);
+  const cache = new DecodedBlockCache(reader);
 
-  const first = cache.getOrDecode(reader, startAddress);
-  const second = cache.getOrDecode(reader, startAddress);
+  const first = cache.getOrDecode(startAddress);
+  const second = cache.getOrDecode(startAddress);
 
   strictEqual(second, first);
   deepStrictEqual(cache.counters, { hits: 1, misses: 1 });
@@ -21,11 +21,11 @@ test("same_reader_same_eip_decoded_once", () => {
 });
 
 test("different_eip_different_block", () => {
-  const cache = new DecodedBlockCache();
-  const reader = guestReader("reader-a", [0x90, 0xc3, 0x90, 0xc3]);
+  const reader = guestReader([0x90, 0xc3, 0x90, 0xc3]);
+  const cache = new DecodedBlockCache(reader);
 
-  const first = cache.getOrDecode(reader, startAddress);
-  const second = cache.getOrDecode(reader, startAddress + 2);
+  const first = cache.getOrDecode(startAddress);
+  const second = cache.getOrDecode(startAddress + 2);
 
   notStrictEqual(second, first);
   strictEqual(first.startEip, startAddress);
@@ -33,24 +33,24 @@ test("different_eip_different_block", () => {
   deepStrictEqual(cache.counters, { hits: 0, misses: 2 });
 });
 
-test("different_reader_same_eip_different_block", () => {
-  const cache = new DecodedBlockCache();
-  const firstReader = guestReader("reader-a", [0x90, 0xc3]);
-  const secondReader = guestReader("reader-b", [0x90, 0xc3]);
+test("different_cache_same_eip_different_block", () => {
+  const firstCache = new DecodedBlockCache(guestReader([0x90, 0xc3]));
+  const secondCache = new DecodedBlockCache(guestReader([0x90, 0xc3]));
 
-  const first = cache.getOrDecode(firstReader, startAddress);
-  const second = cache.getOrDecode(secondReader, startAddress);
+  const first = firstCache.getOrDecode(startAddress);
+  const second = secondCache.getOrDecode(startAddress);
 
   notStrictEqual(second, first);
-  deepStrictEqual(cache.counters, { hits: 0, misses: 2 });
+  deepStrictEqual(firstCache.counters, { hits: 0, misses: 1 });
+  deepStrictEqual(secondCache.counters, { hits: 0, misses: 1 });
 });
 
 test("unsupported_block_cached_as_terminating", () => {
-  const cache = new DecodedBlockCache();
-  const reader = guestReader("reader-a", [0x62]);
+  const reader = guestReader([0x62]);
+  const cache = new DecodedBlockCache(reader);
 
-  const first = cache.getOrDecode(reader, startAddress);
-  const second = cache.getOrDecode(reader, startAddress);
+  const first = cache.getOrDecode(startAddress);
+  const second = cache.getOrDecode(startAddress);
 
   strictEqual(second, first);
   strictEqual(first.terminator.kind, "unsupported");
@@ -59,8 +59,7 @@ test("unsupported_block_cached_as_terminating", () => {
 });
 
 test("host_thunk_block_cached_without_fake_bytes", () => {
-  const cache = new DecodedBlockCache();
-  const reader = new CountingDecodeReader("host-reader", [
+  const reader = new CountingDecodeReader([
     {
       kind: "host-thunk",
       address: hostAddress,
@@ -69,9 +68,10 @@ test("host_thunk_block_cached_without_fake_bytes", () => {
       convention: "stdcall"
     }
   ]);
+  const cache = new DecodedBlockCache(reader);
 
-  const first = cache.getOrDecode(reader, hostAddress);
-  const second = cache.getOrDecode(reader, hostAddress);
+  const first = cache.getOrDecode(hostAddress);
+  const second = cache.getOrDecode(hostAddress);
 
   strictEqual(second, first);
   strictEqual(first.instructions.length, 0);
@@ -81,8 +81,8 @@ test("host_thunk_block_cached_without_fake_bytes", () => {
   deepStrictEqual(cache.counters, { hits: 1, misses: 1 });
 });
 
-function guestReader(identity: string, bytes: readonly number[]): CountingDecodeReader {
-  return new CountingDecodeReader(identity, [
+function guestReader(bytes: readonly number[]): CountingDecodeReader {
+  return new CountingDecodeReader([
     {
       kind: "guest-bytes",
       baseAddress: startAddress,
@@ -94,7 +94,7 @@ function guestReader(identity: string, bytes: readonly number[]): CountingDecode
 class CountingDecodeReader implements DecodeReader {
   sliceReads = 0;
 
-  constructor(readonly identity: string, readonly regions: readonly DecodeRegion[]) {}
+  constructor(readonly regions: readonly DecodeRegion[]) {}
 
   regionAt(eip: number): DecodeRegion | undefined {
     for (const region of this.regions) {

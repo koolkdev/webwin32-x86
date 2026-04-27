@@ -7,10 +7,14 @@ export type DecodedBlockCacheCounters = Readonly<{
   misses: number;
 }>;
 
+export type DecodedBlockKey = number;
+
 export class DecodedBlockCache {
-  readonly #blocksByReader = new Map<string, Map<number, DecodedBlock>>();
+  readonly #blocksByEip = new Map<DecodedBlockKey, DecodedBlock>();
   #hits = 0;
   #misses = 0;
+
+  constructor(readonly decodeReader: DecodeReader) {}
 
   get counters(): DecodedBlockCacheCounters {
     return {
@@ -19,25 +23,18 @@ export class DecodedBlockCache {
     };
   }
 
-  getOrDecode(decodeReader: DecodeReader, startEip: number): DecodedBlock {
+  getOrDecode(startEip: number): DecodedBlock {
     const eip = u32(startEip);
-    let blocksByEip = this.#blocksByReader.get(decodeReader.identity);
-
-    if (blocksByEip === undefined) {
-      blocksByEip = new Map();
-      this.#blocksByReader.set(decodeReader.identity, blocksByEip);
-    }
-
-    const cached = blocksByEip.get(eip);
+    const cached = this.#blocksByEip.get(eip);
 
     if (cached !== undefined) {
       this.#hits += 1;
       return cached;
     }
 
-    const decoded = decodeBlock(decodeReader, eip);
+    const decoded = decodeBlock(this.decodeReader, eip);
 
-    blocksByEip.set(eip, decoded);
+    this.#blocksByEip.set(eip, decoded);
     this.#misses += 1;
 
     return decoded;

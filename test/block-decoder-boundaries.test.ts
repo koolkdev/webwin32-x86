@@ -89,8 +89,6 @@ function mnemonics(instructions: readonly { mnemonic: string }[]): string[] {
 }
 
 class SyntheticDecodeReader implements DecodeReader {
-  readonly identity = "synthetic";
-
   constructor(readonly regions: readonly DecodeRegion[]) {}
 
   regionAt(eip: number): DecodeRegion | undefined {
