@@ -10,6 +10,10 @@ export function executeInstruction(state: CpuState, instruction: DecodedInstruct
       return completeInstruction(state, instruction);
     case "int":
       return executeInt(state, instruction);
+    case "add":
+    case "sub":
+    case "xor":
+      return stop(state, StopReason.UNSUPPORTED);
     case "unsupported":
       return stop(state, StopReason.UNSUPPORTED);
   }

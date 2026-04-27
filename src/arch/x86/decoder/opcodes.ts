@@ -1,5 +1,11 @@
 export const opcode = {
+  addRm32R32: 0x01,
+  addR32Rm32: 0x03,
   escape: 0x0f,
+  subRm32R32: 0x29,
+  subR32Rm32: 0x2b,
+  xorRm32R32: 0x31,
+  xorR32Rm32: 0x33,
   movRm32R32: 0x89,
   movR32Rm32: 0x8b,
   nop: 0x90,
