@@ -10,7 +10,8 @@ import { decodedInstruction, unsupportedInstruction } from "./instruction.js";
 import {
   decodeRegisterModRm,
   decodeRm32ModRm,
-  rm32ModRmByteLength,
+  rm32ModRmHasSib,
+  rm32ModRmByteLengthAt,
   type RegisterModRm
 } from "./modrm.js";
 import { movR32Imm32Length, opcode, opcodeMap0f } from "./opcodes.js";
@@ -364,7 +365,13 @@ function readRm32Operands(context: DecodeContext): ModRmOperands | undefined {
   ensureDecodeBytes(context, context.opcodeOffset + 1, 1);
 
   const offset = context.opcodeOffset + 1;
-  const byteLength = rm32ModRmByteLength(context.reader.readU8(offset));
+  const modrmValue = context.reader.readU8(offset);
+
+  if (rm32ModRmHasSib(modrmValue)) {
+    ensureDecodeBytes(context, offset + 1, 1);
+  }
+
+  const byteLength = rm32ModRmByteLengthAt(context.reader, offset);
 
   if (byteLength === undefined) {
     return undefined;
