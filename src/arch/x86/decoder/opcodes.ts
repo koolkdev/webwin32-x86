@@ -18,6 +18,9 @@ export const opcode = {
   group83: 0x83,
   movR32Imm32Base: 0xb8,
   movR32Imm32Last: 0xbf,
+  retImm16: 0xc2,
+  retNear: 0xc3,
+  callRel32: 0xe8,
   jmpRel8: 0xeb,
   jmpRel32: 0xe9,
   int: 0xcd

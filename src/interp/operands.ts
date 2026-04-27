@@ -34,6 +34,8 @@ export function sourceValue(
   switch (operand.kind) {
     case "reg32":
       return getReg32(state, operand.reg);
+    case "imm16":
+      return undefined;
     case "imm32":
       return operand.value;
     case "imm8":

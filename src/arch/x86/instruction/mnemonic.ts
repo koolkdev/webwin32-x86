@@ -9,4 +9,6 @@ export type Mnemonic =
   | "test"
   | "jmp"
   | "jcc"
+  | "call"
+  | "ret"
   | "unsupported";

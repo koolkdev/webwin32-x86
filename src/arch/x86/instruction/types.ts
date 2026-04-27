@@ -9,6 +9,7 @@ export type Reg32 = (typeof reg32)[number];
 export type Operand =
   | Readonly<{ kind: "reg32"; reg: Reg32 }>
   | Readonly<{ kind: "imm8"; value: number; signedValue: number }>
+  | Readonly<{ kind: "imm16"; value: number }>
   | Readonly<{ kind: "imm32"; value: number }>
   | Readonly<{ kind: "rel8"; displacement: number; target: number }>
   | Readonly<{ kind: "rel32"; displacement: number; target: number }>;

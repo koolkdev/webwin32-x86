@@ -26,6 +26,13 @@ export class ByteReader {
     return (byte0 | (byte1 << 8) | (byte2 << 16) | (byte3 << 24)) >>> 0;
   }
 
+  readU16LE(offset: number): number {
+    const byte0 = this.readU8(offset);
+    const byte1 = this.readU8(offset + 1);
+
+    return byte0 | (byte1 << 8);
+  }
+
   raw(startOffset: number, endOffset: number): number[] {
     return Array.from(this.#bytes.slice(startOffset, endOffset));
   }
