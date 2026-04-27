@@ -13,6 +13,7 @@ export const opcode = {
   movR32Rm32: 0x8b,
   nop: 0x90,
   group81: 0x81,
+  group83: 0x83,
   movR32Imm32Base: 0xb8,
   movR32Imm32Last: 0xbf,
   int: 0xcd
