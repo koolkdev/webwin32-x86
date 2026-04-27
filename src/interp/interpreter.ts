@@ -13,6 +13,8 @@ export function executeInstruction(state: CpuState, instruction: DecodedInstruct
     case "add":
     case "sub":
     case "xor":
+    case "cmp":
+    case "test":
       return stop(state, StopReason.UNSUPPORTED);
     case "unsupported":
       return stop(state, StopReason.UNSUPPORTED);

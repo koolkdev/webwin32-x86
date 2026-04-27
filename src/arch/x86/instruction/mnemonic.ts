@@ -1,1 +1,1 @@
-export type Mnemonic = "mov" | "nop" | "int" | "add" | "sub" | "xor" | "unsupported";
+export type Mnemonic = "mov" | "nop" | "int" | "add" | "sub" | "xor" | "cmp" | "test" | "unsupported";

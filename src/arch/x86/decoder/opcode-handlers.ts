@@ -27,6 +27,9 @@ function buildOpcodeHandlers(): DecodeTable {
   handlers[opcode.subR32Rm32] = registerModRmEntry(decodeR32Rm32("sub"));
   handlers[opcode.xorRm32R32] = registerModRmEntry(decodeRm32R32("xor"));
   handlers[opcode.xorR32Rm32] = registerModRmEntry(decodeR32Rm32("xor"));
+  handlers[opcode.cmpRm32R32] = registerModRmEntry(decodeRm32R32("cmp"));
+  handlers[opcode.cmpR32Rm32] = registerModRmEntry(decodeR32Rm32("cmp"));
+  handlers[opcode.testRm32R32] = registerModRmEntry(decodeRm32R32("test"));
   handlers[opcode.movRm32R32] = registerModRmEntry(decodeRm32R32("mov"));
   handlers[opcode.movR32Rm32] = registerModRmEntry(decodeR32Rm32("mov"));
   handlers[opcode.int] = opcodeEntry(decodeInt);
