@@ -1,5 +1,6 @@
 import { ByteSink } from "./byte-sink.js";
 import { WasmFunctionBodyEncoder } from "./function-body.js";
+import { validateMemoryLimits, type WasmMemoryLimits } from "./memory.js";
 import {
   wasmExternalKind,
   wasmFunctionTypePrefix,
@@ -11,6 +12,7 @@ import {
 
 export class WasmModuleEncoder {
   readonly #types: WasmFunctionType[] = [];
+  readonly #memoryImports: MemoryImport[] = [];
   readonly #functions: number[] = [];
   readonly #exports: FunctionExport[] = [];
   readonly #bodies: Uint8Array<ArrayBuffer>[] = [];
@@ -19,6 +21,14 @@ export class WasmModuleEncoder {
     const index = this.#types.length;
     this.#types.push(type);
     return index;
+  }
+
+  importMemory(moduleName: string, name: string, limits: WasmMemoryLimits): number {
+    validateMemoryLimits(limits);
+
+    const memoryIndex = this.#memoryImports.length;
+    this.#memoryImports.push({ moduleName, name, limits });
+    return memoryIndex;
   }
 
   addFunction(typeIndex: number, body: WasmFunctionBodyEncoder): number {
@@ -46,11 +56,25 @@ export class WasmModuleEncoder {
     module.writeBytes(wasmMagic);
     module.writeBytes(wasmVersion);
     module.writeSection(wasmSectionId.type, (section) => this.#writeTypeSection(section));
+    if (this.#memoryImports.length > 0) {
+      module.writeSection(wasmSectionId.import, (section) => this.#writeImportSection(section));
+    }
     module.writeSection(wasmSectionId.function, (section) => this.#writeFunctionSection(section));
     module.writeSection(wasmSectionId.export, (section) => this.#writeExportSection(section));
     module.writeSection(wasmSectionId.code, (section) => this.#writeCodeSection(section));
 
     return module.toBytes();
+  }
+
+  #writeImportSection(section: ByteSink): void {
+    section.writeVecLength(this.#memoryImports.length);
+
+    for (const entry of this.#memoryImports) {
+      section.writeName(entry.moduleName);
+      section.writeName(entry.name);
+      section.writeByte(wasmExternalKind.memory);
+      writeMemoryType(section, entry.limits);
+    }
   }
 
   #writeTypeSection(section: ByteSink): void {
@@ -93,7 +117,25 @@ export class WasmModuleEncoder {
   }
 }
 
+type MemoryImport = Readonly<{
+  moduleName: string;
+  name: string;
+  limits: WasmMemoryLimits;
+}>;
+
 type FunctionExport = Readonly<{
   name: string;
   functionIndex: number;
 }>;
+
+function writeMemoryType(section: ByteSink, limits: WasmMemoryLimits): void {
+  if (limits.maxPages === undefined) {
+    section.writeByte(0x00);
+    section.writeU32(limits.minPages);
+    return;
+  }
+
+  section.writeByte(0x01);
+  section.writeU32(limits.minPages);
+  section.writeU32(limits.maxPages);
+}
