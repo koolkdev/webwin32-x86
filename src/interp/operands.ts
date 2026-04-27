@@ -42,6 +42,7 @@ export function sourceValue(
       return options.signExtendImm8 ? u32(operand.signedValue) : undefined;
     case "rel8":
     case "rel32":
+    case "mem32":
       return undefined;
   }
 }

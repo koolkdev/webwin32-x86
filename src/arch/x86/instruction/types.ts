@@ -12,7 +12,16 @@ export type Operand =
   | Readonly<{ kind: "imm16"; value: number }>
   | Readonly<{ kind: "imm32"; value: number }>
   | Readonly<{ kind: "rel8"; displacement: number; target: number }>
-  | Readonly<{ kind: "rel32"; displacement: number; target: number }>;
+  | Readonly<{ kind: "rel32"; displacement: number; target: number }>
+  | Mem32Operand;
+
+export type Mem32Operand = Readonly<{
+  kind: "mem32";
+  base?: Reg32;
+  index?: Reg32;
+  scale: 1 | 2 | 4 | 8;
+  disp: number;
+}>;
 
 export type DecodedInstruction = Readonly<{
   address: number;

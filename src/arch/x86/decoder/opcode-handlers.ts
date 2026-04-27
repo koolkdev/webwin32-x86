@@ -7,7 +7,12 @@ import { ensureInstructionBytes } from "./decode-bounds.js";
 import { opcodeEntry, prefixEntry, type DecodeTable, type OpcodeHandler } from "./decode-table.js";
 import { signedImm8, signedImm32 } from "./immediate.js";
 import { decodedInstruction, unsupportedInstruction } from "./instruction.js";
-import { decodeRegisterModRm, type RegisterModRm } from "./modrm.js";
+import {
+  decodeRegisterModRm,
+  decodeRm32ModRm,
+  rm32ModRmByteLength,
+  type RegisterModRm
+} from "./modrm.js";
 import { movR32Imm32Length, opcode, opcodeMap0f } from "./opcodes.js";
 
 export const opcodeHandlers = buildOpcodeHandlers();
@@ -16,6 +21,11 @@ const group81Handlers = buildGroup81Handlers();
 const group83Handlers = buildGroup83Handlers();
 
 type ModRmHandler = (context: DecodeContext, modrm: RegisterModRm) => DecodedInstruction;
+type ModRmOperands = Readonly<{
+  reg: Operand;
+  rm: Operand;
+  byteLength: number;
+}>;
 
 function buildOpcodeHandlers(): DecodeTable {
   const handlers = new Array<DecodeTable[number]>(256);
@@ -208,30 +218,30 @@ function registerModRmEntry(handler: OpcodeHandler) {
 
 function decodeRm32R32(mnemonic: Mnemonic): OpcodeHandler {
   return (context) => {
-    const modrm = readRegisterModRm(context);
+    const operands = readRm32Operands(context);
 
-    if (modrm === undefined) {
+    if (operands === undefined) {
       return unsupportedInstruction(context, context.opcodeOffset + 2);
     }
 
-    return decodedInstruction(context, context.opcodeOffset + 2, mnemonic, [
-      { kind: "reg32", reg: modrm.rm },
-      { kind: "reg32", reg: modrm.reg }
+    return decodedInstruction(context, context.opcodeOffset + 1 + operands.byteLength, mnemonic, [
+      operands.rm,
+      operands.reg
     ]);
   };
 }
 
 function decodeR32Rm32(mnemonic: Mnemonic): OpcodeHandler {
   return (context) => {
-    const modrm = readRegisterModRm(context);
+    const operands = readRm32Operands(context);
 
-    if (modrm === undefined) {
+    if (operands === undefined) {
       return unsupportedInstruction(context, context.opcodeOffset + 2);
     }
 
-    return decodedInstruction(context, context.opcodeOffset + 2, mnemonic, [
-      { kind: "reg32", reg: modrm.reg },
-      { kind: "reg32", reg: modrm.rm }
+    return decodedInstruction(context, context.opcodeOffset + 1 + operands.byteLength, mnemonic, [
+      operands.reg,
+      operands.rm
     ]);
   };
 }
@@ -348,4 +358,29 @@ function readRegisterModRm(context: DecodeContext): ReturnType<typeof decodeRegi
   ensureDecodeBytes(context, context.opcodeOffset + 1, 1);
 
   return decodeRegisterModRm(context.reader.readU8(context.opcodeOffset + 1));
+}
+
+function readRm32Operands(context: DecodeContext): ModRmOperands | undefined {
+  ensureDecodeBytes(context, context.opcodeOffset + 1, 1);
+
+  const offset = context.opcodeOffset + 1;
+  const byteLength = rm32ModRmByteLength(context.reader.readU8(offset));
+
+  if (byteLength === undefined) {
+    return undefined;
+  }
+
+  ensureDecodeBytes(context, offset, byteLength);
+
+  const modrm = decodeRm32ModRm(context.reader, offset);
+
+  if (modrm === undefined) {
+    return undefined;
+  }
+
+  return {
+    reg: { kind: "reg32", reg: modrm.reg },
+    rm: modrm.rm,
+    byteLength: modrm.byteLength
+  };
 }
