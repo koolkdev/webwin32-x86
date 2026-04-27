@@ -5,6 +5,7 @@ import {
   executeAdd,
   executeCmp,
   executeInt,
+  executeJcc,
   executeJmp,
   executeMov,
   executeNop,
@@ -41,6 +42,7 @@ export function executeInstruction(state: CpuState, instruction: DecodedInstruct
     case "jmp":
       return executeJmp(state, instruction);
     case "jcc":
+      return executeJcc(state, instruction);
     case "unsupported":
       return executeUnsupported(state);
   }

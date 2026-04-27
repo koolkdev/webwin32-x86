@@ -1,7 +1,8 @@
 import { addFlags, logicalFlags, subFlags } from "../arch/x86/flags/arithmetic.js";
+import { isJccConditionMet, type JccFlags } from "../arch/x86/flags/conditions.js";
 import type { DecodedInstruction } from "../arch/x86/instruction/types.js";
 import { StopReason, type InstructionResult } from "../core/execution/stop-reason.js";
-import { type CpuState, u32 } from "../core/state/cpu-state.js";
+import { type CpuState, getFlag, u32 } from "../core/state/cpu-state.js";
 import {
   intVector,
   jumpTarget,
@@ -53,6 +54,18 @@ export function executeJmp(state: CpuState, instruction: DecodedInstruction): In
   }
 
   return completeBranch(state, target);
+}
+
+export function executeJcc(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+  const target = jumpTarget(instruction.operands[0]);
+
+  if (target === undefined || instruction.condition === undefined) {
+    return stop(state, StopReason.UNSUPPORTED);
+  }
+
+  return isJccConditionMet(instruction.condition, readJccFlags(state))
+    ? completeBranch(state, target)
+    : completeInstruction(state, instruction);
 }
 
 export function executeAdd(state: CpuState, instruction: DecodedInstruction): InstructionResult {
@@ -143,6 +156,16 @@ function completeBranch(state: CpuState, target: number): InstructionResult {
   state.instructionCount = u32(state.instructionCount + 1);
 
   return { stopReason: StopReason.NONE, eip: state.eip };
+}
+
+function readJccFlags(state: CpuState): JccFlags {
+  return {
+    CF: getFlag(state, "CF"),
+    PF: getFlag(state, "PF"),
+    ZF: getFlag(state, "ZF"),
+    SF: getFlag(state, "SF"),
+    OF: getFlag(state, "OF")
+  };
 }
 
 function stop(state: CpuState, reason: StopReason): InstructionResult {
