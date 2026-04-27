@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { decodeOne } from "../src/arch/x86/decoder/decode-one.js";
+import { decodeOne } from "../src/arch/x86/decoder/decoder.js";
 import type { Reg32 } from "../src/arch/x86/instruction/types.js";
 
 const startAddress = 0x1000;

@@ -1,1 +1,1 @@
-export type Mnemonic = "mov";
+export type Mnemonic = "mov" | "nop" | "int" | "unsupported";
