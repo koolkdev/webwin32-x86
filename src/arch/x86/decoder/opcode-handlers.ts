@@ -5,6 +5,7 @@ import { ensureInstructionBytes } from "./decode-bounds.js";
 import { opcodeEntry, prefixEntry, type DecodeTable, type OpcodeHandler } from "./decode-table.js";
 import { signedImm8 } from "./immediate.js";
 import { decodedInstruction, unsupportedInstruction } from "./instruction.js";
+import { decodeRegisterModRm } from "./modrm.js";
 import { movR32Imm32Length, opcode } from "./opcodes.js";
 
 export const opcodeHandlers = buildOpcodeHandlers();
@@ -18,6 +19,12 @@ function buildOpcodeHandlers(): DecodeTable {
 
   handlers[opcode.nop] = opcodeEntry(decodeNop, {
     prefixForms: { operandSizeOverride: decodeNop }
+  });
+  handlers[opcode.movRm32R32] = opcodeEntry(decodeMovRm32R32, {
+    prefixForms: { operandSizeOverride: decodeUnsupported(1) }
+  });
+  handlers[opcode.movR32Rm32] = opcodeEntry(decodeMovR32Rm32, {
+    prefixForms: { operandSizeOverride: decodeUnsupported(1) }
   });
   handlers[opcode.int] = opcodeEntry(decodeInt);
   handlers[opcode.escape] = opcodeEntry(decodeEscapedUnsupported);
@@ -49,6 +56,32 @@ function decodeEscapedUnsupported(context: DecodeContext): DecodedInstruction {
   return unsupportedInstruction(context, context.opcodeOffset + 2);
 }
 
+function decodeMovRm32R32(context: DecodeContext): DecodedInstruction {
+  const modrm = readRegisterModRm(context);
+
+  if (modrm === undefined) {
+    return unsupportedInstruction(context, context.opcodeOffset + 2);
+  }
+
+  return decodedInstruction(context, context.opcodeOffset + 2, "mov", [
+    { kind: "reg32", reg: modrm.rm },
+    { kind: "reg32", reg: modrm.reg }
+  ]);
+}
+
+function decodeMovR32Rm32(context: DecodeContext): DecodedInstruction {
+  const modrm = readRegisterModRm(context);
+
+  if (modrm === undefined) {
+    return unsupportedInstruction(context, context.opcodeOffset + 2);
+  }
+
+  return decodedInstruction(context, context.opcodeOffset + 2, "mov", [
+    { kind: "reg32", reg: modrm.reg },
+    { kind: "reg32", reg: modrm.rm }
+  ]);
+}
+
 function decodeMovR32Imm32(context: DecodeContext, value: number): DecodedInstruction {
   ensureDecodeBytes(context, context.opcodeOffset + 1, 4);
 
@@ -74,4 +107,10 @@ function decodeUnsupported(byteCountAfterOpcode: number): OpcodeHandler {
 
 function ensureDecodeBytes(context: DecodeContext, readOffset: number, byteCount: number): void {
   ensureInstructionBytes(context.reader, readOffset, byteCount, context.address, context.offset);
+}
+
+function readRegisterModRm(context: DecodeContext): ReturnType<typeof decodeRegisterModRm> {
+  ensureDecodeBytes(context, context.opcodeOffset + 1, 1);
+
+  return decodeRegisterModRm(context.reader.readU8(context.opcodeOffset + 1));
 }
