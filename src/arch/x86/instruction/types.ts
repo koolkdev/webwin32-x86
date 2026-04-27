@@ -1,4 +1,5 @@
 import type { Mnemonic } from "./mnemonic.js";
+import type { Prefix } from "./prefix.js";
 
 export const reg32 = ["eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi"] as const;
 
@@ -15,5 +16,5 @@ export type DecodedInstruction = Readonly<{
   mnemonic: Mnemonic;
   operands: readonly Operand[];
   raw: readonly number[];
-  prefixes: readonly [];
+  prefixes: readonly Prefix[];
 }>;

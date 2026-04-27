@@ -1,32 +1,13 @@
+import type { Prefix } from "../instruction/prefix.js";
 import { ByteReader } from "./byte-reader.js";
 
 export type DecodeContext = Readonly<{
   reader: ByteReader;
   address: number;
   offset: number;
-  prefixes: readonly [];
+  prefixes: readonly Prefix[];
   opcodeOffset: number;
 }>;
-
-export function createDecodeContext(
-  bytes: Uint8Array<ArrayBufferLike>,
-  offset: number,
-  address: number
-): DecodeContext {
-  const reader = new ByteReader(bytes);
-
-  return {
-    reader,
-    address,
-    offset,
-    prefixes: [],
-    opcodeOffset: offset
-  };
-}
-
-export function readOpcode(context: DecodeContext): number {
-  return context.reader.readU8(context.opcodeOffset);
-}
 
 export function instructionLength(context: DecodeContext, endOffset: number): number {
   return endOffset - context.offset;

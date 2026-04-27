@@ -1,67 +1,80 @@
-import { reg32, type DecodedInstruction, type Operand } from "../instruction/types.js";
-import { createDecodeContext, readOpcode, type DecodeContext } from "./decode-context.js";
-import { signedImm8 } from "./immediate.js";
-import { decodedInstruction, unsupportedInstruction } from "./instruction.js";
-import { movR32Imm32Length, opcode } from "./opcodes.js";
-
-type OpcodeHandler = (context: DecodeContext, opcode: number) => DecodedInstruction;
-
-const opcodeHandlers = buildPrimaryOpcodeHandlers();
+import type { Prefix } from "../instruction/prefix.js";
+import type { DecodedInstruction } from "../instruction/types.js";
+import { ByteReader } from "./byte-reader.js";
+import type { DecodeContext } from "./decode-context.js";
+import { ensureInstructionBytes, maxInstructionLength, throwDecodeError } from "./decode-bounds.js";
+import { handlerForPrefixForm, type DecodeTableEntry } from "./decode-table.js";
+import { unsupportedInstruction } from "./instruction.js";
+import { opcodeHandlers } from "./opcode-handlers.js";
 
 export function decodeOne(
   bytes: Uint8Array<ArrayBufferLike>,
   offset: number,
   address: number
 ): DecodedInstruction {
-  const context = createDecodeContext(bytes, offset, address);
-  const value = readOpcode(context);
-  const handler = opcodeHandlers[value];
+  const reader = new ByteReader(bytes);
 
-  if (handler !== undefined) {
-    return handler(context, value);
+  return decodeInstruction(reader, offset, address);
+}
+
+function decodeInstruction(reader: ByteReader, offset: number, address: number): DecodedInstruction {
+  const prefixes: Prefix[] = [];
+  let currentOffset = offset;
+
+  while (true) {
+    ensureDispatchByte(reader, currentOffset, address, offset);
+
+    const value = reader.readU8(currentOffset);
+    const entry = opcodeHandlers[value];
+
+    if (entry?.kind === "prefix") {
+      prefixes.push(entry.prefix);
+      currentOffset += 1;
+      continue;
+    }
+
+    const context: DecodeContext = {
+      reader,
+      address,
+      offset,
+      prefixes,
+      opcodeOffset: currentOffset
+    };
+
+    return decodeOpcodeEntry(context, value, entry);
+  }
+}
+
+function decodeOpcodeEntry(
+  context: DecodeContext,
+  value: number,
+  entry: DecodeTableEntry | undefined
+): DecodedInstruction {
+  if (entry?.kind === "opcode") {
+    const handler = handlerForPrefixForm(entry, context);
+
+    if (handler !== undefined) {
+      return handler(context, value);
+    }
+
+    return unhandledPrefixedInstruction(context);
   }
 
   return unsupportedInstruction(context, context.opcodeOffset + 1);
 }
 
-function buildPrimaryOpcodeHandlers(): readonly (OpcodeHandler | undefined)[] {
-  const handlers = new Array<OpcodeHandler | undefined>(256);
-
-  handlers[opcode.nop] = decodeNop;
-  handlers[opcode.int] = decodeInt;
-  handlers[opcode.escape] = decodeEscapedUnsupported;
-
-  for (let value = opcode.movR32Imm32Base; value <= opcode.movR32Imm32Last; value += 1) {
-    handlers[value] = decodeMovR32Imm32;
+function ensureDispatchByte(reader: ByteReader, readOffset: number, address: number, instructionOffset: number): void {
+  if (readOffset - instructionOffset >= maxInstructionLength) {
+    throwDecodeError(readOffset >= reader.length ? "truncated" : "instructionTooLong", reader, address, instructionOffset);
   }
 
-  return handlers;
+  ensureInstructionBytes(reader, readOffset, 1, address, instructionOffset);
 }
 
-function decodeNop(context: DecodeContext): DecodedInstruction {
-  return decodedInstruction(context, context.opcodeOffset + 1, "nop", []);
-}
+function unhandledPrefixedInstruction(context: DecodeContext): DecodedInstruction {
+  const length = context.prefixes.length + 1;
 
-function decodeInt(context: DecodeContext): DecodedInstruction {
-  const value = context.reader.readU8(context.opcodeOffset + 1);
-  const operands: Operand[] = [{ kind: "imm8", value, signedValue: signedImm8(value) }];
+  ensureInstructionBytes(context.reader, context.offset, length, context.address, context.offset);
 
-  return decodedInstruction(context, context.opcodeOffset + 2, "int", operands);
-}
-
-function decodeEscapedUnsupported(context: DecodeContext): DecodedInstruction {
-  return unsupportedInstruction(context, context.opcodeOffset + 1);
-}
-
-function decodeMovR32Imm32(context: DecodeContext, value: number): DecodedInstruction {
-  const reg = reg32[value - opcode.movR32Imm32Base];
-
-  if (reg === undefined) {
-    throw new Error(`register encoding out of range for opcode 0x${value.toString(16)}`);
-  }
-
-  return decodedInstruction(context, context.opcodeOffset + movR32Imm32Length, "mov", [
-    { kind: "reg32", reg },
-    { kind: "imm32", value: context.reader.readU32LE(context.opcodeOffset + 1) }
-  ]);
+  return unsupportedInstruction(context, context.offset + length);
 }

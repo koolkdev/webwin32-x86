@@ -19,6 +19,9 @@ export function decodedInstruction(
   };
 }
 
-export function unsupportedInstruction(context: DecodeContext, endOffset: number): DecodedInstruction {
+export function unsupportedInstruction(
+  context: DecodeContext,
+  endOffset: number
+): DecodedInstruction {
   return decodedInstruction(context, endOffset, "unsupported", []);
 }

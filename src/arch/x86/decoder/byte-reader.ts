@@ -5,6 +5,10 @@ export class ByteReader {
     this.#bytes = bytes;
   }
 
+  get length(): number {
+    return this.#bytes.length;
+  }
+
   readU8(offset: number): number {
     if (!Number.isInteger(offset) || offset < 0 || offset >= this.#bytes.length) {
       throw new RangeError(`u8 read out of bounds at offset ${offset}`);
