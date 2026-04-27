@@ -1,4 +1,4 @@
-import { jccConditions } from "../instruction/condition.js";
+import { jccConditions, type JccCondition } from "../instruction/condition.js";
 import { instructionPrefixes } from "../instruction/prefix.js";
 import type { Mnemonic } from "../instruction/mnemonic.js";
 import { reg32, type DecodedInstruction, type Operand } from "../instruction/types.js";
@@ -8,9 +8,10 @@ import { opcodeEntry, prefixEntry, type DecodeTable, type OpcodeHandler } from "
 import { signedImm8, signedImm32 } from "./immediate.js";
 import { decodedInstruction, unsupportedInstruction } from "./instruction.js";
 import { decodeRegisterModRm, type RegisterModRm } from "./modrm.js";
-import { movR32Imm32Length, opcode } from "./opcodes.js";
+import { movR32Imm32Length, opcode, opcodeMap0f } from "./opcodes.js";
 
 export const opcodeHandlers = buildOpcodeHandlers();
+const opcodeMap0fHandlers = buildOpcodeMap0fHandlers();
 const group81Handlers = buildGroup81Handlers();
 const group83Handlers = buildGroup83Handlers();
 
@@ -46,7 +47,7 @@ function buildOpcodeHandlers(): DecodeTable {
   handlers[opcode.int] = opcodeEntry(decodeInt);
   handlers[opcode.jmpRel8] = opcodeEntry(decodeJmpRel8);
   handlers[opcode.jmpRel32] = opcodeEntry(decodeJmpRel32);
-  handlers[opcode.escape] = opcodeEntry(decodeEscapedUnsupported);
+  handlers[opcode.escape] = opcodeEntry(decodeOpcodeMap0f);
 
   for (let value = opcode.jccRel8Base; value <= opcode.jccRel8Last; value += 1) {
     handlers[value] = opcodeEntry(decodeJccRel8);
@@ -56,6 +57,16 @@ function buildOpcodeHandlers(): DecodeTable {
     handlers[value] = opcodeEntry(decodeMovR32Imm32, {
       prefixForms: { operandSizeOverride: decodeUnsupported(2) }
     });
+  }
+
+  return handlers;
+}
+
+function buildOpcodeMap0fHandlers(): DecodeTable {
+  const handlers = new Array<DecodeTable[number]>(256);
+
+  for (let value = opcodeMap0f.jccRel32Base; value <= opcodeMap0f.jccRel32Last; value += 1) {
+    handlers[value] = opcodeEntry(decodeJccRel32);
   }
 
   return handlers;
@@ -123,25 +134,43 @@ function decodeJccRel8(context: DecodeContext, value: number): DecodedInstructio
 
   ensureDecodeBytes(context, context.opcodeOffset + 1, 1);
 
-  const condition = jccConditions[value - opcode.jccRel8Base];
-
-  if (condition === undefined) {
-    throw new Error(`Jcc condition encoding out of range for opcode 0x${value.toString(16)}`);
-  }
+  const condition = jccCondition(value, opcode.jccRel8Base);
 
   const displacement = signedImm8(context.reader.readU8(context.opcodeOffset + 1));
 
-  return {
-    ...decodedInstruction(context, endOffset, "jcc", [
-      { kind: "rel8", displacement, target: relativeTarget(context, endOffset, displacement) }
-    ]),
-    condition
-  };
+  return decodedJccInstruction(context, endOffset, condition, {
+    kind: "rel8",
+    displacement,
+    target: relativeTarget(context, endOffset, displacement)
+  });
 }
 
-function decodeEscapedUnsupported(context: DecodeContext): DecodedInstruction {
+function decodeOpcodeMap0f(context: DecodeContext): DecodedInstruction {
   ensureDecodeBytes(context, context.opcodeOffset + 1, 1);
-  return unsupportedInstruction(context, context.opcodeOffset + 2);
+
+  const secondByte = context.reader.readU8(context.opcodeOffset + 1);
+  const entry = opcodeMap0fHandlers[secondByte];
+
+  if (entry?.kind !== "opcode") {
+    return unsupportedInstruction(context, context.opcodeOffset + 2);
+  }
+
+  return entry.handler(context, secondByte);
+}
+
+function decodeJccRel32(context: DecodeContext, value: number): DecodedInstruction {
+  const endOffset = context.opcodeOffset + 6;
+
+  ensureDecodeBytes(context, context.opcodeOffset + 2, 4);
+
+  const condition = jccCondition(value, opcodeMap0f.jccRel32Base);
+  const displacement = signedImm32(context.reader.readU32LE(context.opcodeOffset + 2));
+
+  return decodedJccInstruction(context, endOffset, condition, {
+    kind: "rel32",
+    displacement,
+    target: relativeTarget(context, endOffset, displacement)
+  });
 }
 
 function registerModRmEntry(handler: OpcodeHandler) {
@@ -260,6 +289,28 @@ function decodeUnsupported(byteCountAfterOpcode: number): OpcodeHandler {
 
 function relativeTarget(context: DecodeContext, endOffset: number, displacement: number): number {
   return (context.address + endOffset - context.offset + displacement) >>> 0;
+}
+
+function jccCondition(value: number, base: number): JccCondition {
+  const condition = jccConditions[value - base];
+
+  if (condition === undefined) {
+    throw new Error(`Jcc condition encoding out of range for opcode 0x${value.toString(16)}`);
+  }
+
+  return condition;
+}
+
+function decodedJccInstruction(
+  context: DecodeContext,
+  endOffset: number,
+  condition: JccCondition,
+  operand: Operand
+): DecodedInstruction {
+  return {
+    ...decodedInstruction(context, endOffset, "jcc", [operand]),
+    condition
+  };
 }
 
 function ensureDecodeBytes(context: DecodeContext, readOffset: number, byteCount: number): void {

@@ -23,4 +23,9 @@ export const opcode = {
   int: 0xcd
 } as const;
 
+export const opcodeMap0f = {
+  jccRel32Base: 0x80,
+  jccRel32Last: 0x8f
+} as const;
+
 export const movR32Imm32Length = 5;
