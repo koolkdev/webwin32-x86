@@ -21,6 +21,10 @@ export class ByteReader {
 
     return (byte0 | (byte1 << 8) | (byte2 << 16) | (byte3 << 24)) >>> 0;
   }
+
+  raw(startOffset: number, endOffset: number): number[] {
+    return Array.from(this.#bytes.slice(startOffset, endOffset));
+  }
 }
 
 function unreachableByte(offset: number): never {
