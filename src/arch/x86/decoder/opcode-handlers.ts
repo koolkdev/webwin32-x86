@@ -4,7 +4,7 @@ import { reg32, type DecodedInstruction, type Operand } from "../instruction/typ
 import type { DecodeContext } from "./decode-context.js";
 import { ensureInstructionBytes } from "./decode-bounds.js";
 import { opcodeEntry, prefixEntry, type DecodeTable, type OpcodeHandler } from "./decode-table.js";
-import { signedImm8 } from "./immediate.js";
+import { signedImm8, signedImm32 } from "./immediate.js";
 import { decodedInstruction, unsupportedInstruction } from "./instruction.js";
 import { decodeRegisterModRm, type RegisterModRm } from "./modrm.js";
 import { movR32Imm32Length, opcode } from "./opcodes.js";
@@ -43,6 +43,8 @@ function buildOpcodeHandlers(): DecodeTable {
   handlers[opcode.movRm32R32] = registerModRmEntry(decodeRm32R32("mov"));
   handlers[opcode.movR32Rm32] = registerModRmEntry(decodeR32Rm32("mov"));
   handlers[opcode.int] = opcodeEntry(decodeInt);
+  handlers[opcode.jmpRel8] = opcodeEntry(decodeJmpRel8);
+  handlers[opcode.jmpRel32] = opcodeEntry(decodeJmpRel32);
   handlers[opcode.escape] = opcodeEntry(decodeEscapedUnsupported);
 
   for (let value = opcode.movR32Imm32Base; value <= opcode.movR32Imm32Last; value += 1) {
@@ -85,6 +87,30 @@ function decodeInt(context: DecodeContext): DecodedInstruction {
   const operands: Operand[] = [{ kind: "imm8", value, signedValue: signedImm8(value) }];
 
   return decodedInstruction(context, context.opcodeOffset + 2, "int", operands);
+}
+
+function decodeJmpRel8(context: DecodeContext): DecodedInstruction {
+  const endOffset = context.opcodeOffset + 2;
+
+  ensureDecodeBytes(context, context.opcodeOffset + 1, 1);
+
+  const displacement = signedImm8(context.reader.readU8(context.opcodeOffset + 1));
+
+  return decodedInstruction(context, endOffset, "jmp", [
+    { kind: "rel8", displacement, target: relativeTarget(context, endOffset, displacement) }
+  ]);
+}
+
+function decodeJmpRel32(context: DecodeContext): DecodedInstruction {
+  const endOffset = context.opcodeOffset + 5;
+
+  ensureDecodeBytes(context, context.opcodeOffset + 1, 4);
+
+  const displacement = signedImm32(context.reader.readU32LE(context.opcodeOffset + 1));
+
+  return decodedInstruction(context, endOffset, "jmp", [
+    { kind: "rel32", displacement, target: relativeTarget(context, endOffset, displacement) }
+  ]);
 }
 
 function decodeEscapedUnsupported(context: DecodeContext): DecodedInstruction {
@@ -204,6 +230,10 @@ function decodeUnsupported(byteCountAfterOpcode: number): OpcodeHandler {
 
     return unsupportedInstruction(context, context.opcodeOffset + 1 + byteCountAfterOpcode);
   };
+}
+
+function relativeTarget(context: DecodeContext, endOffset: number, displacement: number): number {
+  return (context.address + endOffset - context.offset + displacement) >>> 0;
 }
 
 function ensureDecodeBytes(context: DecodeContext, readOffset: number, byteCount: number): void {

@@ -38,6 +38,9 @@ export function sourceValue(
       return operand.value;
     case "imm8":
       return options.signExtendImm8 ? u32(operand.signedValue) : undefined;
+    case "rel8":
+    case "rel32":
+      return undefined;
   }
 }
 
