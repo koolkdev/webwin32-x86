@@ -1,5 +1,5 @@
 import type { DecodedInstruction } from "../arch/x86/instruction/types.js";
-import { StopReason, type InstructionResult } from "../core/execution/stop-reason.js";
+import { runResultFromState, StopReason, type RunResult } from "../core/execution/run-result.js";
 import type { CpuState } from "../core/state/cpu-state.js";
 import {
   executeAdd,
@@ -21,7 +21,7 @@ export type InterpreterRunOptions = Readonly<{
   instructionLimit?: number;
 }>;
 
-export function executeInstruction(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+export function executeInstruction(state: CpuState, instruction: DecodedInstruction): RunResult {
   switch (instruction.mnemonic) {
     case "mov":
       return executeMov(state, instruction);
@@ -44,7 +44,7 @@ export function executeInstruction(state: CpuState, instruction: DecodedInstruct
     case "jcc":
       return executeJcc(state, instruction);
     case "unsupported":
-      return executeUnsupported(state);
+      return executeUnsupported(state, instruction);
   }
 }
 
@@ -52,8 +52,8 @@ export function runInstructionInterpreter(
   state: CpuState,
   instructions: readonly DecodedInstruction[],
   options: InterpreterRunOptions = {}
-): InstructionResult {
-  let result: InstructionResult = { stopReason: StopReason.NONE, eip: state.eip };
+): RunResult {
+  let result = runResultFromState(state, StopReason.NONE);
   const instructionByAddress = new Map(instructions.map((instruction) => [instruction.address, instruction]));
   const instructionLimit = options.instructionLimit ?? defaultInstructionLimit;
 
@@ -72,5 +72,5 @@ export function runInstructionInterpreter(
   }
 
   state.stopReason = StopReason.INSTRUCTION_LIMIT;
-  return { stopReason: StopReason.INSTRUCTION_LIMIT, eip: state.eip };
+  return runResultFromState(state, StopReason.INSTRUCTION_LIMIT);
 }

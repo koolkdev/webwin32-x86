@@ -2,7 +2,7 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { decodeOne } from "../src/arch/x86/decoder/decoder.js";
-import { StopReason, type InstructionResult } from "../src/core/execution/stop-reason.js";
+import { StopReason, type RunResult } from "../src/core/execution/run-result.js";
 import { createCpuState, type CpuState } from "../src/core/state/cpu-state.js";
 import { runInstructionInterpreter } from "../src/interp/interpreter.js";
 
@@ -17,7 +17,7 @@ test("executes mov immediate then int host trap", () => {
   strictEqual(state.instructionCount, 2);
   strictEqual(state.stopReason, StopReason.HOST_TRAP);
   strictEqual(result.stopReason, StopReason.HOST_TRAP);
-  strictEqual(result.eip, state.eip);
+  strictEqual(result.finalEip, state.eip);
   strictEqual(result.trapVector, 0x2e);
 });
 
@@ -30,7 +30,7 @@ test("executes register mov then int host trap", () => {
   strictEqual(state.eip, 0x1009);
   strictEqual(state.instructionCount, 3);
   strictEqual(result.stopReason, StopReason.HOST_TRAP);
-  strictEqual(result.eip, state.eip);
+  strictEqual(result.finalEip, state.eip);
 });
 
 test("executes nop then int host trap", () => {
@@ -63,7 +63,7 @@ test("executes nop then int host trap", () => {
   strictEqual(state.eip, 0x1003);
   strictEqual(state.instructionCount, 2);
   strictEqual(result.stopReason, StopReason.HOST_TRAP);
-  strictEqual(result.eip, state.eip);
+  strictEqual(result.finalEip, state.eip);
 });
 
 test("unsupported instruction stops without advancing eip or count", () => {
@@ -74,10 +74,10 @@ test("unsupported instruction stops without advancing eip or count", () => {
   strictEqual(state.instructionCount, 0);
   strictEqual(state.stopReason, StopReason.UNSUPPORTED);
   strictEqual(result.stopReason, StopReason.UNSUPPORTED);
-  strictEqual(result.eip, state.eip);
+  strictEqual(result.finalEip, state.eip);
 });
 
-function runBytes(state: CpuState, bytes: readonly number[]): InstructionResult {
+function runBytes(state: CpuState, bytes: readonly number[]): RunResult {
   return runInstructionInterpreter(state, decodeBytes(bytes));
 }
 

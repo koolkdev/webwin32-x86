@@ -1,7 +1,7 @@
 import { addFlags, logicalFlags, subFlags } from "../arch/x86/flags/arithmetic.js";
 import { isJccConditionMet, type JccFlags } from "../arch/x86/flags/conditions.js";
 import type { DecodedInstruction } from "../arch/x86/instruction/types.js";
-import { StopReason, type InstructionResult } from "../core/execution/stop-reason.js";
+import { runResultFromState, StopReason, type RunResult, type RunResultDetails } from "../core/execution/run-result.js";
 import { type CpuState, getFlag, u32 } from "../core/state/cpu-state.js";
 import {
   intVector,
@@ -13,7 +13,7 @@ import {
   writeRegisterDestination
 } from "./operands.js";
 
-export function executeMov(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+export function executeMov(state: CpuState, instruction: DecodedInstruction): RunResult {
   const destination = registerDestination(instruction);
   const source = sourceValue(state, instruction, { signExtendImm8: false });
 
@@ -25,11 +25,11 @@ export function executeMov(state: CpuState, instruction: DecodedInstruction): In
   return completeInstruction(state, instruction);
 }
 
-export function executeNop(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+export function executeNop(state: CpuState, instruction: DecodedInstruction): RunResult {
   return completeInstruction(state, instruction);
 }
 
-export function executeInt(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+export function executeInt(state: CpuState, instruction: DecodedInstruction): RunResult {
   const vector = intVector(instruction.operands[0]);
 
   if (vector === undefined) {
@@ -39,14 +39,10 @@ export function executeInt(state: CpuState, instruction: DecodedInstruction): In
   advanceInstruction(state, instruction);
   state.stopReason = StopReason.HOST_TRAP;
 
-  return {
-    stopReason: StopReason.HOST_TRAP,
-    eip: state.eip,
-    trapVector: vector
-  };
+  return runResultFromState(state, StopReason.HOST_TRAP, { trapVector: vector });
 }
 
-export function executeJmp(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+export function executeJmp(state: CpuState, instruction: DecodedInstruction): RunResult {
   const target = jumpTarget(instruction.operands[0]);
 
   if (target === undefined) {
@@ -56,7 +52,7 @@ export function executeJmp(state: CpuState, instruction: DecodedInstruction): In
   return completeBranch(state, target);
 }
 
-export function executeJcc(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+export function executeJcc(state: CpuState, instruction: DecodedInstruction): RunResult {
   const target = jumpTarget(instruction.operands[0]);
 
   if (target === undefined || instruction.condition === undefined) {
@@ -68,15 +64,15 @@ export function executeJcc(state: CpuState, instruction: DecodedInstruction): In
     : completeInstruction(state, instruction);
 }
 
-export function executeAdd(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+export function executeAdd(state: CpuState, instruction: DecodedInstruction): RunResult {
   return executeArithmetic(state, instruction, "add");
 }
 
-export function executeSub(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+export function executeSub(state: CpuState, instruction: DecodedInstruction): RunResult {
   return executeArithmetic(state, instruction, "sub");
 }
 
-export function executeXor(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+export function executeXor(state: CpuState, instruction: DecodedInstruction): RunResult {
   const destination = registerDestination(instruction);
   const right = sourceValue(state, instruction, { signExtendImm8: false });
 
@@ -92,7 +88,7 @@ export function executeXor(state: CpuState, instruction: DecodedInstruction): In
   return completeInstruction(state, instruction);
 }
 
-export function executeCmp(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+export function executeCmp(state: CpuState, instruction: DecodedInstruction): RunResult {
   const destination = registerDestination(instruction);
   const right = sourceValue(state, instruction, { signExtendImm8: true });
 
@@ -108,7 +104,7 @@ export function executeCmp(state: CpuState, instruction: DecodedInstruction): In
   return completeInstruction(state, instruction);
 }
 
-export function executeTest(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+export function executeTest(state: CpuState, instruction: DecodedInstruction): RunResult {
   const destination = registerDestination(instruction);
   const right = sourceValue(state, instruction, { signExtendImm8: false });
 
@@ -121,15 +117,17 @@ export function executeTest(state: CpuState, instruction: DecodedInstruction): I
   return completeInstruction(state, instruction);
 }
 
-export function executeUnsupported(state: CpuState): InstructionResult {
-  return stop(state, StopReason.UNSUPPORTED);
+export function executeUnsupported(state: CpuState, instruction: DecodedInstruction): RunResult {
+  const byte = unsupportedByte(instruction);
+
+  return stop(state, StopReason.UNSUPPORTED, unsupportedDetails(byte));
 }
 
 function executeArithmetic(
   state: CpuState,
   instruction: DecodedInstruction,
   operation: "add" | "sub"
-): InstructionResult {
+): RunResult {
   const destination = registerDestination(instruction);
   const right = sourceValue(state, instruction, { signExtendImm8: true });
 
@@ -146,16 +144,16 @@ function executeArithmetic(
   return completeInstruction(state, instruction);
 }
 
-function completeInstruction(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+function completeInstruction(state: CpuState, instruction: DecodedInstruction): RunResult {
   advanceInstruction(state, instruction);
-  return { stopReason: StopReason.NONE, eip: state.eip };
+  return runResultFromState(state, StopReason.NONE);
 }
 
-function completeBranch(state: CpuState, target: number): InstructionResult {
+function completeBranch(state: CpuState, target: number): RunResult {
   state.eip = u32(target);
   state.instructionCount = u32(state.instructionCount + 1);
 
-  return { stopReason: StopReason.NONE, eip: state.eip };
+  return runResultFromState(state, StopReason.NONE);
 }
 
 function readJccFlags(state: CpuState): JccFlags {
@@ -168,12 +166,27 @@ function readJccFlags(state: CpuState): JccFlags {
   };
 }
 
-function stop(state: CpuState, reason: StopReason): InstructionResult {
+function stop(state: CpuState, reason: StopReason, details: RunResultDetails = {}): RunResult {
   state.stopReason = reason;
-  return { stopReason: reason, eip: state.eip };
+  return runResultFromState(state, reason, details);
 }
 
 function advanceInstruction(state: CpuState, instruction: DecodedInstruction): void {
   state.eip = u32(state.eip + instruction.length);
   state.instructionCount = u32(state.instructionCount + 1);
+}
+
+function unsupportedByte(instruction: DecodedInstruction): number | undefined {
+  return instruction.raw[instruction.prefixes.length] ?? instruction.raw[0];
+}
+
+function unsupportedDetails(byte: number | undefined): RunResultDetails {
+  if (byte === undefined) {
+    return {};
+  }
+
+  return {
+    unsupportedByte: byte,
+    unsupportedReason: "unsupportedOpcode"
+  };
 }

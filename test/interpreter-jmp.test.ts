@@ -2,7 +2,7 @@ import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { decodeOne } from "../src/arch/x86/decoder/decoder.js";
-import { StopReason, type InstructionResult } from "../src/core/execution/stop-reason.js";
+import { StopReason, type RunResult } from "../src/core/execution/run-result.js";
 import { createCpuState, type CpuState } from "../src/core/state/cpu-state.js";
 import { runInstructionInterpreter, type InterpreterRunOptions } from "../src/interp/interpreter.js";
 
@@ -27,7 +27,7 @@ test("jmp_backward_with_limit", () => {
   strictEqual(state.instructionCount, 3);
   strictEqual(state.stopReason, StopReason.INSTRUCTION_LIMIT);
   strictEqual(result.stopReason, StopReason.INSTRUCTION_LIMIT);
-  strictEqual(result.eip, state.eip);
+  strictEqual(result.finalEip, state.eip);
 });
 
 test("jmp_rel32_backward", () => {
@@ -37,14 +37,14 @@ test("jmp_rel32_backward", () => {
   strictEqual(state.eip, startAddress);
   strictEqual(state.instructionCount, 2);
   strictEqual(result.stopReason, StopReason.INSTRUCTION_LIMIT);
-  strictEqual(result.eip, state.eip);
+  strictEqual(result.finalEip, state.eip);
 });
 
 function runBytes(
   state: CpuState,
   bytes: readonly number[],
   options: InterpreterRunOptions = {}
-): InstructionResult {
+): RunResult {
   return runInstructionInterpreter(state, decodeBytes(bytes), options);
 }
 

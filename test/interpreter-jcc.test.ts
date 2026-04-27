@@ -2,7 +2,7 @@ import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { decodeOne } from "../src/arch/x86/decoder/decoder.js";
-import { StopReason, type InstructionResult } from "../src/core/execution/stop-reason.js";
+import { StopReason, type RunResult } from "../src/core/execution/run-result.js";
 import { createCpuState, type CpuState } from "../src/core/state/cpu-state.js";
 import { runInstructionInterpreter } from "../src/interp/interpreter.js";
 
@@ -96,7 +96,7 @@ test("cmp_loop_counts_down", () => {
   strictEqual(result.stopReason, StopReason.HOST_TRAP);
 });
 
-function runBytes(state: CpuState, bytes: readonly number[]): InstructionResult {
+function runBytes(state: CpuState, bytes: readonly number[]): RunResult {
   return runInstructionInterpreter(state, decodeBytes(bytes));
 }
 

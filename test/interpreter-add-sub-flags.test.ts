@@ -2,7 +2,7 @@ import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { decodeOne } from "../src/arch/x86/decoder/decoder.js";
-import { StopReason } from "../src/core/execution/stop-reason.js";
+import { StopReason } from "../src/core/execution/run-result.js";
 import { createCpuState, getFlag, supportedEflagsMask, u32 } from "../src/core/state/cpu-state.js";
 import { executeInstruction } from "../src/interp/interpreter.js";
 
