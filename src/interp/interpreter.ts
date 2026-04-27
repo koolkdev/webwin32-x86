@@ -32,6 +32,7 @@ export function executeInstruction(state: CpuState, instruction: DecodedInstruct
     case "test":
       return executeTest(state, instruction);
     case "jmp":
+    case "jcc":
     case "unsupported":
       return executeUnsupported(state);
   }

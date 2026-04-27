@@ -1,3 +1,4 @@
+import { jccConditions } from "../instruction/condition.js";
 import { instructionPrefixes } from "../instruction/prefix.js";
 import type { Mnemonic } from "../instruction/mnemonic.js";
 import { reg32, type DecodedInstruction, type Operand } from "../instruction/types.js";
@@ -46,6 +47,10 @@ function buildOpcodeHandlers(): DecodeTable {
   handlers[opcode.jmpRel8] = opcodeEntry(decodeJmpRel8);
   handlers[opcode.jmpRel32] = opcodeEntry(decodeJmpRel32);
   handlers[opcode.escape] = opcodeEntry(decodeEscapedUnsupported);
+
+  for (let value = opcode.jccRel8Base; value <= opcode.jccRel8Last; value += 1) {
+    handlers[value] = opcodeEntry(decodeJccRel8);
+  }
 
   for (let value = opcode.movR32Imm32Base; value <= opcode.movR32Imm32Last; value += 1) {
     handlers[value] = opcodeEntry(decodeMovR32Imm32, {
@@ -111,6 +116,27 @@ function decodeJmpRel32(context: DecodeContext): DecodedInstruction {
   return decodedInstruction(context, endOffset, "jmp", [
     { kind: "rel32", displacement, target: relativeTarget(context, endOffset, displacement) }
   ]);
+}
+
+function decodeJccRel8(context: DecodeContext, value: number): DecodedInstruction {
+  const endOffset = context.opcodeOffset + 2;
+
+  ensureDecodeBytes(context, context.opcodeOffset + 1, 1);
+
+  const condition = jccConditions[value - opcode.jccRel8Base];
+
+  if (condition === undefined) {
+    throw new Error(`Jcc condition encoding out of range for opcode 0x${value.toString(16)}`);
+  }
+
+  const displacement = signedImm8(context.reader.readU8(context.opcodeOffset + 1));
+
+  return {
+    ...decodedInstruction(context, endOffset, "jcc", [
+      { kind: "rel8", displacement, target: relativeTarget(context, endOffset, displacement) }
+    ]),
+    condition
+  };
 }
 
 function decodeEscapedUnsupported(context: DecodeContext): DecodedInstruction {

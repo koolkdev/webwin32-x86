@@ -1,3 +1,4 @@
+import type { JccCondition } from "./condition.js";
 import type { Mnemonic } from "./mnemonic.js";
 import type { Prefix } from "./prefix.js";
 
@@ -19,4 +20,5 @@ export type DecodedInstruction = Readonly<{
   operands: readonly Operand[];
   raw: readonly number[];
   prefixes: readonly Prefix[];
+  condition?: JccCondition;
 }>;
