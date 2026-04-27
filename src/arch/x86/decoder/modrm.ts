@@ -1,6 +1,7 @@
 import { reg32, type Reg32 } from "../instruction/types.js";
 
 export type RegisterModRm = Readonly<{
+  regField: number;
   reg: Reg32;
   rm: Reg32;
 }>;
@@ -13,6 +14,7 @@ export function decodeRegisterModRm(value: number): RegisterModRm | undefined {
   }
 
   return {
+    regField: (value >>> 3) & 0b111,
     reg: register(value >>> 3),
     rm: register(value)
   };

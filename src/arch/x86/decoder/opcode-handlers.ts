@@ -6,10 +6,13 @@ import { ensureInstructionBytes } from "./decode-bounds.js";
 import { opcodeEntry, prefixEntry, type DecodeTable, type OpcodeHandler } from "./decode-table.js";
 import { signedImm8 } from "./immediate.js";
 import { decodedInstruction, unsupportedInstruction } from "./instruction.js";
-import { decodeRegisterModRm } from "./modrm.js";
+import { decodeRegisterModRm, type RegisterModRm } from "./modrm.js";
 import { movR32Imm32Length, opcode } from "./opcodes.js";
 
 export const opcodeHandlers = buildOpcodeHandlers();
+const group81Handlers = buildGroup81Handlers();
+
+type ModRmHandler = (context: DecodeContext, modrm: RegisterModRm) => DecodedInstruction;
 
 function buildOpcodeHandlers(): DecodeTable {
   const handlers = new Array<DecodeTable[number]>(256);
@@ -30,6 +33,9 @@ function buildOpcodeHandlers(): DecodeTable {
   handlers[opcode.cmpRm32R32] = registerModRmEntry(decodeRm32R32("cmp"));
   handlers[opcode.cmpR32Rm32] = registerModRmEntry(decodeR32Rm32("cmp"));
   handlers[opcode.testRm32R32] = registerModRmEntry(decodeRm32R32("test"));
+  handlers[opcode.group81] = opcodeEntry(decodeGroup81Register, {
+    prefixForms: { operandSizeOverride: decodeUnsupported(3) }
+  });
   handlers[opcode.movRm32R32] = registerModRmEntry(decodeRm32R32("mov"));
   handlers[opcode.movR32Rm32] = registerModRmEntry(decodeR32Rm32("mov"));
   handlers[opcode.int] = opcodeEntry(decodeInt);
@@ -40,6 +46,16 @@ function buildOpcodeHandlers(): DecodeTable {
       prefixForms: { operandSizeOverride: decodeUnsupported(2) }
     });
   }
+
+  return handlers;
+}
+
+function buildGroup81Handlers(): readonly (ModRmHandler | undefined)[] {
+  const handlers = new Array<ModRmHandler | undefined>(8);
+
+  handlers[0] = decodeGroup81Rm32Imm32("add");
+  handlers[5] = decodeGroup81Rm32Imm32("sub");
+  handlers[7] = decodeGroup81Rm32Imm32("cmp");
 
   return handlers;
 }
@@ -96,6 +112,32 @@ function decodeR32Rm32(mnemonic: Mnemonic): OpcodeHandler {
       { kind: "reg32", reg: modrm.rm }
     ]);
   };
+}
+
+function decodeGroup81Register(context: DecodeContext): DecodedInstruction {
+  const modrm = readRegisterModRm(context);
+
+  if (modrm === undefined) {
+    return unsupportedInstruction(context, context.opcodeOffset + 2);
+  }
+
+  ensureDecodeBytes(context, context.opcodeOffset + 2, 4);
+
+  const handler = group81Handlers[modrm.regField];
+
+  if (handler === undefined) {
+    return unsupportedInstruction(context, context.opcodeOffset + 6);
+  }
+
+  return handler(context, modrm);
+}
+
+function decodeGroup81Rm32Imm32(mnemonic: Extract<Mnemonic, "add" | "sub" | "cmp">): ModRmHandler {
+  return (context, modrm) =>
+    decodedInstruction(context, context.opcodeOffset + 6, mnemonic, [
+      { kind: "reg32", reg: modrm.rm },
+      { kind: "imm32", value: context.reader.readU32LE(context.opcodeOffset + 2) }
+    ]);
 }
 
 function decodeMovR32Imm32(context: DecodeContext, value: number): DecodedInstruction {
