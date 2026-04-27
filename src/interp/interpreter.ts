@@ -5,6 +5,7 @@ import {
   executeAdd,
   executeCmp,
   executeInt,
+  executeJmp,
   executeMov,
   executeNop,
   executeSub,
@@ -12,6 +13,12 @@ import {
   executeUnsupported,
   executeXor
 } from "./instruction-handlers.js";
+
+const defaultInstructionLimit = 10_000;
+
+export type InterpreterRunOptions = Readonly<{
+  instructionLimit?: number;
+}>;
 
 export function executeInstruction(state: CpuState, instruction: DecodedInstruction): InstructionResult {
   switch (instruction.mnemonic) {
@@ -32,6 +39,7 @@ export function executeInstruction(state: CpuState, instruction: DecodedInstruct
     case "test":
       return executeTest(state, instruction);
     case "jmp":
+      return executeJmp(state, instruction);
     case "jcc":
     case "unsupported":
       return executeUnsupported(state);
@@ -40,11 +48,20 @@ export function executeInstruction(state: CpuState, instruction: DecodedInstruct
 
 export function runInstructionInterpreter(
   state: CpuState,
-  instructions: readonly DecodedInstruction[]
+  instructions: readonly DecodedInstruction[],
+  options: InterpreterRunOptions = {}
 ): InstructionResult {
   let result: InstructionResult = { stopReason: StopReason.NONE, eip: state.eip };
+  const instructionByAddress = new Map(instructions.map((instruction) => [instruction.address, instruction]));
+  const instructionLimit = options.instructionLimit ?? defaultInstructionLimit;
 
-  for (const instruction of instructions) {
+  for (let executed = 0; executed < instructionLimit; executed += 1) {
+    const instruction = instructionByAddress.get(state.eip);
+
+    if (instruction === undefined) {
+      return result;
+    }
+
     result = executeInstruction(state, instruction);
 
     if (result.stopReason !== StopReason.NONE) {
@@ -52,5 +69,6 @@ export function runInstructionInterpreter(
     }
   }
 
-  return result;
+  state.stopReason = StopReason.INSTRUCTION_LIMIT;
+  return { stopReason: StopReason.INSTRUCTION_LIMIT, eip: state.eip };
 }

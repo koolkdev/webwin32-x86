@@ -4,6 +4,7 @@ import { StopReason, type InstructionResult } from "../core/execution/stop-reaso
 import { type CpuState, u32 } from "../core/state/cpu-state.js";
 import {
   intVector,
+  jumpTarget,
   readRegisterDestination,
   registerDestination,
   sourceValue,
@@ -42,6 +43,16 @@ export function executeInt(state: CpuState, instruction: DecodedInstruction): In
     eip: state.eip,
     trapVector: vector
   };
+}
+
+export function executeJmp(state: CpuState, instruction: DecodedInstruction): InstructionResult {
+  const target = jumpTarget(instruction.operands[0]);
+
+  if (target === undefined) {
+    return stop(state, StopReason.UNSUPPORTED);
+  }
+
+  return completeBranch(state, target);
 }
 
 export function executeAdd(state: CpuState, instruction: DecodedInstruction): InstructionResult {
@@ -124,6 +135,13 @@ function executeArithmetic(
 
 function completeInstruction(state: CpuState, instruction: DecodedInstruction): InstructionResult {
   advanceInstruction(state, instruction);
+  return { stopReason: StopReason.NONE, eip: state.eip };
+}
+
+function completeBranch(state: CpuState, target: number): InstructionResult {
+  state.eip = u32(target);
+  state.instructionCount = u32(state.instructionCount + 1);
+
   return { stopReason: StopReason.NONE, eip: state.eip };
 }
 

@@ -48,6 +48,10 @@ export function intVector(operand: Operand | undefined): number | undefined {
   return operand?.kind === "imm8" ? operand.value : undefined;
 }
 
+export function jumpTarget(operand: Operand | undefined): number | undefined {
+  return operand?.kind === "rel8" || operand?.kind === "rel32" ? operand.target : undefined;
+}
+
 export function writeFlags(state: CpuState, flags: FlagValues): void {
   setFlag(state, "CF", flags.CF);
   setFlag(state, "PF", flags.PF);
