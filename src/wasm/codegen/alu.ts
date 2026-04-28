@@ -3,6 +3,7 @@ import { eflagsMask, i32, supportedEflagsMask } from "../../core/state/cpu-state
 import { reg32StateOffset, stateOffset } from "../abi.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
+import { unsupportedWasmCodegen } from "./errors.js";
 import { emitCompleteInstruction, emitLoadStateU32, emitStoreStateStackU32 } from "./state.js";
 
 type AluMnemonic = Extract<DecodedInstruction["mnemonic"], "add" | "sub" | "xor" | "cmp" | "test">;
@@ -34,7 +35,7 @@ export function emitAlu(body: WasmFunctionBodyEncoder, instruction: DecodedInstr
   const source = instruction.operands[1];
 
   if (destination?.kind !== "reg32") {
-    throw new Error("unsupported ALU form for Wasm codegen");
+    unsupportedWasmCodegen("unsupported ALU form for Wasm codegen");
   }
 
   const locals = addAluLocals(body);
@@ -91,7 +92,7 @@ function emitSourceValue(body: WasmFunctionBodyEncoder, instruction: DecodedInst
       break;
   }
 
-  throw new Error("unsupported ALU form for Wasm codegen");
+  unsupportedWasmCodegen("unsupported ALU form for Wasm codegen");
 }
 
 function emitAluResult(body: WasmFunctionBodyEncoder, mnemonic: AluMnemonic, locals: AluLocals): void {

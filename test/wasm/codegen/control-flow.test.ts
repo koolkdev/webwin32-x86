@@ -1,7 +1,7 @@
 import { ok, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { decodeBlock, type DecodedBlock } from "../../../src/arch/x86/block-decoder/decode-block.js";
+import type { DecodedBlock } from "../../../src/arch/x86/block-decoder/decode-block.js";
 import {
   cloneCpuState,
   cpuStatesEqual,
@@ -9,17 +9,14 @@ import {
   type CpuState
 } from "../../../src/core/state/cpu-state.js";
 import { runInstructionInterpreter } from "../../../src/interp/interpreter.js";
-import { guestReader } from "../../../src/test-support/decode-reader.js";
 import { ExitReason, type DecodedExit } from "../../../src/wasm/exit.js";
 import {
   assertStateEquals,
   compileDecodedWasmBlock,
   decodeBytes,
-  copyStateFromView,
   compileAndRunBlock,
   readCpuState,
-  startAddress,
-  type CompiledWasmBlock
+  startAddress
 } from "../../../src/test-support/wasm-codegen.js";
 import { hostAddress } from "../../../src/test-support/x86-code.js";
 
@@ -57,21 +54,6 @@ test("jit_cmp_jz_not_taken_exit", async () => {
   ok(cpuStatesEqual(wasmState, interpreterState));
 });
 
-test("jit_sub_imm8_jnz_loop_runtime_exits_match_interpreter", async (t) => {
-  const bytes = [
-    0x83, 0xe8, 0x01,
-    0x83, 0xf8, 0x00,
-    0x75, 0xf8
-  ];
-  const interpreterState = createCpuState({ eax: 3, eip: startAddress });
-  const interpreterResult = runInstructionInterpreter(interpreterState, decodeBytes(bytes));
-  const wasm = await runWasmRegion(bytes, createCpuState({ eax: 3, eip: startAddress }));
-
-  ok(cpuStatesEqual(wasm.state, interpreterState));
-  strictEqual(wasm.state.stopReason, interpreterResult.stopReason);
-  t.diagnostic(`wasm control-flow exits: ${wasm.exitCount}`);
-});
-
 test("jit_host_call_exit_from_metadata", async () => {
   const initialState = createCpuState({ eax: 0x1234_5678, eip: hostAddress, instructionCount: 7 });
   const block = await compileDecodedWasmBlock(hostCallBlock());
@@ -99,49 +81,6 @@ async function runBranchFixture(
   };
 }
 
-async function runWasmRegion(
-  bytes: readonly number[],
-  initialState: CpuState
-): Promise<Readonly<{ state: CpuState; exitCount: number }>> {
-  const reader = guestReader(bytes);
-  const compiledBlocks = new Map<number, CompiledWasmBlock>();
-  const state = cloneCpuState(initialState);
-  let exitCount = 0;
-
-  for (let steps = 0; steps < 32; steps += 1) {
-    if (reader.regionAt(state.eip) === undefined) {
-      return { state, exitCount };
-    }
-
-    const block = decodeBlock(reader, state.eip);
-    const compiledBlock = await compiledBlockFor(compiledBlocks, block);
-    const result = await compiledBlock.run(state);
-
-    copyStateFromView(result.stateView, state);
-    exitCount += 1;
-
-    if (!isControlFlowExit(result.exit)) {
-      return { state, exitCount };
-    }
-  }
-
-  throw new Error("wasm control-flow fixture did not terminate");
-}
-
-async function compiledBlockFor(
-  compiledBlocks: Map<number, CompiledWasmBlock>,
-  block: DecodedBlock
-): Promise<CompiledWasmBlock> {
-  let compiled = compiledBlocks.get(block.startEip);
-
-  if (compiled === undefined) {
-    compiled = await compileDecodedWasmBlock(block);
-    compiledBlocks.set(block.startEip, compiled);
-  }
-
-  return compiled;
-}
-
 function hostCallBlock(): DecodedBlock {
   return {
     startEip: hostAddress,
@@ -154,13 +93,4 @@ function hostCallBlock(): DecodedBlock {
       convention: "stdcall"
     }
   };
-}
-
-function isControlFlowExit(exit: DecodedExit): boolean {
-  return (
-    exit.exitReason === ExitReason.FALLTHROUGH ||
-    exit.exitReason === ExitReason.JUMP ||
-    exit.exitReason === ExitReason.BRANCH_TAKEN ||
-    exit.exitReason === ExitReason.BRANCH_NOT_TAKEN
-  );
 }

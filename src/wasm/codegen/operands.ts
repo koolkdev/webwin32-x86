@@ -3,6 +3,7 @@ import { i32 } from "../../core/state/cpu-state.js";
 import { reg32StateOffset } from "../abi.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
+import { unsupportedWasmCodegen } from "./errors.js";
 import { emitLoadGuestU32, emitMem32Address, emitStoreGuestU32 } from "./guest-memory.js";
 import { emitLoadStateU32, emitStoreStateStackU32 } from "./state.js";
 
@@ -22,7 +23,7 @@ export function emitReadOperandU32(body: WasmFunctionBodyEncoder, operand: Opera
       break;
     }
     default:
-      throw new Error("unsupported operand read for Wasm codegen");
+      unsupportedWasmCodegen("unsupported operand read for Wasm codegen");
   }
 
   body.localSet(valueLocal);
@@ -45,7 +46,7 @@ export function emitWriteOperandU32(
       return;
     }
     default:
-      throw new Error("unsupported operand write for Wasm codegen");
+      unsupportedWasmCodegen("unsupported operand write for Wasm codegen");
   }
 }
 

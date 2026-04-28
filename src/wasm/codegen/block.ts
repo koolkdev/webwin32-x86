@@ -8,6 +8,7 @@ import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
 import { emitAlu } from "./alu.js";
 import { emitJcc, emitJmp } from "./branch.js";
+import { unsupportedWasmCodegen } from "./errors.js";
 import { emitExitResult } from "./exit.js";
 import { emitMov } from "./mov.js";
 
@@ -85,7 +86,7 @@ function emitInstruction(body: WasmFunctionBodyEncoder, instruction: DecodedInst
       emitJcc(body, instruction);
       return;
     default:
-      throw new Error(`unsupported instruction for Wasm codegen: ${instruction.mnemonic}`);
+      unsupportedWasmCodegen(`unsupported instruction for Wasm codegen: ${instruction.mnemonic}`);
   }
 }
 
@@ -101,6 +102,6 @@ function emitTerminator(body: WasmFunctionBodyEncoder, terminator: BlockTerminat
     case "conditional-branch":
       return;
     default:
-      throw new Error(`unsupported block terminator for Wasm codegen: ${terminator.kind}`);
+      unsupportedWasmCodegen(`unsupported block terminator for Wasm codegen: ${terminator.kind}`);
   }
 }

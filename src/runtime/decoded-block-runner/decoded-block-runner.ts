@@ -1,6 +1,7 @@
 import type { BlockTerminator } from "../../arch/x86/block-decoder/decode-block.js";
 import type { DecodeReader } from "../../arch/x86/block-decoder/decode-reader.js";
 import { runResultFromState, StopReason, type RunResult } from "../../core/execution/run-result.js";
+import type { GuestMemory } from "../../core/memory/guest-memory.js";
 import { u32, type CpuState } from "../../core/state/cpu-state.js";
 import { executeInstruction } from "../../interp/interpreter.js";
 import { DecodedBlockCache, type DecodedBlockKey } from "../decoded-block-cache/decoded-block-cache.js";
@@ -13,6 +14,7 @@ export type ProfileCounters = Readonly<{
 
 export type DecodedBlockRunnerOptions = Readonly<{
   instructionLimit?: number;
+  memory?: GuestMemory;
 }>;
 
 const defaultInstructionLimit = 10_000;
@@ -51,7 +53,10 @@ export class DecodedBlockRunner {
           return stopWithInstructionLimit(state);
         }
 
-        result = executeInstruction(state, instruction);
+        result =
+          options.memory === undefined
+            ? executeInstruction(state, instruction)
+            : executeInstruction(state, instruction, { memory: options.memory });
         executed += 1;
         this.#instructionsExecuted += 1;
 
