@@ -3,12 +3,13 @@ import type { DecodeFault } from "../arch/x86/decoder/decode-error.js";
 import type { RunResult } from "../core/execution/run-result.js";
 import { ArrayBufferGuestMemory, type GuestMemory } from "../core/memory/guest-memory.js";
 import { u32, type CpuState } from "../core/state/cpu-state.js";
-import { MetricsCollector, metricKey, type MetricSnapshot } from "../metrics/collector.js";
+import { MetricsCollector, type MetricSnapshot } from "../metrics/collector.js";
+import { metricsReportMetricKeys } from "../metrics/report.js";
 import { RuntimeInstance } from "../runtime/instance/runtime-instance.js";
 import type { RawX86Fixture } from "./fixtures/raw-x86-fixture.js";
 
 export const metricsRunnerMetricKeys = {
-  runDurationMs: metricKey("metrics.runDurationMs")
+  runDurationMs: metricsReportMetricKeys.runDurationMs
 } as const;
 
 export type MetricsRunOptions = Readonly<{
