@@ -1,0 +1,10 @@
+{
+  "id": "memory_alu_loop",
+  "bytes": [3, 5, 0, 32, 0, 0, 131, 233, 1, 131, 249, 0, 117, 242, 205, 46],
+  "loadAddress": 4096,
+  "initialState": { "ecx": 1000 },
+  "memorySize": 12288,
+  "memory": [{ "address": 8192, "bytes": [1, 0, 0, 0] }],
+  "instructionLimit": 5000,
+  "expectedState": { "eax": 1000, "ecx": 0 }
+}

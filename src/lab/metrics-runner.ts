@@ -1,7 +1,7 @@
 import type { DecodeReader, DecodeRegion } from "../arch/x86/block-decoder/decode-reader.js";
 import type { DecodeFault } from "../arch/x86/decoder/decode-error.js";
 import type { RunResult } from "../core/execution/run-result.js";
-import { ArrayBufferGuestMemory, type GuestMemory } from "../core/memory/guest-memory.js";
+import type { GuestMemory } from "../core/memory/guest-memory.js";
 import { u32, type CpuState } from "../core/state/cpu-state.js";
 import { MetricsCollector, type MetricSnapshot } from "../metrics/collector.js";
 import { metricsReportMetricKeys } from "../metrics/report.js";
@@ -134,6 +134,9 @@ function runFixture(
     ...(options.tierMode === undefined ? {} : { tierMode: options.tierMode }),
     ...runtimeMemoryOptions(fixture)
   });
+
+  writeFixtureMemory(runtime.guestMemory, fixture);
+
   const result = runtime.run({
     entryEip: fixture.entryEip,
     ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
@@ -152,17 +155,17 @@ function decodeReaderForFixture(fixture: RawX86Fixture): DecodeReader {
 }
 
 function runtimeMemoryOptions(fixture: RawX86Fixture): Readonly<{
-  guestMemory?: GuestMemory;
   guestMemoryByteLength?: number;
 }> {
-  if (fixture.memory.length === 0) {
-    return fixture.memorySize === undefined
-      ? {}
-      : { guestMemoryByteLength: fixture.memorySize };
-  }
+  const requiredByteLength = fixture.memory.length === 0 ? undefined : requiredMemorySize(fixture);
+  const byteLength = Math.max(fixture.memorySize ?? 0, requiredByteLength ?? 0);
 
-  const memory = new ArrayBufferGuestMemory(fixture.memorySize ?? requiredMemorySize(fixture));
+  return byteLength === 0
+    ? {}
+    : { guestMemoryByteLength: byteLength };
+}
 
+function writeFixtureMemory(memory: GuestMemory, fixture: RawX86Fixture): void {
   for (const entry of fixture.memory) {
     for (let index = 0; index < entry.bytes.length; index += 1) {
       const write = memory.writeU8(entry.address + index, entry.bytes[index] ?? 0);
@@ -172,8 +175,6 @@ function runtimeMemoryOptions(fixture: RawX86Fixture): Readonly<{
       }
     }
   }
-
-  return { guestMemory: memory };
 }
 
 function requiredMemorySize(fixture: RawX86Fixture): number {
