@@ -86,6 +86,10 @@ export class RuntimeInstance {
     };
   }
 
+  clearWasmBlockCache(): void {
+    this.#wasmRuntime?.blockCache.clear();
+  }
+
   run(options: RuntimeInstanceRunOptions = {}): RunResult {
     if (options.entryEip !== undefined) {
       this.state.eip = u32(options.entryEip);

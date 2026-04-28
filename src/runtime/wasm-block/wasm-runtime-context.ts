@@ -64,6 +64,10 @@ export class WasmBlockCache {
     };
   }
 
+  clear(): void {
+    this.#blocksByKey.clear();
+  }
+
   getOrCompile(block: DecodedBlock): WasmBlockHandle | undefined {
     const blockKey = u32(block.startEip);
     const cached = this.#blocksByKey.get(blockKey);

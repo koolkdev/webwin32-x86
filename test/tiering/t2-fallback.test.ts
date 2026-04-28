@@ -100,6 +100,46 @@ test("wasm_block_cache_reuses_supported_block", () => {
   strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 1);
 });
 
+test("wasm_block_cache_clear_forces_recompile", () => {
+  const runtime = runRuntime(supportedJumpFixture, TierMode.T2_ONLY);
+
+  strictEqual(runtime.result.stopReason, StopReason.NONE);
+  strictEqual(runtime.instance.counters.wasmBlockCache.misses, 1);
+  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 1);
+
+  runtime.instance.clearWasmBlockCache();
+  runtime.instance.run({ entryEip: startAddress });
+
+  strictEqual(runtime.instance.counters.wasmBlockCache.hits, 0);
+  strictEqual(runtime.instance.counters.wasmBlockCache.misses, 2);
+  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 2);
+});
+
+test("unsupported_codegen_not_cached_as_success", () => {
+  const runtime = runRuntime(unsupportedCodegenFixture, TierMode.T2_ONLY, {
+    eax: 0x1234_5678,
+    esp: 0x40
+  });
+
+  strictEqual(runtime.result.stopReason, StopReason.HOST_TRAP);
+
+  runtime.instance.run({ entryEip: startAddress });
+
+  strictEqual(runtime.instance.counters.wasmBlockCache.hits, 0);
+  strictEqual(runtime.instance.counters.wasmBlockCache.misses, 2);
+  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 0);
+  strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 2);
+});
+
+test("wasm_block_cache_counters_visible", () => {
+  const runtime = runRuntime(branchLoopFixture, TierMode.T2_ONLY, { eax: 3 });
+
+  strictEqual(runtime.instance.counters.wasmBlockCache.hits, 2);
+  strictEqual(runtime.instance.counters.wasmBlockCache.misses, 2);
+  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 1);
+  strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 1);
+});
+
 test("unsupported_x86_still_stops_as_guest_unsupported", () => {
   const runtime = runRuntime(unsupportedX86Fixture, TierMode.T2_ONLY);
 
