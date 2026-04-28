@@ -5,14 +5,12 @@ import { decodeOne } from "../arch/x86/decoder/decoder.js";
 import type { DecodedInstruction } from "../arch/x86/instruction/types.js";
 import { cpuStateFields, createCpuState, type CpuState } from "../core/state/cpu-state.js";
 import { wasmBlockExportName, wasmImport, stateOffset } from "../wasm/abi.js";
-import {
-  compileBlock as compileInstructionBlockBytes,
-  compileDecodedBlock as compileDecodedBlockBytes
-} from "../wasm/codegen/block.js";
+import { WasmBlockCompiler } from "../wasm/codegen/block.js";
 import { decodeExit, type DecodedExit } from "../wasm/exit.js";
 
 export const startAddress = 0x1000;
 export const statePtr = 32;
+const blockCompiler = new WasmBlockCompiler();
 
 export type StateSlot = keyof typeof stateOffset;
 
@@ -32,11 +30,11 @@ export type RunWasmBlockOptions = Readonly<{
 }>;
 
 export async function compileWasmBlock(bytes: readonly number[]): Promise<CompiledWasmBlock> {
-  return compiledWasmBlock(await WebAssembly.compile(compileInstructionBlockBytes(decodeBytes(bytes))));
+  return compiledWasmBlock(await blockCompiler.compileInstructions(decodeBytes(bytes)));
 }
 
 export async function compileDecodedWasmBlock(block: DecodedBlock): Promise<CompiledWasmBlock> {
-  return compiledWasmBlock(await WebAssembly.compile(compileDecodedBlockBytes(block)));
+  return compiledWasmBlock(await blockCompiler.compileDecodedBlock(block));
 }
 
 export async function compileAndRunBlock(
@@ -47,16 +45,6 @@ export async function compileAndRunBlock(
   const block = await compileWasmBlock(bytes);
 
   return block.run(initialState, options);
-}
-
-export async function compileAndRunDecodedBlock(
-  block: DecodedBlock,
-  initialState: CpuState,
-  options: RunWasmBlockOptions = {}
-): Promise<WasmBlockRunResult> {
-  const compiled = await compileDecodedWasmBlock(block);
-
-  return compiled.run(initialState, options);
 }
 
 function compiledWasmBlock(module: WebAssembly.Module): CompiledWasmBlock {

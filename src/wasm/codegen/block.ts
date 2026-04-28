@@ -11,21 +11,31 @@ import { emitJcc, emitJmp } from "./branch.js";
 import { emitExitResult } from "./exit.js";
 import { emitMov } from "./mov.js";
 
-export function compileBlock(instructions: readonly DecodedInstruction[]): Uint8Array<ArrayBuffer> {
-  const lastInstruction = instructions[instructions.length - 1];
+export class WasmBlockCompiler {
+  encodeInstructions(instructions: readonly DecodedInstruction[]): Uint8Array<ArrayBuffer> {
+    const lastInstruction = instructions[instructions.length - 1];
 
-  if (lastInstruction === undefined) {
-    throw new Error("cannot compile an empty block");
+    if (lastInstruction === undefined) {
+      throw new Error("cannot compile an empty block");
+    }
+
+    return encodeWasmBlock(instructions, { kind: "fallthrough", nextEip: instructionEnd(lastInstruction) });
   }
 
-  return compileWasmBlock(instructions, { kind: "fallthrough", nextEip: instructionEnd(lastInstruction) });
+  encodeDecodedBlock(block: DecodedBlock): Uint8Array<ArrayBuffer> {
+    return encodeWasmBlock(block.instructions, block.terminator);
+  }
+
+  async compileInstructions(instructions: readonly DecodedInstruction[]): Promise<WebAssembly.Module> {
+    return WebAssembly.compile(this.encodeInstructions(instructions));
+  }
+
+  async compileDecodedBlock(block: DecodedBlock): Promise<WebAssembly.Module> {
+    return WebAssembly.compile(this.encodeDecodedBlock(block));
+  }
 }
 
-export function compileDecodedBlock(block: DecodedBlock): Uint8Array<ArrayBuffer> {
-  return compileWasmBlock(block.instructions, block.terminator);
-}
-
-function compileWasmBlock(
+function encodeWasmBlock(
   instructions: readonly DecodedInstruction[],
   terminator: BlockTerminator
 ): Uint8Array<ArrayBuffer> {
