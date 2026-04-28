@@ -2,27 +2,29 @@ import { addFlags, logicalFlags, subFlags } from "../arch/x86/flags/arithmetic.j
 import { isJccConditionMet, type JccFlags } from "../arch/x86/flags/conditions.js";
 import type { DecodedInstruction } from "../arch/x86/instruction/types.js";
 import { runResultFromState, StopReason, type RunResult, type RunResultDetails } from "../core/execution/run-result.js";
+import type { GuestMemory, MemoryFault } from "../core/memory/guest-memory.js";
 import { type CpuState, getFlag, u32 } from "../core/state/cpu-state.js";
 import {
   intVector,
   jumpTarget,
+  type OperandWriteResult,
   readRegisterDestination,
+  readOperandValue,
   registerDestination,
   sourceValue,
   writeFlags,
+  writeOperandValue,
   writeRegisterDestination
 } from "./operands.js";
 
-export function executeMov(state: CpuState, instruction: DecodedInstruction): RunResult {
-  const destination = registerDestination(instruction);
-  const source = sourceValue(state, instruction, { signExtendImm8: false });
-
-  if (destination === undefined || source === undefined) {
-    return stop(state, StopReason.UNSUPPORTED);
-  }
-
-  writeRegisterDestination(state, destination, source);
-  return completeInstruction(state, instruction);
+export function executeMov(
+  state: CpuState,
+  instruction: DecodedInstruction,
+  memory?: GuestMemory
+): RunResult {
+  return doOperandMutation(state, instruction, () =>
+    copyMovValue(state, instruction, memory)
+  );
 }
 
 export function executeNop(state: CpuState, instruction: DecodedInstruction): RunResult {
@@ -149,6 +151,37 @@ function completeInstruction(state: CpuState, instruction: DecodedInstruction): 
   return runResultFromState(state, StopReason.NONE);
 }
 
+function copyMovValue(
+  state: CpuState,
+  instruction: DecodedInstruction,
+  memory: GuestMemory | undefined
+): OperandWriteResult {
+  const source = readOperandValue(state, instruction.operands[1], { memory });
+
+  if (source.kind !== "value") {
+    return source;
+  }
+
+  return writeOperandValue(state, instruction.operands[0], source.value, { memory });
+}
+
+function doOperandMutation(
+  state: CpuState,
+  instruction: DecodedInstruction,
+  mutation: () => OperandWriteResult
+): RunResult {
+  const result = mutation();
+
+  switch (result.kind) {
+    case "ok":
+      return completeInstruction(state, instruction);
+    case "unsupported":
+      return stop(state, StopReason.UNSUPPORTED);
+    case "memoryFault":
+      return stopMemoryFault(state, result.fault);
+  }
+}
+
 function completeBranch(state: CpuState, target: number): RunResult {
   state.eip = u32(target);
   state.instructionCount = u32(state.instructionCount + 1);
@@ -169,6 +202,10 @@ function readJccFlags(state: CpuState): JccFlags {
 function stop(state: CpuState, reason: StopReason, details: RunResultDetails = {}): RunResult {
   state.stopReason = reason;
   return runResultFromState(state, reason, details);
+}
+
+function stopMemoryFault(state: CpuState, fault: MemoryFault): RunResult {
+  return stop(state, StopReason.MEMORY_FAULT, fault);
 }
 
 function advanceInstruction(state: CpuState, instruction: DecodedInstruction): void {

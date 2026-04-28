@@ -1,5 +1,6 @@
 import type { DecodedInstruction } from "../arch/x86/instruction/types.js";
 import { runResultFromState, StopReason, type RunResult } from "../core/execution/run-result.js";
+import type { GuestMemory } from "../core/memory/guest-memory.js";
 import type { CpuState } from "../core/state/cpu-state.js";
 import {
   executeAdd,
@@ -19,12 +20,21 @@ const defaultInstructionLimit = 10_000;
 
 export type InterpreterRunOptions = Readonly<{
   instructionLimit?: number;
+  memory?: GuestMemory;
 }>;
 
-export function executeInstruction(state: CpuState, instruction: DecodedInstruction): RunResult {
+export type ExecuteInstructionOptions = Readonly<{
+  memory?: GuestMemory;
+}>;
+
+export function executeInstruction(
+  state: CpuState,
+  instruction: DecodedInstruction,
+  options: ExecuteInstructionOptions = {}
+): RunResult {
   switch (instruction.mnemonic) {
     case "mov":
-      return executeMov(state, instruction);
+      return executeMov(state, instruction, options.memory);
     case "nop":
       return executeNop(state, instruction);
     case "int":
@@ -67,7 +77,10 @@ export function runInstructionInterpreter(
       return result;
     }
 
-    result = executeInstruction(state, instruction);
+    result =
+      options.memory === undefined
+        ? executeInstruction(state, instruction)
+        : executeInstruction(state, instruction, { memory: options.memory });
 
     if (result.stopReason !== StopReason.NONE) {
       return result;
