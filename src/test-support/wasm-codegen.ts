@@ -5,14 +5,14 @@ import type { DecodedInstruction } from "../arch/x86/instruction/types.js";
 import { StopReason, type RunResult } from "../core/execution/run-result.js";
 import { cloneCpuState, cpuStateFields, createCpuState, type CpuState } from "../core/state/cpu-state.js";
 import { runInstructionInterpreter } from "../interp/interpreter.js";
-import { wasmBlockExportName, wasmImport, stateOffset } from "../wasm/abi.js";
+import { wasmBlockExportName, wasmImport, stateOffset, wasmStatePtr } from "../wasm/abi.js";
 import { WasmBlockCompiler } from "../wasm/codegen/block.js";
 import { decodeExit, type DecodedExit } from "../wasm/exit.js";
 import { decodeBytes, startAddress } from "./x86-code.js";
 
 export { decodeBytes, startAddress };
 
-export const statePtr = 32;
+export const statePtr = wasmStatePtr;
 const blockCompiler = new WasmBlockCompiler();
 
 export type StateSlot = keyof typeof stateOffset;

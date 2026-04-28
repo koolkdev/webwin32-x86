@@ -13,6 +13,7 @@ export const wasmMemoryIndex = {
 } as const;
 
 export const wasmBlockExportName = "run";
+export const wasmStatePtr = 32;
 
 export const stateOffset = STATE_OFFSETS;
 
