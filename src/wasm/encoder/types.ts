@@ -5,9 +5,14 @@ export const wasmExternalKind = {
 
 export const wasmFunctionTypePrefix = 0x60;
 
+export const wasmBlockType = {
+  empty: 0x40
+} as const;
+
 export const wasmMagic = [0x00, 0x61, 0x73, 0x6d] as const;
 
 export const wasmOpcode = {
+  if: 0x04,
   localGet: 0x20,
   localSet: 0x21,
   localTee: 0x22,
@@ -28,6 +33,7 @@ export const wasmOpcode = {
 } as const;
 
 export const wasmSectionId = {
+  custom: 0,
   type: 1,
   import: 2,
   function: 3,

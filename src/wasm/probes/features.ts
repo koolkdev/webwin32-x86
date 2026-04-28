@@ -1,9 +1,13 @@
-import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
+import { wasmBranchHint, WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
 import { decodeExit, encodeExit, ExitReason } from "../exit.js";
 
-export type WasmFeatureName = "multi-memory" | "i64-return-bigint" | "imported-memory-sharing";
+export type WasmFeatureName =
+  | "multi-memory"
+  | "i64-return-bigint"
+  | "imported-memory-sharing"
+  | "branch-hint-metadata";
 
 export type WasmFeatureCheck =
   | Readonly<{ feature: WasmFeatureName; supported: true }>
@@ -32,6 +36,7 @@ export async function probeWasmFeatures(): Promise<WasmFeatureReport> {
   checks.push(await runFeatureCheck("multi-memory", probeMultiMemory));
   checks.push(await runFeatureCheck("i64-return-bigint", probeI64ReturnBigInt));
   checks.push(await runFeatureCheck("imported-memory-sharing", probeImportedMemorySharing));
+  checks.push(await runFeatureCheck("branch-hint-metadata", probeBranchHintMetadata));
 
   const missingFeatures = checks.filter((check): check is Extract<WasmFeatureCheck, { supported: false }> => {
     return !check.supported;
@@ -110,6 +115,15 @@ async function probeImportedMemorySharing(): Promise<void> {
   }
 }
 
+async function probeBranchHintMetadata(): Promise<void> {
+  const instance = await instantiateProbeModule(encodeBranchHintProbeModule());
+  const hintedIf = readExportedFunction(instance, "hintedIf");
+
+  if (hintedIf() !== expectedStoredValue) {
+    throw new Error("branch hint probe returned an unexpected value");
+  }
+}
+
 async function instantiateProbeModule(
   bytes: Uint8Array<ArrayBuffer>,
   state?: WebAssembly.Memory,
@@ -184,6 +198,25 @@ function encodeStateStoreProbeModule(): Uint8Array<ArrayBuffer> {
   const functionIndex = module.addFunction(typeIndex, body);
 
   module.exportFunction("storeState", functionIndex);
+
+  return module.encode();
+}
+
+function encodeBranchHintProbeModule(): Uint8Array<ArrayBuffer> {
+  const module = new WasmModuleEncoder();
+  const typeIndex = module.addFunctionType({
+    params: [],
+    results: [wasmValueType.i32]
+  });
+  const body = new WasmFunctionBodyEncoder()
+    .i32Const(0)
+    .ifBlock(wasmBranchHint.unlikely)
+    .endBlock()
+    .i32Const(expectedStoredValue)
+    .end();
+  const functionIndex = module.addFunction(typeIndex, body);
+
+  module.exportFunction("hintedIf", functionIndex);
 
   return module.encode();
 }

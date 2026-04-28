@@ -1,11 +1,34 @@
 import { ByteSink } from "./byte-sink.js";
 import { encodeI32Leb128, encodeI64Leb128 } from "./leb128.js";
 import { encodeMemoryImmediate, type WasmMemoryImmediate } from "./memory.js";
-import { wasmOpcode, type WasmValueType } from "./types.js";
+import { wasmBlockType, wasmOpcode, type WasmValueType } from "./types.js";
+
+export const wasmBranchHint = {
+  unlikely: 0,
+  likely: 1
+} as const;
+
+export type WasmBranchHint = (typeof wasmBranchHint)[keyof typeof wasmBranchHint];
+
+export type EncodedBranchHint = Readonly<{
+  offset: number;
+  value: WasmBranchHint;
+}>;
+
+export type EncodedWasmFunctionBody = Readonly<{
+  bytes: Uint8Array<ArrayBuffer>;
+  branchHints: readonly EncodedBranchHint[];
+}>;
+
+type InstructionBranchHint = Readonly<{
+  instructionOffset: number;
+  value: WasmBranchHint;
+}>;
 
 export class WasmFunctionBodyEncoder {
   readonly #instructions = new ByteSink();
   readonly #locals: WasmValueType[] = [];
+  readonly #branchHints: InstructionBranchHint[] = [];
   readonly #paramCount: number;
   #ended = false;
 
@@ -42,6 +65,19 @@ export class WasmFunctionBodyEncoder {
   localTee(index: number): this {
     this.#writeInstruction(wasmOpcode.localTee);
     this.#instructions.writeU32(index);
+    return this;
+  }
+
+  ifBlock(hint?: WasmBranchHint): this {
+    if (hint !== undefined) {
+      this.#branchHints.push({
+        instructionOffset: this.#instructions.byteLength,
+        value: hint
+      });
+    }
+
+    this.#writeInstruction(wasmOpcode.if);
+    this.#instructions.writeByte(wasmBlockType.empty);
     return this;
   }
 
@@ -114,6 +150,11 @@ export class WasmFunctionBodyEncoder {
     return this;
   }
 
+  endBlock(): this {
+    this.#writeInstruction(wasmOpcode.end);
+    return this;
+  }
+
   end(): this {
     this.#writeInstruction(wasmOpcode.end);
     this.#ended = true;
@@ -121,14 +162,26 @@ export class WasmFunctionBodyEncoder {
   }
 
   encode(): Uint8Array<ArrayBuffer> {
+    return this.encodeWithMetadata().bytes;
+  }
+
+  encodeWithMetadata(): EncodedWasmFunctionBody {
     if (!this.#ended) {
       throw new Error("Wasm function body must end with end opcode");
     }
 
     const body = new ByteSink();
-    writeLocalDeclarations(body, this.#locals);
+    const locals = localDeclarations(this.#locals);
+
+    body.writeBytes(locals);
     body.writeBytes(this.#instructions.toBytes());
-    return body.toBytes();
+    return {
+      bytes: body.toBytes(),
+      branchHints: this.#branchHints.map((hint) => ({
+        offset: locals.byteLength + hint.instructionOffset,
+        value: hint.value
+      }))
+    };
   }
 
   #writeInstruction(opcode: number): void {
@@ -140,7 +193,8 @@ export class WasmFunctionBodyEncoder {
   }
 }
 
-function writeLocalDeclarations(body: ByteSink, locals: readonly WasmValueType[]): void {
+function localDeclarations(locals: readonly WasmValueType[]): Uint8Array<ArrayBuffer> {
+  const body = new ByteSink();
   const groups = localGroups(locals);
 
   body.writeVecLength(groups.length);
@@ -149,6 +203,8 @@ function writeLocalDeclarations(body: ByteSink, locals: readonly WasmValueType[]
     body.writeU32(group.count);
     body.writeByte(group.type);
   }
+
+  return body.toBytes();
 }
 
 function localGroups(locals: readonly WasmValueType[]): readonly LocalGroup[] {

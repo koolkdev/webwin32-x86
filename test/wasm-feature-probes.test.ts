@@ -13,6 +13,7 @@ test("reports required Wasm features as available", async () => {
   assertFeatureSupported(report, "multi-memory");
   assertFeatureSupported(report, "i64-return-bigint");
   assertFeatureSupported(report, "imported-memory-sharing");
+  assertFeatureSupported(report, "branch-hint-metadata");
 });
 
 test("failed required probes disable only baseline JIT", async () => {
@@ -31,7 +32,7 @@ test("failed required probes disable only baseline JIT", async () => {
     strictEqual(report.baselineJitAvailable, false);
     strictEqual(report.interpreterAvailable, true);
     strictEqual(report.decodedBlockRuntimeAvailable, true);
-    strictEqual(report.missingFeatures.length, 3);
+    strictEqual(report.missingFeatures.length, 4);
 
     for (const failure of report.missingFeatures) {
       match(failure.message, /synthetic compile failure/);

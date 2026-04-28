@@ -1,5 +1,5 @@
 import { ByteSink } from "./byte-sink.js";
-import { WasmFunctionBodyEncoder } from "./function-body.js";
+import { WasmFunctionBodyEncoder, type EncodedBranchHint, type EncodedWasmFunctionBody } from "./function-body.js";
 import { validateMemoryLimits, type WasmMemoryLimits } from "./memory.js";
 import {
   wasmExternalKind,
@@ -15,7 +15,7 @@ export class WasmModuleEncoder {
   readonly #memoryImports: MemoryImport[] = [];
   readonly #functions: number[] = [];
   readonly #exports: FunctionExport[] = [];
-  readonly #bodies: Uint8Array<ArrayBuffer>[] = [];
+  readonly #bodies: EncodedWasmFunctionBody[] = [];
 
   addFunctionType(type: WasmFunctionType): number {
     const index = this.#types.length;
@@ -38,7 +38,7 @@ export class WasmModuleEncoder {
 
     const functionIndex = this.#functions.length;
     this.#functions.push(typeIndex);
-    this.#bodies.push(body.encode());
+    this.#bodies.push(body.encodeWithMetadata());
     return functionIndex;
   }
 
@@ -61,6 +61,9 @@ export class WasmModuleEncoder {
     }
     module.writeSection(wasmSectionId.function, (section) => this.#writeFunctionSection(section));
     module.writeSection(wasmSectionId.export, (section) => this.#writeExportSection(section));
+    if (this.#hasBranchHints()) {
+      module.writeSection(wasmSectionId.custom, (section) => this.#writeBranchHintSection(section));
+    }
     module.writeSection(wasmSectionId.code, (section) => this.#writeCodeSection(section));
 
     return module.toBytes();
@@ -111,8 +114,28 @@ export class WasmModuleEncoder {
     section.writeVecLength(this.#bodies.length);
 
     for (const body of this.#bodies) {
-      section.writeU32(body.byteLength);
-      section.writeBytes(body);
+      section.writeU32(body.bytes.byteLength);
+      section.writeBytes(body.bytes);
+    }
+  }
+
+  #hasBranchHints(): boolean {
+    return this.#bodies.some((body) => body.branchHints.length > 0);
+  }
+
+  #writeBranchHintSection(section: ByteSink): void {
+    section.writeName("metadata.code.branch_hint");
+    section.writeVecLength(this.#bodies.filter((body) => body.branchHints.length > 0).length);
+
+    for (let functionIndex = 0; functionIndex < this.#bodies.length; functionIndex += 1) {
+      const body = this.#bodies[functionIndex];
+
+      if (body === undefined || body.branchHints.length === 0) {
+        continue;
+      }
+
+      section.writeU32(functionIndex);
+      writeBranchHints(section, body.branchHints);
     }
   }
 }
@@ -138,4 +161,14 @@ function writeMemoryType(section: ByteSink, limits: WasmMemoryLimits): void {
   section.writeByte(0x01);
   section.writeU32(limits.minPages);
   section.writeU32(limits.maxPages);
+}
+
+function writeBranchHints(section: ByteSink, hints: readonly EncodedBranchHint[]): void {
+  section.writeVecLength(hints.length);
+
+  for (const hint of hints) {
+    section.writeU32(hint.offset);
+    section.writeU32(1);
+    section.writeU32(hint.value);
+  }
 }

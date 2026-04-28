@@ -1,7 +1,7 @@
 import { match, ok, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { WasmFunctionBodyEncoder } from "../src/wasm/encoder/function-body.js";
+import { wasmBranchHint, WasmFunctionBodyEncoder } from "../src/wasm/encoder/function-body.js";
 import { WasmModuleEncoder } from "../src/wasm/encoder/module.js";
 import { wasmValueType } from "../src/wasm/encoder/types.js";
 
@@ -38,6 +38,13 @@ test("bad module bytes fail cleanly", async () => {
   match(result.message, /WebAssembly\.compile|expected|section|version|short|magic/i);
 });
 
+test("branch hint metadata section compiles", async () => {
+  const module = await WebAssembly.compile(encodeHintedIfTestModule());
+  const sections = WebAssembly.Module.customSections(module, "metadata.code.branch_hint");
+
+  strictEqual(sections.length, 1);
+});
+
 type CompileResult =
   | Readonly<{ ok: true; module: WebAssembly.Module }>
   | Readonly<{ ok: false; message: string }>;
@@ -66,6 +73,25 @@ function encodeConstantI64TestModule(exportName: string, value: bigint): Uint8Ar
   const functionIndex = module.addFunction(typeIndex, body);
 
   module.exportFunction(exportName, functionIndex);
+
+  return module.encode();
+}
+
+function encodeHintedIfTestModule(): Uint8Array<ArrayBuffer> {
+  const module = new WasmModuleEncoder();
+  const typeIndex = module.addFunctionType({
+    params: [],
+    results: [wasmValueType.i32]
+  });
+  const body = new WasmFunctionBodyEncoder()
+    .i32Const(0)
+    .ifBlock(wasmBranchHint.unlikely)
+    .endBlock()
+    .i32Const(1)
+    .end();
+  const functionIndex = module.addFunction(typeIndex, body);
+
+  module.exportFunction("hintedIf", functionIndex);
 
   return module.encode();
 }
