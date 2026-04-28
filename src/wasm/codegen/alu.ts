@@ -1,9 +1,9 @@
 import type { DecodedInstruction } from "../../arch/x86/instruction/types.js";
 import { eflagsMask, i32, supportedEflagsMask } from "../../core/state/cpu-state.js";
-import { reg32StateOffset, stateOffset } from "../abi.js";
+import { stateOffset } from "../abi.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
-import { unsupportedWasmCodegen } from "./errors.js";
+import { emitReadOperandU32, emitWriteOperandU32 } from "./operands.js";
 import { emitCompleteInstruction, emitLoadStateU32, emitStoreStateStackU32 } from "./state.js";
 
 type AluMnemonic = Extract<DecodedInstruction["mnemonic"], "add" | "sub" | "xor" | "cmp" | "test">;
@@ -32,67 +32,30 @@ export function emitAlu(body: WasmFunctionBodyEncoder, instruction: DecodedInstr
   }
 
   const destination = instruction.operands[0];
-  const source = instruction.operands[1];
 
-  if (destination?.kind !== "reg32") {
-    unsupportedWasmCodegen("unsupported ALU form for Wasm codegen");
-  }
-
-  const locals = addAluLocals(body);
-
-  emitLoadStateU32(body, reg32StateOffset(destination.reg));
-  body.localSet(locals.left);
-  emitSourceValue(body, instruction);
-  body.localSet(locals.right);
-
-  if (writesDestination(mnemonic)) {
-    body.localGet(0);
-  }
-
+  const locals = addAluLocals(
+    body,
+    emitReadOperandU32(body, destination),
+    emitReadOperandU32(body, instruction.operands[1], { signExtendImm8: signExtendImm8Source(mnemonic) })
+  );
   emitAluResult(body, mnemonic, locals);
+  body.localSet(locals.result);
 
   if (writesDestination(mnemonic)) {
-    body.localTee(locals.result);
-    emitStoreStateStackU32(body, reg32StateOffset(destination.reg));
-  } else {
-    body.localSet(locals.result);
+    emitWriteOperandU32(body, destination, locals.result);
   }
 
   emitAluFlags(body, flagOperation(mnemonic), locals);
   emitCompleteInstruction(body, instruction);
 }
 
-function addAluLocals(body: WasmFunctionBodyEncoder): AluLocals {
+function addAluLocals(body: WasmFunctionBodyEncoder, left: number, right: number): AluLocals {
   return {
-    left: body.addLocal(wasmValueType.i32),
-    right: body.addLocal(wasmValueType.i32),
+    left,
+    right,
     result: body.addLocal(wasmValueType.i32),
     flags: body.addLocal(wasmValueType.i32)
   };
-}
-
-function emitSourceValue(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
-  const source = instruction.operands[1];
-
-  switch (source?.kind) {
-    case "reg32":
-      emitLoadStateU32(body, reg32StateOffset(source.reg));
-      return;
-    case "imm32":
-      if (instruction.mnemonic === "add" || instruction.mnemonic === "sub" || instruction.mnemonic === "cmp") {
-        body.i32Const(i32(source.value));
-        return;
-      }
-      break;
-    case "imm8":
-      if (instruction.mnemonic === "add" || instruction.mnemonic === "sub" || instruction.mnemonic === "cmp") {
-        body.i32Const(i32(source.signedValue));
-        return;
-      }
-      break;
-  }
-
-  unsupportedWasmCodegen("unsupported ALU form for Wasm codegen");
 }
 
 function emitAluResult(body: WasmFunctionBodyEncoder, mnemonic: AluMnemonic, locals: AluLocals): void {
@@ -250,6 +213,10 @@ function isAluMnemonic(mnemonic: DecodedInstruction["mnemonic"]): mnemonic is Al
 
 function writesDestination(mnemonic: AluMnemonic): boolean {
   return mnemonic === "add" || mnemonic === "sub" || mnemonic === "xor";
+}
+
+function signExtendImm8Source(mnemonic: AluMnemonic): boolean {
+  return mnemonic === "add" || mnemonic === "sub" || mnemonic === "cmp";
 }
 
 function flagOperation(mnemonic: AluMnemonic): FlagOperation {

@@ -8,7 +8,15 @@ import { unsupportedWasmCodegen } from "./errors.js";
 import { emitLoadGuestU32, emitStoreGuestU32 } from "./guest-memory.js";
 import { emitLoadStateU32, emitStoreStateStackU32 } from "./state.js";
 
-export function emitReadOperandU32(body: WasmFunctionBodyEncoder, operand: Operand | undefined): number {
+export type ReadOperandU32Options = Readonly<{
+  signExtendImm8?: boolean;
+}>;
+
+export function emitReadOperandU32(
+  body: WasmFunctionBodyEncoder,
+  operand: Operand | undefined,
+  options: ReadOperandU32Options = {}
+): number {
   const valueLocal = body.addLocal(wasmValueType.i32);
 
   switch (operand?.kind) {
@@ -17,6 +25,13 @@ export function emitReadOperandU32(body: WasmFunctionBodyEncoder, operand: Opera
       break;
     case "imm32":
       body.i32Const(i32(operand.value));
+      break;
+    case "imm8":
+      if (options.signExtendImm8 !== true) {
+        unsupportedWasmCodegen("unsupported operand read for Wasm codegen");
+      }
+
+      body.i32Const(i32(operand.signedValue));
       break;
     case "mem32": {
       const addressLocal = emitAddressLocal(body, operand);
