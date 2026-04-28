@@ -27,9 +27,10 @@ test("t0_only_uses_instruction_interpreter", () => {
   const expected = runT1(branchLoopFixture, { eax: 3, eip: startAddress });
   const runtime = new RuntimeInstance({
     decodeReader: guestReader(branchLoopFixture),
-    initialState: { eax: 3, eip: startAddress }
+    initialState: { eax: 3, eip: startAddress },
+    tierMode: TierMode.T0_ONLY
   });
-  const result = runtime.run({ tierMode: TierMode.T0_ONLY });
+  const result = runtime.run();
 
   ok(cpuStatesEqual(runtime.state, expected.state));
   strictEqual(result.stopReason, expected.result.stopReason);
@@ -42,9 +43,10 @@ test("t0_only_uses_instruction_interpreter", () => {
 test("t1_only_uses_decoded_block_engine", () => {
   const runtime = new RuntimeInstance({
     decodeReader: guestReader(branchLoopFixture),
-    initialState: { eax: 3, eip: startAddress }
+    initialState: { eax: 3, eip: startAddress },
+    tierMode: TierMode.T1_ONLY
   });
-  const result = runtime.run({ tierMode: TierMode.T1_ONLY });
+  const result = runtime.run();
 
   strictEqual(result.stopReason, StopReason.HOST_TRAP);
   strictEqual(runtime.state.instructionCount, 10);
@@ -54,17 +56,19 @@ test("t1_only_uses_decoded_block_engine", () => {
 });
 
 test("tier_policy_visible_to_metrics_adapter", () => {
-  const runtime = new RuntimeInstance({
+  const t0Runtime = new RuntimeInstance({
     decodeReader: guestReader(movAddFixture),
     initialState: { eip: startAddress },
     tierMode: TierMode.T0_ONLY
   });
+  const t1Runtime = new RuntimeInstance({
+    decodeReader: guestReader(movAddFixture),
+    initialState: { eip: startAddress },
+    tierMode: TierMode.T1_ONLY
+  });
 
-  strictEqual(runtime.tierMode, TierMode.T0_ONLY);
-
-  runtime.run({ tierMode: TierMode.T1_ONLY });
-
-  strictEqual(runtime.tierMode, TierMode.T1_ONLY);
+  strictEqual(t0Runtime.tierMode, TierMode.T0_ONLY);
+  strictEqual(t1Runtime.tierMode, TierMode.T1_ONLY);
 });
 
 function runT1(

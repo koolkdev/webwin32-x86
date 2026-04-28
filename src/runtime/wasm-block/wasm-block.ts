@@ -46,17 +46,17 @@ export type CompileWasmBlockHandleOptions = Readonly<{
 
 const defaultCompiler = new WasmBlockCompiler();
 
-export async function compileWasmBlockHandle(
+export function compileWasmBlockHandle(
   block: DecodedBlock,
   options: CompileWasmBlockHandleOptions
-): Promise<WasmBlockHandle> {
+): WasmBlockHandle {
   const compiler = options.compiler ?? defaultCompiler;
   const bytes = compiler.encodeDecodedBlock(block);
   const compileStart = performance.now();
-  const module = await WebAssembly.compile(bytes);
+  const module = new WebAssembly.Module(bytes);
   const compileMs = performance.now() - compileStart;
   const instantiateStart = performance.now();
-  const instance = await WebAssembly.instantiate(module, wasmImports(options.stateMemory, options.guestMemory));
+  const instance = new WebAssembly.Instance(module, wasmImports(options.stateMemory, options.guestMemory));
   const instantiateMs = performance.now() - instantiateStart;
   const exportedBlockFunction = readExportedBlockFunction(instance);
 

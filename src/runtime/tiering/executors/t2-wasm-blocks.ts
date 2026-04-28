@@ -1,0 +1,91 @@
+import { runResultFromState, StopReason, type RunResult } from "../../../core/execution/run-result.js";
+import { u32 } from "../../../core/state/cpu-state.js";
+import { ExitReason, type DecodedExit } from "../../../wasm/exit.js";
+import type { RuntimeTierExecutionContext } from "./context.js";
+import { runT1DecodedBlockStep } from "./t1-decoded-blocks.js";
+
+export function runT2WasmBlocks(context: RuntimeTierExecutionContext, instructionLimit: number): RunResult {
+  let executed = 0;
+  let result = runResultFromState(context.state, StopReason.NONE);
+
+  while (executed < instructionLimit) {
+    const currentEip = u32(context.state.eip);
+    const block = context.decodedBlockCache.getOrDecode(currentEip);
+    const remaining = instructionLimit - executed;
+
+    const stateInstructionCount = context.state.instructionCount;
+    const wasmRuntime = context.wasmRuntime;
+    const wasmBlock = wasmRuntime?.blockCache.getOrCompile(block);
+
+    if (wasmBlock === undefined || wasmRuntime === undefined) {
+      const blockStep = runT1DecodedBlockStep(context, currentEip, block, remaining);
+
+      executed += blockStep.instructionsExecuted;
+      result = blockStep.result;
+
+      if (blockStep.kind === "done") {
+        return result;
+      }
+
+      continue;
+    }
+
+    wasmRuntime.copyStateToWasm(context.state);
+
+    const { exit } = wasmBlock.run();
+
+    wasmRuntime.copyStateFromWasm(context.state);
+    executed += Math.max(0, context.state.instructionCount - stateInstructionCount);
+    result = runResultFromWasmExit(context.state, exit);
+
+    if (result.stopReason !== StopReason.NONE) {
+      return result;
+    }
+
+    if (executed >= instructionLimit) {
+      context.state.stopReason = StopReason.INSTRUCTION_LIMIT;
+      return runResultFromState(context.state, StopReason.INSTRUCTION_LIMIT);
+    }
+
+    const nextEip = u32(context.state.eip);
+    if (context.decodeReader.regionAt(nextEip) === undefined) {
+      return result;
+    }
+  }
+
+  context.state.stopReason = StopReason.INSTRUCTION_LIMIT;
+  return runResultFromState(context.state, StopReason.INSTRUCTION_LIMIT);
+}
+
+function runResultFromWasmExit(state: RuntimeTierExecutionContext["state"], exit: DecodedExit): RunResult {
+  switch (exit.exitReason) {
+    case ExitReason.FALLTHROUGH:
+    case ExitReason.JUMP:
+    case ExitReason.BRANCH_TAKEN:
+    case ExitReason.BRANCH_NOT_TAKEN:
+      state.stopReason = StopReason.NONE;
+      return runResultFromState(state, StopReason.NONE);
+    case ExitReason.HOST_TRAP:
+      state.stopReason = StopReason.HOST_TRAP;
+      return runResultFromState(state, StopReason.HOST_TRAP, { trapVector: exit.payload });
+    case ExitReason.UNSUPPORTED:
+      state.stopReason = StopReason.UNSUPPORTED;
+      return runResultFromState(state, StopReason.UNSUPPORTED);
+    case ExitReason.DECODE_FAULT:
+      state.stopReason = StopReason.DECODE_FAULT;
+      return runResultFromState(state, StopReason.DECODE_FAULT, {
+        faultAddress: exit.payload,
+        faultOperation: "execute"
+      });
+    case ExitReason.MEMORY_FAULT:
+      state.stopReason = StopReason.MEMORY_FAULT;
+      return runResultFromState(state, StopReason.MEMORY_FAULT, {
+        faultAddress: exit.payload,
+        faultSize: 4,
+        faultOperation: "read"
+      });
+    case ExitReason.INSTRUCTION_LIMIT:
+      state.stopReason = StopReason.INSTRUCTION_LIMIT;
+      return runResultFromState(state, StopReason.INSTRUCTION_LIMIT);
+  }
+}
