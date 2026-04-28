@@ -2,14 +2,13 @@ import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { StopReason } from "../src/core/execution/run-result.js";
-import { createCpuState, eflagsMask, getFlag, type CpuState } from "../src/core/state/cpu-state.js";
+import { cloneCpuState, cpuStateFields, createCpuState, eflagsMask, getFlag, type CpuState } from "../src/core/state/cpu-state.js";
 import { runInstructionInterpreter } from "../src/interp/interpreter.js";
 import {
   decodeBytes,
   readStateU32,
   runCompiledBlock,
-  startAddress,
-  stateFields
+  startAddress
 } from "../src/test-support/wasm-codegen.js";
 
 test("jit_cmp_equal_sets_zf", async () => {
@@ -71,13 +70,13 @@ async function assertMatchesInterpreter(
   initialState: CpuState
 ): Promise<MatchResult> {
   const instructions = decodeBytes(bytes);
-  const interpreterState = createCpuState(initialState);
+  const interpreterState = cloneCpuState(initialState);
   const interpreterResult = runInstructionInterpreter(interpreterState, instructions);
   const wasmResult = await runCompiledBlock(bytes, initialState);
 
   strictEqual(interpreterResult.stopReason, StopReason.NONE);
 
-  for (const field of stateFields) {
+  for (const field of cpuStateFields) {
     strictEqual(readStateU32(wasmResult.stateView, field), interpreterState[field]);
   }
 

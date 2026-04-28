@@ -102,13 +102,9 @@ test("state_offsets_match_abi", () => {
     eip: 32,
     eflags: 36,
     instructionCount: 40,
-    stopReason: 44,
-    scratch0: 48,
-    scratch1: 52,
-    scratch2: 56,
-    scratch3: 60
+    stopReason: 44
   });
-  strictEqual(STATE_BYTE_LENGTH, 64);
+  strictEqual(STATE_BYTE_LENGTH, 48);
   deepStrictEqual(eflagsMask, {
     CF: 1 << 0,
     PF: 1 << 2,

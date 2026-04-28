@@ -2,15 +2,14 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { StopReason } from "../src/core/execution/run-result.js";
-import { createCpuState, type CpuState } from "../src/core/state/cpu-state.js";
+import { cloneCpuState, cpuStateFields, createCpuState, type CpuState } from "../src/core/state/cpu-state.js";
 import { runInstructionInterpreter } from "../src/interp/interpreter.js";
 import { ExitReason } from "../src/wasm/exit.js";
 import {
   decodeBytes,
   readStateU32,
   runCompiledBlock,
-  startAddress,
-  stateFields
+  startAddress
 } from "../src/test-support/wasm-codegen.js";
 
 test("jit_mov_ecx_eax", async () => {
@@ -51,13 +50,13 @@ test("jit_mov_reg_reg_matches_interpreter", async () => {
 
   for (const fixture of fixtures) {
     const instructions = decodeBytes(fixture.bytes);
-    const interpreterState = createCpuState(fixture.initialState);
+    const interpreterState = cloneCpuState(fixture.initialState);
     const interpreterResult = runInstructionInterpreter(interpreterState, instructions);
     const wasmResult = await runCompiledBlock(fixture.bytes, fixture.initialState);
 
     strictEqual(interpreterResult.stopReason, StopReason.NONE);
 
-    for (const field of stateFields) {
+    for (const field of cpuStateFields) {
       strictEqual(readStateU32(wasmResult.stateView, field), interpreterState[field]);
     }
   }

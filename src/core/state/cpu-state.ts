@@ -23,14 +23,10 @@ export const STATE_OFFSETS = {
   eip: 32,
   eflags: 36,
   instructionCount: 40,
-  stopReason: 44,
-  scratch0: 48,
-  scratch1: 52,
-  scratch2: 56,
-  scratch3: 60
+  stopReason: 44
 } as const;
 
-export const STATE_BYTE_LENGTH = 64;
+export const STATE_BYTE_LENGTH = 48;
 
 export const cpuFlags = ["CF", "PF", "AF", "ZF", "SF", "OF"] as const satisfies readonly CpuFlag[];
 
@@ -45,7 +41,8 @@ export const eflagsMask = {
 
 export const supportedEflagsMask = cpuFlags.reduce((mask, flag) => mask | eflagsMask[flag], 0) >>> 0;
 
-const stateFields = [...reg32, "eip", "eflags", "instructionCount", "stopReason"] as const;
+export const cpuStateFields = [...reg32, "eip", "eflags", "instructionCount", "stopReason"] as const satisfies readonly (keyof CpuState)[];
+export type CpuStateField = (typeof cpuStateFields)[number];
 
 export function createCpuState(overrides: Partial<CpuState> = {}): CpuState {
   return normalizeCpuState({
@@ -107,17 +104,17 @@ export function cloneCpuState(state: CpuState): CpuState {
 }
 
 export function copyCpuState(source: CpuState, target: CpuState): void {
-  for (const field of stateFields) {
+  for (const field of cpuStateFields) {
     target[field] = u32(source[field]);
   }
 }
 
 export function cpuStatesEqual(left: CpuState, right: CpuState): boolean {
-  return stateFields.every((field) => u32(left[field]) === u32(right[field]));
+  return cpuStateFields.every((field) => u32(left[field]) === u32(right[field]));
 }
 
 function normalizeCpuState(state: CpuState): CpuState {
-  for (const field of stateFields) {
+  for (const field of cpuStateFields) {
     state[field] = u32(state[field]);
   }
 

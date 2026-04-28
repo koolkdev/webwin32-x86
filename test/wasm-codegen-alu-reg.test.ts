@@ -2,15 +2,14 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { StopReason } from "../src/core/execution/run-result.js";
-import { createCpuState, type CpuState } from "../src/core/state/cpu-state.js";
+import { cloneCpuState, cpuStateFields, createCpuState, type CpuState } from "../src/core/state/cpu-state.js";
 import { runInstructionInterpreter } from "../src/interp/interpreter.js";
 import { ExitReason } from "../src/wasm/exit.js";
 import {
   decodeBytes,
   readStateU32,
   runCompiledBlock,
-  startAddress,
-  stateFields
+  startAddress
 } from "../src/test-support/wasm-codegen.js";
 
 test("jit_add_reg_updates_flags", async () => {
@@ -50,7 +49,7 @@ test("jit_alu_sequence_matches_interpreter", async () => {
   ];
   const { wasmResult, interpreterState } = await runBoth(bytes, createCpuState({ eip: startAddress }));
 
-  for (const field of stateFields) {
+  for (const field of cpuStateFields) {
     strictEqual(readStateU32(wasmResult.stateView, field), interpreterState[field]);
   }
 
@@ -65,14 +64,14 @@ async function assertMatchesInterpreter(bytes: readonly number[], initialState: 
 
   strictEqual(interpreterResult.stopReason, StopReason.NONE);
 
-  for (const field of stateFields) {
+  for (const field of cpuStateFields) {
     strictEqual(readStateU32(wasmResult.stateView, field), interpreterState[field]);
   }
 }
 
 async function runBoth(bytes: readonly number[], initialState: CpuState): Promise<RunBothResult> {
   const instructions = decodeBytes(bytes);
-  const interpreterState = createCpuState(initialState);
+  const interpreterState = cloneCpuState(initialState);
   const interpreterResult = runInstructionInterpreter(interpreterState, instructions);
   const wasmResult = await runCompiledBlock(bytes, initialState);
 

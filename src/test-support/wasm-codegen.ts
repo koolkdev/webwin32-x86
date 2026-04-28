@@ -2,7 +2,7 @@ import { deepStrictEqual } from "node:assert";
 
 import { decodeOne } from "../arch/x86/decoder/decoder.js";
 import type { DecodedInstruction } from "../arch/x86/instruction/types.js";
-import { createCpuState, type CpuState } from "../core/state/cpu-state.js";
+import { cpuStateFields, createCpuState, type CpuState } from "../core/state/cpu-state.js";
 import { wasmBlockExportName, wasmImport, stateOffset } from "../wasm/abi.js";
 import { compileBlock } from "../wasm/codegen/block.js";
 import { decodeExit, type DecodedExit } from "../wasm/exit.js";
@@ -10,22 +10,7 @@ import { decodeExit, type DecodedExit } from "../wasm/exit.js";
 export const startAddress = 0x1000;
 export const statePtr = 32;
 
-export const stateFields = [
-  "eax",
-  "ecx",
-  "edx",
-  "ebx",
-  "esp",
-  "ebp",
-  "esi",
-  "edi",
-  "eip",
-  "eflags",
-  "instructionCount",
-  "stopReason"
-] as const;
-
-export type StateField = (typeof stateFields)[number];
+export type StateSlot = keyof typeof stateOffset;
 
 export type CompiledBlockResult = Readonly<{
   module: WebAssembly.Module;
@@ -79,12 +64,12 @@ export function decodeBytes(bytes: readonly number[]): DecodedInstruction[] {
 }
 
 export function writeState(view: DataView, state: CpuState): void {
-  for (const field of stateFields) {
+  for (const field of cpuStateFields) {
     view.setUint32(statePtr + stateOffset[field], state[field], true);
   }
 }
 
-export function readStateU32(view: DataView, field: StateField): number {
+export function readStateU32(view: DataView, field: StateSlot): number {
   return view.getUint32(statePtr + stateOffset[field], true);
 }
 
