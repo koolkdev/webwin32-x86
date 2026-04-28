@@ -95,9 +95,9 @@ test("wasm_block_cache_reuses_supported_block", () => {
   const runtime = runRuntime(branchLoopFixture, TierMode.T2_ONLY, { eax: 3 });
 
   strictEqual(runtime.result.stopReason, StopReason.HOST_TRAP);
-  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 1);
+  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 2);
   strictEqual(runtime.instance.counters.wasmBlockCache.hits, 2);
-  strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 1);
+  strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 0);
 });
 
 test("wasm_block_cache_clear_forces_recompile", () => {
@@ -136,8 +136,8 @@ test("wasm_block_cache_counters_visible", () => {
 
   strictEqual(runtime.instance.counters.wasmBlockCache.hits, 2);
   strictEqual(runtime.instance.counters.wasmBlockCache.misses, 2);
-  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 1);
-  strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 1);
+  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 2);
+  strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 0);
 });
 
 test("unsupported_x86_still_stops_as_guest_unsupported", () => {
@@ -146,6 +146,8 @@ test("unsupported_x86_still_stops_as_guest_unsupported", () => {
   strictEqual(runtime.result.stopReason, StopReason.UNSUPPORTED);
   strictEqual(runtime.result.unsupportedByte, 0x62);
   strictEqual(runtime.instance.state.instructionCount, 0);
+  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 0);
+  strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 1);
 });
 
 test("decode_fault_still_stops_as_decode_fault", () => {

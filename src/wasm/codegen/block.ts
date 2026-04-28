@@ -1,5 +1,6 @@
 import { instructionEnd } from "../../arch/x86/instruction/address.js";
 import type { DecodedBlock, BlockTerminator } from "../../arch/x86/block-decoder/decode-block.js";
+import { intVector } from "../../arch/x86/instruction/operands.js";
 import type { DecodedInstruction } from "../../arch/x86/instruction/types.js";
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "../abi.js";
 import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
@@ -11,6 +12,7 @@ import { emitJcc, emitJmp } from "./branch.js";
 import { unsupportedWasmCodegen } from "./errors.js";
 import { emitExitResult } from "./exit.js";
 import { emitMov } from "./mov.js";
+import { emitCompleteInstruction } from "./state.js";
 
 export class WasmBlockCompiler {
   encodeInstructions(instructions: readonly DecodedInstruction[]): Uint8Array<ArrayBuffer> {
@@ -69,6 +71,12 @@ function encodeWasmBlock(
 
 function emitInstruction(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
   switch (instruction.mnemonic) {
+    case "nop":
+      emitNop(body, instruction);
+      return;
+    case "int":
+      emitInt(body, instruction);
+      return;
     case "mov":
       emitMov(body, instruction);
       return;
@@ -97,8 +105,18 @@ function emitTerminator(body: WasmFunctionBodyEncoder, terminator: BlockTerminat
       return;
     case "jump":
     case "conditional-branch":
+    case "int":
       return;
     default:
       unsupportedWasmCodegen(`unsupported block terminator for Wasm codegen: ${terminator.kind}`);
   }
+}
+
+function emitNop(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
+  emitCompleteInstruction(body, instruction);
+}
+
+function emitInt(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
+  emitCompleteInstruction(body, instruction);
+  emitExitResult(body, ExitReason.HOST_TRAP, intVector(instruction)).returnFromFunction();
 }

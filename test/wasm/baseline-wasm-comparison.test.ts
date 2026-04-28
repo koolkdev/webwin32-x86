@@ -105,6 +105,8 @@ test("baseline_wasm_unsupported_falls_back", async () => {
   strictEqual(result.wasm.state.eip, startAddress);
   strictEqual(result.wasm.state.instructionCount, 0);
   strictEqual(result.wasm.state.stopReason, StopReason.UNSUPPORTED);
+  strictEqual(result.wasm.result.unsupportedByte, 0x62);
+  strictEqual(result.wasm.result.unsupportedReason, "unsupportedOpcode");
   strictEqual(result.report.compiledBlocks, 0);
   strictEqual(result.report.fallbackBlocks, 1);
 });

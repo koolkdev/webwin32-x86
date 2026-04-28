@@ -2,7 +2,12 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 
 import type { DecodedBlock } from "../arch/x86/block-decoder/decode-block.js";
 import type { DecodeReader } from "../arch/x86/block-decoder/decode-reader.js";
-import { runResultFromState, StopReason, type RunResult } from "../core/execution/run-result.js";
+import {
+  runResultFromState,
+  StopReason,
+  type RunResult,
+  type RunResultDetails
+} from "../core/execution/run-result.js";
 import { ArrayBufferGuestMemory } from "../core/memory/guest-memory.js";
 import { cloneCpuState, cpuStatesEqual, type CpuState } from "../core/state/cpu-state.js";
 import { compileWasmBlockHandle, type WasmBlockHandle } from "../runtime/wasm-block/wasm-block.js";
@@ -247,7 +252,7 @@ function runResultFromExit(state: CpuState, exit: DecodedExit): RunResult {
       return runResultFromState(state, StopReason.HOST_TRAP, { trapVector: exit.payload });
     case ExitReason.UNSUPPORTED:
       state.stopReason = StopReason.UNSUPPORTED;
-      return runResultFromState(state, StopReason.UNSUPPORTED);
+      return runResultFromState(state, StopReason.UNSUPPORTED, unsupportedDetails(exit.payload));
     case ExitReason.DECODE_FAULT:
       state.stopReason = StopReason.DECODE_FAULT;
       return runResultFromState(state, StopReason.DECODE_FAULT, {
@@ -264,6 +269,13 @@ function runResultFromExit(state: CpuState, exit: DecodedExit): RunResult {
       state.stopReason = StopReason.INSTRUCTION_LIMIT;
       return runResultFromState(state, StopReason.INSTRUCTION_LIMIT);
   }
+}
+
+function unsupportedDetails(byte: number): RunResultDetails {
+  return {
+    unsupportedByte: byte & 0xff,
+    unsupportedReason: "unsupportedOpcode"
+  };
 }
 
 function isControlFlowExit(exit: DecodedExit): boolean {

@@ -54,8 +54,8 @@ test("runtime_metrics_adapter_records_wasm_block_cache_counters", () => {
 
   strictEqual(snapshot.gauges[runtimeWasmMetricKeys.wasmBlockCacheHits], 2);
   strictEqual(snapshot.gauges[runtimeWasmMetricKeys.wasmBlockCacheMisses], 2);
-  strictEqual(snapshot.gauges[runtimeWasmMetricKeys.wasmBlockCacheInserts], 1);
-  strictEqual(snapshot.gauges[runtimeWasmMetricKeys.wasmBlockCacheUnsupportedCodegenFallbacks], 1);
+  strictEqual(snapshot.gauges[runtimeWasmMetricKeys.wasmBlockCacheInserts], 2);
+  strictEqual(snapshot.gauges[runtimeWasmMetricKeys.wasmBlockCacheUnsupportedCodegenFallbacks], 0);
 });
 
 test("runtime_metrics_adapter_omits_inactive_wasm_block_cache_counters", () => {

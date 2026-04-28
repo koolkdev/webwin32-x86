@@ -1,4 +1,9 @@
-import { runResultFromState, StopReason, type RunResult } from "../../../core/execution/run-result.js";
+import {
+  runResultFromState,
+  StopReason,
+  type RunResult,
+  type RunResultDetails
+} from "../../../core/execution/run-result.js";
 import { u32 } from "../../../core/state/cpu-state.js";
 import { ExitReason, type DecodedExit } from "../../../wasm/exit.js";
 import type { RuntimeTierExecutionContext } from "./context.js";
@@ -70,7 +75,7 @@ function runResultFromWasmExit(state: RuntimeTierExecutionContext["state"], exit
       return runResultFromState(state, StopReason.HOST_TRAP, { trapVector: exit.payload });
     case ExitReason.UNSUPPORTED:
       state.stopReason = StopReason.UNSUPPORTED;
-      return runResultFromState(state, StopReason.UNSUPPORTED);
+      return runResultFromState(state, StopReason.UNSUPPORTED, unsupportedDetails(exit.payload));
     case ExitReason.DECODE_FAULT:
       state.stopReason = StopReason.DECODE_FAULT;
       return runResultFromState(state, StopReason.DECODE_FAULT, {
@@ -88,4 +93,11 @@ function runResultFromWasmExit(state: RuntimeTierExecutionContext["state"], exit
       state.stopReason = StopReason.INSTRUCTION_LIMIT;
       return runResultFromState(state, StopReason.INSTRUCTION_LIMIT);
   }
+}
+
+function unsupportedDetails(byte: number): RunResultDetails {
+  return {
+    unsupportedByte: byte & 0xff,
+    unsupportedReason: "unsupportedOpcode"
+  };
 }
