@@ -8,16 +8,18 @@ import { runInstructionInterpreter } from "../src/interp/interpreter.js";
 import { ExitReason } from "../src/wasm/exit.js";
 import {
   assertMemoryImports,
+  compileWasmBlock,
   decodeBytes,
   readStateU32,
-  runCompiledBlock,
+  compileAndRunBlock,
   startAddress
 } from "../src/test-support/wasm-codegen.js";
 
 test("jit_mov_eax_imm32", async () => {
-  const result = await runCompiledBlock([0xb8, 0x78, 0x56, 0x34, 0x12]);
+  const block = await compileWasmBlock([0xb8, 0x78, 0x56, 0x34, 0x12]);
+  const result = await block.run(createCpuState({ eip: startAddress }));
 
-  assertMemoryImports(result.module);
+  assertMemoryImports(block.module);
   strictEqual(readStateU32(result.stateView, "eax"), 0x1234_5678);
   strictEqual(readStateU32(result.stateView, "eip"), 0x1005);
   strictEqual(readStateU32(result.stateView, "instructionCount"), 1);
@@ -28,7 +30,7 @@ test("jit_mov_eax_imm32", async () => {
 });
 
 test("jit_mov_edi_imm32", async () => {
-  const result = await runCompiledBlock([0xbf, 0xff, 0xff, 0xff, 0xff]);
+  const result = await compileAndRunBlock([0xbf, 0xff, 0xff, 0xff, 0xff]);
 
   strictEqual(readStateU32(result.stateView, "edi"), 0xffff_ffff);
   strictEqual(readStateU32(result.stateView, "eip"), 0x1005);
@@ -54,7 +56,7 @@ test("jit_matches_interpreter_mov", async () => {
 
     const interpreterState = createCpuState({ eip: startAddress });
     const interpreterResult = runInstructionInterpreter(interpreterState, [instruction]);
-    const wasmResult = await runCompiledBlock(fixture.bytes);
+    const wasmResult = await compileAndRunBlock(fixture.bytes);
 
     strictEqual(interpreterResult.stopReason, StopReason.NONE);
     strictEqual(readStateU32(wasmResult.stateView, fixture.reg), interpreterState[fixture.reg]);

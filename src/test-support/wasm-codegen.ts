@@ -1,10 +1,14 @@
 import { deepStrictEqual } from "node:assert";
 
+import type { DecodedBlock } from "../arch/x86/block-decoder/decode-block.js";
 import { decodeOne } from "../arch/x86/decoder/decoder.js";
 import type { DecodedInstruction } from "../arch/x86/instruction/types.js";
 import { cpuStateFields, createCpuState, type CpuState } from "../core/state/cpu-state.js";
 import { wasmBlockExportName, wasmImport, stateOffset } from "../wasm/abi.js";
-import { compileBlock } from "../wasm/codegen/block.js";
+import {
+  compileBlock as compileInstructionBlockBytes,
+  compileDecodedBlock as compileDecodedBlockBytes
+} from "../wasm/codegen/block.js";
 import { decodeExit, type DecodedExit } from "../wasm/exit.js";
 
 export const startAddress = 0x1000;
@@ -12,23 +16,61 @@ export const statePtr = 32;
 
 export type StateSlot = keyof typeof stateOffset;
 
-export type CompiledBlockResult = Readonly<{
+export type CompiledWasmBlock = Readonly<{
   module: WebAssembly.Module;
+  run(initialState: CpuState, options?: RunWasmBlockOptions): Promise<WasmBlockRunResult>;
+}>;
+
+export type WasmBlockRunResult = Readonly<{
   stateView: DataView;
   guestView: DataView;
   exit: DecodedExit;
 }>;
 
-export type RunCompiledBlockOptions = Readonly<{
+export type RunWasmBlockOptions = Readonly<{
   guest?: WebAssembly.Memory;
 }>;
 
-export async function runCompiledBlock(
+export async function compileWasmBlock(bytes: readonly number[]): Promise<CompiledWasmBlock> {
+  return compiledWasmBlock(await WebAssembly.compile(compileInstructionBlockBytes(decodeBytes(bytes))));
+}
+
+export async function compileDecodedWasmBlock(block: DecodedBlock): Promise<CompiledWasmBlock> {
+  return compiledWasmBlock(await WebAssembly.compile(compileDecodedBlockBytes(block)));
+}
+
+export async function compileAndRunBlock(
   bytes: readonly number[],
   initialState: CpuState = createCpuState({ eip: startAddress }),
-  options: RunCompiledBlockOptions = {}
-): Promise<CompiledBlockResult> {
-  const module = await WebAssembly.compile(compileBlock(decodeBytes(bytes)));
+  options: RunWasmBlockOptions = {}
+): Promise<WasmBlockRunResult> {
+  const block = await compileWasmBlock(bytes);
+
+  return block.run(initialState, options);
+}
+
+export async function compileAndRunDecodedBlock(
+  block: DecodedBlock,
+  initialState: CpuState,
+  options: RunWasmBlockOptions = {}
+): Promise<WasmBlockRunResult> {
+  const compiled = await compileDecodedWasmBlock(block);
+
+  return compiled.run(initialState, options);
+}
+
+function compiledWasmBlock(module: WebAssembly.Module): CompiledWasmBlock {
+  return {
+    module,
+    run: (initialState, options = {}) => runCompiledModule(module, initialState, options)
+  };
+}
+
+async function runCompiledModule(
+  module: WebAssembly.Module,
+  initialState: CpuState,
+  options: RunWasmBlockOptions
+): Promise<WasmBlockRunResult> {
   const state = new WebAssembly.Memory({ initial: 1 });
   const guest = options.guest ?? new WebAssembly.Memory({ initial: 1 });
   const stateView = new DataView(state.buffer);
@@ -50,7 +92,6 @@ export async function runCompiledBlock(
   }
 
   return {
-    module,
     stateView,
     guestView,
     exit: decodeExit(encodedExit)

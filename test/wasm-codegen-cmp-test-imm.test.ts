@@ -7,7 +7,7 @@ import { runInstructionInterpreter } from "../src/interp/interpreter.js";
 import {
   decodeBytes,
   readStateU32,
-  runCompiledBlock,
+  compileAndRunBlock,
   startAddress
 } from "../src/test-support/wasm-codegen.js";
 
@@ -72,7 +72,7 @@ async function assertMatchesInterpreter(
   const instructions = decodeBytes(bytes);
   const interpreterState = cloneCpuState(initialState);
   const interpreterResult = runInstructionInterpreter(interpreterState, instructions);
-  const wasmResult = await runCompiledBlock(bytes, initialState);
+  const wasmResult = await compileAndRunBlock(bytes, initialState);
 
   strictEqual(interpreterResult.stopReason, StopReason.NONE);
 
@@ -88,5 +88,5 @@ async function assertMatchesInterpreter(
 
 type MatchResult = Readonly<{
   interpreterState: CpuState;
-  wasmResult: Awaited<ReturnType<typeof runCompiledBlock>>;
+  wasmResult: Awaited<ReturnType<typeof compileAndRunBlock>>;
 }>;

@@ -5,7 +5,7 @@ import { cpuStateFields, createCpuState, type CpuState } from "../src/core/state
 import { ExitReason } from "../src/wasm/exit.js";
 import {
   readStateU32,
-  runCompiledBlock,
+  compileAndRunBlock,
   startAddress,
   statePtr
 } from "../src/test-support/wasm-codegen.js";
@@ -14,7 +14,7 @@ test("jit_guest_load_u32", async () => {
   const guest = guestMemory();
   new DataView(guest.buffer).setUint32(0x20, 0x1234_5678, true);
 
-  const result = await runCompiledBlock(
+  const result = await compileAndRunBlock(
     [0x8b, 0x05, 0x20, 0x00, 0x00, 0x00],
     createCpuState({ eip: startAddress }),
     { guest }
@@ -31,7 +31,7 @@ test("jit_guest_load_u32", async () => {
 
 test("jit_guest_store_u32", async () => {
   const guest = guestMemory();
-  const result = await runCompiledBlock(
+  const result = await compileAndRunBlock(
     [0x89, 0x05, 0x20, 0x00, 0x00, 0x00],
     createCpuState({ eax: 0x1234_5678, eip: startAddress }),
     { guest }
@@ -44,7 +44,7 @@ test("jit_guest_store_u32", async () => {
 
 test("jit_guest_memory_uses_index_1", async () => {
   const guest = guestMemory();
-  const result = await runCompiledBlock(
+  const result = await compileAndRunBlock(
     [0x89, 0x1d, statePtr, 0x00, 0x00, 0x00],
     createCpuState({ eax: 0x1111_1111, ebx: 0x2222_2222, eip: startAddress }),
     { guest }
@@ -63,7 +63,7 @@ test("jit_guest_load_oob_fault_atomic", async () => {
     instructionCount: 7
   });
   const beforeGuest = readBytes(new DataView(guest.buffer), 0, 16);
-  const result = await runCompiledBlock(
+  const result = await compileAndRunBlock(
     [0x8b, 0x05, 0x00, 0x00, 0x01, 0x00],
     initialState,
     { guest }
@@ -89,7 +89,7 @@ test("jit_guest_store_oob_fault_atomic", async () => {
     instructionCount: 7
   });
   const beforeGuest = readBytes(guestView, 0xfff8, 8);
-  const result = await runCompiledBlock(
+  const result = await compileAndRunBlock(
     [0x89, 0x05, 0xfe, 0xff, 0x00, 0x00],
     initialState,
     { guest }

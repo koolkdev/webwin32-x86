@@ -8,7 +8,7 @@ import { ExitReason } from "../src/wasm/exit.js";
 import {
   decodeBytes,
   readStateU32,
-  runCompiledBlock,
+  compileAndRunBlock,
   startAddress
 } from "../src/test-support/wasm-codegen.js";
 
@@ -73,7 +73,7 @@ async function runBoth(bytes: readonly number[], initialState: CpuState): Promis
   const instructions = decodeBytes(bytes);
   const interpreterState = cloneCpuState(initialState);
   const interpreterResult = runInstructionInterpreter(interpreterState, instructions);
-  const wasmResult = await runCompiledBlock(bytes, initialState);
+  const wasmResult = await compileAndRunBlock(bytes, initialState);
 
   return {
     interpreterResult,
@@ -85,5 +85,5 @@ async function runBoth(bytes: readonly number[], initialState: CpuState): Promis
 type RunBothResult = Readonly<{
   interpreterResult: ReturnType<typeof runInstructionInterpreter>;
   interpreterState: CpuState;
-  wasmResult: Awaited<ReturnType<typeof runCompiledBlock>>;
+  wasmResult: Awaited<ReturnType<typeof compileAndRunBlock>>;
 }>;

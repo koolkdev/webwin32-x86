@@ -7,7 +7,11 @@ import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 export const u32Align = 2;
 
 export function emitCompleteInstruction(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
-  emitStoreStateConstU32(body, stateOffset.eip, instructionEnd(instruction));
+  emitCompleteAtEip(body, instructionEnd(instruction));
+}
+
+export function emitCompleteAtEip(body: WasmFunctionBodyEncoder, eip: number): void {
+  emitStoreStateConstU32(body, stateOffset.eip, eip);
   emitIncrementInstructionCount(body);
 }
 
