@@ -12,4 +12,6 @@ export type Mnemonic =
   | "jcc"
   | "call"
   | "ret"
+  | "push"
+  | "pop"
   | "unsupported";

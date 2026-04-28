@@ -47,6 +47,8 @@ function buildOpcodeHandlers(): DecodeTable {
   handlers[opcode.cmpRm32R32] = registerModRmEntry(decodeRm32R32("cmp"));
   handlers[opcode.cmpR32Rm32] = registerModRmEntry(decodeR32Rm32("cmp"));
   handlers[opcode.testRm32R32] = registerModRmEntry(decodeRm32R32("test"));
+  handlers[opcode.pushImm32] = opcodeEntry(decodePushImm32);
+  handlers[opcode.pushImm8] = opcodeEntry(decodePushImm8);
   handlers[opcode.group81] = opcodeEntry(decodeGroup81Register, {
     prefixForms: { operandSizeOverride: decodeUnsupported(3) }
   });
@@ -63,6 +65,14 @@ function buildOpcodeHandlers(): DecodeTable {
   handlers[opcode.jmpRel8] = opcodeEntry(decodeJmpRel8);
   handlers[opcode.jmpRel32] = opcodeEntry(decodeJmpRel32);
   handlers[opcode.escape] = opcodeEntry(decodeOpcodeMap0f);
+
+  for (let value = opcode.pushR32Base; value <= opcode.pushR32Last; value += 1) {
+    handlers[value] = opcodeEntry(decodePushR32);
+  }
+
+  for (let value = opcode.popR32Base; value <= opcode.popR32Last; value += 1) {
+    handlers[value] = opcodeEntry(decodePopR32);
+  }
 
   for (let value = opcode.jccRel8Base; value <= opcode.jccRel8Last; value += 1) {
     handlers[value] = opcodeEntry(decodeJccRel8);
@@ -165,6 +175,36 @@ function decodeRetImm16(context: DecodeContext): DecodedInstruction {
 
   return decodedInstruction(context, context.opcodeOffset + 3, "ret", [
     { kind: "imm16", value: context.reader.readU16LE(context.opcodeOffset + 1) }
+  ]);
+}
+
+function decodePushR32(context: DecodeContext, value: number): DecodedInstruction {
+  return decodedInstruction(context, context.opcodeOffset + 1, "push", [
+    registerOperandFromOpcode(value, opcode.pushR32Base)
+  ]);
+}
+
+function decodePopR32(context: DecodeContext, value: number): DecodedInstruction {
+  return decodedInstruction(context, context.opcodeOffset + 1, "pop", [
+    registerOperandFromOpcode(value, opcode.popR32Base)
+  ]);
+}
+
+function decodePushImm32(context: DecodeContext): DecodedInstruction {
+  ensureDecodeBytes(context, context.opcodeOffset + 1, 4);
+
+  return decodedInstruction(context, context.opcodeOffset + 5, "push", [
+    { kind: "imm32", value: context.reader.readU32LE(context.opcodeOffset + 1) }
+  ]);
+}
+
+function decodePushImm8(context: DecodeContext): DecodedInstruction {
+  ensureDecodeBytes(context, context.opcodeOffset + 1, 1);
+
+  const value = context.reader.readU8(context.opcodeOffset + 1);
+
+  return decodedInstruction(context, context.opcodeOffset + 2, "push", [
+    { kind: "imm8", value, signedValue: signedImm8(value) }
   ]);
 }
 
@@ -306,16 +346,20 @@ function decodeGroup83Rm32Imm8(mnemonic: Extract<Mnemonic, "add" | "sub" | "cmp"
 function decodeMovR32Imm32(context: DecodeContext, value: number): DecodedInstruction {
   ensureDecodeBytes(context, context.opcodeOffset + 1, 4);
 
-  const reg = reg32[value - opcode.movR32Imm32Base];
+  return decodedInstruction(context, context.opcodeOffset + movR32Imm32Length, "mov", [
+    registerOperandFromOpcode(value, opcode.movR32Imm32Base),
+    { kind: "imm32", value: context.reader.readU32LE(context.opcodeOffset + 1) }
+  ]);
+}
+
+function registerOperandFromOpcode(value: number, base: number): Operand {
+  const reg = reg32[value - base];
 
   if (reg === undefined) {
     throw new Error(`register encoding out of range for opcode 0x${value.toString(16)}`);
   }
 
-  return decodedInstruction(context, context.opcodeOffset + movR32Imm32Length, "mov", [
-    { kind: "reg32", reg },
-    { kind: "imm32", value: context.reader.readU32LE(context.opcodeOffset + 1) }
-  ]);
+  return { kind: "reg32", reg };
 }
 
 function decodeUnsupported(byteCountAfterOpcode: number): OpcodeHandler {

@@ -60,6 +60,8 @@ export function executeInstruction(
       return executeLea(state, instruction);
     case "call":
     case "ret":
+    case "push":
+    case "pop":
     case "unsupported":
       return executeUnsupported(state, instruction);
   }
