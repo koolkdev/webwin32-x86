@@ -40,7 +40,7 @@ export function emitStoreStateStackU32(body: WasmFunctionBodyEncoder, offset: nu
   });
 }
 
-function emitIncrementInstructionCount(body: WasmFunctionBodyEncoder): void {
+export function emitIncrementInstructionCount(body: WasmFunctionBodyEncoder): void {
   body.localGet(0);
   emitLoadStateU32(body, stateOffset.instructionCount);
   body

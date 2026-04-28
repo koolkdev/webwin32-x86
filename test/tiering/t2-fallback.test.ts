@@ -1,4 +1,4 @@
-import { notStrictEqual, ok, strictEqual, throws } from "node:assert";
+import { ok, strictEqual, throws } from "node:assert";
 import { test } from "node:test";
 
 import { StopReason, type RunResult } from "../../src/core/execution/run-result.js";
@@ -10,18 +10,6 @@ import { guestReader, TestDecodeReader } from "../../src/test-support/decode-rea
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 const supportedJumpFixture = [
-  0xb8, 0x01, 0x00, 0x00, 0x00,
-  0x81, 0xc0, 0x02, 0x00, 0x00, 0x00,
-  0xeb, 0x00
-] as const;
-
-const unsupportedCodegenFixture = [
-  0xe8, 0x00, 0x00, 0x00, 0x00,
-  0xcd, 0x2e
-] as const;
-
-const unsupportedThenSupportedFixture = [
-  0xe8, 0x00, 0x00, 0x00, 0x00,
   0xb8, 0x01, 0x00, 0x00, 0x00,
   0x81, 0xc0, 0x02, 0x00, 0x00, 0x00,
   0xeb, 0x00
@@ -50,46 +38,6 @@ test("supported_block_runs_as_t2", () => {
   strictEqual(runtime.instance.counters.wasmBlockCache.hits, 0);
 });
 
-test("unsupported_codegen_falls_back_to_t1", () => {
-  const runtime = runRuntime(unsupportedCodegenFixture, TierMode.T2_ONLY, {
-    eax: 0x1234_5678,
-    esp: 0x40
-  });
-
-  strictEqual(runtime.result.stopReason, StopReason.HOST_TRAP);
-  strictEqual(runtime.instance.state.eip, startAddress + 7);
-  strictEqual(runtime.instance.state.esp, 0x3c);
-  strictEqual(runtime.instance.state.instructionCount, 2);
-  strictEqual(runtime.instance.counters.profile.instructionsExecuted, 1);
-  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 1);
-  strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 1);
-});
-
-test("unsupported_codegen_does_not_change_guest_stop_reason", () => {
-  const runtime = runRuntime(unsupportedCodegenFixture, TierMode.T2_ONLY, {
-    eax: 0x1234_5678,
-    esp: 0x40
-  });
-
-  strictEqual(runtime.result.stopReason, StopReason.HOST_TRAP);
-  notStrictEqual(runtime.result.stopReason, StopReason.UNSUPPORTED);
-});
-
-test("unsupported_codegen_fallback_is_single_block", () => {
-  const runtime = runRuntime(unsupportedThenSupportedFixture, TierMode.T2_ONLY, {
-    eax: 0x1234_5678,
-    esp: 0x40
-  });
-
-  strictEqual(runtime.result.stopReason, StopReason.NONE);
-  strictEqual(runtime.instance.state.eax, 3);
-  strictEqual(runtime.instance.state.esp, 0x3c);
-  strictEqual(runtime.instance.state.instructionCount, 4);
-  strictEqual(runtime.instance.counters.profile.instructionsExecuted, 1);
-  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 1);
-  strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 1);
-});
-
 test("wasm_block_cache_reuses_supported_block", () => {
   const runtime = runRuntime(branchLoopFixture, TierMode.T2_ONLY, { eax: 3 });
 
@@ -114,19 +62,16 @@ test("wasm_block_cache_clear_forces_recompile", () => {
   strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 2);
 });
 
-test("unsupported_codegen_is_cached_as_fallback", () => {
-  const runtime = runRuntime(unsupportedCodegenFixture, TierMode.T2_ONLY, {
-    eax: 0x1234_5678,
-    esp: 0x40
-  });
+test("unsupported_x86_fallback_is_cached", () => {
+  const runtime = runRuntime(unsupportedX86Fixture, TierMode.T2_ONLY);
 
-  strictEqual(runtime.result.stopReason, StopReason.HOST_TRAP);
+  strictEqual(runtime.result.stopReason, StopReason.UNSUPPORTED);
 
   runtime.instance.run({ entryEip: startAddress });
 
-  strictEqual(runtime.instance.counters.wasmBlockCache.hits, 2);
-  strictEqual(runtime.instance.counters.wasmBlockCache.misses, 2);
-  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 1);
+  strictEqual(runtime.instance.counters.wasmBlockCache.hits, 1);
+  strictEqual(runtime.instance.counters.wasmBlockCache.misses, 1);
+  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 0);
   strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 2);
 });
 
@@ -145,6 +90,7 @@ test("unsupported_x86_still_stops_as_guest_unsupported", () => {
   strictEqual(runtime.result.stopReason, StopReason.UNSUPPORTED);
   strictEqual(runtime.result.unsupportedByte, 0x62);
   strictEqual(runtime.instance.state.instructionCount, 0);
+  strictEqual(runtime.instance.counters.profile.instructionsExecuted, 1);
   strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 0);
   strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 1);
 });

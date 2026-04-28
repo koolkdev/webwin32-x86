@@ -9,6 +9,7 @@ import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
 import { emitAlu } from "./alu.js";
 import { emitJcc, emitJmp } from "./branch.js";
+import { emitCall, emitRet } from "./call-return.js";
 import { unsupportedWasmCodegen } from "./errors.js";
 import { emitExitResult } from "./exit.js";
 import { emitLea } from "./lea.js";
@@ -91,6 +92,12 @@ function emitInstruction(body: WasmFunctionBodyEncoder, instruction: DecodedInst
     case "pop":
       emitPop(body, instruction);
       return;
+    case "call":
+      emitCall(body, instruction);
+      return;
+    case "ret":
+      emitRet(body, instruction);
+      return;
     case "add":
     case "sub":
     case "xor":
@@ -116,6 +123,8 @@ function emitTerminator(body: WasmFunctionBodyEncoder, terminator: BlockTerminat
       return;
     case "jump":
     case "conditional-branch":
+    case "call":
+    case "ret":
     case "int":
       return;
     default:
