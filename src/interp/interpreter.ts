@@ -18,6 +18,10 @@ import {
   executeNop,
   executeUnsupported
 } from "./instruction-handlers.js";
+import {
+  executePop,
+  executePush
+} from "./stack.js";
 
 const defaultInstructionLimit = 10_000;
 
@@ -58,10 +62,12 @@ export function executeInstruction(
       return executeJcc(state, instruction);
     case "lea":
       return executeLea(state, instruction);
+    case "push":
+      return executePush(state, instruction, options.memory);
+    case "pop":
+      return executePop(state, instruction, options.memory);
     case "call":
     case "ret":
-    case "push":
-    case "pop":
     case "unsupported":
       return executeUnsupported(state, instruction);
   }

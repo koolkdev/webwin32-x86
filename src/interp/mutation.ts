@@ -1,13 +1,18 @@
 import type { DecodedInstruction } from "../arch/x86/instruction/types.js";
 import { runResultFromState, StopReason, type RunResult } from "../core/execution/run-result.js";
+import type { MemoryFault } from "../core/memory/guest-memory.js";
 import type { CpuState } from "../core/state/cpu-state.js";
 import { u32 } from "../core/state/cpu-state.js";
-import type { OperandWriteResult } from "./operands.js";
+
+export type MutationResult =
+  | Readonly<{ kind: "ok" }>
+  | Readonly<{ kind: "unsupported" }>
+  | Readonly<{ kind: "memoryFault"; fault: MemoryFault }>;
 
 export function runMutation(
   state: CpuState,
   instruction: DecodedInstruction,
-  mutation: () => OperandWriteResult
+  mutation: () => MutationResult
 ): RunResult {
   const result = mutation();
 
