@@ -5,16 +5,18 @@ import type { CpuState } from "../core/state/cpu-state.js";
 import {
   executeAdd,
   executeCmp,
+  executeSub,
+  executeTest,
+  executeXor
+} from "./alu.js";
+import {
   executeInt,
   executeJcc,
   executeJmp,
   executeLea,
   executeMov,
   executeNop,
-  executeSub,
-  executeTest,
-  executeUnsupported,
-  executeXor
+  executeUnsupported
 } from "./instruction-handlers.js";
 
 const defaultInstructionLimit = 10_000;
@@ -41,15 +43,15 @@ export function executeInstruction(
     case "int":
       return executeInt(state, instruction);
     case "add":
-      return executeAdd(state, instruction);
+      return executeAdd(state, instruction, options.memory);
     case "sub":
-      return executeSub(state, instruction);
+      return executeSub(state, instruction, options.memory);
     case "xor":
-      return executeXor(state, instruction);
+      return executeXor(state, instruction, options.memory);
     case "cmp":
-      return executeCmp(state, instruction);
+      return executeCmp(state, instruction, options.memory);
     case "test":
-      return executeTest(state, instruction);
+      return executeTest(state, instruction, options.memory);
     case "jmp":
       return executeJmp(state, instruction);
     case "jcc":

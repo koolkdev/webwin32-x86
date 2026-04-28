@@ -1,35 +1,30 @@
-import { addFlags, logicalFlags, subFlags } from "../arch/x86/flags/arithmetic.js";
 import { isJccConditionMet, type JccFlags } from "../arch/x86/flags/conditions.js";
 import type { DecodedInstruction } from "../arch/x86/instruction/types.js";
 import { runResultFromState, StopReason, type RunResult, type RunResultDetails } from "../core/execution/run-result.js";
-import type { GuestMemory, MemoryFault } from "../core/memory/guest-memory.js";
+import type { GuestMemory } from "../core/memory/guest-memory.js";
 import { type CpuState, getFlag, u32 } from "../core/state/cpu-state.js";
 import {
   addressExpressionValue,
   intVector,
   jumpTarget,
   type OperandWriteResult,
-  readRegisterDestination,
   readOperandValue,
-  registerDestination,
-  sourceValue,
-  writeFlags,
-  writeOperandValue,
-  writeRegisterDestination
+  writeOperandValue
 } from "./operands.js";
+import { runMutation } from "./mutation.js";
 
 export function executeMov(
   state: CpuState,
   instruction: DecodedInstruction,
   memory?: GuestMemory
 ): RunResult {
-  return doOperandMutation(state, instruction, () =>
+  return runMutation(state, instruction, () =>
     copyMovValue(state, instruction, memory)
   );
 }
 
 export function executeLea(state: CpuState, instruction: DecodedInstruction): RunResult {
-  return doOperandMutation(state, instruction, () => writeLeaValue(state, instruction));
+  return runMutation(state, instruction, () => writeLeaValue(state, instruction));
 }
 
 export function executeNop(state: CpuState, instruction: DecodedInstruction): RunResult {
@@ -71,89 +66,10 @@ export function executeJcc(state: CpuState, instruction: DecodedInstruction): Ru
     : completeInstruction(state, instruction);
 }
 
-export function executeAdd(state: CpuState, instruction: DecodedInstruction): RunResult {
-  return executeArithmetic(state, instruction, "add");
-}
-
-export function executeSub(state: CpuState, instruction: DecodedInstruction): RunResult {
-  return executeArithmetic(state, instruction, "sub");
-}
-
-export function executeXor(state: CpuState, instruction: DecodedInstruction): RunResult {
-  const destination = registerDestination(instruction);
-  const right = sourceValue(state, instruction, { signExtendImm8: false });
-
-  if (destination === undefined || right === undefined) {
-    return stop(state, StopReason.UNSUPPORTED);
-  }
-
-  const result = u32(readRegisterDestination(state, destination) ^ right);
-
-  writeRegisterDestination(state, destination, result);
-  writeFlags(state, logicalFlags(result));
-
-  return completeInstruction(state, instruction);
-}
-
-export function executeCmp(state: CpuState, instruction: DecodedInstruction): RunResult {
-  const destination = registerDestination(instruction);
-  const right = sourceValue(state, instruction, { signExtendImm8: true });
-
-  if (destination === undefined || right === undefined) {
-    return stop(state, StopReason.UNSUPPORTED);
-  }
-
-  const left = readRegisterDestination(state, destination);
-  const result = u32(left - right);
-
-  writeFlags(state, subFlags(left, right, result));
-
-  return completeInstruction(state, instruction);
-}
-
-export function executeTest(state: CpuState, instruction: DecodedInstruction): RunResult {
-  const destination = registerDestination(instruction);
-  const right = sourceValue(state, instruction, { signExtendImm8: false });
-
-  if (destination === undefined || right === undefined) {
-    return stop(state, StopReason.UNSUPPORTED);
-  }
-
-  writeFlags(state, logicalFlags(readRegisterDestination(state, destination) & right));
-
-  return completeInstruction(state, instruction);
-}
-
 export function executeUnsupported(state: CpuState, instruction: DecodedInstruction): RunResult {
   const byte = unsupportedByte(instruction);
 
   return stop(state, StopReason.UNSUPPORTED, unsupportedDetails(byte));
-}
-
-function executeArithmetic(
-  state: CpuState,
-  instruction: DecodedInstruction,
-  operation: "add" | "sub"
-): RunResult {
-  const destination = registerDestination(instruction);
-  const right = sourceValue(state, instruction, { signExtendImm8: true });
-
-  if (destination === undefined || right === undefined) {
-    return stop(state, StopReason.UNSUPPORTED);
-  }
-
-  const left = readRegisterDestination(state, destination);
-  const result = operation === "add" ? u32(left + right) : u32(left - right);
-
-  writeRegisterDestination(state, destination, result);
-  writeFlags(state, operation === "add" ? addFlags(left, right, result) : subFlags(left, right, result));
-
-  return completeInstruction(state, instruction);
-}
-
-function completeInstruction(state: CpuState, instruction: DecodedInstruction): RunResult {
-  advanceInstruction(state, instruction);
-  return runResultFromState(state, StopReason.NONE);
 }
 
 function copyMovValue(
@@ -180,21 +96,9 @@ function writeLeaValue(state: CpuState, instruction: DecodedInstruction): Operan
   return writeOperandValue(state, instruction.operands[0], address.value);
 }
 
-function doOperandMutation(
-  state: CpuState,
-  instruction: DecodedInstruction,
-  mutation: () => OperandWriteResult
-): RunResult {
-  const result = mutation();
-
-  switch (result.kind) {
-    case "ok":
-      return completeInstruction(state, instruction);
-    case "unsupported":
-      return stop(state, StopReason.UNSUPPORTED);
-    case "memoryFault":
-      return stopMemoryFault(state, result.fault);
-  }
+function completeInstruction(state: CpuState, instruction: DecodedInstruction): RunResult {
+  advanceInstruction(state, instruction);
+  return runResultFromState(state, StopReason.NONE);
 }
 
 function completeBranch(state: CpuState, target: number): RunResult {
@@ -217,10 +121,6 @@ function readJccFlags(state: CpuState): JccFlags {
 function stop(state: CpuState, reason: StopReason, details: RunResultDetails = {}): RunResult {
   state.stopReason = reason;
   return runResultFromState(state, reason, details);
-}
-
-function stopMemoryFault(state: CpuState, fault: MemoryFault): RunResult {
-  return stop(state, StopReason.MEMORY_FAULT, fault);
 }
 
 function advanceInstruction(state: CpuState, instruction: DecodedInstruction): void {
