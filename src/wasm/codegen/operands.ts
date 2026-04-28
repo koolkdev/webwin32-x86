@@ -6,6 +6,7 @@ import { wasmValueType } from "../encoder/types.js";
 import { emitEffectiveAddress } from "./effective-address.js";
 import { unsupportedWasmCodegen } from "./errors.js";
 import { emitLoadGuestU32, emitStoreGuestU32 } from "./guest-memory.js";
+import type { WasmLocalScratchAllocator } from "./local-scratch.js";
 import { emitLoadStateU32, emitStoreStateStackU32 } from "./state.js";
 
 export type ReadOperandU32Options = Readonly<{
@@ -14,10 +15,11 @@ export type ReadOperandU32Options = Readonly<{
 
 export function emitReadOperandU32(
   body: WasmFunctionBodyEncoder,
+  scratch: WasmLocalScratchAllocator,
   operand: Operand | undefined,
   options: ReadOperandU32Options = {}
 ): number {
-  const valueLocal = body.addLocal(wasmValueType.i32);
+  const valueLocal = scratch.allocLocal(wasmValueType.i32);
 
   switch (operand?.kind) {
     case "reg32":
@@ -34,8 +36,9 @@ export function emitReadOperandU32(
       body.i32Const(i32(operand.signedValue));
       break;
     case "mem32": {
-      const addressLocal = emitAddressLocal(body, operand);
+      const addressLocal = emitAddressLocal(body, scratch, operand);
       emitLoadGuestU32(body, addressLocal);
+      scratch.freeLocal(addressLocal);
       break;
     }
     default:
@@ -48,6 +51,7 @@ export function emitReadOperandU32(
 
 export function emitWriteOperandU32(
   body: WasmFunctionBodyEncoder,
+  scratch: WasmLocalScratchAllocator,
   operand: Operand | undefined,
   valueLocal: number
 ): void {
@@ -57,8 +61,9 @@ export function emitWriteOperandU32(
       emitStoreStateStackU32(body, reg32StateOffset(operand.reg));
       return;
     case "mem32": {
-      const addressLocal = emitAddressLocal(body, operand);
+      const addressLocal = emitAddressLocal(body, scratch, operand);
       emitStoreGuestU32(body, addressLocal, valueLocal);
+      scratch.freeLocal(addressLocal);
       return;
     }
     default:
@@ -66,8 +71,12 @@ export function emitWriteOperandU32(
   }
 }
 
-function emitAddressLocal(body: WasmFunctionBodyEncoder, operand: Extract<Operand, { kind: "mem32" }>): number {
-  const addressLocal = body.addLocal(wasmValueType.i32);
+function emitAddressLocal(
+  body: WasmFunctionBodyEncoder,
+  scratch: WasmLocalScratchAllocator,
+  operand: Extract<Operand, { kind: "mem32" }>
+): number {
+  const addressLocal = scratch.allocLocal(wasmValueType.i32);
 
   emitEffectiveAddress(body, operand);
   body.localSet(addressLocal);

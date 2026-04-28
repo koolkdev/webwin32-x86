@@ -13,6 +13,7 @@ import { emitCall, emitRet } from "./call-return.js";
 import { unsupportedWasmCodegen } from "./errors.js";
 import { emitExitResult } from "./exit.js";
 import { emitLea } from "./lea.js";
+import { WasmLocalScratchAllocator } from "./local-scratch.js";
 import { emitMov } from "./mov.js";
 import { emitPop, emitPush } from "./stack.js";
 import { emitCompleteInstruction } from "./state.js";
@@ -58,12 +59,14 @@ function encodeWasmBlock(
     results: [wasmValueType.i64]
   });
   const body = new WasmFunctionBodyEncoder(1);
+  const scratch = new WasmLocalScratchAllocator(body);
 
   for (const instruction of instructions) {
-    emitInstruction(body, instruction);
+    emitInstruction(body, scratch, instruction);
   }
 
   emitTerminator(body, terminator);
+  scratch.assertClear();
   body.end();
 
   const functionIndex = module.addFunction(typeIndex, body);
@@ -72,7 +75,11 @@ function encodeWasmBlock(
   return module.encode();
 }
 
-function emitInstruction(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
+function emitInstruction(
+  body: WasmFunctionBodyEncoder,
+  scratch: WasmLocalScratchAllocator,
+  instruction: DecodedInstruction
+): void {
   switch (instruction.mnemonic) {
     case "nop":
       emitNop(body, instruction);
@@ -81,35 +88,35 @@ function emitInstruction(body: WasmFunctionBodyEncoder, instruction: DecodedInst
       emitInt(body, instruction);
       return;
     case "mov":
-      emitMov(body, instruction);
+      emitMov(body, scratch, instruction);
       return;
     case "lea":
       emitLea(body, instruction);
       return;
     case "push":
-      emitPush(body, instruction);
+      emitPush(body, scratch, instruction);
       return;
     case "pop":
-      emitPop(body, instruction);
+      emitPop(body, scratch, instruction);
       return;
     case "call":
-      emitCall(body, instruction);
+      emitCall(body, scratch, instruction);
       return;
     case "ret":
-      emitRet(body, instruction);
+      emitRet(body, scratch, instruction);
       return;
     case "add":
     case "sub":
     case "xor":
     case "cmp":
     case "test":
-      emitAlu(body, instruction);
+      emitAlu(body, scratch, instruction);
       return;
     case "jmp":
       emitJmp(body, instruction);
       return;
     case "jcc":
-      emitJcc(body, instruction);
+      emitJcc(body, scratch, instruction);
       return;
     default:
       unsupportedWasmCodegen(`unsupported instruction for Wasm codegen: ${instruction.mnemonic}`);

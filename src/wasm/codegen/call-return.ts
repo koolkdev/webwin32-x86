@@ -9,6 +9,7 @@ import { ExitReason } from "../exit.js";
 import { emitExitResult, emitExitResultFromStackPayload } from "./exit.js";
 import { unsupportedWasmCodegen } from "./errors.js";
 import { emitLoadGuestU32, emitStoreGuestU32 } from "./guest-memory.js";
+import type { WasmLocalScratchAllocator } from "./local-scratch.js";
 import {
   emitCompleteAtEip,
   emitIncrementInstructionCount,
@@ -16,10 +17,14 @@ import {
   emitStoreStateStackU32
 } from "./state.js";
 
-export function emitCall(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
+export function emitCall(
+  body: WasmFunctionBodyEncoder,
+  scratch: WasmLocalScratchAllocator,
+  instruction: DecodedInstruction
+): void {
   const target = relativeTarget(instruction);
-  const returnAddress = body.addLocal(wasmValueType.i32);
-  const nextEsp = body.addLocal(wasmValueType.i32);
+  const returnAddress = scratch.allocLocal(wasmValueType.i32);
+  const nextEsp = scratch.allocLocal(wasmValueType.i32);
 
   body.i32Const(i32(instructionEnd(instruction))).localSet(returnAddress);
 
@@ -32,18 +37,24 @@ export function emitCall(body: WasmFunctionBodyEncoder, instruction: DecodedInst
   emitStoreStateStackU32(body, stateOffset.esp);
   emitCompleteAtEip(body, target);
   emitExitResult(body, ExitReason.JUMP, target).returnFromFunction();
+  scratch.freeLocal(nextEsp);
+  scratch.freeLocal(returnAddress);
 }
 
-export function emitRet(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
+export function emitRet(
+  body: WasmFunctionBodyEncoder,
+  scratch: WasmLocalScratchAllocator,
+  instruction: DecodedInstruction
+): void {
   const cleanup = retCleanupBytes(instruction.operands[0]);
 
   if (cleanup === undefined) {
     unsupportedWasmCodegen("unsupported RET form for Wasm codegen");
   }
 
-  const stackAddress = body.addLocal(wasmValueType.i32);
-  const target = body.addLocal(wasmValueType.i32);
-  const nextEsp = body.addLocal(wasmValueType.i32);
+  const stackAddress = scratch.allocLocal(wasmValueType.i32);
+  const target = scratch.allocLocal(wasmValueType.i32);
+  const nextEsp = scratch.allocLocal(wasmValueType.i32);
 
   emitLoadStateU32(body, stateOffset.esp);
   body.localTee(stackAddress).i32Const(i32(4 + cleanup)).i32Add().localSet(nextEsp);
@@ -60,6 +71,9 @@ export function emitRet(body: WasmFunctionBodyEncoder, instruction: DecodedInstr
 
   body.localGet(target);
   emitExitResultFromStackPayload(body, ExitReason.JUMP).returnFromFunction();
+  scratch.freeLocal(nextEsp);
+  scratch.freeLocal(target);
+  scratch.freeLocal(stackAddress);
 }
 
 function retCleanupBytes(operand: Operand | undefined): number | undefined {

@@ -5,11 +5,16 @@ import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { unsupportedWasmCodegen } from "./errors.js";
 import { emitLoadGuestU32, emitStoreGuestU32 } from "./guest-memory.js";
+import type { WasmLocalScratchAllocator } from "./local-scratch.js";
 import { emitCompleteInstruction, emitLoadStateU32, emitStoreStateStackU32 } from "./state.js";
 
-export function emitPush(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
-  const value = emitPushOperandU32(body, instruction.operands[0]);
-  const nextEsp = body.addLocal(wasmValueType.i32);
+export function emitPush(
+  body: WasmFunctionBodyEncoder,
+  scratch: WasmLocalScratchAllocator,
+  instruction: DecodedInstruction
+): void {
+  const value = emitPushOperandU32(body, scratch, instruction.operands[0]);
+  const nextEsp = scratch.allocLocal(wasmValueType.i32);
 
   emitLoadStateU32(body, stateOffset.esp);
   body.i32Const(4).i32Sub().localSet(nextEsp);
@@ -19,18 +24,24 @@ export function emitPush(body: WasmFunctionBodyEncoder, instruction: DecodedInst
   body.localGet(0).localGet(nextEsp);
   emitStoreStateStackU32(body, stateOffset.esp);
   emitCompleteInstruction(body, instruction);
+  scratch.freeLocal(nextEsp);
+  scratch.freeLocal(value);
 }
 
-export function emitPop(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
+export function emitPop(
+  body: WasmFunctionBodyEncoder,
+  scratch: WasmLocalScratchAllocator,
+  instruction: DecodedInstruction
+): void {
   const destination = instruction.operands[0];
 
   if (destination?.kind !== "reg32") {
     unsupportedWasmCodegen("unsupported POP form for Wasm codegen");
   }
 
-  const stackAddress = body.addLocal(wasmValueType.i32);
-  const value = body.addLocal(wasmValueType.i32);
-  const nextEsp = body.addLocal(wasmValueType.i32);
+  const stackAddress = scratch.allocLocal(wasmValueType.i32);
+  const value = scratch.allocLocal(wasmValueType.i32);
+  const nextEsp = scratch.allocLocal(wasmValueType.i32);
 
   emitLoadStateU32(body, stateOffset.esp);
   body.localTee(stackAddress).i32Const(4).i32Add().localSet(nextEsp);
@@ -44,10 +55,17 @@ export function emitPop(body: WasmFunctionBodyEncoder, instruction: DecodedInstr
   body.localGet(0).localGet(nextEsp);
   emitStoreStateStackU32(body, stateOffset.esp);
   emitCompleteInstruction(body, instruction);
+  scratch.freeLocal(nextEsp);
+  scratch.freeLocal(value);
+  scratch.freeLocal(stackAddress);
 }
 
-function emitPushOperandU32(body: WasmFunctionBodyEncoder, operand: Operand | undefined): number {
-  const value = body.addLocal(wasmValueType.i32);
+function emitPushOperandU32(
+  body: WasmFunctionBodyEncoder,
+  scratch: WasmLocalScratchAllocator,
+  operand: Operand | undefined
+): number {
+  const value = scratch.allocLocal(wasmValueType.i32);
 
   switch (operand?.kind) {
     case "reg32":

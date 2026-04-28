@@ -41,9 +41,7 @@ export class WasmFunctionBodyEncoder {
   }
 
   addLocal(type: WasmValueType): number {
-    if (this.#ended) {
-      throw new Error("cannot add local after Wasm function body end");
-    }
+    this.#assertOpen("cannot add local after Wasm function body end");
 
     const index = this.#paramCount + this.#locals.length;
     this.#locals.push(type);
@@ -206,11 +204,15 @@ export class WasmFunctionBodyEncoder {
   }
 
   #writeInstruction(opcode: number): void {
-    if (this.#ended) {
-      throw new Error("cannot write after Wasm function body end");
-    }
+    this.#assertOpen("cannot write after Wasm function body end");
 
     this.#instructions.writeByte(opcode);
+  }
+
+  #assertOpen(message: string): void {
+    if (this.#ended) {
+      throw new Error(message);
+    }
   }
 }
 

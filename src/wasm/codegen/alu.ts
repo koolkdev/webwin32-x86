@@ -3,6 +3,7 @@ import { eflagsMask, i32, supportedEflagsMask } from "../../core/state/cpu-state
 import { stateOffset } from "../abi.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
+import type { WasmLocalScratchAllocator } from "./local-scratch.js";
 import { emitReadOperandU32, emitWriteOperandU32 } from "./operands.js";
 import { emitCompleteInstruction, emitLoadStateU32, emitStoreStateStackU32 } from "./state.js";
 
@@ -24,7 +25,11 @@ const sfBit = 7;
 const zfBit = 6;
 const ofBit = 11;
 
-export function emitAlu(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
+export function emitAlu(
+  body: WasmFunctionBodyEncoder,
+  scratch: WasmLocalScratchAllocator,
+  instruction: DecodedInstruction
+): void {
   const mnemonic = instruction.mnemonic;
 
   if (!isAluMnemonic(mnemonic)) {
@@ -34,28 +39,36 @@ export function emitAlu(body: WasmFunctionBodyEncoder, instruction: DecodedInstr
   const destination = instruction.operands[0];
 
   const locals = addAluLocals(
-    body,
-    emitReadOperandU32(body, destination),
-    emitReadOperandU32(body, instruction.operands[1], { signExtendImm8: signExtendImm8Source(mnemonic) })
+    scratch,
+    emitReadOperandU32(body, scratch, destination),
+    emitReadOperandU32(body, scratch, instruction.operands[1], { signExtendImm8: signExtendImm8Source(mnemonic) })
   );
   emitAluResult(body, mnemonic, locals);
   body.localSet(locals.result);
 
   if (writesDestination(mnemonic)) {
-    emitWriteOperandU32(body, destination, locals.result);
+    emitWriteOperandU32(body, scratch, destination, locals.result);
   }
 
   emitAluFlags(body, flagOperation(mnemonic), locals);
   emitCompleteInstruction(body, instruction);
+  freeAluLocals(scratch, locals);
 }
 
-function addAluLocals(body: WasmFunctionBodyEncoder, left: number, right: number): AluLocals {
+function addAluLocals(scratch: WasmLocalScratchAllocator, left: number, right: number): AluLocals {
   return {
     left,
     right,
-    result: body.addLocal(wasmValueType.i32),
-    flags: body.addLocal(wasmValueType.i32)
+    result: scratch.allocLocal(wasmValueType.i32),
+    flags: scratch.allocLocal(wasmValueType.i32)
   };
+}
+
+function freeAluLocals(scratch: WasmLocalScratchAllocator, locals: AluLocals): void {
+  scratch.freeLocal(locals.flags);
+  scratch.freeLocal(locals.result);
+  scratch.freeLocal(locals.right);
+  scratch.freeLocal(locals.left);
 }
 
 function emitAluResult(body: WasmFunctionBodyEncoder, mnemonic: AluMnemonic, locals: AluLocals): void {
