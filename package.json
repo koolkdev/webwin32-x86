@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "metrics": "tsc -p tsconfig.json && node dist/src/lab/metrics-cli.js",
     "typecheck": "tsc --noEmit",
     "test": "npm run clean && tsc -p tsconfig.json && node --test 'dist/test/**/*.test.js'"
   },

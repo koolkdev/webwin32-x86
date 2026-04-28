@@ -7,7 +7,7 @@ import {
   metricsReportMetricKeys,
   serializeMetricsReport
 } from "../../src/metrics/report.js";
-import { runtimeMetricKeys } from "../../src/metrics/runtime-adapter.js";
+import { runtimeMetricKeys, runtimeWasmMetricKeys } from "../../src/metrics/runtime-adapter.js";
 
 test("metrics_report_computes_percentiles", () => {
   const report = aggregateMetricsSamples({
@@ -60,6 +60,25 @@ test("metrics_report_includes_t1_counters", () => {
 
   strictEqual(report.decodedBlockCacheHits, 5);
   strictEqual(report.decodedBlockCacheMisses, 5);
+});
+
+test("metrics_report_includes_wasm_block_cache_counters_when_present", () => {
+  const report = aggregateMetricsSamples({
+    fixture: "branch_countdown",
+    tier: "t2",
+    runs: 2,
+    warmup: 0,
+    samples: [
+      sample({ durationMs: 1, instructions: 10, wasmHits: 2, wasmMisses: 2, wasmInserts: 1, wasmFallbacks: 1 }),
+      sample({ durationMs: 2, instructions: 10, wasmHits: 2, wasmMisses: 2, wasmInserts: 1, wasmFallbacks: 1 })
+    ],
+    finalStateValid: true
+  });
+
+  strictEqual(report.wasmBlockCacheHits, 4);
+  strictEqual(report.wasmBlockCacheMisses, 4);
+  strictEqual(report.wasmBlockCacheInserts, 2);
+  strictEqual(report.wasmBlockCacheUnsupportedCodegenFallbacks, 2);
 });
 
 test("metrics_report_includes_final_state_validation", () => {
@@ -115,6 +134,7 @@ test("metrics_report_omits_unimplemented_tier_fields", () => {
   });
 
   strictEqual("wasmCompileMs" in report, false);
+  strictEqual("wasmBlockCacheHits" in report, false);
   strictEqual("t2CompileFallbacks" in report, false);
   strictEqual("internalTailEdges" in report, false);
 });
@@ -124,6 +144,10 @@ function sample(options: Readonly<{
   instructions: number;
   hits?: number;
   misses?: number;
+  wasmHits?: number;
+  wasmMisses?: number;
+  wasmInserts?: number;
+  wasmFallbacks?: number;
 }>): Readonly<{ snapshot: MetricSnapshot }> {
   const collector = new MetricsCollector();
 
@@ -131,6 +155,16 @@ function sample(options: Readonly<{
   collector.setGauge(runtimeMetricKeys.guestInstructions, options.instructions);
   collector.setGauge(runtimeMetricKeys.decodedBlockCacheHits, options.hits ?? 0);
   collector.setGauge(runtimeMetricKeys.decodedBlockCacheMisses, options.misses ?? 0);
+
+  if (options.wasmHits !== undefined) {
+    collector.setGauge(runtimeWasmMetricKeys.wasmBlockCacheHits, options.wasmHits);
+    collector.setGauge(runtimeWasmMetricKeys.wasmBlockCacheMisses, options.wasmMisses ?? 0);
+    collector.setGauge(runtimeWasmMetricKeys.wasmBlockCacheInserts, options.wasmInserts ?? 0);
+    collector.setGauge(
+      runtimeWasmMetricKeys.wasmBlockCacheUnsupportedCodegenFallbacks,
+      options.wasmFallbacks ?? 0
+    );
+  }
 
   return { snapshot: collector.snapshot() };
 }

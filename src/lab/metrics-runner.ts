@@ -6,6 +6,7 @@ import { u32, type CpuState } from "../core/state/cpu-state.js";
 import { MetricsCollector, type MetricSnapshot } from "../metrics/collector.js";
 import { metricsReportMetricKeys } from "../metrics/report.js";
 import { RuntimeInstance } from "../runtime/instance/runtime-instance.js";
+import type { TierMode } from "../runtime/tiering/tier-policy.js";
 import type { RawX86Fixture } from "./fixtures/raw-x86-fixture.js";
 
 export const metricsRunnerMetricKeys = {
@@ -16,6 +17,7 @@ export type MetricsRunOptions = Readonly<{
   fixture: RawX86Fixture;
   runs: number;
   warmup?: number;
+  tierMode?: TierMode;
 }>;
 
 export type MeasuredMetricSample = Readonly<{
@@ -48,7 +50,7 @@ export class MetricsRunner {
     assertRunCount(options.warmup ?? 0, "warmup");
 
     for (let index = 0; index < (options.warmup ?? 0); index += 1) {
-      runFixture(options.fixture);
+      runFixture(options.fixture, tierRunOptions(options));
     }
 
     const samples: MeasuredMetricSample[] = [];
@@ -57,7 +59,10 @@ export class MetricsRunner {
     for (let index = 0; index < options.runs; index += 1) {
       const collector = new MetricsCollector();
       const startedAt = performance.now();
-      const run = runFixture(options.fixture, collector);
+      const run = runFixture(options.fixture, {
+        metrics: collector,
+        ...tierRunOptions(options)
+      });
       const durationMs = performance.now() - startedAt;
 
       collector.recordDurationSample(metricsRunnerMetricKeys.runDurationMs, durationMs);
@@ -80,6 +85,12 @@ export class MetricsRunner {
       validation
     };
   }
+}
+
+function tierRunOptions(options: MetricsRunOptions): Readonly<{ tierMode?: TierMode }> {
+  return options.tierMode === undefined
+    ? {}
+    : { tierMode: options.tierMode };
 }
 
 export function validateExpectedState(fixture: RawX86Fixture, state: CpuState): FinalStateValidation {
@@ -112,16 +123,20 @@ export function validateExpectedState(fixture: RawX86Fixture, state: CpuState): 
 
 function runFixture(
   fixture: RawX86Fixture,
-  metrics?: MetricsCollector
+  options: Readonly<{
+    metrics?: MetricsCollector;
+    tierMode?: TierMode;
+  }> = {}
 ): Readonly<{ runtime: RuntimeInstance; result: RunResult }> {
   const runtime = new RuntimeInstance({
     decodeReader: decodeReaderForFixture(fixture),
     initialState: { ...fixture.initialState, eip: fixture.entryEip },
+    ...(options.tierMode === undefined ? {} : { tierMode: options.tierMode }),
     ...runtimeMemoryOptions(fixture)
   });
   const result = runtime.run({
     entryEip: fixture.entryEip,
-    ...(metrics === undefined ? {} : { metrics }),
+    ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
     ...(fixture.instructionLimit === undefined ? {} : { instructionLimit: fixture.instructionLimit })
   });
 

@@ -1,6 +1,6 @@
 import type { MetricSnapshot } from "./collector.js";
 import { metricKey } from "./collector.js";
-import { runtimeMetricKeys } from "./runtime-adapter.js";
+import { runtimeMetricKeys, runtimeWasmMetricKeys } from "./runtime-adapter.js";
 
 export const metricsReportMetricKeys = {
   runDurationMs: metricKey("metrics.runDurationMs")
@@ -18,6 +18,10 @@ export type MetricsReport = Readonly<{
   nsPerGuestInstruction: number;
   decodedBlockCacheHits: number;
   decodedBlockCacheMisses: number;
+  wasmBlockCacheHits?: number;
+  wasmBlockCacheMisses?: number;
+  wasmBlockCacheInserts?: number;
+  wasmBlockCacheUnsupportedCodegenFallbacks?: number;
   finalStateValid: boolean;
 }>;
 
@@ -41,6 +45,13 @@ export function aggregateMetricsSamples(options: AggregateMetricsSamplesOptions)
   const durations = collectDurationSamples(options.samples);
   const totalDurationMs = sum(durations);
   const guestInstructions = sumGauge(options.samples, runtimeMetricKeys.guestInstructions);
+  const wasmBlockCacheHits = sumOptionalGauge(options.samples, runtimeWasmMetricKeys.wasmBlockCacheHits);
+  const wasmBlockCacheMisses = sumOptionalGauge(options.samples, runtimeWasmMetricKeys.wasmBlockCacheMisses);
+  const wasmBlockCacheInserts = sumOptionalGauge(options.samples, runtimeWasmMetricKeys.wasmBlockCacheInserts);
+  const wasmBlockCacheUnsupportedCodegenFallbacks = sumOptionalGauge(
+    options.samples,
+    runtimeWasmMetricKeys.wasmBlockCacheUnsupportedCodegenFallbacks
+  );
 
   return {
     fixture: options.fixture,
@@ -56,6 +67,12 @@ export function aggregateMetricsSamples(options: AggregateMetricsSamplesOptions)
       : (totalDurationMs * 1_000_000) / guestInstructions,
     decodedBlockCacheHits: sumGauge(options.samples, runtimeMetricKeys.decodedBlockCacheHits),
     decodedBlockCacheMisses: sumGauge(options.samples, runtimeMetricKeys.decodedBlockCacheMisses),
+    ...(wasmBlockCacheHits === undefined ? {} : { wasmBlockCacheHits }),
+    ...(wasmBlockCacheMisses === undefined ? {} : { wasmBlockCacheMisses }),
+    ...(wasmBlockCacheInserts === undefined ? {} : { wasmBlockCacheInserts }),
+    ...(wasmBlockCacheUnsupportedCodegenFallbacks === undefined
+      ? {}
+      : { wasmBlockCacheUnsupportedCodegenFallbacks }),
     finalStateValid: options.finalStateValid
   };
 }
@@ -82,6 +99,22 @@ function sumGauge(samples: readonly MetricsReportSample[], key: string): number 
   }
 
   return total;
+}
+
+function sumOptionalGauge(samples: readonly MetricsReportSample[], key: string): number | undefined {
+  let total = 0;
+  let found = false;
+
+  for (const sample of samples) {
+    const value = sample.snapshot.gauges[key];
+
+    if (value !== undefined) {
+      total += value;
+      found = true;
+    }
+  }
+
+  return found ? total : undefined;
 }
 
 function percentile(values: readonly number[], percentileRank: number): number {
