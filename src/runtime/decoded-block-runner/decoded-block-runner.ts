@@ -1,4 +1,4 @@
-import type { BlockTerminator } from "../../arch/x86/block-decoder/decode-block.js";
+import type { BlockTerminator, DecodedBlock } from "../../arch/x86/block-decoder/decode-block.js";
 import type { DecodeReader } from "../../arch/x86/block-decoder/decode-reader.js";
 import { runResultFromState, StopReason, type RunResult } from "../../core/execution/run-result.js";
 import type { GuestMemory } from "../../core/memory/guest-memory.js";
@@ -15,6 +15,16 @@ export type ProfileCounters = Readonly<{
 export type DecodedBlockRunnerOptions = Readonly<{
   instructionLimit?: number;
   memory?: GuestMemory;
+}>;
+
+export type DecodedBlockRunOptions = Readonly<{
+  instructionLimit: number;
+  memory?: GuestMemory;
+}>;
+
+export type DecodedBlockRun = Readonly<{
+  result: RunResult;
+  instructionsExecuted: number;
 }>;
 
 const defaultInstructionLimit = 10_000;
@@ -45,43 +55,66 @@ export class DecodedBlockRunner {
     while (executed < instructionLimit) {
       const currentEip = u32(state.eip);
       const block = this.cache.getOrDecode(currentEip);
+      const blockRun = this.runBlock(state, block, blockRunOptions(options, instructionLimit - executed));
 
-      increment(this.#blockHits, currentEip);
+      executed += blockRun.instructionsExecuted;
+      result = blockRun.result;
 
-      for (const instruction of block.instructions) {
-        if (executed >= instructionLimit) {
-          return stopWithInstructionLimit(state);
-        }
-
-        result =
-          options.memory === undefined
-            ? executeInstruction(state, instruction)
-            : executeInstruction(state, instruction, { memory: options.memory });
-        executed += 1;
-        this.#instructionsExecuted += 1;
-
-        if (result.stopReason !== StopReason.NONE) {
-          return result;
-        }
-      }
-
-      const terminatorResult = stopAtMetadataTerminator(state, block.terminator);
-
-      if (terminatorResult !== undefined) {
-        return terminatorResult;
-      }
-
-      const nextKey = nextExecutableBlockKey(this.cache.decodeReader, state.eip);
-
-      if (nextKey === undefined) {
+      if (result.stopReason !== StopReason.NONE) {
         return result;
       }
 
-      incrementEdge(this.#edgeHits, currentEip, nextKey);
+      const nextEip = u32(state.eip);
+      if (this.cache.decodeReader.regionAt(nextEip) === undefined) {
+        return result;
+      }
+
+      this.recordEdge(currentEip, nextEip);
     }
 
     return stopWithInstructionLimit(state);
   }
+
+  runBlock(state: CpuState, block: DecodedBlock, options: DecodedBlockRunOptions): DecodedBlockRun {
+    let executed = 0;
+    let result = runResultFromState(state, StopReason.NONE);
+
+    increment(this.#blockHits, block.startEip);
+
+    for (const instruction of block.instructions) {
+      if (executed >= options.instructionLimit) {
+        return { result: stopWithInstructionLimit(state), instructionsExecuted: executed };
+      }
+
+      result =
+        options.memory === undefined
+          ? executeInstruction(state, instruction)
+          : executeInstruction(state, instruction, { memory: options.memory });
+      executed += 1;
+      this.#instructionsExecuted += 1;
+
+      if (result.stopReason !== StopReason.NONE) {
+        return { result, instructionsExecuted: executed };
+      }
+    }
+
+    const terminatorResult = stopAtMetadataTerminator(state, block.terminator);
+
+    return {
+      result: terminatorResult ?? result,
+      instructionsExecuted: executed
+    };
+  }
+
+  recordEdge(from: DecodedBlockKey, to: DecodedBlockKey): void {
+    incrementEdge(this.#edgeHits, from, to);
+  }
+}
+
+function blockRunOptions(options: DecodedBlockRunnerOptions, instructionLimit: number): DecodedBlockRunOptions {
+  return options.memory === undefined
+    ? { instructionLimit }
+    : { instructionLimit, memory: options.memory };
 }
 
 function stopAtMetadataTerminator(state: CpuState, terminator: BlockTerminator): RunResult | undefined {
@@ -102,12 +135,6 @@ function stopAtMetadataTerminator(state: CpuState, terminator: BlockTerminator):
     default:
       return undefined;
   }
-}
-
-function nextExecutableBlockKey(decodeReader: DecodeReader, eip: number): DecodedBlockKey | undefined {
-  const region = decodeReader.regionAt(eip);
-
-  return region === undefined ? undefined : u32(eip);
 }
 
 function stopWithInstructionLimit(state: CpuState): RunResult {
