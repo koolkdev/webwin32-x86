@@ -46,35 +46,65 @@ export function compileBlock(instructions: readonly DecodedInstruction[]): Uint8
 function emitInstruction(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
   switch (instruction.mnemonic) {
     case "mov":
-      emitMovR32Imm32(body, instruction);
+      emitMov(body, instruction);
       return;
     default:
       throw new Error(`unsupported instruction for Wasm codegen: ${instruction.mnemonic}`);
   }
 }
 
-function emitMovR32Imm32(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
+function emitMov(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
   const destination = instruction.operands[0];
   const source = instruction.operands[1];
 
-  if (destination?.kind !== "reg32" || source?.kind !== "imm32") {
+  if (destination?.kind !== "reg32") {
     throw new Error("unsupported mov form for Wasm codegen");
   }
 
-  emitStoreStateU32(body, reg32StateOffset(destination.reg), source.value);
-  emitStoreStateU32(body, stateOffset.eip, instructionEnd(instruction));
+  switch (source?.kind) {
+    case "imm32":
+      emitStoreStateConstU32(body, reg32StateOffset(destination.reg), source.value);
+      break;
+    case "reg32":
+      body.localGet(0);
+      emitLoadStateU32(body, reg32StateOffset(source.reg));
+      emitStoreStateStackU32(body, reg32StateOffset(destination.reg));
+      break;
+    default:
+      throw new Error("unsupported mov form for Wasm codegen");
+  }
+
+  emitCompleteInstruction(body, instruction);
+}
+
+function emitCompleteInstruction(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
+  emitStoreStateConstU32(body, stateOffset.eip, instructionEnd(instruction));
   emitIncrementInstructionCount(body);
 }
 
-function emitStoreStateU32(body: WasmFunctionBodyEncoder, offset: number, value: number): void {
+function emitStoreStateConstU32(body: WasmFunctionBodyEncoder, offset: number, value: number): void {
   body
     .localGet(0)
-    .i32Const(i32(value))
-    .i32Store({
+    .i32Const(i32(value));
+  emitStoreStateStackU32(body, offset);
+}
+
+function emitLoadStateU32(body: WasmFunctionBodyEncoder, offset: number): void {
+  body
+    .localGet(0)
+    .i32Load({
       align: u32Align,
       memoryIndex: wasmMemoryIndex.state,
       offset
     });
+}
+
+function emitStoreStateStackU32(body: WasmFunctionBodyEncoder, offset: number): void {
+  body.i32Store({
+    align: u32Align,
+    memoryIndex: wasmMemoryIndex.state,
+    offset
+  });
 }
 
 function emitIncrementInstructionCount(body: WasmFunctionBodyEncoder): void {
