@@ -8,3 +8,10 @@ export function emitExitResult(
 ): WasmFunctionBodyEncoder {
   return body.i64Const(encodeExit(exitReason, payload));
 }
+
+export function emitExitResultFromStackPayload(
+  body: WasmFunctionBodyEncoder,
+  exitReason: ExitReason
+): WasmFunctionBodyEncoder {
+  return body.i64ExtendI32U().i64Const(encodeExit(exitReason, 0)).i64Or();
+}

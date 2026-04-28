@@ -81,6 +81,11 @@ export class WasmFunctionBodyEncoder {
     return this;
   }
 
+  returnFromFunction(): this {
+    this.#writeInstruction(wasmOpcode.return);
+    return this;
+  }
+
   i32Const(value: number): this {
     this.#writeInstruction(wasmOpcode.i32Const);
     this.#instructions.writeBytes(encodeI32Leb128(value));
@@ -147,6 +152,22 @@ export class WasmFunctionBodyEncoder {
   i32Store(immediate: WasmMemoryImmediate): this {
     this.#writeInstruction(wasmOpcode.i32Store);
     this.#instructions.writeBytes(encodeMemoryImmediate(immediate));
+    return this;
+  }
+
+  memorySize(memoryIndex: number): this {
+    this.#writeInstruction(wasmOpcode.memorySize);
+    this.#instructions.writeU32(memoryIndex);
+    return this;
+  }
+
+  i64Or(): this {
+    this.#writeInstruction(wasmOpcode.i64Or);
+    return this;
+  }
+
+  i64ExtendI32U(): this {
+    this.#writeInstruction(wasmOpcode.i64ExtendI32U);
     return this;
   }
 

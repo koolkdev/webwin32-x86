@@ -15,17 +15,24 @@ export type StateSlot = keyof typeof stateOffset;
 export type CompiledBlockResult = Readonly<{
   module: WebAssembly.Module;
   stateView: DataView;
+  guestView: DataView;
   exit: DecodedExit;
+}>;
+
+export type RunCompiledBlockOptions = Readonly<{
+  guest?: WebAssembly.Memory;
 }>;
 
 export async function runCompiledBlock(
   bytes: readonly number[],
-  initialState: CpuState = createCpuState({ eip: startAddress })
+  initialState: CpuState = createCpuState({ eip: startAddress }),
+  options: RunCompiledBlockOptions = {}
 ): Promise<CompiledBlockResult> {
   const module = await WebAssembly.compile(compileBlock(decodeBytes(bytes)));
   const state = new WebAssembly.Memory({ initial: 1 });
-  const guest = new WebAssembly.Memory({ initial: 1 });
+  const guest = options.guest ?? new WebAssembly.Memory({ initial: 1 });
   const stateView = new DataView(state.buffer);
+  const guestView = new DataView(guest.buffer);
 
   writeState(stateView, initialState);
 
@@ -45,6 +52,7 @@ export async function runCompiledBlock(
   return {
     module,
     stateView,
+    guestView,
     exit: decodeExit(encodedExit)
   };
 }
