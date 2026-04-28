@@ -1,8 +1,13 @@
 import type { DecodedInstruction, Operand } from "../arch/x86/instruction/types.js";
 import type { RunResult } from "../core/execution/run-result.js";
-import type { GuestMemory } from "../core/memory/guest-memory.js";
+import type { GuestMemory, MemoryFault } from "../core/memory/guest-memory.js";
 import { type CpuState, getReg32, setReg32, u32 } from "../core/state/cpu-state.js";
 import { runMutation, type MutationResult } from "./mutation.js";
+
+export type StackReadResult =
+  | Readonly<{ kind: "value"; value: number; nextEsp: number }>
+  | Readonly<{ kind: "unsupported" }>
+  | Readonly<{ kind: "memoryFault"; fault: MemoryFault }>;
 
 export function executePush(
   state: CpuState,
@@ -20,18 +25,12 @@ export function executePop(
   return runMutation(state, instruction, () => popValue(state, instruction.operands[0], memory));
 }
 
-function pushValue(
+export function pushStackU32(
   state: CpuState,
-  operand: Operand | undefined,
-  memory: GuestMemory | undefined
+  memory: GuestMemory | undefined,
+  value: number
 ): MutationResult {
   if (memory === undefined) {
-    return { kind: "unsupported" };
-  }
-
-  const value = pushOperandValue(state, operand);
-
-  if (value === undefined) {
     return { kind: "unsupported" };
   }
 
@@ -47,12 +46,11 @@ function pushValue(
   return { kind: "ok" };
 }
 
-function popValue(
+export function readStackU32(
   state: CpuState,
-  operand: Operand | undefined,
   memory: GuestMemory | undefined
-): MutationResult {
-  if (memory === undefined || operand?.kind !== "reg32") {
+): StackReadResult {
+  if (memory === undefined) {
     return { kind: "unsupported" };
   }
 
@@ -62,8 +60,44 @@ function popValue(
     return { kind: "memoryFault", fault: read.fault };
   }
 
+  return { kind: "value", value: read.value, nextEsp: u32(state.esp + 4) };
+}
+
+function pushValue(
+  state: CpuState,
+  operand: Operand | undefined,
+  memory: GuestMemory | undefined
+): MutationResult {
+  if (memory === undefined) {
+    return { kind: "unsupported" };
+  }
+
+  const value = pushOperandValue(state, operand);
+
+  if (value === undefined) {
+    return { kind: "unsupported" };
+  }
+
+  return pushStackU32(state, memory, value);
+}
+
+function popValue(
+  state: CpuState,
+  operand: Operand | undefined,
+  memory: GuestMemory | undefined
+): MutationResult {
+  if (memory === undefined || operand?.kind !== "reg32") {
+    return { kind: "unsupported" };
+  }
+
+  const read = readStackU32(state, memory);
+
+  if (read.kind !== "value") {
+    return read;
+  }
+
   setReg32(state, operand.reg, read.value);
-  state.esp = u32(state.esp + 4);
+  state.esp = read.nextEsp;
 
   return { kind: "ok" };
 }

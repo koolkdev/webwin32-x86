@@ -10,6 +10,10 @@ import {
   executeXor
 } from "./alu.js";
 import {
+  executeCall,
+  executeRet
+} from "./call-return.js";
+import {
   executeInt,
   executeJcc,
   executeJmp,
@@ -67,7 +71,9 @@ export function executeInstruction(
     case "pop":
       return executePop(state, instruction, options.memory);
     case "call":
+      return executeCall(state, instruction, options.memory);
     case "ret":
+      return executeRet(state, instruction, options.memory);
     case "unsupported":
       return executeUnsupported(state, instruction);
   }
