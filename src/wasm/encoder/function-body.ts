@@ -84,6 +84,12 @@ export class WasmFunctionBodyEncoder {
     return this;
   }
 
+  callFunction(functionIndex: number): this {
+    this.#writeInstruction(wasmOpcode.call);
+    this.#instructions.writeU32(functionIndex);
+    return this;
+  }
+
   i32Const(value: number): this {
     this.#writeInstruction(wasmOpcode.i32Const);
     this.#instructions.writeBytes(encodeI32Leb128(value));

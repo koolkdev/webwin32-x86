@@ -13,6 +13,7 @@ export const wasmMagic = [0x00, 0x61, 0x73, 0x6d] as const;
 
 export const wasmOpcode = {
   if: 0x04,
+  call: 0x10,
   return: 0x0f,
   localGet: 0x20,
   localSet: 0x21,
