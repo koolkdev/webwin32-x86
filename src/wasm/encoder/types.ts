@@ -9,11 +9,21 @@ export const wasmMagic = [0x00, 0x61, 0x73, 0x6d] as const;
 
 export const wasmOpcode = {
   localGet: 0x20,
+  localSet: 0x21,
+  localTee: 0x22,
   i32Load: 0x28,
   i32Store: 0x36,
+  i32Eqz: 0x45,
+  i32LtU: 0x49,
   i32Const: 0x41,
   i64Const: 0x42,
+  i32Popcnt: 0x69,
   i32Add: 0x6a,
+  i32Sub: 0x6b,
+  i32And: 0x71,
+  i32Or: 0x72,
+  i32Xor: 0x73,
+  i32Shl: 0x74,
   end: 0x0b
 } as const;
 

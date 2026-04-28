@@ -65,7 +65,17 @@ export async function runCompiledBlock(
 }
 
 export function decodeBytes(bytes: readonly number[]): DecodedInstruction[] {
-  return [decodeOne(Uint8Array.from(bytes), 0, startAddress)];
+  const code = Uint8Array.from(bytes);
+  const instructions: DecodedInstruction[] = [];
+  let offset = 0;
+
+  while (offset < code.length) {
+    const instruction = decodeOne(code, offset, startAddress + offset);
+    instructions.push(instruction);
+    offset += instruction.length;
+  }
+
+  return instructions;
 }
 
 export function writeState(view: DataView, state: CpuState): void {
