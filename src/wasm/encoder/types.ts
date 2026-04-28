@@ -13,6 +13,7 @@ export const wasmOpcode = {
   i32Store: 0x36,
   i32Const: 0x41,
   i64Const: 0x42,
+  i32Add: 0x6a,
   end: 0x0b
 } as const;
 
