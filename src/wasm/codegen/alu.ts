@@ -5,7 +5,8 @@ import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { emitCompleteInstruction, emitLoadStateU32, emitStoreStateStackU32 } from "./state.js";
 
-type AluMnemonic = Extract<DecodedInstruction["mnemonic"], "add" | "sub" | "xor">;
+type AluMnemonic = Extract<DecodedInstruction["mnemonic"], "add" | "sub" | "xor" | "cmp" | "test">;
+type FlagOperation = "add" | "sub" | "logical";
 
 type AluLocals = Readonly<{
   left: number;
@@ -22,17 +23,17 @@ const sfBit = 7;
 const zfBit = 6;
 const ofBit = 11;
 
-export function emitRegisterAlu(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
+export function emitAlu(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
   const mnemonic = instruction.mnemonic;
 
-  if (mnemonic !== "add" && mnemonic !== "sub" && mnemonic !== "xor") {
+  if (!isAluMnemonic(mnemonic)) {
     throw new Error(`unsupported ALU instruction for Wasm codegen: ${mnemonic}`);
   }
 
   const destination = instruction.operands[0];
   const source = instruction.operands[1];
 
-  if (destination?.kind !== "reg32" || source?.kind !== "reg32") {
+  if (destination?.kind !== "reg32") {
     throw new Error("unsupported ALU form for Wasm codegen");
   }
 
@@ -40,15 +41,23 @@ export function emitRegisterAlu(body: WasmFunctionBodyEncoder, instruction: Deco
 
   emitLoadStateU32(body, reg32StateOffset(destination.reg));
   body.localSet(locals.left);
-  emitLoadStateU32(body, reg32StateOffset(source.reg));
+  emitSourceValue(body, instruction);
   body.localSet(locals.right);
 
-  body.localGet(0);
-  emitAluResult(body, mnemonic, locals);
-  body.localTee(locals.result);
-  emitStoreStateStackU32(body, reg32StateOffset(destination.reg));
+  if (writesDestination(mnemonic)) {
+    body.localGet(0);
+  }
 
-  emitAluFlags(body, mnemonic, locals);
+  emitAluResult(body, mnemonic, locals);
+
+  if (writesDestination(mnemonic)) {
+    body.localTee(locals.result);
+    emitStoreStateStackU32(body, reg32StateOffset(destination.reg));
+  } else {
+    body.localSet(locals.result);
+  }
+
+  emitAluFlags(body, flagOperation(mnemonic), locals);
   emitCompleteInstruction(body, instruction);
 }
 
@@ -61,6 +70,30 @@ function addAluLocals(body: WasmFunctionBodyEncoder): AluLocals {
   };
 }
 
+function emitSourceValue(body: WasmFunctionBodyEncoder, instruction: DecodedInstruction): void {
+  const source = instruction.operands[1];
+
+  switch (source?.kind) {
+    case "reg32":
+      emitLoadStateU32(body, reg32StateOffset(source.reg));
+      return;
+    case "imm32":
+      if (instruction.mnemonic === "add" || instruction.mnemonic === "sub" || instruction.mnemonic === "cmp") {
+        body.i32Const(i32(source.value));
+        return;
+      }
+      break;
+    case "imm8":
+      if (instruction.mnemonic === "add" || instruction.mnemonic === "sub" || instruction.mnemonic === "cmp") {
+        body.i32Const(i32(source.signedValue));
+        return;
+      }
+      break;
+  }
+
+  throw new Error("unsupported ALU form for Wasm codegen");
+}
+
 function emitAluResult(body: WasmFunctionBodyEncoder, mnemonic: AluMnemonic, locals: AluLocals): void {
   body.localGet(locals.left).localGet(locals.right);
 
@@ -69,27 +102,31 @@ function emitAluResult(body: WasmFunctionBodyEncoder, mnemonic: AluMnemonic, loc
       body.i32Add();
       return;
     case "sub":
+    case "cmp":
       body.i32Sub();
       return;
     case "xor":
       body.i32Xor();
       return;
+    case "test":
+      body.i32And();
+      return;
   }
 }
 
-function emitAluFlags(body: WasmFunctionBodyEncoder, mnemonic: AluMnemonic, locals: AluLocals): void {
+function emitAluFlags(body: WasmFunctionBodyEncoder, operation: FlagOperation, locals: AluLocals): void {
   body.i32Const(0).localSet(locals.flags);
 
   emitResultFlags(body, locals);
 
-  switch (mnemonic) {
+  switch (operation) {
     case "add":
       emitAddFlags(body, locals);
       break;
     case "sub":
       emitSubFlags(body, locals);
       break;
-    case "xor":
+    case "logical":
       break;
   }
 
@@ -204,4 +241,25 @@ function emitWriteFlags(body: WasmFunctionBodyEncoder, flags: number): void {
   emitLoadStateU32(body, stateOffset.eflags);
   body.i32Const(i32(~supportedEflagsMask)).i32And().localGet(flags).i32Or();
   emitStoreStateStackU32(body, stateOffset.eflags);
+}
+
+function isAluMnemonic(mnemonic: DecodedInstruction["mnemonic"]): mnemonic is AluMnemonic {
+  return mnemonic === "add" || mnemonic === "sub" || mnemonic === "xor" || mnemonic === "cmp" || mnemonic === "test";
+}
+
+function writesDestination(mnemonic: AluMnemonic): boolean {
+  return mnemonic === "add" || mnemonic === "sub" || mnemonic === "xor";
+}
+
+function flagOperation(mnemonic: AluMnemonic): FlagOperation {
+  switch (mnemonic) {
+    case "add":
+      return "add";
+    case "sub":
+    case "cmp":
+      return "sub";
+    case "xor":
+    case "test":
+      return "logical";
+  }
 }

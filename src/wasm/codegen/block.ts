@@ -5,7 +5,7 @@ import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
-import { emitRegisterAlu } from "./alu.js";
+import { emitAlu } from "./alu.js";
 import { emitExitResult } from "./exit.js";
 import { emitMov } from "./mov.js";
 
@@ -50,7 +50,9 @@ function emitInstruction(body: WasmFunctionBodyEncoder, instruction: DecodedInst
     case "add":
     case "sub":
     case "xor":
-      emitRegisterAlu(body, instruction);
+    case "cmp":
+    case "test":
+      emitAlu(body, instruction);
       return;
     default:
       throw new Error(`unsupported instruction for Wasm codegen: ${instruction.mnemonic}`);
