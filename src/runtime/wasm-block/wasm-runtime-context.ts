@@ -45,6 +45,7 @@ export class WasmRuntimeContext {
 
 export class WasmBlockCache {
   readonly #blocksByKey = new Map<DecodedBlockKey, WasmBlockHandle>();
+  readonly #unsupportedKeys = new Set<DecodedBlockKey>();
   #hits = 0;
   #misses = 0;
   #inserts = 0;
@@ -66,6 +67,7 @@ export class WasmBlockCache {
 
   clear(): void {
     this.#blocksByKey.clear();
+    this.#unsupportedKeys.clear();
   }
 
   getOrCompile(block: DecodedBlock): WasmBlockHandle | undefined {
@@ -75,6 +77,12 @@ export class WasmBlockCache {
     if (cached !== undefined) {
       this.#hits += 1;
       return cached;
+    }
+
+    if (this.#unsupportedKeys.has(blockKey)) {
+      this.#hits += 1;
+      this.#unsupportedCodegenFallbacks += 1;
+      return undefined;
     }
 
     this.#misses += 1;
@@ -91,6 +99,7 @@ export class WasmBlockCache {
       return compiled;
     } catch (error: unknown) {
       if (error instanceof UnsupportedWasmCodegenError) {
+        this.#unsupportedKeys.add(blockKey);
         this.#unsupportedCodegenFallbacks += 1;
         return undefined;
       }

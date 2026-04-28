@@ -115,7 +115,7 @@ test("wasm_block_cache_clear_forces_recompile", () => {
   strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 2);
 });
 
-test("unsupported_codegen_not_cached_as_success", () => {
+test("unsupported_codegen_is_cached_as_fallback", () => {
   const runtime = runRuntime(unsupportedCodegenFixture, TierMode.T2_ONLY, {
     eax: 0x1234_5678,
     esp: 0x40
@@ -125,8 +125,8 @@ test("unsupported_codegen_not_cached_as_success", () => {
 
   runtime.instance.run({ entryEip: startAddress });
 
-  strictEqual(runtime.instance.counters.wasmBlockCache.hits, 0);
-  strictEqual(runtime.instance.counters.wasmBlockCache.misses, 2);
+  strictEqual(runtime.instance.counters.wasmBlockCache.hits, 1);
+  strictEqual(runtime.instance.counters.wasmBlockCache.misses, 1);
   strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 0);
   strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 2);
 });
