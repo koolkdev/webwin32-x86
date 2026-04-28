@@ -74,7 +74,7 @@ test("jit_guest_load_oob_fault_atomic", async () => {
   );
 
   deepStrictEqual(result.exit, {
-    exitReason: ExitReason.MEMORY_FAULT,
+    exitReason: ExitReason.MEMORY_READ_FAULT,
     payload: 0x1_0000
   });
   assertStateEquals(result.stateView, initialState);
@@ -100,7 +100,7 @@ test("jit_guest_store_oob_fault_atomic", async () => {
   );
 
   deepStrictEqual(result.exit, {
-    exitReason: ExitReason.MEMORY_FAULT,
+    exitReason: ExitReason.MEMORY_WRITE_FAULT,
     payload: 0xfffe
   });
   assertStateEquals(result.stateView, initialState);

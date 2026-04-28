@@ -29,8 +29,13 @@ const fixtures: readonly ExitFixture[] = [
     payload: 0x1000
   },
   {
-    name: "memory_fault_exit_decodes",
-    exitReason: ExitReason.MEMORY_FAULT,
+    name: "memory_read_fault_exit_decodes",
+    exitReason: ExitReason.MEMORY_READ_FAULT,
+    payload: 0x3e
+  },
+  {
+    name: "memory_write_fault_exit_decodes",
+    exitReason: ExitReason.MEMORY_WRITE_FAULT,
     payload: 0x3e
   },
   {

@@ -16,15 +16,12 @@ const supportedJumpFixture = [
 ] as const;
 
 const unsupportedCodegenFixture = [
-  0x50,
-  0x5b,
+  0xe8, 0x00, 0x00, 0x00, 0x00,
   0xcd, 0x2e
 ] as const;
 
 const unsupportedThenSupportedFixture = [
-  0x50,
-  0x5b,
-  0xeb, 0x00,
+  0xe8, 0x00, 0x00, 0x00, 0x00,
   0xb8, 0x01, 0x00, 0x00, 0x00,
   0x81, 0xc0, 0x02, 0x00, 0x00, 0x00,
   0xeb, 0x00
@@ -60,9 +57,11 @@ test("unsupported_codegen_falls_back_to_t1", () => {
   });
 
   strictEqual(runtime.result.stopReason, StopReason.HOST_TRAP);
-  strictEqual(runtime.instance.state.ebx, 0x1234_5678);
-  strictEqual(runtime.instance.counters.profile.instructionsExecuted, 3);
-  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 0);
+  strictEqual(runtime.instance.state.eip, startAddress + 7);
+  strictEqual(runtime.instance.state.esp, 0x3c);
+  strictEqual(runtime.instance.state.instructionCount, 2);
+  strictEqual(runtime.instance.counters.profile.instructionsExecuted, 1);
+  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 1);
   strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 1);
 });
 
@@ -84,9 +83,9 @@ test("unsupported_codegen_fallback_is_single_block", () => {
 
   strictEqual(runtime.result.stopReason, StopReason.NONE);
   strictEqual(runtime.instance.state.eax, 3);
-  strictEqual(runtime.instance.state.ebx, 0x1234_5678);
-  strictEqual(runtime.instance.state.instructionCount, 6);
-  strictEqual(runtime.instance.counters.profile.instructionsExecuted, 3);
+  strictEqual(runtime.instance.state.esp, 0x3c);
+  strictEqual(runtime.instance.state.instructionCount, 4);
+  strictEqual(runtime.instance.counters.profile.instructionsExecuted, 1);
   strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 1);
   strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 1);
 });
@@ -125,9 +124,9 @@ test("unsupported_codegen_is_cached_as_fallback", () => {
 
   runtime.instance.run({ entryEip: startAddress });
 
-  strictEqual(runtime.instance.counters.wasmBlockCache.hits, 1);
-  strictEqual(runtime.instance.counters.wasmBlockCache.misses, 1);
-  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 0);
+  strictEqual(runtime.instance.counters.wasmBlockCache.hits, 2);
+  strictEqual(runtime.instance.counters.wasmBlockCache.misses, 2);
+  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 1);
   strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 2);
 });
 

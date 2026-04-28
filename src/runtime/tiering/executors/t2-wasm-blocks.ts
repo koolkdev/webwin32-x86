@@ -82,13 +82,10 @@ function runResultFromWasmExit(state: RuntimeTierExecutionContext["state"], exit
         faultAddress: exit.payload,
         faultOperation: "execute"
       });
-    case ExitReason.MEMORY_FAULT:
-      state.stopReason = StopReason.MEMORY_FAULT;
-      return runResultFromState(state, StopReason.MEMORY_FAULT, {
-        faultAddress: exit.payload,
-        faultSize: 4,
-        faultOperation: "read"
-      });
+    case ExitReason.MEMORY_READ_FAULT:
+      return stopWithMemoryFault(state, exit, "read");
+    case ExitReason.MEMORY_WRITE_FAULT:
+      return stopWithMemoryFault(state, exit, "write");
     case ExitReason.INSTRUCTION_LIMIT:
       state.stopReason = StopReason.INSTRUCTION_LIMIT;
       return runResultFromState(state, StopReason.INSTRUCTION_LIMIT);
@@ -100,4 +97,17 @@ function unsupportedDetails(byte: number): RunResultDetails {
     unsupportedByte: byte & 0xff,
     unsupportedReason: "unsupportedOpcode"
   };
+}
+
+function stopWithMemoryFault(
+  state: RuntimeTierExecutionContext["state"],
+  exit: DecodedExit,
+  faultOperation: "read" | "write"
+): RunResult {
+  state.stopReason = StopReason.MEMORY_FAULT;
+  return runResultFromState(state, StopReason.MEMORY_FAULT, {
+    faultAddress: exit.payload,
+    faultSize: 4,
+    faultOperation
+  });
 }

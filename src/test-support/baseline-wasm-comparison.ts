@@ -259,12 +259,10 @@ function runResultFromExit(state: CpuState, exit: DecodedExit): RunResult {
         faultAddress: exit.payload,
         faultOperation: "execute"
       });
-    case ExitReason.MEMORY_FAULT:
-      state.stopReason = StopReason.MEMORY_FAULT;
-      return runResultFromState(state, StopReason.MEMORY_FAULT, {
-        faultAddress: exit.payload,
-        faultSize: 4
-      });
+    case ExitReason.MEMORY_READ_FAULT:
+      return stopWithMemoryFault(state, exit, "read");
+    case ExitReason.MEMORY_WRITE_FAULT:
+      return stopWithMemoryFault(state, exit, "write");
     case ExitReason.INSTRUCTION_LIMIT:
       state.stopReason = StopReason.INSTRUCTION_LIMIT;
       return runResultFromState(state, StopReason.INSTRUCTION_LIMIT);
@@ -276,6 +274,15 @@ function unsupportedDetails(byte: number): RunResultDetails {
     unsupportedByte: byte & 0xff,
     unsupportedReason: "unsupportedOpcode"
   };
+}
+
+function stopWithMemoryFault(state: CpuState, exit: DecodedExit, faultOperation: "read" | "write"): RunResult {
+  state.stopReason = StopReason.MEMORY_FAULT;
+  return runResultFromState(state, StopReason.MEMORY_FAULT, {
+    faultAddress: exit.payload,
+    faultSize: 4,
+    faultOperation
+  });
 }
 
 function isControlFlowExit(exit: DecodedExit): boolean {
@@ -362,7 +369,8 @@ function exitCountKey(exitReason: ExitReason): keyof BaselineWasmComparisonExitC
       return "unsupported";
     case ExitReason.DECODE_FAULT:
       return "decodeFault";
-    case ExitReason.MEMORY_FAULT:
+    case ExitReason.MEMORY_READ_FAULT:
+    case ExitReason.MEMORY_WRITE_FAULT:
       return "memoryFault";
     case ExitReason.INSTRUCTION_LIMIT:
       return "instructionLimit";

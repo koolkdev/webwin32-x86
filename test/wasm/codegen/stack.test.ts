@@ -5,7 +5,7 @@ import { StopReason, type RunResult } from "../../../src/core/execution/run-resu
 import { ArrayBufferGuestMemory, type GuestMemory } from "../../../src/core/memory/guest-memory.js";
 import { cloneCpuState, cpuStatesEqual, createCpuState, type CpuState } from "../../../src/core/state/cpu-state.js";
 import { runInstructionInterpreter } from "../../../src/interp/interpreter.js";
-import { readGuestBytes, writeGuestU32 } from "../../../src/test-support/guest-memory.js";
+import { readGuestBytes } from "../../../src/test-support/guest-memory.js";
 import {
   compileAndRunBlock,
   decodeBytes,
@@ -17,75 +17,58 @@ import {
 } from "../../../src/test-support/wasm-codegen.js";
 import { ExitReason } from "../../../src/wasm/exit.js";
 
-test("jit_memory_alu_load_matches_interpreter", async () => {
+test("jit_push_pop_reg_matches_interpreter", async () => {
   const run = await runBoth(
-    [0x03, 0x05, 0x20, 0x00, 0x00, 0x00],
-    createCpuState({ eax: 0xffff_ffff, eflags: 0xffff_0000, eip: startAddress }),
-    { memoryWrites: [{ address: 0x20, value: 1 }] }
+    [0x50, 0x5b],
+    createCpuState({ eax: 0x1234_5678, esp: 0x40, eip: startAddress })
   );
 
   assertStateMatchesInterpreter(run);
+  assertMemoryRangeMatchesInterpreter(run, 0x3c, 4);
 });
 
-test("jit_memory_alu_store_matches_interpreter", async () => {
+test("jit_push_imm_matches_interpreter", async () => {
   const run = await runBoth(
-    [0x01, 0x18],
-    createCpuState({ eax: 0x20, ebx: 2, eflags: 0xffff_0000, eip: startAddress }),
-    { memoryWrites: [{ address: 0x20, value: 1 }] }
+    [0x68, 0x44, 0x33, 0x22, 0x11, 0x6a, 0xff],
+    createCpuState({ esp: 0x40, eip: startAddress })
   );
 
   assertStateMatchesInterpreter(run);
-  assertMemoryRangeMatchesInterpreter(run, 0x20, 4);
+  assertMemoryRangeMatchesInterpreter(run, 0x38, 8);
 });
 
-test("jit_memory_cmp_test_matches_interpreter", async () => {
-  const run = await runBoth(
-    [
-      0x39, 0x05, 0x20, 0x00, 0x00, 0x00,
-      0x85, 0x1d, 0x24, 0x00, 0x00, 0x00
-    ],
-    createCpuState({ eax: 5, ebx: 0x0f, eflags: 0xffff_0000, eip: startAddress }),
-    {
-      memoryWrites: [
-        { address: 0x20, value: 5 },
-        { address: 0x24, value: 0xf0 }
-      ]
-    }
-  );
-
-  assertStateMatchesInterpreter(run);
-  assertMemoryRangeMatchesInterpreter(run, 0x20, 8);
-});
-
-test("jit_memory_alu_imm8_matches_interpreter", async () => {
-  const run = await runBoth(
-    [0x83, 0x05, 0x20, 0x00, 0x00, 0x00, 0xff],
-    createCpuState({ eflags: 0xffff_0000, eip: startAddress }),
-    { memoryWrites: [{ address: 0x20, value: 3 }] }
-  );
-
-  assertStateMatchesInterpreter(run);
-  assertMemoryRangeMatchesInterpreter(run, 0x20, 4);
-});
-
-test("jit_memory_alu_fault_atomic", async () => {
+test("jit_pop_fault_atomic", async () => {
   const initialState = createCpuState({
-    eax: 5,
-    eflags: 0x8d5,
+    eax: 0x1234_5678,
+    esp: 0xfffe,
     eip: startAddress,
     instructionCount: 7
   });
-  const run = await runBoth(
-    [0x01, 0x05, 0xfe, 0xff, 0x00, 0x00],
-    initialState,
-    { fillMemory: 0xaa }
-  );
+  const run = await runBoth([0x58], initialState, { fillMemory: 0xaa });
 
   strictEqual(run.interpreterResult.stopReason, StopReason.MEMORY_FAULT);
-  strictEqual(run.interpreterResult.faultAddress, 0xfffe);
   strictEqual(run.interpreterResult.faultOperation, "read");
   deepStrictEqual(run.wasmResult.exit, {
     exitReason: ExitReason.MEMORY_READ_FAULT,
+    payload: 0xfffe
+  });
+  deepStrictEqual(run.wasmState, initialState);
+  deepStrictEqual(readViewBytes(run.wasmResult.guestView, 0xfff8, 8), run.beforeWasmBytes);
+});
+
+test("jit_push_fault_atomic", async () => {
+  const initialState = createCpuState({
+    eax: 0x1234_5678,
+    esp: 0x1_0002,
+    eip: startAddress,
+    instructionCount: 7
+  });
+  const run = await runBoth([0x50], initialState, { fillMemory: 0xaa });
+
+  strictEqual(run.interpreterResult.stopReason, StopReason.MEMORY_FAULT);
+  strictEqual(run.interpreterResult.faultOperation, "write");
+  deepStrictEqual(run.wasmResult.exit, {
+    exitReason: ExitReason.MEMORY_WRITE_FAULT,
     payload: 0xfffe
   });
   deepStrictEqual(run.wasmState, initialState);
@@ -105,11 +88,6 @@ async function runBoth(
   if (options.fillMemory !== undefined) {
     fillViewBytes(wasmView, 0, wasmView.byteLength, options.fillMemory);
     fillMemory(interpreterMemory, options.fillMemory);
-  }
-
-  for (const write of options.memoryWrites ?? []) {
-    wasmView.setUint32(write.address, write.value, true);
-    writeGuestU32(interpreterMemory, write.address, write.value);
   }
 
   const beforeWasmBytes = readViewBytes(wasmView, 0xfff8, 8);
@@ -147,13 +125,7 @@ function fillMemory(memory: GuestMemory, value: number): void {
 }
 
 type RunBothOptions = Readonly<{
-  memoryWrites?: readonly MemoryWrite[];
   fillMemory?: number;
-}>;
-
-type MemoryWrite = Readonly<{
-  address: number;
-  value: number;
 }>;
 
 type RunBothResult = Readonly<{

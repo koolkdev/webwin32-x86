@@ -13,6 +13,7 @@ import { unsupportedWasmCodegen } from "./errors.js";
 import { emitExitResult } from "./exit.js";
 import { emitLea } from "./lea.js";
 import { emitMov } from "./mov.js";
+import { emitPop, emitPush } from "./stack.js";
 import { emitCompleteInstruction } from "./state.js";
 
 export class WasmBlockCompiler {
@@ -83,6 +84,12 @@ function emitInstruction(body: WasmFunctionBodyEncoder, instruction: DecodedInst
       return;
     case "lea":
       emitLea(body, instruction);
+      return;
+    case "push":
+      emitPush(body, instruction);
+      return;
+    case "pop":
+      emitPop(body, instruction);
       return;
     case "add":
     case "sub":
