@@ -11,6 +11,7 @@ export const opcode = {
   testRm32R32: 0x85,
   movRm32R32: 0x89,
   movR32Rm32: 0x8b,
+  leaR32M: 0x8d,
   nop: 0x90,
   jccRel8Base: 0x70,
   jccRel8Last: 0x7f,

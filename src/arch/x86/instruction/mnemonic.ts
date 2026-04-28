@@ -7,6 +7,7 @@ export type Mnemonic =
   | "xor"
   | "cmp"
   | "test"
+  | "lea"
   | "jmp"
   | "jcc"
   | "call"

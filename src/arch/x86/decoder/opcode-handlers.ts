@@ -55,6 +55,7 @@ function buildOpcodeHandlers(): DecodeTable {
   });
   handlers[opcode.movRm32R32] = registerModRmEntry(decodeRm32R32("mov"));
   handlers[opcode.movR32Rm32] = registerModRmEntry(decodeR32Rm32("mov"));
+  handlers[opcode.leaR32M] = registerModRmEntry(decodeR32Rm32("lea", "mem32"));
   handlers[opcode.int] = opcodeEntry(decodeInt);
   handlers[opcode.callRel32] = opcodeEntry(decodeCallRel32);
   handlers[opcode.retNear] = opcodeEntry(decodeRet);
@@ -232,11 +233,11 @@ function decodeRm32R32(mnemonic: Mnemonic): OpcodeHandler {
   };
 }
 
-function decodeR32Rm32(mnemonic: Mnemonic): OpcodeHandler {
+function decodeR32Rm32(mnemonic: Mnemonic, sourceKind?: Operand["kind"]): OpcodeHandler {
   return (context) => {
     const operands = readRm32Operands(context);
 
-    if (operands === undefined) {
+    if (operands === undefined || (sourceKind !== undefined && operands.rm.kind !== sourceKind)) {
       return unsupportedInstruction(context, context.opcodeOffset + 2);
     }
 
