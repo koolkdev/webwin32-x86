@@ -19,11 +19,6 @@ const fixtures: readonly ExitFixture[] = [
     payload: 0xcd
   },
   {
-    name: "host_call_exit_decodes",
-    exitReason: ExitReason.HOST_CALL,
-    payload: 0x401000
-  },
-  {
     name: "unsupported_exit_decodes",
     exitReason: ExitReason.UNSUPPORTED,
     payload: 0x1000

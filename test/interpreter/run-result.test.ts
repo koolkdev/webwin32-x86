@@ -59,21 +59,6 @@ test("instruction_limit_stop_reason", () => {
   strictEqual(runResultMatchesState(result, state), true);
 });
 
-test("host_call_result_shape", () => {
-  const state = createCpuState({ eip: startAddress, instructionCount: 7, stopReason: StopReason.HOST_CALL });
-  const result = runResultFromState(state, StopReason.HOST_CALL, {
-    hostCallId: 42,
-    hostCallName: "test.host"
-  });
-
-  strictEqual(result.stopReason, StopReason.HOST_CALL);
-  strictEqual(result.finalEip, state.eip);
-  strictEqual(result.instructionCount, 7);
-  strictEqual(result.hostCallId, 42);
-  strictEqual(result.hostCallName, "test.host");
-  strictEqual(runResultMatchesState(result, state), true);
-});
-
 function decodeFaultResult(state: CpuState, bytes: readonly number[]): RunResult {
   try {
     decodeOne(Uint8Array.from(bytes), 0, state.eip);

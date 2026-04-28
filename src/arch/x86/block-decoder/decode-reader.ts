@@ -1,22 +1,11 @@
 import type { DecodeFault } from "../decoder/decode-error.js";
 
-export type HostCallId = number;
-export type HostCallConvention = "cdecl" | "stdcall" | "winapi" | "pascal16" | "custom";
-
-export type DecodeRegion =
-  | Readonly<{
-      kind: "guest-bytes";
-      baseAddress: number;
-      bytes: Uint8Array<ArrayBufferLike>;
-      generation?: number;
-    }>
-  | Readonly<{
-      kind: "host-thunk";
-      address: number;
-      name: string;
-      hostCallId: HostCallId;
-      convention: HostCallConvention;
-    }>;
+export type DecodeRegion = Readonly<{
+  kind: "guest-bytes";
+  baseAddress: number;
+  bytes: Uint8Array<ArrayBufferLike>;
+  generation?: number;
+}>;
 
 export type DecodeReader = Readonly<{
   regionAt(eip: number): DecodeRegion | undefined;

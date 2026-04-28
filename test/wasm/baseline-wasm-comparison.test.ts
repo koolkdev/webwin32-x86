@@ -9,9 +9,9 @@ import {
   type BaselineWasmComparisonResult,
   type BaselineWasmComparisonOptions
 } from "../../src/test-support/baseline-wasm-comparison.js";
-import { guestReader, hostThunkRegion, TestDecodeReader } from "../../src/test-support/decode-reader.js";
+import { guestReader } from "../../src/test-support/decode-reader.js";
 import { createGuestMemory, fillViewBytes } from "../../src/test-support/wasm-codegen.js";
-import { hostAddress, startAddress } from "../../src/test-support/x86-code.js";
+import { startAddress } from "../../src/test-support/x86-code.js";
 
 test("baseline_wasm_mov_add_xor", async () => {
   const result = await runBytes(
@@ -107,20 +107,6 @@ test("baseline_wasm_unsupported_falls_back", async () => {
   strictEqual(result.wasm.state.stopReason, StopReason.UNSUPPORTED);
   strictEqual(result.report.compiledBlocks, 0);
   strictEqual(result.report.fallbackBlocks, 1);
-});
-
-test("baseline_wasm_host_call_boundary", async () => {
-  const reader = new TestDecodeReader([hostThunkRegion()]);
-  const result = await assertBaselineWasmMatchesInterpreter(new BaselineWasmComparator(reader), {
-    initialState: createCpuState({ eip: hostAddress, instructionCount: 7 })
-  });
-
-  strictEqual(result.wasm.result.stopReason, StopReason.HOST_CALL);
-  strictEqual(result.wasm.result.hostCallId, 9);
-  strictEqual(result.wasm.result.hostCallName, "test.host");
-  strictEqual(result.wasm.state.instructionCount, 7);
-  strictEqual(result.report.exitCounts.hostCall, 1);
-  strictEqual(reader.sliceReads, 0);
 });
 
 async function runBytes(

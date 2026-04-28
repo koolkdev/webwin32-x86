@@ -3,11 +3,10 @@ import type { CpuState } from "../state/cpu-state.js";
 export const StopReason = {
   NONE: 0,
   HOST_TRAP: 4,
-  HOST_CALL: 5,
-  UNSUPPORTED: 6,
-  DECODE_FAULT: 7,
-  MEMORY_FAULT: 8,
-  INSTRUCTION_LIMIT: 9
+  UNSUPPORTED: 5,
+  DECODE_FAULT: 6,
+  MEMORY_FAULT: 7,
+  INSTRUCTION_LIMIT: 8
 } as const;
 
 export type StopReason = (typeof StopReason)[keyof typeof StopReason];
@@ -30,8 +29,6 @@ export type RunResult = Readonly<{
   faultOperation?: FaultOperation;
   unsupportedByte?: number;
   unsupportedReason?: UnsupportedReason;
-  hostCallId?: number;
-  hostCallName?: string;
 }>;
 
 export type RunResultDetails = Readonly<

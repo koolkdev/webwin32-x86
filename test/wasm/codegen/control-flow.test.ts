@@ -1,7 +1,6 @@
 import { ok, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import type { DecodedBlock } from "../../../src/arch/x86/block-decoder/decode-block.js";
 import {
   cloneCpuState,
   cpuStatesEqual,
@@ -11,14 +10,11 @@ import {
 import { runInstructionInterpreter } from "../../../src/interp/interpreter.js";
 import { ExitReason, type DecodedExit } from "../../../src/wasm/exit.js";
 import {
-  assertStateEquals,
-  compileDecodedWasmBlock,
   decodeBytes,
   compileAndRunBlock,
   readCpuState,
   startAddress
 } from "../../../src/test-support/wasm-codegen.js";
-import { hostAddress } from "../../../src/test-support/x86-code.js";
 
 test("jit_jmp_exit_target", async () => {
   const bytes = [0xeb, 0x03];
@@ -54,16 +50,6 @@ test("jit_cmp_jz_not_taken_exit", async () => {
   ok(cpuStatesEqual(wasmState, interpreterState));
 });
 
-test("jit_host_call_exit_from_metadata", async () => {
-  const initialState = createCpuState({ eax: 0x1234_5678, eip: hostAddress, instructionCount: 7 });
-  const block = await compileDecodedWasmBlock(hostCallBlock());
-  const result = await block.run(initialState);
-
-  strictEqual(result.exit.exitReason, ExitReason.HOST_CALL);
-  strictEqual(result.exit.payload, 9);
-  assertStateEquals(result.stateView, initialState);
-});
-
 async function runBranchFixture(
   bytes: readonly number[],
   initialState: CpuState
@@ -78,19 +64,5 @@ async function runBranchFixture(
     wasmExit: wasmResult.exit,
     wasmState,
     interpreterState
-  };
-}
-
-function hostCallBlock(): DecodedBlock {
-  return {
-    startEip: hostAddress,
-    instructions: [],
-    terminator: {
-      kind: "host-call",
-      eip: hostAddress,
-      hostCallId: 9,
-      name: "test.host",
-      convention: "stdcall"
-    }
   };
 }

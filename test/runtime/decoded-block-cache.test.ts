@@ -2,8 +2,8 @@ import { deepStrictEqual, notStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { DecodedBlockCache } from "../../src/runtime/decoded-block-cache/decoded-block-cache.js";
-import { guestReader, hostThunkRegion, TestDecodeReader } from "../../src/test-support/decode-reader.js";
-import { hostAddress, startAddress } from "../../src/test-support/x86-code.js";
+import { guestReader } from "../../src/test-support/decode-reader.js";
+import { startAddress } from "../../src/test-support/x86-code.js";
 
 test("same_reader_same_eip_decoded_once", () => {
   const reader = guestReader([0x90, 0xc3]);
@@ -52,20 +52,5 @@ test("unsupported_block_cached_as_terminating", () => {
   strictEqual(second, first);
   strictEqual(first.terminator.kind, "unsupported");
   strictEqual(first.terminator.eip, startAddress);
-  deepStrictEqual(cache.counters, { hits: 1, misses: 1 });
-});
-
-test("host_thunk_block_cached_without_fake_bytes", () => {
-  const reader = new TestDecodeReader([hostThunkRegion()]);
-  const cache = new DecodedBlockCache(reader);
-
-  const first = cache.getOrDecode(hostAddress);
-  const second = cache.getOrDecode(hostAddress);
-
-  strictEqual(second, first);
-  strictEqual(first.instructions.length, 0);
-  strictEqual(first.terminator.kind, "host-call");
-  strictEqual(first.terminator.hostCallId, 9);
-  strictEqual(reader.sliceReads, 0);
   deepStrictEqual(cache.counters, { hits: 1, misses: 1 });
 });

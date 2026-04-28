@@ -8,8 +8,8 @@ import { cpuStatesEqual, createCpuState, type CpuState } from "../../src/core/st
 import { DecodedBlockCache } from "../../src/runtime/decoded-block-cache/decoded-block-cache.js";
 import { DecodedBlockRunner } from "../../src/runtime/decoded-block-runner/decoded-block-runner.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
-import { guestReader, hostThunkRegion, TestDecodeReader } from "../../src/test-support/decode-reader.js";
-import { hostAddress, startAddress } from "../../src/test-support/x86-code.js";
+import { guestReader } from "../../src/test-support/decode-reader.js";
+import { startAddress } from "../../src/test-support/x86-code.js";
 
 const movAddFixture = [
   0xb8, 0x01, 0x00, 0x00, 0x00,
@@ -97,23 +97,6 @@ test("runtime_instance_exposes_counters", () => {
   strictEqual(runtime.counters.profile.blockHits.get(startAddress), 3);
   strictEqual(runtime.counters.profile.edgeHits.get(startAddress)?.get(startAddress), 2);
   strictEqual(runtime.counters.profile.edgeHits.get(startAddress)?.get(startAddress + 8), 1);
-});
-
-test("runtime_instance_host_boundary_metadata_available", () => {
-  const reader = new TestDecodeReader([hostThunkRegion()]);
-  const runtime = new RuntimeInstance({
-    decodeReader: reader,
-    initialState: { eip: hostAddress }
-  });
-  const region = runtime.decodeReader.regionAt(hostAddress);
-  const result = runtime.run();
-
-  strictEqual(region?.kind, "host-thunk");
-  strictEqual(region?.name, "test.host");
-  strictEqual(region?.hostCallId, 9);
-  strictEqual(result.stopReason, StopReason.HOST_CALL);
-  strictEqual(result.hostCallName, "test.host");
-  strictEqual(reader.sliceReads, 0);
 });
 
 function runT1(

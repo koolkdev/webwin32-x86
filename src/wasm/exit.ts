@@ -6,11 +6,10 @@ export const ExitReason = {
   BRANCH_TAKEN: 2,
   BRANCH_NOT_TAKEN: 3,
   HOST_TRAP: 4,
-  HOST_CALL: 5,
-  UNSUPPORTED: 6,
-  DECODE_FAULT: 7,
-  MEMORY_FAULT: 8,
-  INSTRUCTION_LIMIT: 9
+  UNSUPPORTED: 5,
+  DECODE_FAULT: 6,
+  MEMORY_FAULT: 7,
+  INSTRUCTION_LIMIT: 8
 } as const;
 
 export type ExitReason = (typeof ExitReason)[keyof typeof ExitReason];

@@ -6,8 +6,8 @@ import { cpuStatesEqual, createCpuState, type CpuState } from "../../src/core/st
 import { DecodedBlockCache } from "../../src/runtime/decoded-block-cache/decoded-block-cache.js";
 import { DecodedBlockRunner } from "../../src/runtime/decoded-block-runner/decoded-block-runner.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
-import { guestReader, hostThunkRegion, TestDecodeReader } from "../../src/test-support/decode-reader.js";
-import { hostAddress, startAddress } from "../../src/test-support/x86-code.js";
+import { guestReader, TestDecodeReader } from "../../src/test-support/decode-reader.js";
+import { startAddress } from "../../src/test-support/x86-code.js";
 
 const branchLoopFixture = [
   0x83, 0xe8, 0x01,
@@ -46,20 +46,6 @@ test("dispatch_loop_respects_instruction_limit", () => {
   strictEqual(result.stopReason, StopReason.INSTRUCTION_LIMIT);
   strictEqual(runtime.state.stopReason, StopReason.INSTRUCTION_LIMIT);
   strictEqual(runtime.state.instructionCount, 4);
-});
-
-test("dispatch_loop_stops_on_host_boundary", () => {
-  const reader = new TestDecodeReader([hostThunkRegion()]);
-  const runtime = new RuntimeInstance({
-    decodeReader: reader,
-    initialState: { eip: hostAddress }
-  });
-  const result = runtime.run();
-
-  strictEqual(result.stopReason, StopReason.HOST_CALL);
-  strictEqual(result.hostCallId, 9);
-  strictEqual(result.hostCallName, "test.host");
-  strictEqual(reader.sliceReads, 0);
 });
 
 test("dispatch_loop_stops_on_decode_fault", () => {

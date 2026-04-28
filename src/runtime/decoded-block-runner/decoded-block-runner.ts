@@ -126,12 +126,6 @@ function stopAtMetadataTerminator(state: CpuState, terminator: BlockTerminator):
         faultSize: terminator.fault.raw.length,
         faultOperation: "execute"
       });
-    case "host-call":
-      state.stopReason = StopReason.HOST_CALL;
-      return runResultFromState(state, StopReason.HOST_CALL, {
-        hostCallId: terminator.hostCallId,
-        hostCallName: terminator.name
-      });
     default:
       return undefined;
   }

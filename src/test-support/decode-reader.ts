@@ -1,6 +1,6 @@
 import type { DecodeReader, DecodeRegion } from "../arch/x86/block-decoder/decode-reader.js";
 import type { DecodeFault } from "../arch/x86/decoder/decode-error.js";
-import { hostAddress, startAddress } from "./x86-code.js";
+import { startAddress } from "./x86-code.js";
 
 export class TestDecodeReader implements DecodeReader {
   sliceReads = 0;
@@ -9,16 +9,10 @@ export class TestDecodeReader implements DecodeReader {
 
   regionAt(eip: number): DecodeRegion | undefined {
     for (const region of this.regions) {
-      if (region.kind === "host-thunk" && region.address === eip) {
+      const offset = eip - region.baseAddress;
+
+      if (offset >= 0 && offset < region.bytes.length) {
         return region;
-      }
-
-      if (region.kind === "guest-bytes") {
-        const offset = eip - region.baseAddress;
-
-        if (offset >= 0 && offset < region.bytes.length) {
-          return region;
-        }
       }
     }
 
@@ -61,20 +55,6 @@ export function guestBytesRegion(
     kind: "guest-bytes",
     baseAddress,
     bytes: Uint8Array.from(bytes)
-  };
-}
-
-export function hostThunkRegion(
-  hostCallId = 9,
-  address = hostAddress,
-  name = "test.host"
-): DecodeRegion {
-  return {
-    kind: "host-thunk",
-    address,
-    name,
-    hostCallId,
-    convention: "stdcall"
   };
 }
 

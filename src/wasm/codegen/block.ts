@@ -95,9 +95,6 @@ function emitTerminator(body: WasmFunctionBodyEncoder, terminator: BlockTerminat
     case "fallthrough":
       emitExitResult(body, ExitReason.FALLTHROUGH, terminator.nextEip);
       return;
-    case "host-call":
-      emitExitResult(body, ExitReason.HOST_CALL, terminator.hostCallId);
-      return;
     case "jump":
     case "conditional-branch":
       return;

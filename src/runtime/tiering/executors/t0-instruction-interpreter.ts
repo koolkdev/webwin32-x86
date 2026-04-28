@@ -41,19 +41,6 @@ export function runT0InstructionInterpreter(context: RuntimeTierExecutionContext
 
 function decodeInstructionAt(decodeReader: DecodeReader, state: CpuState): DecodeInstructionResult {
   const eip = u32(state.eip);
-  const region = decodeReader.regionAt(eip);
-
-  if (region?.kind === "host-thunk") {
-    state.stopReason = StopReason.HOST_CALL;
-    return {
-      kind: "stop",
-      result: runResultFromState(state, StopReason.HOST_CALL, {
-        hostCallId: region.hostCallId,
-        hostCallName: region.name
-      })
-    };
-  }
-
   const bytes = decodeReader.sliceFrom(eip, maxInstructionLength + 1);
 
   if (!(bytes instanceof Uint8Array)) {

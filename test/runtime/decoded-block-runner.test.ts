@@ -8,8 +8,8 @@ import { cpuStatesEqual, createCpuState, type CpuState } from "../../src/core/st
 import { runInstructionInterpreter } from "../../src/interp/interpreter.js";
 import { DecodedBlockCache, type DecodedBlockKey } from "../../src/runtime/decoded-block-cache/decoded-block-cache.js";
 import { DecodedBlockRunner } from "../../src/runtime/decoded-block-runner/decoded-block-runner.js";
-import { guestReader, hostThunkRegion, TestDecodeReader } from "../../src/test-support/decode-reader.js";
-import { decodeBytes, hostAddress, startAddress } from "../../src/test-support/x86-code.js";
+import { guestReader } from "../../src/test-support/decode-reader.js";
+import { decodeBytes, startAddress } from "../../src/test-support/x86-code.js";
 
 const movAddFixture = [
   0xb8, 0x01, 0x00, 0x00, 0x00,
@@ -68,20 +68,6 @@ test("edge_hits_recorded", () => {
 
   strictEqual(edgeHits(runner, loopBlockKey, loopBlockKey), 2);
   strictEqual(edgeHits(runner, loopBlockKey, trapBlockKey), 1);
-});
-
-test("host_call_boundary_stops_cleanly", () => {
-  const reader = new TestDecodeReader([hostThunkRegion()]);
-  const state = createCpuState({ eip: hostAddress });
-  const runner = runnerFor(reader);
-  const result = runner.run(state);
-
-  strictEqual(result.stopReason, StopReason.HOST_CALL);
-  strictEqual(result.hostCallId, 9);
-  strictEqual(result.hostCallName, "test.host");
-  strictEqual(state.instructionCount, 0);
-  strictEqual(runner.counters.instructionsExecuted, 0);
-  strictEqual(reader.sliceReads, 0);
 });
 
 test("block_engine_timing_diagnostic", (t) => {

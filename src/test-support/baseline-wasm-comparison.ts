@@ -1,9 +1,9 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { performance } from "node:perf_hooks";
 
-import type { DecodedBlock, BlockTerminator } from "../arch/x86/block-decoder/decode-block.js";
+import type { DecodedBlock } from "../arch/x86/block-decoder/decode-block.js";
 import type { DecodeReader } from "../arch/x86/block-decoder/decode-reader.js";
-import { runResultFromState, StopReason, type RunResult, type RunResultDetails } from "../core/execution/run-result.js";
+import { runResultFromState, StopReason, type RunResult } from "../core/execution/run-result.js";
 import { ArrayBufferGuestMemory } from "../core/memory/guest-memory.js";
 import { cloneCpuState, cpuStatesEqual, type CpuState } from "../core/state/cpu-state.js";
 import { DecodedBlockCache } from "../runtime/decoded-block-cache/decoded-block-cache.js";
@@ -47,7 +47,6 @@ export type BaselineWasmComparisonExitCounts = Readonly<{
   branchTaken: number;
   branchNotTaken: number;
   hostTrap: number;
-  hostCall: number;
   unsupported: number;
   decodeFault: number;
   memoryFault: number;
@@ -138,7 +137,7 @@ export class BaselineWasmComparator {
       incrementExit(report.exitCounts, exit.exitReason);
       const stateAfterExit = readCpuState(stateView);
 
-      result = runResultFromExit(stateAfterExit, exit, block.terminator);
+      result = runResultFromExit(stateAfterExit, exit);
 
       if (!isControlFlowExit(exit)) {
         return completedWasmRun(stateAfterExit, result, guestMemory, report);
@@ -278,7 +277,7 @@ function readExportedBlock(instance: WebAssembly.Instance): () => unknown {
   return () => run(statePtr);
 }
 
-function runResultFromExit(state: CpuState, exit: DecodedExit, terminator: BlockTerminator): RunResult {
+function runResultFromExit(state: CpuState, exit: DecodedExit): RunResult {
   switch (exit.exitReason) {
     case ExitReason.FALLTHROUGH:
     case ExitReason.JUMP:
@@ -288,9 +287,6 @@ function runResultFromExit(state: CpuState, exit: DecodedExit, terminator: Block
     case ExitReason.HOST_TRAP:
       state.stopReason = StopReason.HOST_TRAP;
       return runResultFromState(state, StopReason.HOST_TRAP, { trapVector: exit.payload });
-    case ExitReason.HOST_CALL:
-      state.stopReason = StopReason.HOST_CALL;
-      return runResultFromState(state, StopReason.HOST_CALL, hostCallDetails(terminator, exit.payload));
     case ExitReason.UNSUPPORTED:
       state.stopReason = StopReason.UNSUPPORTED;
       return runResultFromState(state, StopReason.UNSUPPORTED);
@@ -310,17 +306,6 @@ function runResultFromExit(state: CpuState, exit: DecodedExit, terminator: Block
       state.stopReason = StopReason.INSTRUCTION_LIMIT;
       return runResultFromState(state, StopReason.INSTRUCTION_LIMIT);
   }
-}
-
-function hostCallDetails(terminator: BlockTerminator, hostCallId: number): RunResultDetails {
-  if (terminator.kind === "host-call" && terminator.hostCallId === hostCallId) {
-    return {
-      hostCallId,
-      hostCallName: terminator.name
-    };
-  }
-
-  return { hostCallId };
 }
 
 function isControlFlowExit(exit: DecodedExit): boolean {
@@ -377,7 +362,6 @@ function createMutableReport(): MutableBaselineWasmComparisonReport {
       branchTaken: 0,
       branchNotTaken: 0,
       hostTrap: 0,
-      hostCall: 0,
       unsupported: 0,
       decodeFault: 0,
       memoryFault: 0,
@@ -413,8 +397,6 @@ function exitCountKey(exitReason: ExitReason): keyof BaselineWasmComparisonExitC
       return "branchNotTaken";
     case ExitReason.HOST_TRAP:
       return "hostTrap";
-    case ExitReason.HOST_CALL:
-      return "hostCall";
     case ExitReason.UNSUPPORTED:
       return "unsupported";
     case ExitReason.DECODE_FAULT:

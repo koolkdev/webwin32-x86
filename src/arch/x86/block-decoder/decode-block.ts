@@ -21,8 +21,7 @@ export type BlockTerminator =
   | Readonly<{ kind: "ret"; instruction: DecodedInstruction }>
   | Readonly<{ kind: "int"; instruction: DecodedInstruction; vector: number }>
   | Readonly<{ kind: "unsupported"; eip: number; instruction: DecodedInstruction }>
-  | Readonly<{ kind: "decode-fault"; fault: DecodeFault }>
-  | Readonly<{ kind: "host-call"; eip: number; hostCallId: number; name: string; convention: string }>;
+  | Readonly<{ kind: "decode-fault"; fault: DecodeFault }>;
 
 export type DecodeBlockOptions = Readonly<{
   maxInstructions?: number;
@@ -41,12 +40,6 @@ export function decodeBlock(
   let eip = u32(startEip);
 
   for (let count = 0; count < maxInstructions; count += 1) {
-    const hostTerminator = hostTerminatorAt(decodeReader, eip);
-
-    if (hostTerminator !== undefined) {
-      return { startEip, instructions, terminator: hostTerminator };
-    }
-
     const bytes = decodeReader.sliceFrom(eip, maxDecodeBytes);
 
     if (!(bytes instanceof Uint8Array)) {
@@ -77,22 +70,6 @@ export function decodeBlock(
   }
 
   return { startEip, instructions, terminator: { kind: "fallthrough", nextEip: eip } };
-}
-
-function hostTerminatorAt(decodeReader: DecodeReader, eip: number): BlockTerminator | undefined {
-  const region = decodeReader.regionAt(eip);
-
-  if (region?.kind !== "host-thunk") {
-    return undefined;
-  }
-
-  return {
-    kind: "host-call",
-    eip,
-    hostCallId: region.hostCallId,
-    name: region.name,
-    convention: region.convention
-  };
 }
 
 function terminatorFor(instruction: DecodedInstruction): BlockTerminator | undefined {
