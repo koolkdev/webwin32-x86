@@ -43,6 +43,12 @@ export function effectiveAddress(state: CpuState, operand: Mem32Operand): number
   return u32(base + index + operand.disp);
 }
 
+export function addressExpressionValue(state: CpuState, operand: Operand | undefined): OperandReadResult {
+  return operand?.kind === "mem32"
+    ? { kind: "value", value: effectiveAddress(state, operand) }
+    : { kind: "unsupported" };
+}
+
 export function readOperandValue(
   state: CpuState,
   operand: Operand | undefined,

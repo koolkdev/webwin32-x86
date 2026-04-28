@@ -5,6 +5,7 @@ import { runResultFromState, StopReason, type RunResult, type RunResultDetails }
 import type { GuestMemory, MemoryFault } from "../core/memory/guest-memory.js";
 import { type CpuState, getFlag, u32 } from "../core/state/cpu-state.js";
 import {
+  addressExpressionValue,
   intVector,
   jumpTarget,
   type OperandWriteResult,
@@ -25,6 +26,10 @@ export function executeMov(
   return doOperandMutation(state, instruction, () =>
     copyMovValue(state, instruction, memory)
   );
+}
+
+export function executeLea(state: CpuState, instruction: DecodedInstruction): RunResult {
+  return doOperandMutation(state, instruction, () => writeLeaValue(state, instruction));
 }
 
 export function executeNop(state: CpuState, instruction: DecodedInstruction): RunResult {
@@ -163,6 +168,16 @@ function copyMovValue(
   }
 
   return writeOperandValue(state, instruction.operands[0], source.value, { memory });
+}
+
+function writeLeaValue(state: CpuState, instruction: DecodedInstruction): OperandWriteResult {
+  const address = addressExpressionValue(state, instruction.operands[1]);
+
+  if (address.kind !== "value") {
+    return address;
+  }
+
+  return writeOperandValue(state, instruction.operands[0], address.value);
 }
 
 function doOperandMutation(

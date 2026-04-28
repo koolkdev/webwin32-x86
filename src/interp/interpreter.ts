@@ -8,6 +8,7 @@ import {
   executeInt,
   executeJcc,
   executeJmp,
+  executeLea,
   executeMov,
   executeNop,
   executeSub,
@@ -54,6 +55,7 @@ export function executeInstruction(
     case "jcc":
       return executeJcc(state, instruction);
     case "lea":
+      return executeLea(state, instruction);
     case "call":
     case "ret":
     case "unsupported":
