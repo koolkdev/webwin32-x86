@@ -11,6 +11,7 @@ import { emitAlu } from "./alu.js";
 import { emitJcc, emitJmp } from "./branch.js";
 import { unsupportedWasmCodegen } from "./errors.js";
 import { emitExitResult } from "./exit.js";
+import { emitLea } from "./lea.js";
 import { emitMov } from "./mov.js";
 import { emitCompleteInstruction } from "./state.js";
 
@@ -79,6 +80,9 @@ function emitInstruction(body: WasmFunctionBodyEncoder, instruction: DecodedInst
       return;
     case "mov":
       emitMov(body, instruction);
+      return;
+    case "lea":
+      emitLea(body, instruction);
       return;
     case "add":
     case "sub":

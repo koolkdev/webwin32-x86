@@ -3,8 +3,9 @@ import { i32 } from "../../core/state/cpu-state.js";
 import { reg32StateOffset } from "../abi.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
+import { emitEffectiveAddress } from "./effective-address.js";
 import { unsupportedWasmCodegen } from "./errors.js";
-import { emitLoadGuestU32, emitMem32Address, emitStoreGuestU32 } from "./guest-memory.js";
+import { emitLoadGuestU32, emitStoreGuestU32 } from "./guest-memory.js";
 import { emitLoadStateU32, emitStoreStateStackU32 } from "./state.js";
 
 export function emitReadOperandU32(body: WasmFunctionBodyEncoder, operand: Operand | undefined): number {
@@ -53,7 +54,7 @@ export function emitWriteOperandU32(
 function emitAddressLocal(body: WasmFunctionBodyEncoder, operand: Extract<Operand, { kind: "mem32" }>): number {
   const addressLocal = body.addLocal(wasmValueType.i32);
 
-  emitMem32Address(body, operand);
+  emitEffectiveAddress(body, operand);
   body.localSet(addressLocal);
   return addressLocal;
 }
