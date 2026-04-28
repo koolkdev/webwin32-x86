@@ -1,6 +1,7 @@
 import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
+import { decodeExit, encodeExit, ExitReason } from "../exit.js";
 
 export type WasmFeatureName = "multi-memory" | "i64-return-bigint" | "imported-memory-sharing";
 
@@ -22,7 +23,7 @@ const guestImportName = "guest";
 const stateEaxOffset = 0;
 const statePtr = 32;
 const expectedI64Payload = 0x1234_5678;
-const expectedI64ExitReason = 6;
+const expectedI64ExitReason = ExitReason.UNSUPPORTED;
 const expectedStoredValue = 0x1234_5678;
 
 export async function probeWasmFeatures(): Promise<WasmFeatureReport> {
@@ -79,7 +80,7 @@ async function probeMultiMemory(): Promise<void> {
 }
 
 async function probeI64ReturnBigInt(): Promise<void> {
-  const encoded = (BigInt(expectedI64ExitReason) << 32n) | BigInt(expectedI64Payload);
+  const encoded = encodeExit(expectedI64ExitReason, expectedI64Payload);
   const instance = await instantiateProbeModule(encodeI64ReturnProbeModule(encoded));
   const encodedExit = readExportedFunction(instance, "encodedExit");
   const result: unknown = encodedExit();
@@ -88,8 +89,7 @@ async function probeI64ReturnBigInt(): Promise<void> {
     throw new Error(`i64 return produced ${typeof result}, expected bigint`);
   }
 
-  const payload = Number(result & 0xffff_ffffn) >>> 0;
-  const exitReason = Number((result >> 32n) & 0xffffn);
+  const { payload, exitReason } = decodeExit(result);
 
   if (payload !== expectedI64Payload || exitReason !== expectedI64ExitReason) {
     throw new Error(`i64 return decoded to payload ${payload}, exit reason ${exitReason}`);
