@@ -2,6 +2,8 @@ import type { DecodeReader } from "../../arch/x86/block-decoder/decode-reader.js
 import type { RunResult } from "../../core/execution/run-result.js";
 import { ArrayBufferGuestMemory, type GuestMemory } from "../../core/memory/guest-memory.js";
 import { createCpuState, u32, type CpuState } from "../../core/state/cpu-state.js";
+import type { MetricSink } from "../../metrics/collector.js";
+import { recordRuntimeMetrics, type RuntimeMetrics } from "../../metrics/runtime-adapter.js";
 import { DecodedBlockCache, type DecodedBlockCacheCounters } from "../decoded-block-cache/decoded-block-cache.js";
 import { DecodedBlockRunner, type ProfileCounters } from "../decoded-block-runner/decoded-block-runner.js";
 import { runT0InstructionInterpreter } from "../tiering/executors/t0-instruction-interpreter.js";
@@ -26,6 +28,7 @@ export type RuntimeInstanceOptions = Readonly<{
 export type RuntimeInstanceRunOptions = Readonly<{
   entryEip?: number;
   instructionLimit?: number;
+  metrics?: MetricSink;
 }>;
 
 export type RuntimeInstanceCounters = Readonly<{
@@ -97,7 +100,13 @@ export class RuntimeInstance {
 
     const instructionLimit = options.instructionLimit ?? defaultInstructionLimit;
 
-    return this.#tierExecutors[this.#tierMode](instructionLimit);
+    const result = this.#tierExecutors[this.#tierMode](instructionLimit);
+
+    if (options.metrics !== undefined) {
+      recordRuntimeMetrics(options.metrics, this.#runtimeMetrics(result));
+    }
+
+    return result;
   }
 
   #executionContext(): RuntimeTierExecutionContext {
@@ -112,6 +121,19 @@ export class RuntimeInstance {
     return this.#wasmRuntime === undefined
       ? context
       : { ...context, wasmRuntime: this.#wasmRuntime };
+  }
+
+  #runtimeMetrics(result: RunResult): RuntimeMetrics {
+    const counters = this.counters;
+
+    return {
+      guestInstructions: result.instructionCount,
+      finalEip: this.state.eip,
+      stopReason: result.stopReason,
+      decodedBlockCache: counters.decodedBlockCache,
+      profile: counters.profile,
+      wasmBlockCache: counters.wasmBlockCache
+    };
   }
 }
 

@@ -4,10 +4,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { StopReason } from "../../src/core/execution/run-result.js";
-import { cloneCpuState, cpuStatesEqual } from "../../src/core/state/cpu-state.js";
+import { cpuStatesEqual } from "../../src/core/state/cpu-state.js";
 import { MetricsCollector } from "../../src/metrics/collector.js";
 import {
-  recordRuntimeMetrics,
   runtimeMetricKeys,
   runtimeWasmMetricKeys
 } from "../../src/metrics/runtime-adapter.js";
@@ -76,29 +75,37 @@ test("runtime_metrics_adapter_records_stop_reason", () => {
   strictEqual(collector.snapshot().gauges[runtimeMetricKeys.stopReason], StopReason.HOST_TRAP);
 });
 
-test("runtime_metrics_adapter_does_not_mutate_runtime", () => {
-  const runtime = new RuntimeInstance({
+test("runtime_metrics_adapter_does_not_change_execution", () => {
+  const runtimeWithMetrics = new RuntimeInstance({
     decodeReader: guestReader(branchLoopFixture),
     initialState: { eax: 3, eip: startAddress }
   });
-  const result = runtime.run();
-  const stateBefore = cloneCpuState(runtime.state);
-  const countersBefore = snapshotRuntimeCounters(runtime.counters);
+  const runtimeWithoutMetrics = new RuntimeInstance({
+    decodeReader: guestReader(branchLoopFixture),
+    initialState: { eax: 3, eip: startAddress }
+  });
+  const collector = new MetricsCollector();
 
-  recordRuntimeMetrics(new MetricsCollector(), runtime, result);
+  const resultWithMetrics = runtimeWithMetrics.run({ metrics: collector });
+  const resultWithoutMetrics = runtimeWithoutMetrics.run();
 
-  ok(cpuStatesEqual(runtime.state, stateBefore));
-  deepStrictEqual(snapshotRuntimeCounters(runtime.counters), countersBefore);
+  strictEqual(resultWithMetrics.stopReason, resultWithoutMetrics.stopReason);
+  ok(cpuStatesEqual(runtimeWithMetrics.state, runtimeWithoutMetrics.state));
+  deepStrictEqual(
+    snapshotRuntimeCounters(runtimeWithMetrics.counters),
+    snapshotRuntimeCounters(runtimeWithoutMetrics.counters)
+  );
+  strictEqual(collector.snapshot().gauges[runtimeMetricKeys.guestInstructions], 10);
 });
 
-test("runtime_does_not_import_metrics", () => {
+test("runtime_does_not_import_lab", () => {
   const runtimeFiles = tsFilesUnder("src/runtime");
 
   for (const file of runtimeFiles) {
     const source = readFileSync(file, "utf8");
 
-    strictEqual(source.includes("/metrics/"), false, file);
-    strictEqual(source.includes("../metrics/"), false, file);
+    strictEqual(source.includes("/lab/"), false, file);
+    strictEqual(source.includes("../lab/"), false, file);
   }
 });
 
@@ -112,10 +119,8 @@ function runAndRecord(
     initialState: { ...initialState, eip: startAddress },
     tierMode
   });
-  const result = runtime.run();
   const collector = new MetricsCollector();
-
-  recordRuntimeMetrics(collector, runtime, result);
+  const result = runtime.run({ metrics: collector });
 
   return { collector, runtime, result };
 }

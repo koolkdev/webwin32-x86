@@ -12,6 +12,12 @@ export type MetricSnapshot = Readonly<{
   durationSamples: MetricDurationSamples;
 }>;
 
+export type MetricSink = Readonly<{
+  incrementCounter(key: MetricKey, amount?: number): void;
+  setGauge(key: MetricKey, value: number): void;
+  recordDurationSample(key: MetricKey, durationMs: number): void;
+}>;
+
 export class MetricsCollector {
   readonly #counters = new Map<MetricKey, number>();
   readonly #gauges = new Map<MetricKey, number>();

@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { rawX86FixtureFromJson } from "../../src/fixtures/raw-x86-fixture.js";
+import { rawX86FixtureFromJson } from "../../../src/lab/fixtures/raw-x86-fixture.js";
 
 test("raw_x86_fixture_json_defines_inline_bytes", () => {
   const fixture = rawX86FixtureFromJson({

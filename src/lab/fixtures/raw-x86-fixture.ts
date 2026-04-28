@@ -1,4 +1,4 @@
-import type { CpuState } from "../core/state/cpu-state.js";
+import type { CpuState } from "../../core/state/cpu-state.js";
 
 export type RawX86FixtureJson = Readonly<{
   id: string;
