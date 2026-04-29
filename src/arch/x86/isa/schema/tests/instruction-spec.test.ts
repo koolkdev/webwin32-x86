@@ -1,0 +1,213 @@
+import { deepStrictEqual, doesNotThrow, strictEqual, throws } from "node:assert";
+import { test } from "node:test";
+
+import {
+  defineIsa,
+  expandInstructionSpec,
+  form,
+  instruction,
+  instructionReadsModRm,
+  mnemonic,
+  validateInstructionSet
+} from "../builders.js";
+import { opcodePathMatches, opcodePlusReg, validateOpcodePath } from "../opcodes.js";
+import { imm, modrmReg, modrmRm, opReg } from "../operands.js";
+import type { InstructionSpec } from "../types.js";
+
+const semantics = { test: "semantics-placeholder" } as const;
+
+test("opcode path exact byte matching", () => {
+  strictEqual(opcodePathMatches([0x8b], [0x8b]), true);
+  strictEqual(opcodePathMatches([0x8b], [0x8a]), false);
+});
+
+test("opcode plus register path matches and exposes low bits through opcode.reg operand", () => {
+  // B8+rd id: MOV r32, imm32
+  const spec = instruction({
+    id: "mov.r32_imm32",
+    mnemonic: "mov",
+    opcode: [opcodePlusReg(0xb8)],
+    operands: [opReg("dst"), imm("src", 32)],
+    format: { syntax: "mov {dst}, {src}" },
+    semantics
+  });
+
+  strictEqual(opcodePathMatches(spec.opcode, [0xb8]), true);
+  strictEqual(opcodePathMatches(spec.opcode, [0xbf]), true);
+  strictEqual(opcodePathMatches(spec.opcode, [0xc0]), false);
+
+  const expanded = expandInstructionSpec(spec);
+
+  strictEqual(expanded.length, 8);
+  deepStrictEqual(expanded[0]?.opcode, [0xb8]);
+  strictEqual(expanded[0]?.opcodeLowBits, 0);
+  deepStrictEqual(expanded[7]?.opcode, [0xbf]);
+  strictEqual(expanded[7]?.opcodeLowBits, 7);
+});
+
+test("variable opcode path matching supports condition-family shapes", () => {
+  const shortJcc = [{ byte: 0x70, bits: 4 }] as const;
+  const nearJcc = [0x0f, { byte: 0x80, bits: 4 }] as const;
+
+  strictEqual(opcodePathMatches(shortJcc, [0x70]), true);
+  strictEqual(opcodePathMatches(shortJcc, [0x7f]), true);
+  strictEqual(opcodePathMatches(shortJcc, [0x80]), false);
+
+  strictEqual(opcodePathMatches(nearJcc, [0x0f, 0x80]), true);
+  strictEqual(opcodePathMatches(nearJcc, [0x0f, 0x8f]), true);
+  strictEqual(opcodePathMatches(nearJcc, [0x0f, 0x90]), false);
+});
+
+test("opcode descriptors reject malformed byte and fixed-bit shapes", () => {
+  throws(() => validateOpcodePath([]), /must not be empty/);
+  throws(() => validateOpcodePath([0x100]), /0..255/);
+  throws(() => validateOpcodePath([{ byte: 0xb8, bits: 0 as 1 }]), /1..8/);
+  throws(() => validateOpcodePath([{ byte: 0xbb, bits: 5 }]), /low bits must be zero/);
+});
+
+test("opcode.reg requires exactly one variable opcode part", () => {
+  throws(
+    () =>
+      instruction({
+        id: "bad.no_variable_opcode",
+        mnemonic: "bad",
+        opcode: [0xb8],
+        operands: [opReg("dst")],
+        format: { syntax: "bad {dst}" },
+        semantics
+      }),
+    /exactly one variable opcode part/
+  );
+
+  throws(
+    () =>
+      instruction({
+        id: "bad.two_variable_opcodes",
+        mnemonic: "bad",
+        opcode: [opcodePlusReg(0xb8), { byte: 0x70, bits: 4 }],
+        operands: [opReg("dst")],
+        format: { syntax: "bad {dst}" },
+        semantics
+      }),
+    /exactly one variable opcode part/
+  );
+});
+
+test("normal slash-r form reads ModRM through operands without a modrm field", () => {
+  // 8B /r: MOV r32, r/m32
+  const spec = instruction({
+    id: "mov.r32_rm32",
+    mnemonic: "mov",
+    opcode: [0x8b],
+    operands: [modrmReg("dst", "reg32"), modrmRm("src", "rm32")],
+    format: { syntax: "mov {dst}, {src}" },
+    semantics
+  });
+
+  strictEqual(spec.modrm, undefined);
+  strictEqual(instructionReadsModRm(spec), true);
+});
+
+test("modrm.match represents Intel slash digit notation", () => {
+  // 83 /5 ib: SUB r/m32, sign-extended imm8
+  const spec = instruction({
+    id: "sub.rm32_imm8",
+    mnemonic: "sub",
+    opcode: [0x83],
+    modrm: { match: { reg: 5 } },
+    operands: [modrmRm("dst", "rm32"), imm("src", 8, "sign")],
+    format: { syntax: "sub {dst}, {src}" },
+    semantics
+  });
+
+  deepStrictEqual(spec.modrm?.match, { reg: 5 });
+  strictEqual(instructionReadsModRm(spec), true);
+});
+
+test("instruction set validation detects overlapping opcode and ModRM matches", () => {
+  const add = group83("add.rm32_imm8", 0);
+  const sub = group83("sub.rm32_imm8", 5);
+  const duplicateSub = group83("sub.duplicate_rm32_imm8", 5);
+
+  doesNotThrow(() => validateInstructionSet([add, sub]));
+  throws(() => validateInstructionSet([sub, duplicateSub]), /overlap/);
+});
+
+test("instruction set validation treats slash-r as overlapping group matches on same opcode", () => {
+  // 83 /r: TEST-ONLY invalid fixture for collision behavior
+  const slashR = instruction({
+    id: "fixture.slash_r",
+    mnemonic: "fixture",
+    opcode: [0x83],
+    operands: [modrmReg("dst", "reg32"), modrmRm("src", "rm32")],
+    format: { syntax: "fixture {dst}, {src}" },
+    semantics
+  });
+
+  throws(() => validateInstructionSet([slashR, group83("add.rm32_imm8", 0)]), /overlap/);
+});
+
+test("format placeholders must reference operand names", () => {
+  doesNotThrow(() => {
+    // 89 /r: MOV r/m32, r32
+    instruction({
+      id: "mov.rm32_r32",
+      mnemonic: "mov",
+      opcode: [0x89],
+      operands: [modrmRm("dst", "rm32"), modrmReg("src", "reg32")],
+      format: { syntax: "mov {dst}, {src}" },
+      semantics
+    });
+  });
+
+  throws(
+    () =>
+      instruction({
+        id: "mov.bad_format",
+        mnemonic: "mov",
+        opcode: [0x89],
+        operands: [modrmRm("dst", "rm32")],
+        format: { syntax: "mov {dst}, {missing}" },
+        semantics
+      }),
+    /placeholder/
+  );
+});
+
+test("mnemonic and ISA builders generate stable full instruction ids", () => {
+  const mov = mnemonic("mov", [
+    // 8B /r: MOV r32, r/m32
+    form("r32_rm32", {
+      opcode: [0x8b],
+      operands: [modrmReg("dst", "reg32"), modrmRm("src", "rm32")],
+      format: { syntax: "mov {dst}, {src}" },
+      semantics
+    }),
+    // 89 /r: MOV r/m32, r32
+    form("rm32_r32", {
+      opcode: [0x89],
+      operands: [modrmRm("dst", "rm32"), modrmReg("src", "reg32")],
+      format: { syntax: "mov {dst}, {src}" },
+      semantics
+    })
+  ]);
+
+  const isa = defineIsa({ name: "x86-32-core-test", mnemonics: [mov] });
+
+  deepStrictEqual(
+    isa.instructions.map((entry) => entry.id),
+    ["mov.r32_rm32", "mov.rm32_r32"]
+  );
+});
+
+function group83(id: string, reg: 0 | 5): InstructionSpec<typeof semantics> {
+  return instruction({
+    id,
+    mnemonic: id.startsWith("add") ? "add" : "sub",
+    opcode: [0x83],
+    modrm: { match: { reg } },
+    operands: [modrmRm("dst", "rm32"), imm("src", 8, "sign")],
+    format: { syntax: `${id.startsWith("add") ? "add" : "sub"} {dst}, {src}` },
+    semantics
+  });
+}

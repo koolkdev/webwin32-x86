@@ -7,7 +7,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "metrics": "tsc -p tsconfig.json && node dist/src/lab/metrics-cli.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run clean && tsc -p tsconfig.json && node --test 'dist/test/**/*.test.js'"
+    "test": "npm run clean && tsc -p tsconfig.json && node --test 'dist/test/**/*.test.js' 'dist/src/**/tests/*.test.js'"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
