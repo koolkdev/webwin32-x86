@@ -1,0 +1,41 @@
+import type { ConditionCode, SemanticTemplate } from "../../sir/types.js";
+import { pop32, push32 } from "./stack.js";
+
+export function jmpSemantic(): SemanticTemplate {
+  return (s) => {
+    s.jump(s.get32("target"));
+  };
+}
+
+export function callSemantic(): SemanticTemplate {
+  return (s) => {
+    const target = s.get32("target");
+
+    push32(s, s.nextEip());
+    s.jump(target);
+  };
+}
+
+export function retSemantic(): SemanticTemplate {
+  return (s) => {
+    s.jump(pop32(s));
+  };
+}
+
+export function retImmSemantic(): SemanticTemplate {
+  return (s) => {
+    const target = pop32(s);
+    const bytes = s.get32("stackBytes");
+    const esp = s.get32(s.reg32("esp"));
+    const adjustedEsp = s.i32Add(esp, bytes);
+
+    s.set32(s.reg32("esp"), adjustedEsp);
+    s.jump(target);
+  };
+}
+
+export function jccSemantic(cc: ConditionCode): SemanticTemplate {
+  return (s) => {
+    s.conditionalJump(s.condition(cc), s.get32("target"), s.nextEip());
+  };
+}
