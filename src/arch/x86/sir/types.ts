@@ -1,14 +1,13 @@
 import type { Reg32 } from "../instruction/types.js";
 
-export type Var = string;
-export type OperandName = string;
+export type VarId = number;
 
-export type VarRef = Readonly<{ kind: "var"; name: Var }>;
+export type VarRef = Readonly<{ kind: "var"; id: VarId }>;
 export type Const32Ref = Readonly<{ kind: "const32"; value: number }>;
 export type NextEipRef = Readonly<{ kind: "nextEip" }>;
 export type ValueRef = VarRef | Const32Ref | NextEipRef;
 
-export type OperandRef = Readonly<{ kind: "operand"; name: OperandName }>;
+export type OperandRef = Readonly<{ kind: "operand"; index: number }>;
 export type RegRef = Readonly<{ kind: "reg"; reg: Reg32 }>;
 export type MemRef = Readonly<{ kind: "mem"; address: ValueRef }>;
 export type StorageRef = OperandRef | RegRef | MemRef;
@@ -58,6 +57,7 @@ export type SirProgram = readonly SirOp[];
 export type SemanticTemplate = (builder: SirBuilder) => void;
 
 export interface SirBuilder {
+  operand(index: number): OperandRef;
   const32(value: number): Const32Ref;
   nextEip(): NextEipRef;
   reg32(reg: Reg32): RegRef;
@@ -81,7 +81,7 @@ export interface SirBuilder {
   conditionalJump(condition: ValueInput, taken: TargetInput, notTaken: TargetInput): void;
 }
 
-export type OperandInput = string | OperandRef;
-export type StorageInput = string | StorageRef;
+export type OperandInput = OperandRef;
+export type StorageInput = StorageRef;
 export type ValueInput = ValueRef | number;
 export type TargetInput = ValueInput;

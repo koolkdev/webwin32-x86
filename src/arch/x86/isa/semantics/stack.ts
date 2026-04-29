@@ -19,12 +19,12 @@ export function pop32(s: SirBuilder): VarRef {
 
 export function pushSemantic(): SemanticTemplate {
   return (s) => {
-    push32(s, s.get32("src"));
+    push32(s, s.get32(s.operand(0)));
   };
 }
 
 export function popSemantic(): SemanticTemplate {
   return (s) => {
-    s.set32("dst", pop32(s));
+    s.set32(s.operand(0), pop32(s));
   };
 }

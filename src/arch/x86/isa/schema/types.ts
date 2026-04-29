@@ -15,13 +15,13 @@ export type OpcodePath = readonly OpcodePathPart[];
 export type ImmediateExtension = "sign" | "zero";
 
 export type OperandSpec =
-  | Readonly<{ name: string; kind: "modrm.reg"; type: "reg32" }>
-  | Readonly<{ name: string; kind: "modrm.rm"; type: "rm32" }>
-  | Readonly<{ name: string; kind: "modrm.rm"; type: "m32" }>
-  | Readonly<{ name: string; kind: "opcode.reg"; type: "reg32" }>
-  | Readonly<{ name: string; kind: "implicit.reg"; reg: Reg32; type: "reg32" }>
-  | Readonly<{ name: string; kind: "imm"; width: 8 | 16 | 32; extension?: ImmediateExtension }>
-  | Readonly<{ name: string; kind: "rel"; width: 8 | 32 }>;
+  | Readonly<{ kind: "modrm.reg"; type: "reg32" }>
+  | Readonly<{ kind: "modrm.rm"; type: "rm32" }>
+  | Readonly<{ kind: "modrm.rm"; type: "m32" }>
+  | Readonly<{ kind: "opcode.reg"; type: "reg32" }>
+  | Readonly<{ kind: "implicit.reg"; reg: Reg32; type: "reg32" }>
+  | Readonly<{ kind: "imm"; width: 8 | 16 | 32; extension?: ImmediateExtension }>
+  | Readonly<{ kind: "rel"; width: 8 | 32 }>;
 
 export type ModRmMatch = Readonly<{
   mod?: Reg3 | readonly Reg3[];

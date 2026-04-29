@@ -27,8 +27,9 @@ export function buildSir(template: SemanticTemplate): SirProgram {
   return builder.program();
 }
 
-export function operand(name: string): OperandRef {
-  return { kind: "operand", name };
+export function operand(index: number): OperandRef {
+  assertOperandIndex(index);
+  return { kind: "operand", index };
 }
 
 export function reg32(reg: Reg32): RegRef {
@@ -39,8 +40,9 @@ export function mem32(address: ValueInput): MemRef {
   return { kind: "mem", address: toValueRef(address) };
 }
 
-export function sirVar(name: string): VarRef {
-  return { kind: "var", name };
+export function sirVar(id: number): VarRef {
+  assertVarId(id);
+  return { kind: "var", id };
 }
 
 export function const32(value: number): Const32Ref {
@@ -53,13 +55,13 @@ export function nextEip(): NextEipRef {
 
 class ProgramSirBuilder implements SirBuilder {
   readonly #ops: SirOp[] = [];
-  readonly #varCounts = new Map<string, number>();
+  #nextVarId = 0;
   #terminated = false;
 
-  #allocVar(base: string): VarRef {
-    const index = this.#varCounts.get(base) ?? 0;
-    this.#varCounts.set(base, index + 1);
-    return sirVar(`${base}_${index}`);
+  #allocVar(): VarRef {
+    const id = this.#nextVarId;
+    this.#nextVarId += 1;
+    return sirVar(id);
   }
 
   #push(op: SirOp): void {
@@ -72,6 +74,10 @@ class ProgramSirBuilder implements SirBuilder {
     if (isTerminator(op)) {
       this.#terminated = true;
     }
+  }
+
+  operand(index: number): OperandRef {
+    return operand(index);
   }
 
   const32(value: number): Const32Ref {
@@ -91,7 +97,7 @@ class ProgramSirBuilder implements SirBuilder {
   }
 
   get32(source: StorageInput): VarRef {
-    const dst = this.#allocVar("value");
+    const dst = this.#allocVar();
     this.#push({ op: "get32", dst, source: toStorageRef(source) });
     return dst;
   }
@@ -101,37 +107,37 @@ class ProgramSirBuilder implements SirBuilder {
   }
 
   address32(operandInput: OperandInput): VarRef {
-    const dst = this.#allocVar("address");
-    this.#push({ op: "address32", dst, operand: toOperandRef(operandInput) });
+    const dst = this.#allocVar();
+    this.#push({ op: "address32", dst, operand: operandInput });
     return dst;
   }
 
   setConst32(value: number): VarRef {
-    const dst = this.#allocVar("const");
+    const dst = this.#allocVar();
     this.#push({ op: "const32", dst, value: value >>> 0 });
     return dst;
   }
 
   i32Add(a: ValueInput, b: ValueInput): VarRef {
-    const dst = this.#allocVar("result");
+    const dst = this.#allocVar();
     this.#push({ op: "i32.add", dst, a: toValueRef(a), b: toValueRef(b) });
     return dst;
   }
 
   i32Sub(a: ValueInput, b: ValueInput): VarRef {
-    const dst = this.#allocVar("result");
+    const dst = this.#allocVar();
     this.#push({ op: "i32.sub", dst, a: toValueRef(a), b: toValueRef(b) });
     return dst;
   }
 
   i32Xor(a: ValueInput, b: ValueInput): VarRef {
-    const dst = this.#allocVar("result");
+    const dst = this.#allocVar();
     this.#push({ op: "i32.xor", dst, a: toValueRef(a), b: toValueRef(b) });
     return dst;
   }
 
   i32And(a: ValueInput, b: ValueInput): VarRef {
-    const dst = this.#allocVar("result");
+    const dst = this.#allocVar();
     this.#push({ op: "i32.and", dst, a: toValueRef(a), b: toValueRef(b) });
     return dst;
   }
@@ -145,7 +151,7 @@ class ProgramSirBuilder implements SirBuilder {
   }
 
   condition(cc: ConditionCode): VarRef {
-    const dst = this.#allocVar("condition");
+    const dst = this.#allocVar();
     this.#push({ op: "condition", dst, cc });
     return dst;
   }
@@ -180,12 +186,8 @@ function isTerminator(op: SirOp): boolean {
   return op.op === "next" || op.op === "jump" || op.op === "conditionalJump";
 }
 
-function toOperandRef(value: OperandInput): OperandRef {
-  return typeof value === "string" ? operand(value) : value;
-}
-
 function toStorageRef(value: StorageInput): StorageRef {
-  return typeof value === "string" ? operand(value) : value;
+  return value;
 }
 
 function toValueRef(value: ValueInput): ValueRef {
@@ -198,4 +200,16 @@ function toTargetRef(value: TargetInput): TargetRef {
   }
 
   return value;
+}
+
+function assertOperandIndex(index: number): void {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`operand index must be a non-negative integer, got ${index}`);
+  }
+}
+
+function assertVarId(id: number): void {
+  if (!Number.isInteger(id) || id < 0) {
+    throw new Error(`SIR var id must be a non-negative integer, got ${id}`);
+  }
 }

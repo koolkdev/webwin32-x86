@@ -6,8 +6,10 @@ export function aluSemantic(op: AluOp, width: 32): SemanticTemplate {
   void width;
 
   return (s) => {
-    const left = s.get32("dst");
-    const right = s.get32("src");
+    const dst = s.operand(0);
+    const src = s.operand(1);
+    const left = s.get32(dst);
+    const right = s.get32(src);
     let result;
 
     switch (op) {
@@ -25,6 +27,6 @@ export function aluSemantic(op: AluOp, width: 32): SemanticTemplate {
         break;
     }
 
-    s.set32("dst", result);
+    s.set32(dst, result);
   };
 }

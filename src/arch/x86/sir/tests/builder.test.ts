@@ -11,8 +11,8 @@ test("builder rejects ops after a terminator", () => {
   throws(
     () =>
       buildSir((s) => {
-        s.jump(s.get32("target"));
-        s.get32("src");
+        s.jump(s.get32(s.operand(0)));
+        s.get32(s.operand(1));
       }),
     /cannot emit get32 after SIR terminator/
   );

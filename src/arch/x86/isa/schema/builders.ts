@@ -165,11 +165,11 @@ function validateOpcodeRegUse(spec: InstructionSpec): void {
 function validateFormat(spec: InstructionSpec): void {
   validateRequiredText(spec.format.syntax, "instruction format syntax");
 
-  const operandNames = new Set((spec.operands ?? []).map((operand) => operand.name));
+  const operandCount = spec.operands?.length ?? 0;
 
   for (const placeholder of formatPlaceholders(spec.format.syntax)) {
-    if (!operandNames.has(placeholder)) {
-      throw new Error(`format placeholder {${placeholder}} does not match an operand name`);
+    if (placeholder >= operandCount) {
+      throw new Error(`format placeholder {${placeholder}} does not match an operand index`);
     }
   }
 }
@@ -244,15 +244,19 @@ function reg3Values(value: Reg3 | readonly Reg3[] | undefined): readonly Reg3[] 
   return typeof value === "number" ? [value] : value;
 }
 
-function formatPlaceholders(format: string): readonly string[] {
-  return [...format.matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((match) => {
+function formatPlaceholders(format: string): readonly number[] {
+  return [...format.matchAll(/\{([^{}]+)\}/g)].map((match) => {
     const placeholder = match[1];
 
     if (placeholder === undefined) {
       throw new Error("format placeholder parser produced an empty capture");
     }
 
-    return placeholder;
+    if (!/^(0|[1-9][0-9]*)$/.test(placeholder)) {
+      throw new Error(`format placeholder {${placeholder}} must be an operand index`);
+    }
+
+    return Number(placeholder);
   });
 }
 

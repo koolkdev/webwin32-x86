@@ -27,8 +27,8 @@ test("opcode plus register path matches and exposes low bits through opcode.reg 
     id: "mov.r32_imm32",
     mnemonic: "mov",
     opcode: [opcodePlusReg(0xb8)],
-    operands: [opReg("dst"), imm("src", 32)],
-    format: { syntax: "mov {dst}, {src}" },
+    operands: [opReg(), imm(32)],
+    format: { syntax: "mov {0}, {1}" },
     semantics
   });
 
@@ -72,8 +72,8 @@ test("opcode.reg requires exactly one variable opcode part", () => {
         id: "bad.no_variable_opcode",
         mnemonic: "bad",
         opcode: [0xb8],
-        operands: [opReg("dst")],
-        format: { syntax: "bad {dst}" },
+        operands: [opReg()],
+        format: { syntax: "bad {0}" },
         semantics
       }),
     /exactly one variable opcode part/
@@ -85,8 +85,8 @@ test("opcode.reg requires exactly one variable opcode part", () => {
         id: "bad.two_variable_opcodes",
         mnemonic: "bad",
         opcode: [opcodePlusReg(0xb8), { byte: 0x70, bits: 4 }],
-        operands: [opReg("dst")],
-        format: { syntax: "bad {dst}" },
+        operands: [opReg()],
+        format: { syntax: "bad {0}" },
         semantics
       }),
     /exactly one variable opcode part/
@@ -99,8 +99,8 @@ test("normal slash-r form reads ModRM through operands without a modrm field", (
     id: "mov.r32_rm32",
     mnemonic: "mov",
     opcode: [0x8b],
-    operands: [modrmReg("dst", "reg32"), modrmRm("src", "rm32")],
-    format: { syntax: "mov {dst}, {src}" },
+    operands: [modrmReg("reg32"), modrmRm("rm32")],
+    format: { syntax: "mov {0}, {1}" },
     semantics
   });
 
@@ -115,8 +115,8 @@ test("modrm.match represents Intel slash digit notation", () => {
     mnemonic: "sub",
     opcode: [0x83],
     modrm: { match: { reg: 5 } },
-    operands: [modrmRm("dst", "rm32"), imm("src", 8, "sign")],
-    format: { syntax: "sub {dst}, {src}" },
+    operands: [modrmRm("rm32"), imm(8, "sign")],
+    format: { syntax: "sub {0}, {1}" },
     semantics
   });
 
@@ -139,23 +139,23 @@ test("instruction set validation treats slash-r as overlapping group matches on 
     id: "fixture.slash_r",
     mnemonic: "fixture",
     opcode: [0x83],
-    operands: [modrmReg("dst", "reg32"), modrmRm("src", "rm32")],
-    format: { syntax: "fixture {dst}, {src}" },
+    operands: [modrmReg("reg32"), modrmRm("rm32")],
+    format: { syntax: "fixture {0}, {1}" },
     semantics
   });
 
   throws(() => validateInstructionSet([slashR, group83("add.rm32_imm8", 0)]), /overlap/);
 });
 
-test("format placeholders must reference operand names", () => {
+test("format placeholders must reference operand indexes", () => {
   doesNotThrow(() => {
     // 89 /r: MOV r/m32, r32
     instruction({
       id: "mov.rm32_r32",
       mnemonic: "mov",
       opcode: [0x89],
-      operands: [modrmRm("dst", "rm32"), modrmReg("src", "reg32")],
-      format: { syntax: "mov {dst}, {src}" },
+      operands: [modrmRm("rm32"), modrmReg("reg32")],
+      format: { syntax: "mov {0}, {1}" },
       semantics
     });
   });
@@ -166,11 +166,24 @@ test("format placeholders must reference operand names", () => {
         id: "mov.bad_format",
         mnemonic: "mov",
         opcode: [0x89],
-        operands: [modrmRm("dst", "rm32")],
-        format: { syntax: "mov {dst}, {missing}" },
+        operands: [modrmRm("rm32")],
+        format: { syntax: "mov {0}, {1}" },
         semantics
       }),
-    /placeholder/
+    /operand index/
+  );
+
+  throws(
+    () =>
+      instruction({
+        id: "mov.bad_format_name",
+        mnemonic: "mov",
+        opcode: [0x89],
+        operands: [modrmRm("rm32")],
+        format: { syntax: "mov {dst}" },
+        semantics
+      }),
+    /must be an operand index/
   );
 });
 
@@ -179,15 +192,15 @@ test("mnemonic and ISA builders generate stable full instruction ids", () => {
     // 8B /r: MOV r32, r/m32
     form("r32_rm32", {
       opcode: [0x8b],
-      operands: [modrmReg("dst", "reg32"), modrmRm("src", "rm32")],
-      format: { syntax: "mov {dst}, {src}" },
+      operands: [modrmReg("reg32"), modrmRm("rm32")],
+      format: { syntax: "mov {0}, {1}" },
       semantics
     }),
     // 89 /r: MOV r/m32, r32
     form("rm32_r32", {
       opcode: [0x89],
-      operands: [modrmRm("dst", "rm32"), modrmReg("src", "reg32")],
-      format: { syntax: "mov {dst}, {src}" },
+      operands: [modrmRm("rm32"), modrmReg("reg32")],
+      format: { syntax: "mov {0}, {1}" },
       semantics
     })
   ]);
@@ -206,8 +219,8 @@ function group83(id: string, reg: 0 | 5): InstructionSpec<typeof semantics> {
     mnemonic: id.startsWith("add") ? "add" : "sub",
     opcode: [0x83],
     modrm: { match: { reg } },
-    operands: [modrmRm("dst", "rm32"), imm("src", 8, "sign")],
-    format: { syntax: `${id.startsWith("add") ? "add" : "sub"} {dst}, {src}` },
+    operands: [modrmRm("rm32"), imm(8, "sign")],
+    format: { syntax: `${id.startsWith("add") ? "add" : "sub"} {0}, {1}` },
     semantics
   });
 }
