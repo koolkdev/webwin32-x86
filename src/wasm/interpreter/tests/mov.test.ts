@@ -4,16 +4,20 @@ import { test } from "node:test";
 import { createCpuState } from "../../../core/state/cpu-state.js";
 import {
   assertInterpreterStateEquals,
-  instantiateInterpreterModule,
   readInterpreterState,
   writeInterpreterState
 } from "../../../test-support/wasm-interpreter.js";
 import { startAddress } from "../../../test-support/wasm-codegen.js";
 import { ExitReason } from "../../exit.js";
-import { encodeInterpreterModule } from "../module.js";
+import {
+  assertCompletedInstruction,
+  assertSingleInstructionExit,
+  instantiateWasmInterpreter,
+  writeGuestBytes
+} from "./support.js";
 
 test("executes MOV eax, imm32", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const initialState = createCpuState({
     eip: startAddress,
     instructionCount: 7
@@ -24,15 +28,14 @@ test("executes MOV eax, imm32", async () => {
   const exit = interpreter.run(1);
   const state = readInterpreterState(interpreter.stateView);
 
-  deepStrictEqual(exit, { exitReason: ExitReason.INSTRUCTION_LIMIT, payload: 0 });
+  assertSingleInstructionExit(exit);
   strictEqual(state.eax, 0x1234_5678);
-  strictEqual(state.eip, startAddress + 5);
-  strictEqual(state.instructionCount, 8);
+  assertCompletedInstruction(state, startAddress + 5, 8);
   strictEqual(state.ebx, initialState.ebx);
 });
 
 test("executes MOV edi, imm32 through opcode register low bits", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const initialState = createCpuState({
     eax: 0x1122_3344,
     eip: startAddress,
@@ -44,15 +47,14 @@ test("executes MOV edi, imm32 through opcode register low bits", async () => {
   const exit = interpreter.run(1);
   const state = readInterpreterState(interpreter.stateView);
 
-  deepStrictEqual(exit, { exitReason: ExitReason.INSTRUCTION_LIMIT, payload: 0 });
+  assertSingleInstructionExit(exit);
   strictEqual(state.edi, 1);
   strictEqual(state.eax, initialState.eax);
-  strictEqual(state.eip, startAddress + 5);
-  strictEqual(state.instructionCount, 8);
+  assertCompletedInstruction(state, startAddress + 5, 8);
 });
 
 test("truncated MOV r32, imm32 returns decode fault without changing architectural state", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const eip = interpreter.guestView.byteLength - 3;
   const initialState = createCpuState({
     eax: 0x1122_3344,
@@ -67,9 +69,3 @@ test("truncated MOV r32, imm32 returns decode fault without changing architectur
   deepStrictEqual(exit, { exitReason: ExitReason.DECODE_FAULT, payload: eip + 1 });
   assertInterpreterStateEquals(interpreter.stateView, initialState);
 });
-
-function writeGuestBytes(view: DataView, address: number, bytes: readonly number[]): void {
-  for (let index = 0; index < bytes.length; index += 1) {
-    view.setUint8(address + index, bytes[index] ?? 0);
-  }
-}

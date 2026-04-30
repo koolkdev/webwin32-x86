@@ -4,13 +4,13 @@ import { test } from "node:test";
 import { createCpuState } from "../../../core/state/cpu-state.js";
 import {
   assertInterpreterStateEquals,
-  instantiateInterpreterModule,
   writeInterpreterState
 } from "../../../test-support/wasm-interpreter.js";
 import { assertMemoryImports, startAddress } from "../../../test-support/wasm-codegen.js";
 import { wasmImport } from "../../abi.js";
 import { ExitReason } from "../../exit.js";
 import { encodeInterpreterModule } from "../module.js";
+import { instantiateWasmInterpreter, writeGuestBytes } from "./support.js";
 
 test("imports state and guest memories in ABI order", () => {
   const module = new WebAssembly.Module(encodeInterpreterModule());
@@ -19,7 +19,7 @@ test("imports state and guest memories in ABI order", () => {
 });
 
 test("exports run(fuel) -> i64", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const exportedRun = interpreter.instance.exports.run;
 
   strictEqual(typeof exportedRun, "function");
@@ -30,7 +30,7 @@ test("exports run(fuel) -> i64", async () => {
 });
 
 test("fuel zero returns instruction-limit exit without changing architectural state", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const initialState = createCpuState({
     eax: 0x1122_3344,
     ebx: 0x5566_7788,
@@ -46,7 +46,7 @@ test("fuel zero returns instruction-limit exit without changing architectural st
 });
 
 test("unsupported byte returns unsupported exit without changing architectural state", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const initialState = createCpuState({
     eax: 0x1122_3344,
     ebx: 0x5566_7788,
@@ -63,7 +63,7 @@ test("unsupported byte returns unsupported exit without changing architectural s
 });
 
 test("prefix byte is unsupported until prefix semantics are modeled", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const initialState = createCpuState({
     eip: startAddress,
     instructionCount: 7
@@ -78,7 +78,7 @@ test("prefix byte is unsupported until prefix semantics are modeled", async () =
 });
 
 test("truncated two-byte opcode escape returns decode fault", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const lastGuestByte = interpreter.guestView.byteLength - 1;
   const initialState = createCpuState({
     eip: lastGuestByte,
@@ -94,7 +94,7 @@ test("truncated two-byte opcode escape returns decode fault", async () => {
 });
 
 test("two-byte opcode path dispatches before unsupported exit", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const initialState = createCpuState({
     eip: startAddress,
     instructionCount: 7
@@ -125,9 +125,3 @@ test("requires both ABI memories when instantiating", async () => {
     }
   );
 });
-
-function writeGuestBytes(view: DataView, address: number, bytes: readonly number[]): void {
-  for (let index = 0; index < bytes.length; index += 1) {
-    view.setUint8(address + index, bytes[index] ?? 0);
-  }
-}

@@ -1,15 +1,9 @@
-import { deepStrictEqual, strictEqual } from "node:assert";
+import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { createCpuState, type CpuState } from "../../../core/state/cpu-state.js";
-import {
-  instantiateInterpreterModule,
-  readInterpreterState,
-  writeInterpreterState
-} from "../../../test-support/wasm-interpreter.js";
+import { createCpuState } from "../../../core/state/cpu-state.js";
 import { startAddress } from "../../../test-support/wasm-codegen.js";
-import { ExitReason, type DecodedExit } from "../../exit.js";
-import { encodeInterpreterModule } from "../module.js";
+import { assertCompletedInstruction, assertSingleInstructionExit, executeInstruction } from "./support.js";
 
 const preservedEflags = 0x0020_0000;
 const allModeledEflags = 0x8d5;
@@ -105,33 +99,3 @@ test("executes TEST r/m32, r32 without writing operands", async () => {
   assertCompletedInstruction(state, startAddress + 2, 8);
   strictEqual(state.eflags, preservedEflags | signLogicEflags);
 });
-
-async function executeInstruction(
-  bytes: readonly number[],
-  initialState: CpuState
-): Promise<Readonly<{ exit: DecodedExit; state: CpuState }>> {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
-
-  writeInterpreterState(interpreter.stateView, initialState);
-  writeGuestBytes(interpreter.guestView, initialState.eip, bytes);
-
-  const exit = interpreter.run(1);
-  const state = readInterpreterState(interpreter.stateView);
-
-  return { exit, state };
-}
-
-function assertSingleInstructionExit(exit: DecodedExit): void {
-  deepStrictEqual(exit, { exitReason: ExitReason.INSTRUCTION_LIMIT, payload: 0 });
-}
-
-function assertCompletedInstruction(state: CpuState, expectedEip: number, expectedInstructionCount: number): void {
-  strictEqual(state.eip, expectedEip);
-  strictEqual(state.instructionCount, expectedInstructionCount);
-}
-
-function writeGuestBytes(view: DataView, address: number, bytes: readonly number[]): void {
-  for (let index = 0; index < bytes.length; index += 1) {
-    view.setUint8(address + index, bytes[index] ?? 0);
-  }
-}

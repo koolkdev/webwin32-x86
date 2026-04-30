@@ -4,16 +4,20 @@ import { test } from "node:test";
 import { createCpuState } from "../../../core/state/cpu-state.js";
 import {
   assertInterpreterStateEquals,
-  instantiateInterpreterModule,
   readInterpreterState,
   writeInterpreterState
 } from "../../../test-support/wasm-interpreter.js";
 import { startAddress } from "../../../test-support/wasm-codegen.js";
 import { ExitReason } from "../../exit.js";
-import { encodeInterpreterModule } from "../module.js";
+import {
+  assertCompletedInstruction,
+  assertSingleInstructionExit,
+  instantiateWasmInterpreter,
+  writeGuestBytes
+} from "./support.js";
 
 test("executes MOV r32, r/m32 with register ModRM", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const initialState = createCpuState({
     ebx: 0x1234_5678,
     eip: startAddress,
@@ -25,15 +29,14 @@ test("executes MOV r32, r/m32 with register ModRM", async () => {
   const exit = interpreter.run(1);
   const state = readInterpreterState(interpreter.stateView);
 
-  deepStrictEqual(exit, { exitReason: ExitReason.INSTRUCTION_LIMIT, payload: 0 });
+  assertSingleInstructionExit(exit);
   strictEqual(state.eax, 0x1234_5678);
   strictEqual(state.ebx, initialState.ebx);
-  strictEqual(state.eip, startAddress + 2);
-  strictEqual(state.instructionCount, 8);
+  assertCompletedInstruction(state, startAddress + 2, 8);
 });
 
 test("executes MOV r/m32, r32 with register ModRM", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const initialState = createCpuState({
     eax: 0xaaaa_aaaa,
     ebx: 0x1234_5678,
@@ -46,15 +49,14 @@ test("executes MOV r/m32, r32 with register ModRM", async () => {
   const exit = interpreter.run(1);
   const state = readInterpreterState(interpreter.stateView);
 
-  deepStrictEqual(exit, { exitReason: ExitReason.INSTRUCTION_LIMIT, payload: 0 });
+  assertSingleInstructionExit(exit);
   strictEqual(state.eax, 0x1234_5678);
   strictEqual(state.ebx, initialState.ebx);
-  strictEqual(state.eip, startAddress + 2);
-  strictEqual(state.instructionCount, 8);
+  assertCompletedInstruction(state, startAddress + 2, 8);
 });
 
 test("memory ModRM form is unsupported until memory operands are implemented", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const initialState = createCpuState({
     eax: 0xaaaa_aaaa,
     ebx: 0x1234_5678,
@@ -71,7 +73,7 @@ test("memory ModRM form is unsupported until memory operands are implemented", a
 });
 
 test("truncated ModRM returns decode fault without changing architectural state", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const eip = interpreter.guestView.byteLength - 1;
   const initialState = createCpuState({
     eax: 0xaaaa_aaaa,
@@ -87,9 +89,3 @@ test("truncated ModRM returns decode fault without changing architectural state"
   deepStrictEqual(exit, { exitReason: ExitReason.DECODE_FAULT, payload: eip + 1 });
   assertInterpreterStateEquals(interpreter.stateView, initialState);
 });
-
-function writeGuestBytes(view: DataView, address: number, bytes: readonly number[]): void {
-  for (let index = 0; index < bytes.length; index += 1) {
-    view.setUint8(address + index, bytes[index] ?? 0);
-  }
-}

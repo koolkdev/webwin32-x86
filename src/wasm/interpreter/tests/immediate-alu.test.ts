@@ -1,16 +1,20 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { createCpuState, type CpuState } from "../../../core/state/cpu-state.js";
+import { createCpuState } from "../../../core/state/cpu-state.js";
 import {
   assertInterpreterStateEquals,
-  instantiateInterpreterModule,
-  readInterpreterState,
   writeInterpreterState
 } from "../../../test-support/wasm-interpreter.js";
 import { startAddress } from "../../../test-support/wasm-codegen.js";
-import { ExitReason, type DecodedExit } from "../../exit.js";
-import { encodeInterpreterModule } from "../module.js";
+import { ExitReason } from "../../exit.js";
+import {
+  assertCompletedInstruction,
+  assertSingleInstructionExit,
+  executeInstruction,
+  instantiateWasmInterpreter,
+  writeGuestBytes
+} from "./support.js";
 
 const preservedEflags = 0x0020_0000;
 const allModeledEflags = 0x8d5;
@@ -150,7 +154,7 @@ test("executes 83 /6 XOR r/m32, sign-extended imm8 for register operands", async
 });
 
 test("unsupported 81 /1 group returns unsupported before immediate decode", async () => {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const interpreter = await instantiateWasmInterpreter();
   const eip = interpreter.guestView.byteLength - 2;
   const initialState = createCpuState({
     eax: 0x1234_5678,
@@ -166,33 +170,3 @@ test("unsupported 81 /1 group returns unsupported before immediate decode", asyn
   deepStrictEqual(exit, { exitReason: ExitReason.UNSUPPORTED, payload: 0x81 });
   assertInterpreterStateEquals(interpreter.stateView, initialState);
 });
-
-async function executeInstruction(
-  bytes: readonly number[],
-  initialState: CpuState
-): Promise<Readonly<{ exit: DecodedExit; state: CpuState }>> {
-  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
-
-  writeInterpreterState(interpreter.stateView, initialState);
-  writeGuestBytes(interpreter.guestView, initialState.eip, bytes);
-
-  const exit = interpreter.run(1);
-  const state = readInterpreterState(interpreter.stateView);
-
-  return { exit, state };
-}
-
-function assertSingleInstructionExit(exit: DecodedExit): void {
-  deepStrictEqual(exit, { exitReason: ExitReason.INSTRUCTION_LIMIT, payload: 0 });
-}
-
-function assertCompletedInstruction(state: CpuState, expectedEip: number, expectedInstructionCount: number): void {
-  strictEqual(state.eip, expectedEip);
-  strictEqual(state.instructionCount, expectedInstructionCount);
-}
-
-function writeGuestBytes(view: DataView, address: number, bytes: readonly number[]): void {
-  for (let index = 0; index < bytes.length; index += 1) {
-    view.setUint8(address + index, bytes[index] ?? 0);
-  }
-}
