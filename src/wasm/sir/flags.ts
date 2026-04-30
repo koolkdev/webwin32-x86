@@ -10,7 +10,7 @@ import { stateOffset } from "../abi.js";
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
-import { emitLoadStateU32, emitStoreStateStackU32 } from "../interpreter/state.js";
+import { emitLoadStateU32, emitStoreStateU32 } from "../interpreter/state.js";
 import type { WasmSirEmitHelpers } from "./lower.js";
 
 const flagOrder = ["CF", "PF", "AF", "ZF", "SF", "OF"] as const satisfies readonly FlagName[];
@@ -37,10 +37,10 @@ export function emitSetFlags(
       }
     }
 
-    body.i32Const(0);
-    emitLoadStateU32(body, stateOffset.eflags);
-    body.i32Const(i32(~writtenFlagsMask(defs))).i32And().localGet(flagsLocal).i32Or();
-    emitStoreStateStackU32(body, stateOffset.eflags);
+    emitStoreStateU32(body, stateOffset.eflags, () => {
+      emitLoadStateU32(body, stateOffset.eflags);
+      body.i32Const(i32(~writtenFlagsMask(defs))).i32And().localGet(flagsLocal).i32Or();
+    });
   } finally {
     scratch.freeLocal(flagsLocal);
   }

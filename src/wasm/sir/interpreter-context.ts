@@ -1,3 +1,4 @@
+import type { Reg32 } from "../../arch/x86/instruction/types.js";
 import type {
   SirProgram,
   StorageRef,
@@ -14,7 +15,7 @@ import {
   emitModRmRegAddress,
   emitModRmRmAddress,
   emitOpcodeRegAddress,
-  emitStoreReg32FromStack
+  emitStoreReg32
 } from "../interpreter/state.js";
 import { lowerSirToWasm, type WasmSirEmitHelpers } from "./lower.js";
 import { emitSetFlags } from "./flags.js";
@@ -23,6 +24,7 @@ export type InterpreterOperandBinding =
   | Readonly<{ kind: "opcode.reg32"; opcodeLocal: number }>
   | Readonly<{ kind: "modrm.reg32"; modRmLocal: number }>
   | Readonly<{ kind: "modrm.rm32"; modRmLocal: number }>
+  | Readonly<{ kind: "implicit.reg32"; reg: Reg32 }>
   | Readonly<{ kind: "imm32"; local: number }>;
 
 export type InterpreterSirContext = Readonly<{
@@ -70,9 +72,7 @@ function emitSet32(
       emitSetOperand32(context, target.index, value, helpers);
       return;
     case "reg":
-      context.body.i32Const(0);
-      helpers.emitValue(value);
-      emitStoreReg32FromStack(context.body, target.reg);
+      emitStoreReg32(context.body, target.reg, () => helpers.emitValue(value));
       return;
     default:
       throw new Error(`unsupported set32 target for Wasm interpreter: ${target.kind}`);
@@ -94,6 +94,9 @@ function emitGetOperand32(context: InterpreterSirContext, index: number): void {
     case "modrm.rm32":
       emitModRmRmAddress(context.body, binding.modRmLocal);
       context.body.i32Load({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+      return;
+    case "implicit.reg32":
+      emitLoadReg32(context.body, binding.reg);
       return;
     case "imm32":
       context.body.localGet(binding.local);
@@ -124,6 +127,9 @@ function emitSetOperand32(
       emitModRmRmAddress(context.body, binding.modRmLocal);
       helpers.emitValue(value);
       context.body.i32Store({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+      return;
+    case "implicit.reg32":
+      emitStoreReg32(context.body, binding.reg, () => helpers.emitValue(value));
       return;
     case "imm32":
       throw new Error("cannot set imm32 operand");

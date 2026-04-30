@@ -20,12 +20,18 @@ export function emitStoreStateStackU32(body: WasmFunctionBodyEncoder, offset: nu
   });
 }
 
+export function emitStoreStateU32(body: WasmFunctionBodyEncoder, offset: number, emitValue: () => void): void {
+  body.i32Const(0);
+  emitValue();
+  emitStoreStateStackU32(body, offset);
+}
+
 export function emitLoadReg32(body: WasmFunctionBodyEncoder, reg: Reg32): void {
   emitLoadStateU32(body, stateOffset[reg]);
 }
 
-export function emitStoreReg32FromStack(body: WasmFunctionBodyEncoder, reg: Reg32): void {
-  emitStoreStateStackU32(body, stateOffset[reg]);
+export function emitStoreReg32(body: WasmFunctionBodyEncoder, reg: Reg32, emitValue: () => void): void {
+  emitStoreStateU32(body, stateOffset[reg], emitValue);
 }
 
 export function emitOpcodeRegAddress(body: WasmFunctionBodyEncoder, opcodeLocal: number): void {
@@ -45,14 +51,15 @@ export function emitCompleteInstruction(
   eipLocal: number,
   instructionLength: number
 ): void {
-  body.i32Const(0).localGet(eipLocal).i32Const(instructionLength).i32Add();
-  emitStoreStateStackU32(body, stateOffset.eip);
+  emitStoreStateU32(body, stateOffset.eip, () => {
+    body.localGet(eipLocal).i32Const(instructionLength).i32Add();
+  });
   emitIncrementInstructionCount(body);
 }
 
 function emitIncrementInstructionCount(body: WasmFunctionBodyEncoder): void {
-  body.i32Const(0);
-  emitLoadStateU32(body, stateOffset.instructionCount);
-  body.i32Const(1).i32Add();
-  emitStoreStateStackU32(body, stateOffset.instructionCount);
+  emitStoreStateU32(body, stateOffset.instructionCount, () => {
+    emitLoadStateU32(body, stateOffset.instructionCount);
+    body.i32Const(1).i32Add();
+  });
 }
