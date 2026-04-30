@@ -1,9 +1,13 @@
-import { emitLoadGuestU32, emitLoadGuestU32FromStack, emitStoreGuestU32 } from "../guest-memory.js";
-import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
+import { wasmMemoryIndex } from "../abi.js";
+import { wasmBranchHint, type WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
 import { emitWasmSirExitFromI32Stack, type WasmSirExitTarget } from "./exit.js";
 
 type WasmSirMemoryAccess = "read" | "write";
+
+const u32ByteLength = 4;
+const u32Align = 2;
+const wasmPageShift = 16;
 
 export type WasmSirMemoryContext = Readonly<{
   body: WasmFunctionBodyEncoder;
@@ -15,9 +19,11 @@ export function emitWasmSirLoadGuestU32(
   addressLocal: number,
   faultExtraDepth = 1
 ): void {
-  emitLoadGuestU32(context.body, addressLocal, (access: WasmSirMemoryAccess, emitFaultAddress) => {
-    emitFaultAddress();
-    emitWasmSirMemoryFaultExitFromI32Stack(context, access, faultExtraDepth);
+  emitFaultIfU32OutOfBounds(context, addressLocal, "read", faultExtraDepth);
+  context.body.localGet(addressLocal).i32Load({
+    align: u32Align,
+    memoryIndex: wasmMemoryIndex.guest,
+    offset: 0
   });
 }
 
@@ -26,9 +32,11 @@ export function emitWasmSirLoadGuestU32FromStack(
   addressLocal: number,
   faultExtraDepth = 1
 ): void {
-  emitLoadGuestU32FromStack(context.body, addressLocal, (access: WasmSirMemoryAccess, emitFaultAddress) => {
-    emitFaultAddress();
-    emitWasmSirMemoryFaultExitFromI32Stack(context, access, faultExtraDepth);
+  emitFaultIfStackU32OutOfBounds(context, addressLocal, "read", faultExtraDepth);
+  context.body.localGet(addressLocal).i32Load({
+    align: u32Align,
+    memoryIndex: wasmMemoryIndex.guest,
+    offset: 0
   });
 }
 
@@ -38,13 +46,46 @@ export function emitWasmSirStoreGuestU32(
   valueLocal: number,
   faultExtraDepth = 1
 ): void {
-  emitStoreGuestU32(context.body, addressLocal, valueLocal, (access: WasmSirMemoryAccess, emitFaultAddress) => {
-    emitFaultAddress();
-    emitWasmSirMemoryFaultExitFromI32Stack(context, access, faultExtraDepth);
+  emitFaultIfU32OutOfBounds(context, addressLocal, "write", faultExtraDepth);
+  context.body.localGet(addressLocal).localGet(valueLocal).i32Store({
+    align: u32Align,
+    memoryIndex: wasmMemoryIndex.guest,
+    offset: 0
   });
 }
 
-export function emitWasmSirMemoryFaultExitFromI32Stack(
+function emitFaultIfU32OutOfBounds(
+  context: WasmSirMemoryContext,
+  addressLocal: number,
+  access: WasmSirMemoryAccess,
+  faultExtraDepth: number
+): void {
+  emitLastValidGuestU32Address(context.body);
+  context.body.localGet(addressLocal).i32LtU().ifBlock(wasmBranchHint.unlikely);
+  context.body.localGet(addressLocal);
+  emitWasmSirMemoryFaultExitFromI32Stack(context, access, faultExtraDepth);
+  context.body.endBlock();
+}
+
+function emitFaultIfStackU32OutOfBounds(
+  context: WasmSirMemoryContext,
+  addressLocal: number,
+  access: WasmSirMemoryAccess,
+  faultExtraDepth: number
+): void {
+  context.body.localTee(addressLocal);
+  emitLastValidGuestU32Address(context.body);
+  context.body.i32GtU().ifBlock(wasmBranchHint.unlikely);
+  context.body.localGet(addressLocal);
+  emitWasmSirMemoryFaultExitFromI32Stack(context, access, faultExtraDepth);
+  context.body.endBlock();
+}
+
+function emitLastValidGuestU32Address(body: WasmFunctionBodyEncoder): void {
+  body.memorySize(wasmMemoryIndex.guest).i32Const(wasmPageShift).i32Shl().i32Const(u32ByteLength).i32Sub();
+}
+
+function emitWasmSirMemoryFaultExitFromI32Stack(
   context: WasmSirMemoryContext,
   access: WasmSirMemoryAccess,
   extraDepth: number

@@ -1,7 +1,6 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { emitExitResult } from "../../src/wasm/exit-emit.js";
 import { WasmFunctionBodyEncoder } from "../../src/wasm/encoder/function-body.js";
 import { WasmModuleEncoder } from "../../src/wasm/encoder/module.js";
 import { wasmValueType } from "../../src/wasm/encoder/types.js";
@@ -66,7 +65,9 @@ async function runExitResult(exitReason: ExitReason, payload: number): Promise<b
     params: [],
     results: [wasmValueType.i64]
   });
-  const body = emitExitResult(new WasmFunctionBodyEncoder(), exitReason, payload).end();
+  const body = new WasmFunctionBodyEncoder()
+    .i64Const(encodeExit(exitReason, payload))
+    .end();
   const functionIndex = module.addFunction(typeIndex, body);
 
   module.exportFunction("exitResult", functionIndex);
