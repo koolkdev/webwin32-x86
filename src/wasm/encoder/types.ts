@@ -20,6 +20,7 @@ export const wasmOpcode = {
   localSet: 0x21,
   localTee: 0x22,
   i32Load: 0x28,
+  i32Load8U: 0x2d,
   i32Store: 0x36,
   memorySize: 0x3f,
   i32Eqz: 0x45,
