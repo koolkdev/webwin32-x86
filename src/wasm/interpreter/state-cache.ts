@@ -2,7 +2,7 @@ import { reg32, type Reg32 } from "../../arch/x86/instruction/types.js";
 import { stateOffset } from "../abi.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
-import { emitLoadStateU32, emitStoreStateU32 } from "./state.js";
+import { emitLoadStateU32, emitStoreStateU32 } from "../sir/state.js";
 
 export type InterpreterStateCache = Readonly<{
   eipLocal: number;
