@@ -1,4 +1,5 @@
-import { decodeIsaBlock, type IsaBlockDecodeReader } from "../../arch/x86/isa/decoder/decode-block.js";
+import { decodeIsaBlock } from "../../arch/x86/isa/decoder/decode-block.js";
+import type { IsaDecodeReader } from "../../arch/x86/isa/decoder/reader.js";
 import { cpuStateFields, u32, type CpuState } from "../../core/state/cpu-state.js";
 import { stateOffset } from "../../wasm/abi.js";
 import { UnsupportedWasmCodegenError } from "../../wasm/errors.js";
@@ -78,7 +79,7 @@ export class WasmBlockCache {
     this.#blocksByKey.clear();
   }
 
-  getOrCompile(startEip: number, reader: IsaBlockDecodeReader): WasmBlockHandle | undefined {
+  getOrCompile(startEip: number, reader: IsaDecodeReader): WasmBlockHandle | undefined {
     const blockKey = u32(startEip);
     const cached = this.#blocksByKey.get(blockKey);
 

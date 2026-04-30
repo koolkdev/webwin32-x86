@@ -1,15 +1,14 @@
 import {
+  decodeFault,
   decodeRegionByteLength,
+  IsaDecodeError,
   type ByteDecodeRegion,
   type DecodeReader,
   type DecodeRegion
-} from "../arch/x86/block-decoder/decode-reader.js";
-import type { DecodeFault } from "../arch/x86/decoder/decode-error.js";
+} from "../arch/x86/isa/decoder/reader.js";
 import { startAddress } from "./x86-code.js";
 
 export class TestDecodeReader implements DecodeReader {
-  sliceReads = 0;
-
   constructor(readonly regions: readonly DecodeRegion[]) {}
 
   regionAt(eip: number): DecodeRegion | undefined {
@@ -24,31 +23,21 @@ export class TestDecodeReader implements DecodeReader {
     return undefined;
   }
 
-  readU8(eip: number): number | DecodeFault {
+  readU8(eip: number): number {
     const region = this.regionAt(eip);
 
     if (region?.kind !== "guest-bytes") {
-      return decodeFault(eip);
+      throw new IsaDecodeError(decodeFault(eip));
     }
 
     const offset = eip - region.baseAddress;
     const value = region.bytes[offset];
 
-    return value ?? decodeFault(eip);
-  }
-
-  sliceFrom(eip: number, maxBytes: number): Uint8Array<ArrayBufferLike> | DecodeFault {
-    this.sliceReads += 1;
-
-    const region = this.regionAt(eip);
-
-    if (region?.kind !== "guest-bytes") {
-      return decodeFault(eip);
+    if (value === undefined) {
+      throw new IsaDecodeError(decodeFault(eip));
     }
 
-    const offset = eip - region.baseAddress;
-
-    return region.bytes.slice(offset, offset + maxBytes);
+    return value;
   }
 }
 
@@ -65,13 +54,4 @@ export function guestBytesRegion(
 
 export function guestReader(bytes: readonly number[], baseAddress = startAddress): TestDecodeReader {
   return new TestDecodeReader([guestBytesRegion(bytes, baseAddress)]);
-}
-
-export function decodeFault(eip: number): DecodeFault {
-  return {
-    reason: "truncated",
-    address: eip,
-    offset: 0,
-    raw: []
-  };
 }

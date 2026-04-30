@@ -1,17 +1,16 @@
 import { u32 } from "../../../../core/state/cpu-state.js";
 import { buildSir } from "../../sir/builder.js";
 import type { SirProgram } from "../../sir/types.js";
-import { decodeIsaInstruction } from "./decode.js";
+import { decodeIsaInstructionFromReader } from "./decode.js";
+import {
+  decodeFault,
+  IsaDecodeError,
+  maxX86InstructionLength,
+  readAvailableBytes,
+  type IsaDecodeFault,
+  type IsaDecodeReader
+} from "./reader.js";
 import type { IsaDecodedInstruction } from "./types.js";
-
-export type IsaBlockDecodeReader = Readonly<{
-  sliceFrom(eip: number, maxBytes: number): Uint8Array<ArrayBufferLike> | IsaDecodeFault;
-}>;
-
-export type IsaDecodeFault = Readonly<{
-  address: number;
-  raw: readonly number[];
-}>;
 
 export type IsaDecodedBlock = Readonly<{
   startEip: number;
@@ -36,10 +35,9 @@ export type DecodeIsaBlockOptions = Readonly<{
 }>;
 
 const defaultMaxInstructions = 64;
-const maxInstructionLength = 15;
 
 export function decodeIsaBlock(
-  reader: IsaBlockDecodeReader,
+  reader: IsaDecodeReader,
   startEip: number,
   options: DecodeIsaBlockOptions = {}
 ): IsaDecodedBlock {
@@ -48,13 +46,7 @@ export function decodeIsaBlock(
   let eip = u32(startEip);
 
   for (let count = 0; count < maxInstructions; count += 1) {
-    const bytes = reader.sliceFrom(eip, maxInstructionLength);
-
-    if (!(bytes instanceof Uint8Array)) {
-      return { startEip, instructions, terminator: { kind: "decode-fault", fault: bytes } };
-    }
-
-    const decoded = decodeInstruction(bytes, eip);
+    const decoded = decodeInstruction(reader, eip);
 
     if (decoded.kind === "decode-fault") {
       return { startEip, instructions, terminator: decoded };
@@ -77,13 +69,13 @@ export function decodeIsaBlock(
 }
 
 function decodeInstruction(
-  bytes: Uint8Array<ArrayBufferLike>,
+  reader: IsaDecodeReader,
   eip: number
 ):
   | Readonly<{ kind: "instruction"; instruction: IsaDecodedInstruction }>
   | Extract<IsaBlockTerminator, { kind: "unsupported" | "decode-fault" }> {
   try {
-    const decoded = decodeIsaInstruction(bytes, 0, eip);
+    const decoded = decodeIsaInstructionFromReader(reader, eip);
 
     if (decoded.kind === "unsupported") {
       return {
@@ -97,13 +89,10 @@ function decodeInstruction(
 
     return { kind: "instruction", instruction: decoded.instruction };
   } catch (error: unknown) {
-    if (error instanceof RangeError) {
+    if (error instanceof IsaDecodeError || error instanceof RangeError) {
       return {
         kind: "decode-fault",
-        fault: {
-          address: eip,
-          raw: Array.from(bytes)
-        }
+        fault: decodeFault(eip, readAvailableBytes(reader, eip, maxX86InstructionLength))
       };
     }
 

@@ -1,5 +1,9 @@
-import { maxInstructionLength } from "../../../arch/x86/decoder/decode-bounds.js";
-import { decodeIsaInstruction } from "../../../arch/x86/isa/decoder/decode.js";
+import { decodeIsaInstructionFromReader } from "../../../arch/x86/isa/decoder/decode.js";
+import {
+  IsaDecodeError,
+  maxX86InstructionLength,
+  readAvailableBytes
+} from "../../../arch/x86/isa/decoder/reader.js";
 import type { IsaDecodedInstruction } from "../../../arch/x86/isa/decoder/types.js";
 import { executeIsaInstruction } from "../../../arch/x86/isa/runtime/execute.js";
 import { runResultFromState, StopReason, type RunResult } from "../../../core/execution/run-result.js";
@@ -43,14 +47,9 @@ export function runT0InstructionInterpreter(context: RuntimeTierExecutionContext
 
 function decodeInstructionAt(context: RuntimeTierExecutionContext): DecodeInstructionResult {
   const eip = u32(context.state.eip);
-  const bytes = context.decodeReader.sliceFrom(eip, maxInstructionLength + 1);
-
-  if (!(bytes instanceof Uint8Array)) {
-    return stopWithDecodeFault(context.state, bytes.address, bytes.raw.length);
-  }
 
   try {
-    const decoded = decodeIsaInstruction(bytes, 0, eip);
+    const decoded = decodeIsaInstructionFromReader(context.decodeReader, eip);
 
     if (decoded.kind === "unsupported") {
       return stopWithUnsupported(context.state, decoded.unsupportedByte);
@@ -58,8 +57,10 @@ function decodeInstructionAt(context: RuntimeTierExecutionContext): DecodeInstru
 
     return { kind: "instruction", instruction: decoded.instruction };
   } catch (error: unknown) {
-    if (error instanceof RangeError) {
-      return stopWithDecodeFault(context.state, eip, bytes.length);
+    if (error instanceof IsaDecodeError || error instanceof RangeError) {
+      const raw = readAvailableBytes(context.decodeReader, eip, maxX86InstructionLength);
+
+      return stopWithDecodeFault(context.state, eip, raw.length);
     }
 
     throw error;

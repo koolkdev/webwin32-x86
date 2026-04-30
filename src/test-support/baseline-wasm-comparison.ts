@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 
-import type { DecodeReader } from "../arch/x86/block-decoder/decode-reader.js";
 import { decodeIsaBlock, type IsaDecodedBlock } from "../arch/x86/isa/decoder/decode-block.js";
+import type { DecodeReader } from "../arch/x86/isa/decoder/reader.js";
 import {
   runResultFromState,
   StopReason,

@@ -1,5 +1,4 @@
-import { GuestMemoryDecodeReader } from "../../arch/x86/block-decoder/guest-memory-decode-reader.js";
-import type { DecodeReader } from "../../arch/x86/block-decoder/decode-reader.js";
+import { GuestMemoryDecodeReader, type DecodeReader } from "../../arch/x86/isa/decoder/reader.js";
 import type { RunResult } from "../../core/execution/run-result.js";
 import { ArrayBufferGuestMemory, type GuestMemory } from "../../core/memory/guest-memory.js";
 import { createCpuState, u32, type CpuState } from "../../core/state/cpu-state.js";

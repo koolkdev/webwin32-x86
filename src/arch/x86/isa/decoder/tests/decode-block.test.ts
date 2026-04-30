@@ -1,6 +1,8 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
+import { ArrayBufferGuestMemory } from "../../../../../core/memory/guest-memory.js";
+import { GuestMemoryDecodeReader } from "../reader.js";
 import { guestReader } from "../../../../../test-support/decode-reader.js";
 import { decodeIsaBlock } from "../decode-block.js";
 
@@ -20,6 +22,33 @@ test("decodeIsaBlock_decodes_until_control_instruction", () => {
     "jmp.rel8"
   ]);
   strictEqual(block.terminator.kind, "control");
+});
+
+test("decodeIsaBlock_stops_after_ret_control_instruction", () => {
+  const block = decodeIsaBlock(guestReader([
+    0x90,
+    0xc3,
+    0x90
+  ], startAddress), startAddress);
+
+  deepStrictEqual(block.instructions.map((instruction) => instruction.spec.id), ["nop.near", "ret.near"]);
+  strictEqual(block.terminator.kind, "control");
+});
+
+test("decodeIsaBlock_stops_after_int_control_instruction", () => {
+  const block = decodeIsaBlock(guestReader([
+    0x90,
+    0xcd, 0x2e,
+    0x90
+  ], startAddress), startAddress);
+
+  deepStrictEqual(block.instructions.map((instruction) => instruction.spec.id), ["nop.near", "int.imm8"]);
+  strictEqual(block.terminator.kind, "control");
+  if (block.terminator.kind === "control") {
+    deepStrictEqual(block.terminator.instruction.operands, [
+      { kind: "imm32", value: 0x2e, encodedWidth: 8 }
+    ]);
+  }
 });
 
 test("decodeIsaBlock_returns_fallthrough_when_instruction_limit_ends_block", () => {
@@ -46,6 +75,23 @@ test("decodeIsaBlock_reports_unsupported_without_caching_raw_block_state", () =>
   });
 });
 
+test("decodeIsaBlock_reports_unsupported_after_valid_prefix_instructions", () => {
+  const block = decodeIsaBlock(guestReader([
+    0x90,
+    0x62,
+    0x90
+  ], startAddress), startAddress);
+
+  deepStrictEqual(block.instructions.map((instruction) => instruction.spec.id), ["nop.near"]);
+  deepStrictEqual(block.terminator, {
+    kind: "unsupported",
+    address: startAddress + 1,
+    length: 1,
+    raw: [0x62],
+    unsupportedByte: 0x62
+  });
+});
+
 test("decodeIsaBlock_reports_decode_fault_after_valid_prefix_instructions", () => {
   const block = decodeIsaBlock(guestReader([
     0x90,
@@ -56,4 +102,27 @@ test("decodeIsaBlock_reports_decode_fault_after_valid_prefix_instructions", () =
   strictEqual(block.terminator.kind, "decode-fault");
   strictEqual(block.terminator.fault.address, startAddress + 1);
   deepStrictEqual(block.terminator.fault.raw, [0xb8, 0x01]);
+});
+
+test("decodeIsaBlock_reports_guest_memory_decode_fault_without_byte_slice", () => {
+  const memory = new ArrayBufferGuestMemory(startAddress + 3);
+  const values = [0x90, 0xb8, 0x01];
+
+  for (let index = 0; index < values.length; index += 1) {
+    memory.writeU8(startAddress + index, values[index] ?? 0);
+  }
+
+  const block = decodeIsaBlock(
+    new GuestMemoryDecodeReader(memory, [
+      { kind: "guest-memory", baseAddress: startAddress, byteLength: values.length }
+    ]),
+    startAddress
+  );
+
+  deepStrictEqual(block.instructions.map((instruction) => instruction.spec.id), ["nop.near"]);
+  strictEqual(block.terminator.kind, "decode-fault");
+  if (block.terminator.kind === "decode-fault") {
+    strictEqual(block.terminator.fault.address, startAddress + 1);
+    deepStrictEqual(block.terminator.fault.raw, [0xb8, 0x01]);
+  }
 });

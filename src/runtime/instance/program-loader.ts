@@ -1,5 +1,5 @@
 import type { GuestMemory, MemoryFault } from "../../core/memory/guest-memory.js";
-import type { GuestMemoryDecodeRegion } from "../../arch/x86/block-decoder/guest-memory-decode-reader.js";
+import type { GuestMemoryDecodeRegion } from "../../arch/x86/isa/decoder/reader.js";
 
 export type RuntimeProgramRegion = Readonly<{
   baseAddress: number;

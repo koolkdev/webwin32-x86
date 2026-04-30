@@ -1,4 +1,4 @@
-import type { DecodeReader } from "../../../arch/x86/block-decoder/decode-reader.js";
+import type { DecodeReader } from "../../../arch/x86/isa/decoder/reader.js";
 import type { GuestMemory } from "../../../core/memory/guest-memory.js";
 import type { CpuState } from "../../../core/state/cpu-state.js";
 import type { WasmRuntimeContext } from "../../wasm-block/wasm-runtime-context.js";

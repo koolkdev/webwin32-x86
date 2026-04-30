@@ -1,7 +1,9 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { decodeIsaInstruction } from "../decode.js";
+import { ArrayBufferGuestMemory } from "../../../../../core/memory/guest-memory.js";
+import { decodeIsaInstruction, decodeIsaInstructionFromReader } from "../decode.js";
+import { GuestMemoryDecodeReader } from "../reader.js";
 import { bytes, ok, startAddress } from "./helpers.js";
 
 test("decodes opcode-encoded register and imm32 operands", () => {
@@ -15,6 +17,42 @@ test("decodes opcode-encoded register and imm32 operands", () => {
   deepStrictEqual(decoded.operands, [
     { kind: "reg32", reg: "ebx" },
     { kind: "imm32", value: 0x1234_5678, encodedWidth: 32 }
+  ]);
+});
+
+test("decodes directly from guest memory without requiring a full instruction slice", () => {
+  const memory = new ArrayBufferGuestMemory(startAddress + 1);
+  memory.writeU8(startAddress, 0x90);
+  const reader = new GuestMemoryDecodeReader(memory, [
+    { kind: "guest-memory", baseAddress: startAddress, byteLength: 1 }
+  ]);
+
+  const decoded = ok(decodeIsaInstructionFromReader(reader, startAddress));
+
+  strictEqual(decoded.spec.id, "nop.near");
+  strictEqual(decoded.length, 1);
+  deepStrictEqual(decoded.raw, [0x90]);
+});
+
+test("decodes multibyte ModRM/SIB instruction directly from guest memory", () => {
+  const memory = new ArrayBufferGuestMemory(startAddress + 7);
+  const values = [0x8b, 0x84, 0x88, 0x10, 0x00, 0x00, 0x00];
+
+  for (let index = 0; index < values.length; index += 1) {
+    memory.writeU8(startAddress + index, values[index] ?? 0);
+  }
+
+  const reader = new GuestMemoryDecodeReader(memory, [
+    { kind: "guest-memory", baseAddress: startAddress, byteLength: values.length }
+  ]);
+  const decoded = ok(decodeIsaInstructionFromReader(reader, startAddress));
+
+  strictEqual(decoded.spec.id, "mov.r32_rm32");
+  strictEqual(decoded.length, 7);
+  deepStrictEqual(decoded.raw, values);
+  deepStrictEqual(decoded.operands, [
+    { kind: "reg32", reg: "eax" },
+    { kind: "mem32", base: "eax", index: "ecx", scale: 4, disp: 0x10 }
   ]);
 });
 

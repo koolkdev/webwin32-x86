@@ -1,6 +1,3 @@
-import { ByteReader } from "../../decoder/byte-reader.js";
-import { signedImm8, signedImm32 } from "../../decoder/immediate.js";
-import { decodeRm32ModRm, rm32ModRmByteLengthAt } from "../../decoder/modrm.js";
 import type { SemanticTemplate } from "../../sir/types.js";
 import { u32 } from "../../../../core/state/cpu-state.js";
 import { X86_32_CORE } from "../index.js";
@@ -10,7 +7,10 @@ import {
 } from "../schema/builders.js";
 import type { ExpandedInstructionSpec, ModRmMatch, OperandSpec, Reg3 } from "../schema/types.js";
 import { reg32, type Reg32 } from "../types.js";
+import { signedImm8, signedImm32 } from "./immediate.js";
+import { decodeRm32ModRm, rm32ModRmByteLengthAt } from "./modrm.js";
 import { buildOpcodeDispatch, opcodeLeaf, type OpcodeDispatchLeaf } from "./opcode-dispatch.js";
+import { ByteArrayDecodeReader, readRawBytes, readU16LE, readU32LE, type IsaDecodeReader } from "./reader.js";
 import type { IsaDecodedInstruction, IsaDecodeResult, IsaOperandBinding } from "./types.js";
 
 type DecodedModRm = Readonly<{
@@ -42,46 +42,44 @@ export function decodeIsaInstruction(
   offset: number,
   address: number
 ): IsaDecodeResult {
-  return decodeIsaInstructionFromReader(new ByteReader(bytes), offset, address);
+  return decodeIsaInstructionFromReader(new ByteArrayDecodeReader(bytes, address, offset), address);
 }
 
 export function decodeIsaInstructionFromReader(
-  reader: ByteReader,
-  offset: number,
+  reader: IsaDecodeReader,
   address: number
 ): IsaDecodeResult {
-  const leaf = opcodeLeaf(OPCODE_DISPATCH_ROOT, reader, offset);
+  const lookup = opcodeLeaf(OPCODE_DISPATCH_ROOT, reader, address);
 
-  if (leaf === undefined) {
-    return unsupported(reader, offset, address, 1);
+  if (lookup.kind === "unsupported") {
+    return unsupported(reader, address, lookup.length);
   }
 
-  const dispatched = dispatchCandidates(reader, offset, leaf);
+  const dispatched = dispatchCandidates(reader, address, lookup.leaf);
 
   for (const expanded of dispatched.candidates) {
-    const decoded = decodeCandidate(reader, offset, address, expanded, dispatched.modrm);
+    const decoded = decodeCandidate(reader, address, expanded, dispatched.modrm);
 
     if (decoded.kind === "match") {
       return { kind: "ok", instruction: decoded.instruction };
     }
 
     if (decoded.kind === "unsupported") {
-      return unsupported(reader, offset, address, decoded.length);
+      return unsupported(reader, address, decoded.length);
     }
   }
 
-  return unsupported(reader, offset, address, dispatched.unsupportedLength);
+  return unsupported(reader, address, dispatched.unsupportedLength);
 }
 
 function decodeCandidate(
-  reader: ByteReader,
-  offset: number,
+  reader: IsaDecodeReader,
   address: number,
   expanded: ExpandedInstructionSpec<SemanticTemplate>,
   dispatchedModRm: DecodedModRm | undefined
 ): CandidateDecode {
   const spec = expanded.spec;
-  let cursor = offset + expanded.opcode.length;
+  let cursor = address + expanded.opcode.length;
   const modrm = instructionReadsModRm(spec) ? dispatchedModRm ?? decodeModRm(reader, cursor) : undefined;
 
   if (modrm !== undefined) {
@@ -95,17 +93,17 @@ function decodeCandidate(
   const operands: IsaOperandBinding[] = [];
 
   for (const operand of spec.operands ?? []) {
-    const decoded = decodeOperand(reader, offset, address, cursor, expanded, modrm, operand);
+    const decoded = decodeOperand(reader, cursor, expanded, modrm, operand);
 
     if (decoded.kind === "unsupported") {
-      return { kind: "unsupported", length: cursor - offset };
+      return { kind: "unsupported", length: cursor - address };
     }
 
     operands.push(decoded.binding);
     cursor = decoded.cursor;
   }
 
-  const length = cursor - offset;
+  const length = cursor - address;
 
   return {
     kind: "match",
@@ -115,15 +113,13 @@ function decodeCandidate(
       length,
       nextEip: u32(address + length),
       operands,
-      raw: reader.raw(offset, cursor)
+      raw: readRawBytes(reader, address, cursor)
     }
   };
 }
 
 function decodeOperand(
-  reader: ByteReader,
-  instructionOffset: number,
-  address: number,
+  reader: IsaDecodeReader,
   cursor: number,
   expanded: ExpandedInstructionSpec<SemanticTemplate>,
   modrm: DecodedModRm | undefined,
@@ -159,7 +155,7 @@ function decodeOperand(
     }
     case "rel": {
       const relative = readRelative(reader, cursor, operand.width);
-      const nextEip = u32(address + cursor - instructionOffset + relative.byteLength);
+      const nextEip = u32(cursor + relative.byteLength);
 
       return {
         kind: "ok",
@@ -175,9 +171,9 @@ function decodeOperand(
   }
 }
 
-function decodeModRm(reader: ByteReader, offset: number): DecodedModRm {
-  const value = reader.readU8(offset);
-  const decoded = decodeRm32ModRm(reader, offset);
+function decodeModRm(reader: IsaDecodeReader, address: number): DecodedModRm {
+  const value = reader.readU8(address);
+  const decoded = decodeRm32ModRm(reader, address);
 
   return {
     mod: reg3(value >>> 6),
@@ -185,7 +181,7 @@ function decodeModRm(reader: ByteReader, offset: number): DecodedModRm {
     rmField: reg3(value),
     reg: decoded.reg,
     rm: decoded.rm,
-    byteLength: rm32ModRmByteLengthAt(reader, offset)
+    byteLength: rm32ModRmByteLengthAt(reader, address)
   };
 }
 
@@ -202,14 +198,14 @@ function reg3Matches(expected: Reg3 | undefined, actual: Reg3): boolean {
 }
 
 function readImmediate(
-  reader: ByteReader,
-  offset: number,
+  reader: IsaDecodeReader,
+  address: number,
   width: 8 | 16 | 32,
   extension: "sign" | "zero" | undefined
 ): Readonly<{ value: number; byteLength: number; extension?: "sign" | "zero" }> {
   switch (width) {
     case 8: {
-      const value = reader.readU8(offset);
+      const value = reader.readU8(address);
       const extended = extension === "sign" ? u32(signedImm8(value)) : value;
 
       return extension === undefined
@@ -217,7 +213,7 @@ function readImmediate(
         : { value: extended, byteLength: 1, extension };
     }
     case 16: {
-      const value = reader.readU16LE(offset);
+      const value = readU16LE(reader, address);
       const extended = extension === "sign" && (value & 0x8000) !== 0 ? u32(value - 0x1_0000) : value;
 
       return extension === undefined
@@ -225,18 +221,18 @@ function readImmediate(
         : { value: extended, byteLength: 2, extension };
     }
     case 32:
-      return { value: reader.readU32LE(offset), byteLength: 4 };
+      return { value: readU32LE(reader, address), byteLength: 4 };
   }
 }
 
 function readRelative(
-  reader: ByteReader,
-  offset: number,
+  reader: IsaDecodeReader,
+  address: number,
   width: 8 | 32
 ): Readonly<{ displacement: number; byteLength: number }> {
   return width === 8
-    ? { displacement: signedImm8(reader.readU8(offset)), byteLength: 1 }
-    : { displacement: signedImm32(reader.readU32LE(offset)), byteLength: 4 };
+    ? { displacement: signedImm8(reader.readU8(address)), byteLength: 1 }
+    : { displacement: signedImm32(readU32LE(reader, address)), byteLength: 4 };
 }
 
 function registerBinding(index: number): IsaOperandBinding {
@@ -249,14 +245,14 @@ function registerBinding(index: number): IsaOperandBinding {
   return { kind: "reg32", reg };
 }
 
-function unsupported(reader: ByteReader, offset: number, address: number, length: number): IsaDecodeResult {
-  const clampedLength = Math.max(1, Math.min(length, reader.length - offset));
-  const unsupportedByte = offset < reader.length ? reader.readU8(offset) : undefined;
+function unsupported(reader: IsaDecodeReader, address: number, length: number): IsaDecodeResult {
+  const raw = readRawBytes(reader, address, address + length);
+  const unsupportedByte = raw[0];
   const result = {
     kind: "unsupported" as const,
     address,
-    length: clampedLength,
-    raw: reader.raw(offset, offset + clampedLength)
+    length,
+    raw
   };
 
   return unsupportedByte === undefined ? result : { ...result, unsupportedByte };
@@ -266,7 +262,7 @@ function reg3(value: number): Reg3 {
   return (value & 0b111) as Reg3;
 }
 
-function dispatchCandidates(reader: ByteReader, offset: number, leaf: OpcodeDispatchLeaf): DispatchedCandidates {
+function dispatchCandidates(reader: IsaDecodeReader, address: number, leaf: OpcodeDispatchLeaf): DispatchedCandidates {
   if (leaf.noModRmCandidates.length > 0) {
     return {
       candidates: leaf.noModRmCandidates,
@@ -275,7 +271,7 @@ function dispatchCandidates(reader: ByteReader, offset: number, leaf: OpcodeDisp
     };
   }
 
-  const modrm = decodeModRm(reader, offset + leaf.opcodeLength);
+  const modrm = decodeModRm(reader, address + leaf.opcodeLength);
 
   return {
     candidates: leaf.modRmByReg[modrm.regField] ?? [],
