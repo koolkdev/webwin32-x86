@@ -1,9 +1,9 @@
-import type { DecodedBlock } from "../../arch/x86/block-decoder/decode-block.js";
+import type { IsaDecodedBlock } from "../../arch/x86/isa/decoder/decode-block.js";
 import { u32 } from "../../core/state/cpu-state.js";
-import { wasmBlockExportName, wasmImport, wasmStatePtr } from "../../wasm/abi.js";
-import { WasmBlockCompiler } from "../../wasm/codegen/block.js";
+import { wasmBlockExportName, wasmImport } from "../../wasm/abi.js";
+import { UnsupportedWasmCodegenError } from "../../wasm/codegen/errors.js";
 import { decodeExit, type DecodedExit } from "../../wasm/exit.js";
-import type { DecodedBlockKey } from "../decoded-block-cache/decoded-block-cache.js";
+import { buildJitSirBlock, encodeJitSirBlock } from "../../wasm/jit/block.js";
 
 export const wasmBlockExitEncoding = {
   resultType: "i64",
@@ -27,31 +27,33 @@ export type WasmBlockRun = Readonly<{
 
 export type WasmBlockHandle = Readonly<{
   entryEip: number;
-  blockKey: DecodedBlockKey;
+  blockKey: WasmBlockKey;
   module: WebAssembly.Module;
   instance: WebAssembly.Instance;
-  exportedBlockFunction: (statePtr: number) => unknown;
+  exportedBlockFunction: () => unknown;
   compileMs: number;
   instantiateMs: number;
   metadata: WasmBlockMetadata;
   run(): WasmBlockRun;
 }>;
 
+export type WasmBlockKey = number;
+
 export type CompileWasmBlockHandleOptions = Readonly<{
   stateMemory: WebAssembly.Memory;
   guestMemory: WebAssembly.Memory;
-  blockKey?: DecodedBlockKey;
-  compiler?: WasmBlockCompiler;
+  blockKey?: WasmBlockKey;
 }>;
 
-const defaultCompiler = new WasmBlockCompiler();
-
 export function compileWasmBlockHandle(
-  block: DecodedBlock,
+  block: IsaDecodedBlock,
   options: CompileWasmBlockHandleOptions
 ): WasmBlockHandle {
-  const compiler = options.compiler ?? defaultCompiler;
-  const bytes = compiler.encodeDecodedBlock(block);
+  if (block.instructions.length === 0) {
+    throw new UnsupportedWasmCodegenError(unsupportedBlockMessage(block));
+  }
+
+  const bytes = encodeJitSirBlock(buildJitSirBlock(block.instructions));
   const compileStart = performance.now();
   const module = new WebAssembly.Module(bytes);
   const compileMs = performance.now() - compileStart;
@@ -77,8 +79,8 @@ export function compileWasmBlockHandle(
   };
 }
 
-function runWasmBlock(exportedBlockFunction: (statePtr: number) => unknown): WasmBlockRun {
-  const encodedExit = exportedBlockFunction(wasmStatePtr);
+function runWasmBlock(exportedBlockFunction: () => unknown): WasmBlockRun {
+  const encodedExit = exportedBlockFunction();
 
   if (typeof encodedExit !== "bigint") {
     throw new Error(`expected bigint exit result, got ${typeof encodedExit}`);
@@ -99,12 +101,23 @@ function wasmImports(stateMemory: WebAssembly.Memory, guestMemory: WebAssembly.M
   };
 }
 
-function readExportedBlockFunction(instance: WebAssembly.Instance): (statePtr: number) => unknown {
+function readExportedBlockFunction(instance: WebAssembly.Instance): () => unknown {
   const value = instance.exports[wasmBlockExportName];
 
   if (typeof value !== "function") {
     throw new Error(`expected exported function '${wasmBlockExportName}'`);
   }
 
-  return value as (statePtr: number) => unknown;
+  return value as () => unknown;
+}
+
+function unsupportedBlockMessage(block: IsaDecodedBlock): string {
+  switch (block.terminator.kind) {
+    case "unsupported":
+      return `unsupported x86 opcode at 0x${block.terminator.address.toString(16)}`;
+    case "decode-fault":
+      return `decode fault at 0x${block.terminator.fault.address.toString(16)}`;
+    default:
+      return `cannot compile empty block at 0x${block.startEip.toString(16)}`;
+  }
 }

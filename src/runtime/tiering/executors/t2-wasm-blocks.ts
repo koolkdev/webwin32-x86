@@ -7,7 +7,7 @@ import {
 import { u32 } from "../../../core/state/cpu-state.js";
 import { ExitReason, type DecodedExit } from "../../../wasm/exit.js";
 import type { RuntimeTierExecutionContext } from "./context.js";
-import { runT1DecodedBlockStep } from "./t1-decoded-blocks.js";
+import { runT1WasmInterpreter } from "./t1-wasm-interpreter.js";
 
 export function runT2WasmBlocks(context: RuntimeTierExecutionContext, instructionLimit: number): RunResult {
   let executed = 0;
@@ -15,24 +15,19 @@ export function runT2WasmBlocks(context: RuntimeTierExecutionContext, instructio
 
   while (executed < instructionLimit) {
     const currentEip = u32(context.state.eip);
-    const block = context.decodedBlockCache.getOrDecode(currentEip);
     const remaining = instructionLimit - executed;
 
     const stateInstructionCount = context.state.instructionCount;
     const wasmRuntime = context.wasmRuntime;
-    const wasmBlock = wasmRuntime?.blockCache.getOrCompile(block);
 
-    if (wasmBlock === undefined || wasmRuntime === undefined) {
-      const blockStep = runT1DecodedBlockStep(context, currentEip, block, remaining);
+    if (wasmRuntime === undefined) {
+      throw new Error("T2 Wasm runtime is not available");
+    }
 
-      executed += blockStep.instructionsExecuted;
-      result = blockStep.result;
+    const wasmBlock = wasmRuntime.blockCache.getOrCompile(currentEip, context.decodeReader);
 
-      if (blockStep.kind === "done") {
-        return result;
-      }
-
-      continue;
+    if (wasmBlock === undefined) {
+      return runT1WasmInterpreter(context, remaining);
     }
 
     wasmRuntime.copyStateToWasm(context.state);

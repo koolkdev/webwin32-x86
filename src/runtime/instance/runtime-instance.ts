@@ -77,7 +77,7 @@ export class RuntimeInstance {
     this.guestMemory = guestMemoryResources.guestMemory;
     loadProgramBytesToGuestMemory(program, this.guestMemory);
     this.decodeReader = new GuestMemoryDecodeReader(this.guestMemory, programDecodeRegions(program));
-    this.#wasmInterpreterRuntime = this.#tierMode === TierMode.T1_ONLY
+    this.#wasmInterpreterRuntime = this.#tierMode === TierMode.T1_ONLY || this.#tierMode === TierMode.T2_ONLY
       ? requiredWasmGuestMemory(guestMemoryResources, "T1")
       : undefined;
     this.#wasmRuntime = this.#tierMode !== TierMode.T2_ONLY || guestMemoryResources.wasmGuestMemory === undefined

@@ -1,8 +1,8 @@
 import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { decodeBlock } from "../../src/arch/x86/block-decoder/decode-block.js";
-import { createCpuState } from "../../src/core/state/cpu-state.js";
+import { decodeIsaBlock } from "../../src/arch/x86/isa/decoder/decode-block.js";
+import { createCpuState, cpuStateFields, type CpuState } from "../../src/core/state/cpu-state.js";
 import {
   compileWasmBlockHandle,
   type WasmBlockHandle,
@@ -12,11 +12,10 @@ import { guestReader } from "../../src/test-support/decode-reader.js";
 import {
   assertMemoryImports,
   createGuestMemory,
-  readCpuState,
   readViewBytes,
   startAddress,
-  writeState
 } from "../../src/test-support/wasm-codegen.js";
+import { stateOffset } from "../../src/wasm/abi.js";
 import { decodeExit, ExitReason } from "../../src/wasm/exit.js";
 
 const movAddJumpFixture = [
@@ -33,10 +32,10 @@ const movStoreJumpFixture = [
 test("compiled_block_handle_can_invoke_simple_block", async () => {
   const { handle, stateView } = await compileFixture(movAddJumpFixture);
 
-  writeState(stateView, createCpuState({ eip: startAddress }));
+  writeJitState(stateView, createCpuState({ eip: startAddress }));
 
   const run = handle.run();
-  const state = readCpuState(stateView);
+  const state = readJitState(stateView);
 
   strictEqual(run.exit.exitReason, ExitReason.JUMP);
   strictEqual(state.eax, 3);
@@ -49,7 +48,7 @@ test("compiled_block_handle_can_invoke_simple_block", async () => {
 test("compiled_block_exit_decodes_correctly", async () => {
   const { handle, stateView } = await compileFixture(movAddJumpFixture);
 
-  writeState(stateView, createCpuState({ eip: startAddress }));
+  writeJitState(stateView, createCpuState({ eip: startAddress }));
 
   const run = handle.run();
 
@@ -74,10 +73,10 @@ test("compiled_block_reports_compile_and_instantiate_time", async () => {
 test("compiled_block_keeps_state_memory_abi", async () => {
   const { handle, stateView } = await compileFixture(movAddJumpFixture);
 
-  writeState(stateView, createCpuState({ ebx: 0xaabb_ccdd, eip: startAddress }));
+  writeJitState(stateView, createCpuState({ ebx: 0xaabb_ccdd, eip: startAddress }));
   handle.run();
 
-  const state = readCpuState(stateView);
+  const state = readJitState(stateView);
 
   strictEqual(state.eax, 3);
   strictEqual(state.ebx, 0xaabb_ccdd);
@@ -89,21 +88,21 @@ test("compiled_block_guest_memory_abi_unchanged", async () => {
   const { handle, stateView, guestView } = await compileFixture(movStoreJumpFixture);
 
   assertMemoryImports(handle.module);
-  writeState(stateView, createCpuState({ eax: 0x1234_5678, eip: startAddress }));
+  writeJitState(stateView, createCpuState({ eax: 0x1234_5678, eip: startAddress }));
   handle.run();
 
   deepStrictEqual(readViewBytes(guestView, 0x20, 4), [0x78, 0x56, 0x34, 0x12]);
 });
 
 async function compileFixture(bytes: readonly number[]): Promise<Readonly<{
-  block: ReturnType<typeof decodeBlock>;
+  block: ReturnType<typeof decodeIsaBlock>;
   handle: WasmBlockHandle;
   stateView: DataView;
   guestView: DataView;
 }>> {
   const stateMemory = new WebAssembly.Memory({ initial: 1 });
   const guestMemory = createGuestMemory();
-  const block = decodeBlock(guestReader(bytes), startAddress);
+  const block = decodeIsaBlock(guestReader(bytes), startAddress);
   const handle = await compileWasmBlockHandle(block, { stateMemory, guestMemory });
 
   return {
@@ -112,4 +111,20 @@ async function compileFixture(bytes: readonly number[]): Promise<Readonly<{
     stateView: new DataView(stateMemory.buffer),
     guestView: new DataView(guestMemory.buffer)
   };
+}
+
+function writeJitState(view: DataView, state: CpuState): void {
+  for (const field of cpuStateFields) {
+    view.setUint32(stateOffset[field], state[field], true);
+  }
+}
+
+function readJitState(view: DataView): CpuState {
+  const state = createCpuState();
+
+  for (const field of cpuStateFields) {
+    state[field] = view.getUint32(stateOffset[field], true);
+  }
+
+  return state;
 }

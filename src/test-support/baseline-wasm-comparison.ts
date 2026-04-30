@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 
-import type { DecodedBlock } from "../arch/x86/block-decoder/decode-block.js";
 import type { DecodeReader } from "../arch/x86/block-decoder/decode-reader.js";
+import { decodeIsaBlock, type IsaDecodedBlock } from "../arch/x86/isa/decoder/decode-block.js";
 import {
   runResultFromState,
   StopReason,
@@ -9,13 +9,20 @@ import {
   type RunResultDetails
 } from "../core/execution/run-result.js";
 import { ArrayBufferGuestMemory } from "../core/memory/guest-memory.js";
-import { cloneCpuState, cpuStatesEqual, type CpuState } from "../core/state/cpu-state.js";
+import {
+  cloneCpuState,
+  cpuStateFields,
+  cpuStatesEqual,
+  createCpuState,
+  type CpuState
+} from "../core/state/cpu-state.js";
 import { compileWasmBlockHandle, type WasmBlockHandle } from "../runtime/wasm-block/wasm-block.js";
 import { DecodedBlockCache } from "../runtime/decoded-block-cache/decoded-block-cache.js";
 import { DecodedBlockRunner } from "../runtime/decoded-block-runner/decoded-block-runner.js";
+import { stateOffset } from "../wasm/abi.js";
 import { UnsupportedWasmCodegenError } from "../wasm/codegen/errors.js";
 import { ExitReason, type DecodedExit } from "../wasm/exit.js";
-import { readCpuState, writeState } from "./wasm-codegen.js";
+import { WasmInterpreterRuntime } from "../wasm/interpreter/runtime.js";
 
 export type BaselineWasmComparisonOptions = Readonly<{
   initialState: CpuState;
@@ -109,33 +116,38 @@ export class BaselineWasmComparator {
     const stateMemory = new WebAssembly.Memory({ initial: 1 });
     const stateView = new DataView(stateMemory.buffer);
     const guestMemory = cloneGuestMemory(options.guestMemory);
-    const cache = new DecodedBlockCache(this.decodeReader);
     const report = createMutableReport();
     const compiledBlocks = new Map<number, WasmBlockHandle>();
     const instructionLimit = options.instructionLimit ?? defaultInstructionLimit;
     let result = runResultFromState(options.initialState, StopReason.NONE);
 
-    writeState(stateView, options.initialState);
+    writeJitState(stateView, options.initialState);
 
     for (let exits = 0; exits < instructionLimit; exits += 1) {
-      const state = readCpuState(stateView);
+      const state = readJitState(stateView);
 
       if (this.decodeReader.regionAt(state.eip) === undefined) {
         return completedWasmRun(state, result, guestMemory, report);
       }
 
-      const block = cache.getOrDecode(state.eip);
+      const block = decodeIsaBlock(this.decodeReader, state.eip);
+
+      if (block.instructions.length === 0) {
+        report.fallbackBlocks += 1;
+        return this.#runT1Fallback(stateView, guestMemory, options, report);
+      }
+
       const compiled = await compiledBlockFor(compiledBlocks, block, stateMemory, guestMemory, report);
 
       if (compiled === undefined) {
         report.fallbackBlocks += 1;
-        return this.#runFallback(stateView, guestMemory, options, report);
+        return this.#runT1Fallback(stateView, guestMemory, options, report);
       }
 
       const { exit } = compiled.run();
 
       incrementExit(report.exitCounts, exit.exitReason);
-      const stateAfterExit = readCpuState(stateView);
+      const stateAfterExit = readJitState(stateView);
 
       result = runResultFromExit(stateAfterExit, exit);
 
@@ -144,34 +156,27 @@ export class BaselineWasmComparator {
       }
     }
 
-    const state = readCpuState(stateView);
+    const state = readJitState(stateView);
 
     state.stopReason = StopReason.INSTRUCTION_LIMIT;
     return completedWasmRun(state, runResultFromState(state, StopReason.INSTRUCTION_LIMIT), guestMemory, report);
   }
 
-  #runFallback(
+  #runT1Fallback(
     stateView: DataView,
     guestMemory: WebAssembly.Memory,
     options: BaselineWasmComparisonOptions,
     report: MutableBaselineWasmComparisonReport
   ): Readonly<{ execution: BaselineWasmComparisonExecution; report: BaselineWasmComparisonReport }> {
-    const state = readCpuState(stateView);
-    const result = new DecodedBlockRunner(new DecodedBlockCache(this.decodeReader)).run(state, {
-      instructionLimit: remainingInstructionLimit(options, state),
-      memory: new ArrayBufferGuestMemory(guestMemory.buffer)
-    });
+    const state = readJitState(stateView);
+    const runtime = new WasmInterpreterRuntime(guestMemory);
 
-    writeState(stateView, state);
+    runtime.copyStateToWasm(state);
+    const exit = runtime.run(remainingInstructionLimit(options, state));
+    runtime.copyStateFromWasm(state);
+    writeJitState(stateView, state);
 
-    return {
-      execution: {
-        result,
-        state,
-        guestMemory: snapshotGuestMemory(guestMemory)
-      },
-      report: freezeReport(report)
-    };
+    return completedWasmRun(state, runResultFromExit(state, exit), guestMemory, report);
   }
 }
 
@@ -208,7 +213,7 @@ function completedWasmRun(
 
 async function compiledBlockFor(
   compiledBlocks: Map<number, WasmBlockHandle>,
-  block: DecodedBlock,
+  block: IsaDecodedBlock,
   stateMemory: WebAssembly.Memory,
   guestMemory: WebAssembly.Memory,
   report: MutableBaselineWasmComparisonReport
@@ -302,6 +307,22 @@ function remainingInstructionLimit(options: BaselineWasmComparisonOptions, state
   const executed = Math.max(0, state.instructionCount - options.initialState.instructionCount);
 
   return Math.max(0, limit - executed);
+}
+
+function writeJitState(view: DataView, state: CpuState): void {
+  for (const field of cpuStateFields) {
+    view.setUint32(stateOffset[field], state[field], true);
+  }
+}
+
+function readJitState(view: DataView): CpuState {
+  const state = createCpuState();
+
+  for (const field of cpuStateFields) {
+    state[field] = view.getUint32(stateOffset[field], true);
+  }
+
+  return state;
 }
 
 function cloneGuestMemory(source: WebAssembly.Memory | undefined): WebAssembly.Memory {

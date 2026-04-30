@@ -116,10 +116,23 @@ async function runBytes(
   initialState: CpuState,
   options: Omit<BaselineWasmComparisonOptions, "initialState"> = {}
 ): Promise<BaselineWasmComparisonResult> {
+  const guestMemory = options.guestMemory ?? createGuestMemory();
+
+  writeGuestCode(guestMemory, bytes);
+
   return assertBaselineWasmMatchesInterpreter(new BaselineWasmComparator(guestReader(bytes)), {
     ...options,
+    guestMemory,
     initialState
   });
+}
+
+function writeGuestCode(memory: WebAssembly.Memory, bytes: readonly number[]): void {
+  const view = new DataView(memory.buffer);
+
+  for (let index = 0; index < bytes.length; index += 1) {
+    view.setUint8(startAddress + index, bytes[index] ?? 0);
+  }
 }
 
 function guestViewBytes(memory: WebAssembly.Memory, address: number, length: number): number[] {

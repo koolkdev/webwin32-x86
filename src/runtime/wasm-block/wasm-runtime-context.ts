@@ -1,9 +1,8 @@
-import type { DecodedBlock } from "../../arch/x86/block-decoder/decode-block.js";
+import { decodeIsaBlock, type IsaBlockDecodeReader } from "../../arch/x86/isa/decoder/decode-block.js";
 import { cpuStateFields, u32, type CpuState } from "../../core/state/cpu-state.js";
-import { stateOffset, wasmStatePtr } from "../../wasm/abi.js";
+import { stateOffset } from "../../wasm/abi.js";
 import { UnsupportedWasmCodegenError } from "../../wasm/codegen/errors.js";
-import type { DecodedBlockKey } from "../decoded-block-cache/decoded-block-cache.js";
-import { type WasmBlockHandle, compileWasmBlockHandle } from "./wasm-block.js";
+import { type WasmBlockHandle, type WasmBlockKey, compileWasmBlockHandle } from "./wasm-block.js";
 
 export type WasmBlockCacheCounters = Readonly<{
   hits: number;
@@ -32,20 +31,19 @@ export class WasmRuntimeContext {
 
   copyStateToWasm(state: CpuState): void {
     for (const field of cpuStateFields) {
-      this.stateView.setUint32(wasmStatePtr + stateOffset[field], state[field], true);
+      this.stateView.setUint32(stateOffset[field], state[field], true);
     }
   }
 
   copyStateFromWasm(state: CpuState): void {
     for (const field of cpuStateFields) {
-      state[field] = u32(this.stateView.getUint32(wasmStatePtr + stateOffset[field], true));
+      state[field] = u32(this.stateView.getUint32(stateOffset[field], true));
     }
   }
 }
 
 export class WasmBlockCache {
-  readonly #blocksByKey = new Map<DecodedBlockKey, WasmBlockHandle>();
-  readonly #unsupportedKeys = new Set<DecodedBlockKey>();
+  readonly #blocksByKey = new Map<WasmBlockKey, WasmBlockHandle>();
   #hits = 0;
   #misses = 0;
   #inserts = 0;
@@ -67,11 +65,10 @@ export class WasmBlockCache {
 
   clear(): void {
     this.#blocksByKey.clear();
-    this.#unsupportedKeys.clear();
   }
 
-  getOrCompile(block: DecodedBlock): WasmBlockHandle | undefined {
-    const blockKey = u32(block.startEip);
+  getOrCompile(startEip: number, reader: IsaBlockDecodeReader): WasmBlockHandle | undefined {
+    const blockKey = u32(startEip);
     const cached = this.#blocksByKey.get(blockKey);
 
     if (cached !== undefined) {
@@ -79,15 +76,16 @@ export class WasmBlockCache {
       return cached;
     }
 
-    if (this.#unsupportedKeys.has(blockKey)) {
-      this.#hits += 1;
-      this.#unsupportedCodegenFallbacks += 1;
-      return undefined;
-    }
-
     this.#misses += 1;
 
     try {
+      const block = decodeIsaBlock(reader, blockKey);
+
+      if (block.instructions.length === 0) {
+        this.#unsupportedCodegenFallbacks += 1;
+        return undefined;
+      }
+
       const compiled = compileWasmBlockHandle(block, {
         stateMemory: this.stateMemory,
         guestMemory: this.guestMemory,
@@ -99,7 +97,6 @@ export class WasmBlockCache {
       return compiled;
     } catch (error: unknown) {
       if (error instanceof UnsupportedWasmCodegenError) {
-        this.#unsupportedKeys.add(blockKey);
         this.#unsupportedCodegenFallbacks += 1;
         return undefined;
       }
