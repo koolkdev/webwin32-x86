@@ -54,6 +54,21 @@ test("jit SIR block lowers memory mov with static effective addresses", async ()
   strictEqual(store.guestView.getUint32(0x2008, true), 0xaabb_ccdd);
 });
 
+test("jit SIR block keeps deferred flags live after memory-store fault branch emission", async () => {
+  const result = await runJitSirBlock([
+    0x01, 0x18, // add [eax], ebx
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eax: 0x20,
+    ebx: 2,
+    eip: startAddress
+  }), [{ address: 0x20, bytes: [1, 0, 0, 0] }]);
+
+  strictEqual(result.guestView.getUint32(0x20, true), 3);
+  strictEqual(result.state.eflags, 0x04);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
 test("jit SIR block lowers add and materializes flags", async () => {
   const result = await runJitSirBlock([0x83, 0xc0, 0x01], createCpuState({
     eax: 0xffff_ffff,
@@ -65,6 +80,24 @@ test("jit SIR block lowers add and materializes flags", async () => {
   strictEqual(result.state.eflags, (preservedEflags | addWraparoundEflags) >>> 0);
   strictEqual(result.state.eip, startAddress + 3);
   strictEqual(result.state.instructionCount, 1);
+});
+
+test("jit SIR block materializes the latest deferred flags on exit", async () => {
+  const result = await runJitSirBlock([
+    0x83, 0xc0, 0x01, // add eax, 1
+    0x83, 0xc0, 0x01, // add eax, 1
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eax: 0xffff_ffff,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 1);
+  strictEqual(result.state.eflags, preservedEflags);
+  strictEqual(result.state.eip, startAddress + 8);
+  strictEqual(result.state.instructionCount, 3);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
 test("jit SIR block lowers cmp without writing operands", async () => {
@@ -80,6 +113,23 @@ test("jit SIR block lowers cmp without writing operands", async () => {
   strictEqual(result.state.eflags, (preservedEflags | zeroResultEflags) >>> 0);
   strictEqual(result.state.eip, startAddress + 2);
   strictEqual(result.state.instructionCount, 1);
+});
+
+test("jit SIR block materializes deferred flags before condition consumers", async () => {
+  const result = await runJitSirBlock([
+    0x83, 0xc0, 0x01, // add eax, 1
+    0x74, 0x05 // jz +5
+  ], createCpuState({
+    eax: 0xffff_ffff,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0);
+  strictEqual(result.state.eflags, (preservedEflags | addWraparoundEflags) >>> 0);
+  strictEqual(result.state.eip, startAddress + 10);
+  strictEqual(result.state.instructionCount, 2);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.BRANCH_TAKEN, payload: startAddress + 10 });
 });
 
 test("jit SIR block lowers conditional branches", async () => {
@@ -99,4 +149,21 @@ test("jit SIR block lowers conditional branches", async () => {
   deepStrictEqual(notTaken.exit, { exitReason: ExitReason.BRANCH_NOT_TAKEN, payload: startAddress + 2 });
   strictEqual(notTaken.state.eip, startAddress + 2);
   strictEqual(notTaken.state.instructionCount, 11);
+});
+
+test("jit SIR block materializes deferred flags on later fault exits", async () => {
+  const result = await runJitSirBlock([
+    0x83, 0xc0, 0x01, // add eax, 1
+    0x8b, 0x05, 0x00, 0x00, 0x01, 0x00 // mov eax, [0x10000]
+  ], createCpuState({
+    eax: 0xffff_ffff,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0);
+  strictEqual(result.state.eflags, (preservedEflags | addWraparoundEflags) >>> 0);
+  strictEqual(result.state.eip, startAddress + 3);
+  strictEqual(result.state.instructionCount, 1);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000 });
 });

@@ -2,9 +2,6 @@ import type { SirProgram } from "../../arch/x86/sir/types.js";
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
-import { emitCondition } from "../sir/conditions.js";
-import { wasmSirLocalEflagsStorage } from "../sir/eflags.js";
-import { emitSetFlags } from "../sir/flags.js";
 import { lowerSirToWasm } from "../sir/lower.js";
 import {
   emitJitConditionalJump,
@@ -33,8 +30,6 @@ export type JitSirContext = Readonly<{
 }>;
 
 export function lowerSirWithJitContext(program: SirProgram, context: JitSirContext): void {
-  const eflags = wasmSirLocalEflagsStorage(context.body, context.state.eflagsLocal);
-
   lowerSirToWasm(program, {
     body: context.body,
     scratch: context.scratch,
@@ -43,8 +38,8 @@ export function lowerSirWithJitContext(program: SirProgram, context: JitSirConte
     emitSet32: (target, value, helpers) => emitJitSet32(context, target, value, helpers),
     emitAddress32: (source) => emitJitAddress32(context, source),
     emitSetFlags: (producer, inputs, helpers) =>
-      emitSetFlags(context.body, context.scratch, eflags, producer, inputs, helpers),
-    emitCondition: (cc) => emitCondition(context.body, eflags, cc),
+      context.state.flags.emitSet(producer, inputs, helpers),
+    emitCondition: (cc) => context.state.flags.emitCondition(cc),
     emitNext: () => emitJitNext(context),
     emitNextEip: () => emitJitNextEip(context),
     emitJump: (target, helpers) => emitJitControlExit(context, target, ExitReason.JUMP, helpers),

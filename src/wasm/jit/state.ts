@@ -1,9 +1,11 @@
 import { reg32, type Reg32 } from "../../arch/x86/instruction/types.js";
 import { i32 } from "../../core/state/cpu-state.js";
 import { stateOffset } from "../abi.js";
+import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { emitLoadStateU32, emitStoreStateU32 } from "../sir/state.js";
+import { createJitFlagState, type JitFlagState } from "./flag-state.js";
 import { createJitReg32State, type JitReg32State } from "./register-state.js";
 
 export type JitExitTarget = {
@@ -18,6 +20,7 @@ type ExitGenerationSnapshot = Readonly<{
 
 export type JitSirState = Readonly<{
   regs: JitReg32State;
+  flags: JitFlagState;
   eipLocal: number;
   eflagsLocal: number;
   instructionCountLocal: number;
@@ -29,10 +32,15 @@ export type JitSirState = Readonly<{
   emitExitStoresForGeneration(generation: number): void;
 }>;
 
-export function createJitSirState(body: WasmFunctionBodyEncoder, maxExitGeneration: number): JitSirState {
+export function createJitSirState(
+  body: WasmFunctionBodyEncoder,
+  scratch: WasmLocalScratchAllocator,
+  maxExitGeneration: number
+): JitSirState {
   const regs = createJitReg32State(body);
   const eipLocal = body.addLocal(wasmValueType.i32);
   const eflagsLocal = body.addLocal(wasmValueType.i32);
+  const flags = createJitFlagState(body, scratch, eflagsLocal);
   const instructionCountLocal = body.addLocal(wasmValueType.i32);
   const generationState = createExitGenerationState(maxExitGeneration);
   let activeExit: JitExitTarget | undefined;
@@ -40,6 +48,7 @@ export function createJitSirState(body: WasmFunctionBodyEncoder, maxExitGenerati
 
   return {
     regs,
+    flags,
     eipLocal,
     eflagsLocal,
     instructionCountLocal,
@@ -109,6 +118,7 @@ export function createJitSirState(body: WasmFunctionBodyEncoder, maxExitGenerati
           body.i32Const(instructionDelta).i32Add();
         }
       });
+      flags.emitExitMaterialization();
       emitStoreStateU32(body, stateOffset.eflags, () => {
         body.localGet(eflagsLocal);
       });
