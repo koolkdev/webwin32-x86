@@ -32,6 +32,14 @@ export function emitOpcodeRegAddress(body: WasmFunctionBodyEncoder, opcodeLocal:
   body.localGet(opcodeLocal).i32Const(0b111).i32And().i32Const(2).i32Shl();
 }
 
+export function emitModRmRegAddress(body: WasmFunctionBodyEncoder, modRmLocal: number): void {
+  body.localGet(modRmLocal).i32Const(0b0011_1000).i32And().i32Const(1).i32ShrU();
+}
+
+export function emitModRmRmAddress(body: WasmFunctionBodyEncoder, modRmLocal: number): void {
+  body.localGet(modRmLocal).i32Const(0b111).i32And().i32Const(2).i32Shl();
+}
+
 export function emitCompleteInstruction(
   body: WasmFunctionBodyEncoder,
   eipLocal: number,

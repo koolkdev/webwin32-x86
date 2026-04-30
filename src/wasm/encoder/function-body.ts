@@ -177,6 +177,11 @@ export class WasmFunctionBodyEncoder {
     return this;
   }
 
+  i32ShrU(): this {
+    this.#writeInstruction(wasmOpcode.i32ShrU);
+    return this;
+  }
+
   i32Load(immediate: WasmMemoryImmediate): this {
     this.#writeInstruction(wasmOpcode.i32Load);
     this.#instructions.writeBytes(encodeMemoryImmediate(immediate));

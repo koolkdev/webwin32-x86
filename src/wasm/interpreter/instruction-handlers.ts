@@ -6,7 +6,8 @@ import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { lowerSirWithInterpreterContext, type InterpreterOperandBinding } from "../sir/interpreter-context.js";
-import { emitLoadGuestU32ForDecode } from "./guest-bytes.js";
+import { emitLoadGuestByte, emitLoadGuestU32ForDecode } from "./guest-bytes.js";
+import { emitRegisterModRmDispatch } from "./modrm-dispatch.js";
 
 export type InterpreterHandlerContext = Readonly<{
   body: WasmFunctionBodyEncoder;
@@ -20,21 +21,40 @@ export function emitInstructionHandlerForLeaf(
   leaf: OpcodeDispatchLeaf,
   context: InterpreterHandlerContext
 ): boolean {
-  const instruction = leaf.noModRmCandidates.find((candidate) => candidate.spec.id === "mov.r32_imm32");
+  const noModRmInstruction = leaf.noModRmCandidates.find((candidate) => candidate.spec.id === "mov.r32_imm32");
 
-  if (instruction === undefined) {
+  if (noModRmInstruction !== undefined) {
+    emitInstructionHandler(noModRmInstruction, context, undefined);
+    return true;
+  }
+
+  const modRmInstruction = uniqueModRmCandidates(leaf)
+    .find((candidate) => candidate.spec.id === "mov.r32_rm32" || candidate.spec.id === "mov.rm32_r32");
+
+  if (modRmInstruction === undefined) {
     return false;
   }
 
-  emitNoModRmInstructionHandler(instruction, context);
+  const modRmLocal = context.scratch.allocLocal(wasmValueType.i32);
+
+  try {
+    emitLoadGuestByte(context.body, context.eipLocal, modRmInstruction.opcode.length, context.addressLocal, modRmLocal);
+    emitRegisterModRmDispatch(context.body, modRmLocal, context.opcodeLocal, () => {
+      emitInstructionHandler(modRmInstruction, context, modRmLocal);
+    });
+  } finally {
+    context.scratch.freeLocal(modRmLocal);
+  }
+
   return true;
 }
 
-function emitNoModRmInstructionHandler(
+function emitInstructionHandler(
   instruction: ExpandedInstructionSpec<SemanticTemplate>,
-  context: InterpreterHandlerContext
+  context: InterpreterHandlerContext,
+  modRmLocal: number | undefined
 ): void {
-  const decoded = decodeNoModRmOperands(instruction, context);
+  const decoded = decodeOperands(instruction, context, modRmLocal);
   const program = buildSir(instruction.spec.semantics);
 
   try {
@@ -52,9 +72,10 @@ function emitNoModRmInstructionHandler(
   }
 }
 
-function decodeNoModRmOperands(
+function decodeOperands(
   instruction: ExpandedInstructionSpec<SemanticTemplate>,
-  context: InterpreterHandlerContext
+  context: InterpreterHandlerContext,
+  modRmLocal: number | undefined
 ): Readonly<{
   instructionLength: number;
   operands: readonly InterpreterOperandBinding[];
@@ -64,8 +85,12 @@ function decodeNoModRmOperands(
   const scratchLocals: number[] = [];
   let cursor = instruction.opcode.length;
 
+  if (modRmLocal !== undefined) {
+    cursor += 1;
+  }
+
   for (const operand of instruction.spec.operands ?? []) {
-    const decoded = decodeOperand(operand, cursor, context);
+    const decoded = decodeOperand(operand, cursor, context, modRmLocal);
 
     operands.push(decoded.binding);
     if (decoded.scratchLocal !== undefined) {
@@ -84,9 +109,32 @@ function decodeNoModRmOperands(
 function decodeOperand(
   operand: OperandSpec,
   cursor: number,
-  context: InterpreterHandlerContext
+  context: InterpreterHandlerContext,
+  modRmLocal: number | undefined
 ): Readonly<{ binding: InterpreterOperandBinding; nextCursor: number; scratchLocal?: number }> {
   switch (operand.kind) {
+    case "modrm.reg":
+      if (modRmLocal === undefined) {
+        throw new Error("missing ModRM local for modrm.reg operand");
+      }
+
+      return {
+        binding: { kind: "modrm.reg32", modRmLocal },
+        nextCursor: cursor
+      };
+    case "modrm.rm":
+      if (modRmLocal === undefined) {
+        throw new Error("missing ModRM local for modrm.rm operand");
+      }
+
+      if (operand.type !== "rm32") {
+        throw new Error(`unsupported ModRM r/m operand type for Wasm interpreter: ${operand.type}`);
+      }
+
+      return {
+        binding: { kind: "modrm.rm32", modRmLocal },
+        nextCursor: cursor
+      };
     case "opcode.reg":
       return {
         binding: { kind: "opcode.reg32", opcodeLocal: context.opcodeLocal },
@@ -109,4 +157,20 @@ function decodeOperand(
     default:
       throw new Error(`unsupported operand decode for Wasm interpreter: ${operand.kind}`);
   }
+}
+
+function uniqueModRmCandidates(leaf: OpcodeDispatchLeaf): readonly ExpandedInstructionSpec<SemanticTemplate>[] {
+  const seen = new Set<string>();
+  const candidates: ExpandedInstructionSpec<SemanticTemplate>[] = [];
+
+  for (const bucket of leaf.modRmByReg) {
+    for (const candidate of bucket) {
+      if (!seen.has(candidate.spec.id)) {
+        seen.add(candidate.spec.id);
+        candidates.push(candidate);
+      }
+    }
+  }
+
+  return candidates;
 }

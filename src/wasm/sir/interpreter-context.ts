@@ -11,6 +11,8 @@ import { ExitReason } from "../exit.js";
 import {
   emitCompleteInstruction,
   emitLoadReg32,
+  emitModRmRegAddress,
+  emitModRmRmAddress,
   emitOpcodeRegAddress,
   emitStoreReg32FromStack
 } from "../interpreter/state.js";
@@ -18,6 +20,8 @@ import { lowerSirToWasm, type WasmSirEmitHelpers } from "./lower.js";
 
 export type InterpreterOperandBinding =
   | Readonly<{ kind: "opcode.reg32"; opcodeLocal: number }>
+  | Readonly<{ kind: "modrm.reg32"; modRmLocal: number }>
+  | Readonly<{ kind: "modrm.rm32"; modRmLocal: number }>
   | Readonly<{ kind: "imm32"; local: number }>;
 
 export type InterpreterSirContext = Readonly<{
@@ -80,6 +84,14 @@ function emitGetOperand32(context: InterpreterSirContext, index: number): void {
       emitOpcodeRegAddress(context.body, binding.opcodeLocal);
       context.body.i32Load({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
       return;
+    case "modrm.reg32":
+      emitModRmRegAddress(context.body, binding.modRmLocal);
+      context.body.i32Load({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+      return;
+    case "modrm.rm32":
+      emitModRmRmAddress(context.body, binding.modRmLocal);
+      context.body.i32Load({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+      return;
     case "imm32":
       context.body.localGet(binding.local);
       return;
@@ -97,6 +109,16 @@ function emitSetOperand32(
   switch (binding.kind) {
     case "opcode.reg32":
       emitOpcodeRegAddress(context.body, binding.opcodeLocal);
+      helpers.emitValue(value);
+      context.body.i32Store({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+      return;
+    case "modrm.reg32":
+      emitModRmRegAddress(context.body, binding.modRmLocal);
+      helpers.emitValue(value);
+      context.body.i32Store({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+      return;
+    case "modrm.rm32":
+      emitModRmRmAddress(context.body, binding.modRmLocal);
       helpers.emitValue(value);
       context.body.i32Store({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
       return;
