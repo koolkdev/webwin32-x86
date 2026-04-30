@@ -6,14 +6,12 @@ export type WasmSirExitTarget = Readonly<{
   exitLabelDepth: number;
 }>;
 
-export function emitWasmSirExit(
+export function emitWasmSirExitFromI32Stack(
   body: WasmFunctionBodyEncoder,
   target: WasmSirExitTarget,
   exitReason: ExitReason,
-  emitPayload: () => void,
   extraDepth = 0
 ): void {
-  emitPayload();
   body.i64ExtendI32U().i64Const(encodeExit(exitReason, 0)).i64Or().localSet(target.exitLocal);
   body.br(target.exitLabelDepth + extraDepth);
 }

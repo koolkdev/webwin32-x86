@@ -11,7 +11,7 @@ import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
 import { emitCondition } from "../sir/conditions.js";
 import { wasmSirLocalEflagsStorage } from "../sir/eflags.js";
-import { emitWasmSirExit, type WasmSirExitTarget } from "../sir/exit.js";
+import { emitWasmSirExitFromI32Stack, type WasmSirExitTarget } from "../sir/exit.js";
 import { emitSetFlags } from "../sir/flags.js";
 import { lowerSirToWasm, type WasmSirEmitHelpers } from "../sir/lower.js";
 import { emitWasmSirLoadGuestU32FromStack, emitWasmSirStoreGuestU32 } from "../sir/memory.js";
@@ -277,9 +277,8 @@ function emitNext(context: JitSirContext): void {
   emitComplete(context);
 
   if (context.nextMode === "exit") {
-    emitWasmSirExit(context.body, context.exit, ExitReason.FALLTHROUGH, () => {
-      context.body.i32Const(i32(context.nextEip));
-    });
+    context.body.i32Const(i32(context.nextEip));
+    emitWasmSirExitFromI32Stack(context.body, context.exit, ExitReason.FALLTHROUGH);
   }
 }
 
@@ -309,9 +308,8 @@ function emitHostTrap(context: JitSirContext, vector: SirValueExpr, helpers: Was
     context.body.localSet(vectorLocal);
     context.body.i32Const(i32(context.nextEip));
     emitComplete(context);
-    emitWasmSirExit(context.body, context.exit, ExitReason.HOST_TRAP, () => {
-      context.body.localGet(vectorLocal);
-    });
+    context.body.localGet(vectorLocal);
+    emitWasmSirExitFromI32Stack(context.body, context.exit, ExitReason.HOST_TRAP);
   } finally {
     context.scratch.freeLocal(vectorLocal);
   }
@@ -331,9 +329,8 @@ function emitControlExit(
     context.body.localSet(targetLocal);
     context.body.localGet(targetLocal);
     emitComplete(context);
-    emitWasmSirExit(context.body, context.exit, exitReason, () => {
-      context.body.localGet(targetLocal);
-    }, extraDepth);
+    context.body.localGet(targetLocal);
+    emitWasmSirExitFromI32Stack(context.body, context.exit, exitReason, extraDepth);
   } finally {
     context.scratch.freeLocal(targetLocal);
   }

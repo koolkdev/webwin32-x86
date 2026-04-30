@@ -2,7 +2,7 @@ import type { OperandSpec } from "../../arch/x86/isa/schema/types.js";
 import type { InterpreterOperandBinding } from "./sir-context.js";
 import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
-import { emitWasmSirExit } from "../sir/exit.js";
+import { emitWasmSirExitFromI32Stack } from "../sir/exit.js";
 import {
   advanceDecodeReader,
   emitReadGuestByte,
@@ -253,9 +253,8 @@ function emitIfLocalNotEqualsConst(
 
 function emitUnsupportedIfModRmRegister(context: InterpreterHandlerContext, modRmLocal: number): void {
   emitIfModRmRegister(context.body, modRmLocal, () => {
-    emitWasmSirExit(context.body, context.exit, ExitReason.UNSUPPORTED, () => {
-      context.body.localGet(context.opcodeLocal);
-    }, 1);
+    context.body.localGet(context.opcodeLocal);
+    emitWasmSirExitFromI32Stack(context.body, context.exit, ExitReason.UNSUPPORTED, 1);
   });
 }
 

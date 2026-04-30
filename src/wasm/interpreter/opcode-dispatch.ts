@@ -2,7 +2,7 @@ import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
 import { dispatchBytes, interpreterOpcodeDispatchRoot } from "./dispatch.js";
-import { emitWasmSirExit, type WasmSirExitTarget } from "../sir/exit.js";
+import { emitWasmSirExitFromI32Stack, type WasmSirExitTarget } from "../sir/exit.js";
 import { emitLoadGuestByte } from "./guest-bytes.js";
 import { emitInstructionHandlerForLeaf } from "./instruction-handlers.js";
 import type { InterpreterStateCache } from "./state-cache.js";
@@ -116,9 +116,8 @@ function emitOpcodeDispatchNode(node: typeof interpreterOpcodeDispatchRoot, cont
 }
 
 function emitUnsupportedOpcodeExit(context: OpcodeDispatchContext): void {
-  emitWasmSirExit(context.body, context.exit, ExitReason.UNSUPPORTED, () => {
-    context.body.localGet(context.opcodeLocal);
-  });
+  context.body.localGet(context.opcodeLocal);
+  emitWasmSirExitFromI32Stack(context.body, context.exit, ExitReason.UNSUPPORTED);
 }
 
 function dispatchTable(bytes: readonly number[]): number[] {

@@ -8,7 +8,7 @@ import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { wasmSirLocalEflagsStorage } from "../sir/eflags.js";
-import { emitWasmSirExit, type WasmSirExitTarget } from "../sir/exit.js";
+import { emitWasmSirExitFromI32Stack, type WasmSirExitTarget } from "../sir/exit.js";
 import { emitWasmSirLoadGuestU32, emitWasmSirLoadGuestU32FromStack, emitWasmSirStoreGuestU32 } from "../sir/memory.js";
 import { wasmSirLocalReg32Storage, type WasmSirReg32Storage } from "../sir/registers.js";
 import {
@@ -255,7 +255,8 @@ function emitHostTrap(context: InterpreterSirContext, vector: SirValueExpr, help
     emitCompleteInstructionWithTarget(context.body, context.state, () => emitNextEip(context));
   }
 
-  emitWasmSirExit(context.body, context.exit, ExitReason.HOST_TRAP, () => helpers.emitValue(vector));
+  helpers.emitValue(vector);
+  emitWasmSirExitFromI32Stack(context.body, context.exit, ExitReason.HOST_TRAP);
 }
 
 function emitContinue(context: InterpreterSirContext, extraDepth = 0): void {

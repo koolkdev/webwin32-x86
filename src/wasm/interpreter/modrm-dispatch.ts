@@ -1,7 +1,7 @@
 import type { Reg3 } from "../../arch/x86/isa/schema/types.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
-import { emitWasmSirExit, type WasmSirExitTarget } from "../sir/exit.js";
+import { emitWasmSirExitFromI32Stack, type WasmSirExitTarget } from "../sir/exit.js";
 import { emitModRmRegIndex } from "./modrm-bits.js";
 
 export type ModRmDispatchCase = Readonly<{
@@ -37,9 +37,8 @@ export function emitModRmDispatch(
   }
 
   body.endBlock();
-  emitWasmSirExit(body, exit, ExitReason.UNSUPPORTED, () => {
-    body.localGet(unsupportedByteLocal);
-  });
+  body.localGet(unsupportedByteLocal);
+  emitWasmSirExitFromI32Stack(body, exit, ExitReason.UNSUPPORTED);
 }
 
 function registerModRmTable(cases: readonly ModRmDispatchCase[]): number[] {

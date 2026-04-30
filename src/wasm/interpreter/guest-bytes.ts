@@ -1,7 +1,7 @@
 import { wasmMemoryIndex } from "../abi.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
-import { emitWasmSirExit, type WasmSirExitTarget } from "../sir/exit.js";
+import { emitWasmSirExitFromI32Stack, type WasmSirExitTarget } from "../sir/exit.js";
 
 const wasmPageByteShift = 16;
 const u32ByteLength = 4;
@@ -116,7 +116,6 @@ function emitDecodeFault(
     throw new Error("interpreter guest-byte fault requires an exit target");
   }
 
-  emitWasmSirExit(body, exit, ExitReason.DECODE_FAULT, () => {
-    body.localGet(addressLocal);
-  }, extraDepth);
+  body.localGet(addressLocal);
+  emitWasmSirExitFromI32Stack(body, exit, ExitReason.DECODE_FAULT, extraDepth);
 }

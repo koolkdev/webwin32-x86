@@ -1,7 +1,7 @@
 import { emitLoadGuestU32, emitLoadGuestU32FromStack, emitStoreGuestU32 } from "../codegen/guest-memory.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
-import { emitWasmSirExit, type WasmSirExitTarget } from "./exit.js";
+import { emitWasmSirExitFromI32Stack, type WasmSirExitTarget } from "./exit.js";
 
 type WasmSirMemoryAccess = "read" | "write";
 
@@ -15,8 +15,9 @@ export function emitWasmSirLoadGuestU32(
   addressLocal: number,
   faultExtraDepth = 1
 ): void {
-  emitLoadGuestU32(context.body, addressLocal, (access: WasmSirMemoryAccess, emitPayload) => {
-    emitWasmSirMemoryFaultExit(context, access, emitPayload, faultExtraDepth);
+  emitLoadGuestU32(context.body, addressLocal, (access: WasmSirMemoryAccess, emitFaultAddress) => {
+    emitFaultAddress();
+    emitWasmSirMemoryFaultExitFromI32Stack(context, access, faultExtraDepth);
   });
 }
 
@@ -25,8 +26,9 @@ export function emitWasmSirLoadGuestU32FromStack(
   addressLocal: number,
   faultExtraDepth = 1
 ): void {
-  emitLoadGuestU32FromStack(context.body, addressLocal, (access: WasmSirMemoryAccess, emitPayload) => {
-    emitWasmSirMemoryFaultExit(context, access, emitPayload, faultExtraDepth);
+  emitLoadGuestU32FromStack(context.body, addressLocal, (access: WasmSirMemoryAccess, emitFaultAddress) => {
+    emitFaultAddress();
+    emitWasmSirMemoryFaultExitFromI32Stack(context, access, faultExtraDepth);
   });
 }
 
@@ -36,22 +38,21 @@ export function emitWasmSirStoreGuestU32(
   valueLocal: number,
   faultExtraDepth = 1
 ): void {
-  emitStoreGuestU32(context.body, addressLocal, valueLocal, (access: WasmSirMemoryAccess, emitPayload) => {
-    emitWasmSirMemoryFaultExit(context, access, emitPayload, faultExtraDepth);
+  emitStoreGuestU32(context.body, addressLocal, valueLocal, (access: WasmSirMemoryAccess, emitFaultAddress) => {
+    emitFaultAddress();
+    emitWasmSirMemoryFaultExitFromI32Stack(context, access, faultExtraDepth);
   });
 }
 
-export function emitWasmSirMemoryFaultExit(
+export function emitWasmSirMemoryFaultExitFromI32Stack(
   context: WasmSirMemoryContext,
   access: WasmSirMemoryAccess,
-  emitPayload: () => void,
   extraDepth: number
 ): void {
-  emitWasmSirExit(
+  emitWasmSirExitFromI32Stack(
     context.body,
     context.exit,
     access === "read" ? ExitReason.MEMORY_READ_FAULT : ExitReason.MEMORY_WRITE_FAULT,
-    emitPayload,
     extraDepth
   );
 }
