@@ -6,7 +6,7 @@ import type {
 import { FLAG_PRODUCERS } from "../../arch/x86/sir/flags.js";
 import type { FlagProducerName, ValueRef } from "../../arch/x86/sir/types.js";
 import { eflagsMask, i32 } from "../../core/state/cpu-state.js";
-import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
+import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import type { WasmSirEflagsStorage } from "./eflags.js";

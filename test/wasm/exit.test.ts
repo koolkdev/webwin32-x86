@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { emitExitResult } from "../../src/wasm/codegen/exit.js";
+import { emitExitResult } from "../../src/wasm/exit-emit.js";
 import { WasmFunctionBodyEncoder } from "../../src/wasm/encoder/function-body.js";
 import { WasmModuleEncoder } from "../../src/wasm/encoder/module.js";
 import { wasmValueType } from "../../src/wasm/encoder/types.js";

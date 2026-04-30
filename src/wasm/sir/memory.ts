@@ -1,4 +1,4 @@
-import { emitLoadGuestU32, emitLoadGuestU32FromStack, emitStoreGuestU32 } from "../codegen/guest-memory.js";
+import { emitLoadGuestU32, emitLoadGuestU32FromStack, emitStoreGuestU32 } from "../guest-memory.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
 import { emitWasmSirExitFromI32Stack, type WasmSirExitTarget } from "./exit.js";

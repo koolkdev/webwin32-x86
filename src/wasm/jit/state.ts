@@ -1,7 +1,7 @@
 import { reg32, type Reg32 } from "../../arch/x86/instruction/types.js";
 import { i32 } from "../../core/state/cpu-state.js";
 import { stateOffset } from "../abi.js";
-import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
+import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { emitLoadStateU32, emitStoreStateU32 } from "../sir/state.js";

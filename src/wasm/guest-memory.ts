@@ -1,13 +1,14 @@
-import { wasmMemoryIndex } from "../abi.js";
-import { wasmBranchHint, type WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import { ExitReason } from "../exit.js";
-import { emitExitResultFromStackPayload } from "./exit.js";
+import { wasmMemoryIndex } from "./abi.js";
+import { wasmBranchHint, type WasmFunctionBodyEncoder } from "./encoder/function-body.js";
+import { ExitReason } from "./exit.js";
+import { emitExitResultFromStackPayload } from "./exit-emit.js";
 
 const u32ByteLength = 4;
 const u32Align = 2;
 const wasmPageShift = 16;
+
 type GuestMemoryAccess = "read" | "write";
-type GuestMemoryFaultHandler = (access: GuestMemoryAccess, emitPayload: () => void) => void;
+type GuestMemoryFaultHandler = (access: GuestMemoryAccess, emitFaultAddress: () => void) => void;
 
 export function emitLoadGuestU32(
   body: WasmFunctionBodyEncoder,

@@ -19,7 +19,7 @@ import {
 import { compileWasmBlockHandle, type WasmBlockHandle } from "../runtime/wasm-block/wasm-block.js";
 import { runT0InstructionInterpreter } from "../runtime/tiering/executors/t0-instruction-interpreter.js";
 import { stateOffset } from "../wasm/abi.js";
-import { UnsupportedWasmCodegenError } from "../wasm/codegen/errors.js";
+import { UnsupportedWasmCodegenError } from "../wasm/errors.js";
 import { ExitReason, type DecodedExit } from "../wasm/exit.js";
 import { WasmInterpreterRuntime } from "../wasm/interpreter/runtime.js";
 

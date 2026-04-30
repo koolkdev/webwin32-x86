@@ -1,5 +1,5 @@
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "../abi.js";
-import { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
+import { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";

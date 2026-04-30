@@ -1,5 +1,5 @@
-import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import { encodeExit, type ExitReason } from "../exit.js";
+import { WasmFunctionBodyEncoder } from "./encoder/function-body.js";
+import { encodeExit, type ExitReason } from "./exit.js";
 
 export function emitExitResult(
   body: WasmFunctionBodyEncoder,

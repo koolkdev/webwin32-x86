@@ -1,5 +1,5 @@
-import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import type { WasmValueType } from "../encoder/types.js";
+import { WasmFunctionBodyEncoder } from "./function-body.js";
+import type { WasmValueType } from "./types.js";
 
 export type ScratchLocals<Types extends readonly WasmValueType[]> = {
   readonly [Index in keyof Types]: number;

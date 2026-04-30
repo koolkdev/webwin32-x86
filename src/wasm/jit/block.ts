@@ -2,7 +2,7 @@ import type { IsaDecodedInstruction } from "../../arch/x86/isa/decoder/types.js"
 import { buildSir } from "../../arch/x86/sir/builder.js";
 import type { SirProgram } from "../../arch/x86/sir/types.js";
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "../abi.js";
-import { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
+import { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";

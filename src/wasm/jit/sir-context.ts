@@ -1,5 +1,5 @@
 import type { SirProgram } from "../../arch/x86/sir/types.js";
-import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
+import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
 import { lowerSirToWasm } from "../sir/lower.js";

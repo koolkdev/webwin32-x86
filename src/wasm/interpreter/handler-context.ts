@@ -1,4 +1,4 @@
-import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
+import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import type { WasmSirExitTarget } from "../sir/exit.js";
 import type { InterpreterStateCache } from "./state-cache.js";

@@ -4,7 +4,7 @@ import type {
   SirProgram,
   StorageRef
 } from "../../arch/x86/sir/types.js";
-import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
+import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { wasmSirLocalEflagsStorage } from "../sir/eflags.js";

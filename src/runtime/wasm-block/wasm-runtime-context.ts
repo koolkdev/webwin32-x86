@@ -1,7 +1,7 @@
 import { decodeIsaBlock, type IsaBlockDecodeReader } from "../../arch/x86/isa/decoder/decode-block.js";
 import { cpuStateFields, u32, type CpuState } from "../../core/state/cpu-state.js";
 import { stateOffset } from "../../wasm/abi.js";
-import { UnsupportedWasmCodegenError } from "../../wasm/codegen/errors.js";
+import { UnsupportedWasmCodegenError } from "../../wasm/errors.js";
 import { type WasmBlockHandle, type WasmBlockKey, compileWasmBlockHandle } from "./wasm-block.js";
 
 export const defaultWasmBlockMaxInstructions = 1024;

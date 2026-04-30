@@ -13,7 +13,7 @@ import type {
 } from "../../arch/x86/sir/types.js";
 import type { FlagProducerName } from "../../arch/x86/sir/types.js";
 import { i32 } from "../../core/state/cpu-state.js";
-import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
+import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 
