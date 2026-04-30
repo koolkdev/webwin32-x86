@@ -59,6 +59,19 @@ test("br_table dispatch compiles and branches by i32 selector", async () => {
   strictEqual(select(2), 30);
 });
 
+test("typed if expression compiles and returns branch values", async () => {
+  const module = await WebAssembly.compile(encodeTypedIfTestModule());
+  const instance = await WebAssembly.instantiate(module);
+  const select = instance.exports.select;
+
+  if (typeof select !== "function") {
+    throw new Error("expected exported function 'select'");
+  }
+
+  strictEqual(select(0), 20);
+  strictEqual(select(1), 10);
+});
+
 type CompileResult =
   | Readonly<{ ok: true; module: WebAssembly.Module }>
   | Readonly<{ ok: false; message: string }>;
@@ -130,6 +143,27 @@ function encodeBrTableTestModule(): Uint8Array<ArrayBuffer> {
     .returnFromFunction()
     .endBlock()
     .i32Const(30)
+    .end();
+  const functionIndex = module.addFunction(typeIndex, body);
+
+  module.exportFunction("select", functionIndex);
+
+  return module.encode();
+}
+
+function encodeTypedIfTestModule(): Uint8Array<ArrayBuffer> {
+  const module = new WasmModuleEncoder();
+  const typeIndex = module.addFunctionType({
+    params: [wasmValueType.i32],
+    results: [wasmValueType.i32]
+  });
+  const body = new WasmFunctionBodyEncoder(1)
+    .localGet(0)
+    .ifBlock(undefined, wasmValueType.i32)
+    .i32Const(10)
+    .elseBlock()
+    .i32Const(20)
+    .endBlock()
     .end();
   const functionIndex = module.addFunction(typeIndex, body);
 

@@ -1,4 +1,4 @@
-import { emitLoadGuestU32, emitStoreGuestU32 } from "../codegen/guest-memory.js";
+import { emitLoadGuestU32, emitLoadGuestU32FromStack, emitStoreGuestU32 } from "../codegen/guest-memory.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
 import { emitWasmSirExit, type WasmSirExitTarget } from "./exit.js";
@@ -16,6 +16,16 @@ export function emitWasmSirLoadGuestU32(
   faultExtraDepth = 1
 ): void {
   emitLoadGuestU32(context.body, addressLocal, (access: WasmSirMemoryAccess, emitPayload) => {
+    emitWasmSirMemoryFaultExit(context, access, emitPayload, faultExtraDepth);
+  });
+}
+
+export function emitWasmSirLoadGuestU32FromStack(
+  context: WasmSirMemoryContext,
+  addressLocal: number,
+  faultExtraDepth = 1
+): void {
+  emitLoadGuestU32FromStack(context.body, addressLocal, (access: WasmSirMemoryAccess, emitPayload) => {
     emitWasmSirMemoryFaultExit(context, access, emitPayload, faultExtraDepth);
   });
 }

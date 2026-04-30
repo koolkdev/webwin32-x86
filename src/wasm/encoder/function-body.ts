@@ -66,9 +66,9 @@ export class WasmFunctionBodyEncoder {
     return this;
   }
 
-  block(): this {
+  block(result?: WasmValueType): this {
     this.#writeInstruction(wasmOpcode.block);
-    this.#instructions.writeByte(wasmBlockType.empty);
+    this.#instructions.writeByte(result ?? wasmBlockType.empty);
     return this;
   }
 
@@ -78,7 +78,7 @@ export class WasmFunctionBodyEncoder {
     return this;
   }
 
-  ifBlock(hint?: WasmBranchHint): this {
+  ifBlock(hint?: WasmBranchHint, result?: WasmValueType): this {
     if (hint !== undefined) {
       this.#branchHints.push({
         instructionOffset: this.#instructions.byteLength,
@@ -87,7 +87,12 @@ export class WasmFunctionBodyEncoder {
     }
 
     this.#writeInstruction(wasmOpcode.if);
-    this.#instructions.writeByte(wasmBlockType.empty);
+    this.#instructions.writeByte(result ?? wasmBlockType.empty);
+    return this;
+  }
+
+  elseBlock(): this {
+    this.#writeInstruction(wasmOpcode.else);
     return this;
   }
 
@@ -145,6 +150,11 @@ export class WasmFunctionBodyEncoder {
 
   i32LtU(): this {
     this.#writeInstruction(wasmOpcode.i32LtU);
+    return this;
+  }
+
+  i32GtU(): this {
+    this.#writeInstruction(wasmOpcode.i32GtU);
     return this;
   }
 

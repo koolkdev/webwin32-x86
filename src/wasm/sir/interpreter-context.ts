@@ -9,20 +9,20 @@ import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { wasmSirLocalEflagsStorage } from "./eflags.js";
 import { emitWasmSirExit, type WasmSirExitTarget } from "./exit.js";
-import { emitWasmSirLoadGuestU32, emitWasmSirStoreGuestU32 } from "./memory.js";
+import { emitWasmSirLoadGuestU32, emitWasmSirLoadGuestU32FromStack, emitWasmSirStoreGuestU32 } from "./memory.js";
 import { wasmSirLocalReg32Storage, type WasmSirReg32Storage } from "./registers.js";
 import {
   emitCompleteInstruction,
   emitCompleteInstructionWithTarget
 } from "../interpreter/state-cache.js";
 import {
-  emitCopyReg32FromIndexLocal,
+  emitLoadReg32ByIndex,
   emitModRmRmIndex,
   emitOpcodeRegIndex,
-  emitStoreReg32ByIndexLocal
+  emitStoreReg32ByIndex
 } from "../interpreter/register-dispatch.js";
 import type { InterpreterStateCache } from "../interpreter/state-cache.js";
-import { emitIfModRmMemory, emitIfModRmRegister, emitModRmRegIndex } from "../interpreter/modrm-bits.js";
+import { emitIfModRmMemory, emitIfModRmRegister, emitModRmIsRegister, emitModRmRegIndex } from "../interpreter/modrm-bits.js";
 import { lowerSirToWasm, type WasmSirEmitHelpers } from "./lower.js";
 import { emitSetFlags } from "./flags.js";
 import { emitCondition } from "./conditions.js";
@@ -104,7 +104,13 @@ function canInlineGet32(context: InterpreterSirContext, source: StorageRef): boo
     case "operand": {
       const binding = operandBinding(context, source.index);
 
-      return binding.kind === "implicit.reg32" || binding.kind === "imm32" || binding.kind === "relTarget32";
+      return (
+        binding.kind === "opcode.reg32" ||
+        binding.kind === "modrm.reg32" ||
+        binding.kind === "implicit.reg32" ||
+        binding.kind === "imm32" ||
+        binding.kind === "relTarget32"
+      );
     }
   }
 }
@@ -260,23 +266,23 @@ function emitGetRm32(
   context: InterpreterSirContext,
   binding: Extract<InterpreterOperandBinding, { kind: "rm32" }>
 ): void {
-  const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
-  const indexLocal = context.scratch.allocLocal(wasmValueType.i32);
+  emitModRmIsRegister(context.body, binding.modRmLocal);
+  context.body.ifBlock(undefined, wasmValueType.i32);
+  emitLoadReg32ByIndex(context.body, context.state.regs, () => {
+    emitModRmRmIndex(context.body, binding.modRmLocal);
+  });
+  context.body.elseBlock();
+  emitWasmSirLoadGuestU32(context, binding.addressLocal, 2);
+  context.body.endBlock();
+}
+
+function emitLoadGuestU32FromStack(context: InterpreterSirContext): void {
+  const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
-    emitIfModRmRegister(context.body, binding.modRmLocal, () => {
-      emitModRmRmIndex(context.body, binding.modRmLocal);
-      context.body.localSet(indexLocal);
-      emitCopyReg32FromIndexLocal(context.body, context.state.regs, indexLocal, valueLocal);
-    });
-    emitIfModRmMemory(context.body, binding.modRmLocal, () => {
-      emitWasmSirLoadGuestU32(context, binding.addressLocal, 2);
-      context.body.localSet(valueLocal);
-    });
-    context.body.localGet(valueLocal);
+    emitWasmSirLoadGuestU32FromStack(context, addressLocal);
   } finally {
-    context.scratch.freeLocal(indexLocal);
-    context.scratch.freeLocal(valueLocal);
+    context.scratch.freeLocal(addressLocal);
   }
 }
 
@@ -287,15 +293,14 @@ function emitSetRm32(
   helpers: WasmSirEmitHelpers
 ): void {
   const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
-  const indexLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
     helpers.emitValue(value);
     context.body.localSet(valueLocal);
     emitIfModRmRegister(context.body, binding.modRmLocal, () => {
-      emitModRmRmIndex(context.body, binding.modRmLocal);
-      context.body.localSet(indexLocal);
-      emitStoreReg32ByIndexLocal(context.body, context.state.regs, indexLocal, valueLocal);
+      emitStoreReg32ByIndex(context.body, context.state.regs, () => {
+        emitModRmRmIndex(context.body, binding.modRmLocal);
+      }, valueLocal);
     });
     emitIfModRmMemory(context.body, binding.modRmLocal, () => {
       emitStoreMem32(
@@ -306,19 +311,7 @@ function emitSetRm32(
       );
     });
   } finally {
-    context.scratch.freeLocal(indexLocal);
     context.scratch.freeLocal(valueLocal);
-  }
-}
-
-function emitLoadGuestU32FromStack(context: InterpreterSirContext): void {
-  const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
-
-  try {
-    context.body.localSet(addressLocal);
-    emitWasmSirLoadGuestU32(context, addressLocal);
-  } finally {
-    context.scratch.freeLocal(addressLocal);
   }
 }
 
@@ -354,18 +347,7 @@ function operandBinding(context: InterpreterSirContext, index: number): Interpre
 }
 
 function emitLoadDynamicReg32(context: InterpreterSirContext, emitIndex: () => void): void {
-  const indexLocal = context.scratch.allocLocal(wasmValueType.i32);
-  const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
-
-  try {
-    emitIndex();
-    context.body.localSet(indexLocal);
-    emitCopyReg32FromIndexLocal(context.body, context.state.regs, indexLocal, valueLocal);
-    context.body.localGet(valueLocal);
-  } finally {
-    context.scratch.freeLocal(valueLocal);
-    context.scratch.freeLocal(indexLocal);
-  }
+  emitLoadReg32ByIndex(context.body, context.state.regs, emitIndex);
 }
 
 function emitStoreDynamicReg32(
@@ -374,17 +356,13 @@ function emitStoreDynamicReg32(
   value: SirValueExpr,
   helpers: WasmSirEmitHelpers
 ): void {
-  const indexLocal = context.scratch.allocLocal(wasmValueType.i32);
   const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
-    emitIndex();
-    context.body.localSet(indexLocal);
     helpers.emitValue(value);
     context.body.localSet(valueLocal);
-    emitStoreReg32ByIndexLocal(context.body, context.state.regs, indexLocal, valueLocal);
+    emitStoreReg32ByIndex(context.body, context.state.regs, emitIndex, valueLocal);
   } finally {
     context.scratch.freeLocal(valueLocal);
-    context.scratch.freeLocal(indexLocal);
   }
 }

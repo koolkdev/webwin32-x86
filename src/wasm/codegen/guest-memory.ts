@@ -22,6 +22,19 @@ export function emitLoadGuestU32(
   });
 }
 
+export function emitLoadGuestU32FromStack(
+  body: WasmFunctionBodyEncoder,
+  addressLocal: number,
+  faultHandler?: GuestMemoryFaultHandler
+): void {
+  emitFaultIfStackU32OutOfBounds(body, addressLocal, "read", faultHandler);
+  body.localGet(addressLocal).i32Load({
+    align: u32Align,
+    memoryIndex: wasmMemoryIndex.guest,
+    offset: 0
+  });
+}
+
 export function emitStoreGuestU32(
   body: WasmFunctionBodyEncoder,
   addressLocal: number,
@@ -44,6 +57,26 @@ function emitFaultIfU32OutOfBounds(
 ): void {
   emitLastValidGuestU32Address(body);
   body.localGet(addressLocal).i32LtU().ifBlock(wasmBranchHint.unlikely);
+  if (faultHandler === undefined) {
+    body.localGet(addressLocal);
+    emitExitResultFromStackPayload(body, memoryFaultExitReason(access)).returnFromFunction();
+  } else {
+    faultHandler(access, () => {
+      body.localGet(addressLocal);
+    });
+  }
+  body.endBlock();
+}
+
+function emitFaultIfStackU32OutOfBounds(
+  body: WasmFunctionBodyEncoder,
+  addressLocal: number,
+  access: GuestMemoryAccess,
+  faultHandler?: GuestMemoryFaultHandler
+): void {
+  body.localTee(addressLocal);
+  emitLastValidGuestU32Address(body);
+  body.i32GtU().ifBlock(wasmBranchHint.unlikely);
   if (faultHandler === undefined) {
     body.localGet(addressLocal);
     emitExitResultFromStackPayload(body, memoryFaultExitReason(access)).returnFromFunction();
