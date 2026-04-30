@@ -1,4 +1,4 @@
-import type { Reg32 } from "../../instruction/types.js";
+import type { Reg32 } from "../types.js";
 
 export type Reg3 = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type FixedHighBits = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;

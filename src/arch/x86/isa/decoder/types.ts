@@ -1,4 +1,4 @@
-import type { Mem32Operand, Reg32 } from "../../instruction/types.js";
+import type { Mem32Operand, Reg32 } from "../types.js";
 import type { SemanticTemplate } from "../../sir/types.js";
 import type { InstructionSpec, ImmediateExtension } from "../schema/types.js";
 

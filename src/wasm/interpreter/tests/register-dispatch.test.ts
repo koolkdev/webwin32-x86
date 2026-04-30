@@ -1,7 +1,7 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { reg32, type Reg32 } from "../../../arch/x86/instruction/types.js";
+import { reg32, type Reg32 } from "../../../arch/x86/isa/types.js";
 import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
 import { WasmModuleEncoder } from "../../encoder/module.js";
 import { wasmValueType } from "../../encoder/types.js";

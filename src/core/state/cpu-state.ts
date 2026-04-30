@@ -1,4 +1,4 @@
-import { reg32, type Reg32 } from "../../arch/x86/instruction/types.js";
+import { reg32, type Reg32 } from "../../arch/x86/isa/types.js";
 
 export type CpuFlag = "CF" | "PF" | "AF" | "ZF" | "SF" | "OF";
 

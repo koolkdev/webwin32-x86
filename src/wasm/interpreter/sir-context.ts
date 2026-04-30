@@ -1,4 +1,4 @@
-import type { Reg32 } from "../../arch/x86/instruction/types.js";
+import type { Reg32 } from "../../arch/x86/isa/types.js";
 import type { SirStorageExpr, SirValueExpr } from "../../arch/x86/sir/expressions.js";
 import type {
   SirProgram,

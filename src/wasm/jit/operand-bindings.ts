@@ -1,4 +1,4 @@
-import type { Mem32Operand, Reg32 } from "../../arch/x86/instruction/types.js";
+import type { Mem32Operand, Reg32 } from "../../arch/x86/isa/types.js";
 import type { IsaDecodedInstruction, IsaOperandBinding } from "../../arch/x86/isa/decoder/types.js";
 
 export type JitOperandBinding =

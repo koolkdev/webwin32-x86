@@ -1,4 +1,4 @@
-import { reg32, type Reg32 } from "../../arch/x86/instruction/types.js";
+import { reg32, type Reg32 } from "../../arch/x86/isa/types.js";
 import { i32 } from "../../core/state/cpu-state.js";
 import { stateOffset } from "../abi.js";
 import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";

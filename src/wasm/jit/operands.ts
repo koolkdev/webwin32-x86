@@ -1,4 +1,4 @@
-import type { Mem32Operand } from "../../arch/x86/instruction/types.js";
+import type { Mem32Operand } from "../../arch/x86/isa/types.js";
 import type { SirStorageExpr, SirValueExpr } from "../../arch/x86/sir/expressions.js";
 import type { StorageRef } from "../../arch/x86/sir/types.js";
 import { i32 } from "../../core/state/cpu-state.js";

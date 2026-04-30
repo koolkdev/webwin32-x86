@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { reg32 } from "../../src/arch/x86/instruction/types.js";
+import { reg32 } from "../../src/arch/x86/isa/types.js";
 import {
   cpuFlags,
   createCpuState,

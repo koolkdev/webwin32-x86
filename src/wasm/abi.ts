@@ -1,4 +1,4 @@
-import type { Reg32 } from "../arch/x86/instruction/types.js";
+import type { Reg32 } from "../arch/x86/isa/types.js";
 import { STATE_OFFSETS } from "../core/state/cpu-state.js";
 
 export const wasmImport = {

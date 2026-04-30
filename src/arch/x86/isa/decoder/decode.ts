@@ -1,7 +1,6 @@
 import { ByteReader } from "../../decoder/byte-reader.js";
 import { signedImm8, signedImm32 } from "../../decoder/immediate.js";
 import { decodeRm32ModRm, rm32ModRmByteLengthAt } from "../../decoder/modrm.js";
-import { reg32, type Reg32 } from "../../instruction/types.js";
 import type { SemanticTemplate } from "../../sir/types.js";
 import { u32 } from "../../../../core/state/cpu-state.js";
 import { X86_32_CORE } from "../index.js";
@@ -10,6 +9,7 @@ import {
   instructionReadsModRm
 } from "../schema/builders.js";
 import type { ExpandedInstructionSpec, ModRmMatch, OperandSpec, Reg3 } from "../schema/types.js";
+import { reg32, type Reg32 } from "../types.js";
 import { buildOpcodeDispatch, opcodeLeaf, type OpcodeDispatchLeaf } from "./opcode-dispatch.js";
 import type { IsaDecodedInstruction, IsaDecodeResult, IsaOperandBinding } from "./types.js";
 
