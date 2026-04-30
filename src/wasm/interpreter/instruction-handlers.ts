@@ -2,6 +2,7 @@ import { buildSir } from "../../arch/x86/sir/builder.js";
 import type { ExpandedInstructionSpec, ModRmMatch, OperandSpec } from "../../arch/x86/isa/schema/types.js";
 import type { OpcodeDispatchLeaf } from "../../arch/x86/isa/decoder/opcode-dispatch.js";
 import type { SemanticTemplate } from "../../arch/x86/sir/types.js";
+import { JCC_DESCRIPTORS } from "../../arch/x86/isa/defs/control.js";
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
@@ -15,7 +16,13 @@ const supportedNoModRmIds = new Set([
   "sub.eax_imm32",
   "xor.eax_imm32",
   "cmp.eax_imm32",
-  "test.eax_imm32"
+  "test.eax_imm32",
+  "jmp.rel8",
+  "jmp.rel32",
+  ...JCC_DESCRIPTORS.flatMap((descriptor) => [
+    `${descriptor.mnemonicName}.rel8`,
+    `${descriptor.mnemonicName}.rel32`
+  ])
 ]);
 const supportedModRmIds = new Set([
   "mov.r32_rm32",
@@ -46,6 +53,7 @@ export type InterpreterHandlerContext = Readonly<{
   eipLocal: number;
   addressLocal: number;
   opcodeLocal: number;
+  instructionDoneLabelDepth: number;
 }>;
 
 export function emitInstructionHandlerForLeaf(
@@ -96,7 +104,8 @@ function emitInstructionHandler(
       scratch: context.scratch,
       eipLocal: context.eipLocal,
       instructionLength: decoded.instructionLength,
-      operands: decoded.operands
+      operands: decoded.operands,
+      instructionDoneLabelDepth: context.instructionDoneLabelDepth
     });
   } finally {
     for (const local of decoded.scratchLocals) {
@@ -188,8 +197,16 @@ function decodeOperand(
         scratchLocal: local
       };
     }
-    default:
-      throw new Error(`unsupported operand decode for Wasm interpreter: ${operand.kind}`);
+    case "rel": {
+      const local = context.scratch.allocLocal(wasmValueType.i32);
+
+      emitLoadRelativeTargetForDecode(operand, cursor, context, local);
+      return {
+        binding: { kind: "relTarget32", local },
+        nextCursor: cursor + immediateByteLength(operand.width),
+        scratchLocal: local
+      };
+    }
   }
 }
 
@@ -226,10 +243,14 @@ function bindModRmCases(
   context: InterpreterHandlerContext,
   modRmLocal: number
 ): readonly RegisterModRmDispatchCase[] {
-  return cases.map((dispatchCase) => ({
+  return cases.map((dispatchCase, index) => ({
     bytes: dispatchCase.bytes,
     emit: () => {
-      emitInstructionHandler(dispatchCase.instruction, context, modRmLocal);
+      emitInstructionHandler(
+        dispatchCase.instruction,
+        { ...context, instructionDoneLabelDepth: context.instructionDoneLabelDepth + 1 + index },
+        modRmLocal
+      );
     }
   }));
 }
@@ -279,6 +300,38 @@ function emitLoadImmediateForDecode(
   if (operand.extension === "sign") {
     emitSignExtendLocal(context.body, local, operand.width);
   }
+}
+
+function emitLoadRelativeTargetForDecode(
+  operand: Extract<OperandSpec, { kind: "rel" }>,
+  cursor: number,
+  context: InterpreterHandlerContext,
+  local: number
+): void {
+  switch (operand.width) {
+    case 8:
+      emitLoadGuestByte(context.body, context.eipLocal, cursor, context.addressLocal, local);
+      emitSignExtendLocal(context.body, local, 8);
+      break;
+    case 32:
+      emitLoadGuestU32ForDecode(context.body, context.eipLocal, cursor, context.addressLocal, local);
+      break;
+  }
+
+  emitResolveRelativeTarget(context, local, cursor + immediateByteLength(operand.width));
+}
+
+function emitResolveRelativeTarget(
+  context: InterpreterHandlerContext,
+  displacementLocal: number,
+  nextEipOffset: number
+): void {
+  emitNextEipForOffset(context, nextEipOffset);
+  context.body.localGet(displacementLocal).i32Add().localSet(displacementLocal);
+}
+
+function emitNextEipForOffset(context: InterpreterHandlerContext, nextEipOffset: number): void {
+  context.body.localGet(context.eipLocal).i32Const(nextEipOffset).i32Add();
 }
 
 function emitLoadGuestU16ForDecode(context: InterpreterHandlerContext, cursor: number, local: number): void {

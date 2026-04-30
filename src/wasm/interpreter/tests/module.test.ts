@@ -93,14 +93,14 @@ test("truncated two-byte opcode escape returns decode fault", async () => {
   assertInterpreterStateEquals(interpreter.stateView, initialState);
 });
 
-test("two-byte opcode path dispatches before unsupported exit", async () => {
+test("unsupported two-byte opcode path dispatches before unsupported exit", async () => {
   const interpreter = await instantiateWasmInterpreter();
   const initialState = createCpuState({
     eip: startAddress,
     instructionCount: 7
   });
   writeInterpreterState(interpreter.stateView, initialState);
-  writeGuestBytes(interpreter.guestView, startAddress, [0x0f, 0x85, 0x00, 0x00, 0x00, 0x00]);
+  writeGuestBytes(interpreter.guestView, startAddress, [0x0f, 0x90]);
 
   const exit = interpreter.run(1);
 

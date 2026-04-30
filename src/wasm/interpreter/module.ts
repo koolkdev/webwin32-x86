@@ -30,17 +30,25 @@ export function encodeInterpreterModule(): Uint8Array<ArrayBuffer> {
   const opcodeLocal = body.addLocal(wasmValueType.i32);
   const scratch = new WasmLocalScratchAllocator(body);
 
-  body.localGet(fuelParam).i32Eqz().ifBlock();
-  emitExitResult(body, ExitReason.INSTRUCTION_LIMIT, 0).returnFromFunction();
-  body.endBlock();
-
   body
     .i32Const(0)
     .i32Load({ align: 2, offset: stateOffset.eip, memoryIndex: wasmMemoryIndex.state })
     .localSet(eipLocal);
 
+  body.loop();
+  body.localGet(fuelParam).i32Eqz().ifBlock();
+  emitExitResult(body, ExitReason.INSTRUCTION_LIMIT, 0).returnFromFunction();
+  body.endBlock();
+
+  body.block();
   emitLoadGuestByte(body, eipLocal, 0, addressLocal, byteLocal);
   emitOpcodeDispatch(body, eipLocal, 0, byteLocal, addressLocal, opcodeLocal, scratch);
+  body.endBlock();
+  body.localGet(fuelParam).i32Const(1).i32Sub().localSet(fuelParam);
+  body.br(0);
+
+  body.endBlock();
+  emitExitResult(body, ExitReason.INSTRUCTION_LIMIT, 0).returnFromFunction();
   scratch.assertClear();
   body.end();
 

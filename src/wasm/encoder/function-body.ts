@@ -72,6 +72,12 @@ export class WasmFunctionBodyEncoder {
     return this;
   }
 
+  loop(): this {
+    this.#writeInstruction(wasmOpcode.loop);
+    this.#instructions.writeByte(wasmBlockType.empty);
+    return this;
+  }
+
   ifBlock(hint?: WasmBranchHint): this {
     if (hint !== undefined) {
       this.#branchHints.push({

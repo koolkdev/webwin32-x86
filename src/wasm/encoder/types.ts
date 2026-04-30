@@ -13,6 +13,7 @@ export const wasmMagic = [0x00, 0x61, 0x73, 0x6d] as const;
 
 export const wasmOpcode = {
   block: 0x02,
+  loop: 0x03,
   if: 0x04,
   br: 0x0c,
   brTable: 0x0e,

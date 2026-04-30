@@ -51,8 +51,19 @@ export function emitCompleteInstruction(
   eipLocal: number,
   instructionLength: number
 ): void {
-  emitStoreStateU32(body, stateOffset.eip, () => {
+  emitCompleteInstructionWithTarget(body, eipLocal, () => {
     body.localGet(eipLocal).i32Const(instructionLength).i32Add();
+  });
+}
+
+export function emitCompleteInstructionWithTarget(
+  body: WasmFunctionBodyEncoder,
+  eipLocal: number,
+  emitTarget: () => void
+): void {
+  emitStoreStateU32(body, stateOffset.eip, () => {
+    emitTarget();
+    body.localTee(eipLocal);
   });
   emitIncrementInstructionCount(body);
 }

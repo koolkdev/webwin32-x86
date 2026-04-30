@@ -1,4 +1,5 @@
 import type {
+  ConditionCode,
   SirOp,
   SirProgram,
   StorageRef,
@@ -16,8 +17,11 @@ export type WasmSirLoweringContext = Readonly<{
   emitGet32(source: StorageRef, helpers: WasmSirEmitHelpers): void;
   emitSet32(target: StorageRef, value: ValueRef, helpers: WasmSirEmitHelpers): void;
   emitSetFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueRef>>, helpers: WasmSirEmitHelpers): void;
+  emitCondition(cc: ConditionCode): void;
   emitNext(helpers: WasmSirEmitHelpers): void;
   emitNextEip(helpers: WasmSirEmitHelpers): void;
+  emitJump(target: ValueRef, helpers: WasmSirEmitHelpers): void;
+  emitConditionalJump(condition: ValueRef, taken: ValueRef, notTaken: ValueRef, helpers: WasmSirEmitHelpers): void;
 }>;
 
 export type WasmSirEmitHelpers = Readonly<{
@@ -73,8 +77,21 @@ function lowerSirOp(
     case "flags.set":
       context.emitSetFlags(op.producer, op.inputs, helpers);
       return;
+    case "condition": {
+      const local = localForVar(context, vars, op.dst.id);
+
+      context.emitCondition(op.cc);
+      context.body.localSet(local);
+      return;
+    }
     case "next":
       context.emitNext(helpers);
+      return;
+    case "jump":
+      context.emitJump(op.target, helpers);
+      return;
+    case "conditionalJump":
+      context.emitConditionalJump(op.condition, op.taken, op.notTaken, helpers);
       return;
     default:
       throw new Error(`unsupported SIR op for Wasm lowering: ${op.op}`);
