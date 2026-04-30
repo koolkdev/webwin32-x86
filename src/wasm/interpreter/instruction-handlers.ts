@@ -1,5 +1,5 @@
 import { buildSir } from "../../arch/x86/sir/builder.js";
-import type { ExpandedInstructionSpec, ModRmMatch, OperandSpec } from "../../arch/x86/isa/schema/types.js";
+import type { ExpandedInstructionSpec, ModRmMatch, Reg3 } from "../../arch/x86/isa/schema/types.js";
 import type { OpcodeDispatchLeaf } from "../../arch/x86/isa/decoder/opcode-dispatch.js";
 import type { SemanticTemplate } from "../../arch/x86/sir/types.js";
 import { wasmValueType } from "../encoder/types.js";
@@ -16,7 +16,7 @@ export function emitInstructionHandlerForLeaf(
   const noModRmInstruction = leaf.noModRmCandidates[0];
 
   if (noModRmInstruction !== undefined) {
-    emitInstructionHandler(noModRmInstruction, context, undefined, undefined);
+    emitInstructionHandler(noModRmInstruction, context, undefined);
     return true;
   }
 
@@ -30,6 +30,12 @@ export function emitInstructionHandlerForLeaf(
 
   try {
     emitLoadGuestByte(context.body, context.eipLocal, leaf.opcodeLength, context.addressLocal, modRmLocal);
+
+    if (modRmCases.length === 1 && modRmCases[0]?.regs.length === reg3Values.length) {
+      emitInstructionHandler(modRmCases[0].instruction, context, modRmLocal);
+      return true;
+    }
+
     emitModRmDispatch(
       context.body,
       modRmLocal,
@@ -46,10 +52,9 @@ export function emitInstructionHandlerForLeaf(
 function emitInstructionHandler(
   instruction: ExpandedInstructionSpec<SemanticTemplate>,
   context: InterpreterHandlerContext,
-  modRmLocal: number | undefined,
-  modRmByte: number | undefined
+  modRmLocal: number | undefined
 ): void {
-  const decoded = decodeInstructionOperands(instruction, context, modRmLocal, modRmByte);
+  const decoded = decodeInstructionOperands(instruction, context, modRmLocal);
   const program = buildSir(instruction.spec.semantics);
 
   try {
@@ -68,41 +73,45 @@ function emitInstructionHandler(
   }
 }
 
-type RegisterModRmCaseSpec = Readonly<{
+type ModRmCaseSpec = Readonly<{
   instruction: ExpandedInstructionSpec<SemanticTemplate>;
-  byte: number;
-  bytes: readonly number[];
+  regs: readonly Reg3[];
 }>;
 
-function registerModRmDispatchCases(leaf: OpcodeDispatchLeaf): readonly RegisterModRmCaseSpec[] {
-  const cases: RegisterModRmCaseSpec[] = [];
+function registerModRmDispatchCases(leaf: OpcodeDispatchLeaf): readonly ModRmCaseSpec[] {
+  const casesByInstruction = new Map<string, { instruction: ExpandedInstructionSpec<SemanticTemplate>; regs: Reg3[] }>();
 
-  for (let byte = 0x00; byte <= 0xff; byte += 1) {
-    const instruction = supportedRegisterModRmInstruction(leaf, byte);
+  for (const reg of reg3Values) {
+    const instruction = supportedRegisterModRmInstruction(leaf, reg);
 
     if (instruction === undefined) {
       continue;
     }
 
-    cases.push({ instruction, byte, bytes: [byte] });
+    const existing = casesByInstruction.get(instruction.spec.id);
+
+    if (existing === undefined) {
+      casesByInstruction.set(instruction.spec.id, { instruction, regs: [reg] });
+    } else {
+      existing.regs.push(reg);
+    }
   }
 
-  return cases;
+  return [...casesByInstruction.values()];
 }
 
 function bindModRmCases(
-  cases: readonly RegisterModRmCaseSpec[],
+  cases: readonly ModRmCaseSpec[],
   context: InterpreterHandlerContext,
   modRmLocal: number
 ): readonly ModRmDispatchCase[] {
   return cases.map((dispatchCase, index) => ({
-    bytes: dispatchCase.bytes,
+    regs: dispatchCase.regs,
     emit: () => {
       emitInstructionHandler(
         dispatchCase.instruction,
         { ...context, instructionDoneLabelDepth: context.instructionDoneLabelDepth + 1 + index },
-        modRmLocal,
-        dispatchCase.byte
+        modRmLocal
       );
     }
   }));
@@ -110,32 +119,23 @@ function bindModRmCases(
 
 function supportedRegisterModRmInstruction(
   leaf: OpcodeDispatchLeaf,
-  modRmByte: number
+  reg: Reg3
 ): ExpandedInstructionSpec<SemanticTemplate> | undefined {
-  const reg = (modRmByte >>> 3) & 0b111;
   const bucket = leaf.modRmByReg[reg] ?? [];
 
-  return bucket.find(
-    (candidate) =>
-      modRmByteMatches(candidate.spec.modrm?.match, modRmByte) &&
-      modRmOperandFormsMatch(candidate.spec.operands ?? [], modRmByte)
-  );
+  return bucket.find((candidate) => modRmRegMatches(candidate.spec.modrm?.match, reg));
 }
 
-function modRmOperandFormsMatch(operands: readonly OperandSpec[], byte: number): boolean {
-  const mod = byte >>> 6;
-
-  return operands.every((operand) => operand.kind !== "modrm.rm" || operand.type !== "m32" || mod !== 0b11);
-}
-
-function modRmByteMatches(match: ModRmMatch | undefined, byte: number): boolean {
+function modRmRegMatches(match: ModRmMatch | undefined, reg: Reg3): boolean {
   if (match === undefined) {
     return true;
   }
 
-  return (
-    (match.mod === undefined || match.mod === ((byte >>> 6) & 0b11)) &&
-    (match.reg === undefined || match.reg === ((byte >>> 3) & 0b111)) &&
-    (match.rm === undefined || match.rm === (byte & 0b111))
-  );
+  if (match.mod !== undefined || match.rm !== undefined) {
+    throw new Error("Wasm interpreter ModRM dispatch only supports instruction-selection matches on ModRM.reg");
+  }
+
+  return match.reg === undefined || match.reg === reg;
 }
+
+const reg3Values = [0, 1, 2, 3, 4, 5, 6, 7] as const satisfies readonly Reg3[];

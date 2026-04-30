@@ -1,9 +1,11 @@
 import { emitExitResultFromStackPayload } from "../codegen/exit.js";
+import type { Reg3 } from "../../arch/x86/isa/schema/types.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
+import { emitModRmRegIndex } from "./modrm-bits.js";
 
 export type ModRmDispatchCase = Readonly<{
-  bytes: readonly number[];
+  regs: readonly Reg3[];
   emit: () => void;
 }>;
 
@@ -19,7 +21,8 @@ export function emitModRmDispatch(
     body.block();
   }
 
-  body.localGet(modRmLocal).brTable(registerModRmTable(cases), cases.length);
+  emitModRmRegIndex(body, modRmLocal);
+  body.brTable(registerModRmTable(cases), cases.length);
 
   for (let index = cases.length - 1; index >= 0; index -= 1) {
     const dispatchCase = cases[index];
@@ -38,7 +41,7 @@ export function emitModRmDispatch(
 }
 
 function registerModRmTable(cases: readonly ModRmDispatchCase[]): number[] {
-  const table = new Array<number>(256).fill(cases.length);
+  const table = new Array<number>(8).fill(cases.length);
 
   for (let index = 0; index < cases.length; index += 1) {
     const dispatchCase = cases[index];
@@ -49,8 +52,8 @@ function registerModRmTable(cases: readonly ModRmDispatchCase[]): number[] {
 
     const depth = cases.length - 1 - index;
 
-    for (const byte of dispatchCase.bytes) {
-      table[byte] = depth;
+    for (const reg of dispatchCase.regs) {
+      table[reg] = depth;
     }
   }
 

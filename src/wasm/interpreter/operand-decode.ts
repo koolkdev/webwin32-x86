@@ -25,8 +25,7 @@ export type DecodedInterpreterOperands = Readonly<{
 export function decodeInstructionOperands(
   instruction: ExpandedInstructionSpec<unknown>,
   context: InterpreterHandlerContext,
-  modRmLocal: number | undefined,
-  modRmByte: number | undefined
+  modRmLocal: number | undefined
 ): DecodedInterpreterOperands {
   const operands: InterpreterOperandBinding[] = [];
   const scratchLocals: number[] = [];
@@ -37,7 +36,7 @@ export function decodeInstructionOperands(
   }
 
   for (const operand of instruction.spec.operands ?? []) {
-    const decoded = decodeOperand(operand, reader, context, modRmLocal, modRmByte);
+    const decoded = decodeOperand(operand, reader, context, modRmLocal);
 
     operands.push(decoded.binding);
     scratchLocals.push(...decoded.scratchLocals);
@@ -55,8 +54,7 @@ function decodeOperand(
   operand: OperandSpec,
   reader: DecodeReader,
   context: InterpreterHandlerContext,
-  modRmLocal: number | undefined,
-  modRmByte: number | undefined
+  modRmLocal: number | undefined
 ): Readonly<{ binding: InterpreterOperandBinding; nextReader: DecodeReader; scratchLocals: readonly number[] }> {
   switch (operand.kind) {
     case "modrm.reg":
@@ -74,11 +72,7 @@ function decodeOperand(
         throw new Error("missing ModRM local for modrm.rm operand");
       }
 
-      if (modRmByte === undefined) {
-        throw new Error("missing static ModRM byte for modrm.rm operand");
-      }
-
-      return mapNextReader(decodeModRmRmOperand(operand, reader, context, modRmLocal, modRmByte));
+      return mapNextReader(decodeModRmRmOperand(operand, reader, context, modRmLocal));
     case "opcode.reg":
       return {
         binding: { kind: "opcode.reg32", opcodeLocal: context.opcodeLocal },

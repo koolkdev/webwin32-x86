@@ -19,6 +19,7 @@ import {
   emitOpcodeRegAddress,
   emitStoreReg32
 } from "../interpreter/state.js";
+import { emitIfModRmMemory, emitIfModRmRegister } from "../interpreter/modrm-bits.js";
 import { lowerSirToWasm, type WasmSirEmitHelpers } from "./lower.js";
 import { emitSetFlags } from "./flags.js";
 import { emitCondition } from "./conditions.js";
@@ -27,7 +28,7 @@ import { ExitReason } from "../exit.js";
 export type InterpreterOperandBinding =
   | Readonly<{ kind: "opcode.reg32"; opcodeLocal: number }>
   | Readonly<{ kind: "modrm.reg32"; modRmLocal: number }>
-  | Readonly<{ kind: "modrm.rm32"; modRmLocal: number }>
+  | Readonly<{ kind: "rm32"; modRmLocal: number; addressLocal: number }>
   | Readonly<{ kind: "mem32"; addressLocal: number }>
   | Readonly<{ kind: "implicit.reg32"; reg: Reg32 }>
   | Readonly<{ kind: "imm32"; local: number }>
@@ -125,9 +126,8 @@ function emitGetOperand32(context: InterpreterSirContext, index: number): void {
       emitModRmRegAddress(context.body, binding.modRmLocal);
       context.body.i32Load({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
       return;
-    case "modrm.rm32":
-      emitModRmRmAddress(context.body, binding.modRmLocal);
-      context.body.i32Load({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+    case "rm32":
+      emitGetRm32(context, binding);
       return;
     case "mem32":
       emitLoadGuestU32(context.body, binding.addressLocal);
@@ -161,10 +161,8 @@ function emitSetOperand32(
       helpers.emitValue(value);
       context.body.i32Store({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
       return;
-    case "modrm.rm32":
-      emitModRmRmAddress(context.body, binding.modRmLocal);
-      helpers.emitValue(value);
-      context.body.i32Store({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+    case "rm32":
+      emitSetRm32(context, binding, value, helpers);
       return;
     case "mem32":
       emitStoreMem32(context, () => context.body.localGet(binding.addressLocal), () => helpers.emitValue(value));
@@ -233,6 +231,51 @@ function emitHostTrap(context: InterpreterSirContext, vector: ValueRef, helpers:
 
 function emitContinue(context: InterpreterSirContext, extraDepth = 0): void {
   context.body.br(context.instructionDoneLabelDepth + extraDepth);
+}
+
+function emitGetRm32(
+  context: InterpreterSirContext,
+  binding: Extract<InterpreterOperandBinding, { kind: "rm32" }>
+): void {
+  const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
+
+  try {
+    emitIfModRmRegister(context.body, binding.modRmLocal, () => {
+      emitModRmRmAddress(context.body, binding.modRmLocal);
+      context.body.i32Load({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state }).localSet(valueLocal);
+    });
+    emitIfModRmMemory(context.body, binding.modRmLocal, () => {
+      emitLoadGuestU32(context.body, binding.addressLocal);
+      context.body.localSet(valueLocal);
+    });
+    context.body.localGet(valueLocal);
+  } finally {
+    context.scratch.freeLocal(valueLocal);
+  }
+}
+
+function emitSetRm32(
+  context: InterpreterSirContext,
+  binding: Extract<InterpreterOperandBinding, { kind: "rm32" }>,
+  value: ValueRef,
+  helpers: WasmSirEmitHelpers
+): void {
+  const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
+
+  try {
+    helpers.emitValue(value);
+    context.body.localSet(valueLocal);
+    emitIfModRmRegister(context.body, binding.modRmLocal, () => {
+      emitModRmRmAddress(context.body, binding.modRmLocal);
+      context.body.localGet(valueLocal);
+      context.body.i32Store({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+    });
+    emitIfModRmMemory(context.body, binding.modRmLocal, () => {
+      emitStoreMem32(context, () => context.body.localGet(binding.addressLocal), () => context.body.localGet(valueLocal));
+    });
+  } finally {
+    context.scratch.freeLocal(valueLocal);
+  }
 }
 
 function emitLoadGuestU32FromStack(context: InterpreterSirContext): void {

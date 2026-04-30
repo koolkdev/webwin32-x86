@@ -1,7 +1,8 @@
-import { reg32 } from "../../arch/x86/instruction/types.js";
 import type { OperandSpec } from "../../arch/x86/isa/schema/types.js";
 import type { InterpreterOperandBinding } from "../sir/interpreter-context.js";
+import { emitExitResultFromStackPayload } from "../codegen/exit.js";
 import { wasmValueType } from "../encoder/types.js";
+import { ExitReason } from "../exit.js";
 import {
   advanceDecodeReader,
   emitReadGuestByte,
@@ -11,141 +12,149 @@ import {
   type DecodeReader
 } from "./decode-reader.js";
 import type { InterpreterHandlerContext } from "./handler-context.js";
-import { emitLoadReg32, emitLoadReg32FromIndexLocal } from "./state.js";
+import { emitIfModRmMemory, emitIfModRmRegister } from "./modrm-bits.js";
+import { emitLoadReg32FromIndexLocal } from "./state.js";
 
 export function decodeModRmRmOperand(
   operand: Extract<OperandSpec, { kind: "modrm.rm" }>,
   decodeReader: DecodeReader,
   context: InterpreterHandlerContext,
-  modRmLocal: number,
-  modRmByte: number
+  modRmLocal: number
 ): Readonly<{ binding: InterpreterOperandBinding; nextDecodeReader: DecodeReader; scratchLocals: readonly number[] }> {
-  const mod = modRmByte >>> 6;
-
-  if (mod === 0b11) {
-    if (operand.type === "m32") {
-      throw new Error("m32 operand cannot bind to register ModRM form");
-    }
-
-    return {
-      binding: { kind: "modrm.rm32", modRmLocal },
-      nextDecodeReader: decodeReader,
-      scratchLocals: []
-    };
+  if (operand.type === "m32") {
+    emitUnsupportedIfModRmRegister(context, modRmLocal);
   }
 
   const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
-  const decoded = decodeMemoryAddress(mod, modRmByte & 0b111, decodeReader, context, addressLocal);
+  const decoded = decodeDynamicModRmRmAddress(decodeReader, context, modRmLocal, addressLocal, operand.type);
 
   return {
-    binding: { kind: "mem32", addressLocal },
+    binding: operand.type === "m32"
+      ? { kind: "mem32", addressLocal }
+      : { kind: "rm32", modRmLocal, addressLocal },
     nextDecodeReader: decoded.nextDecodeReader,
     scratchLocals: [addressLocal, ...decoded.scratchLocals]
   };
 }
 
-function decodeMemoryAddress(
-  mod: number,
-  rm: number,
+function decodeDynamicModRmRmAddress(
   decodeReader: DecodeReader,
   context: InterpreterHandlerContext,
-  addressLocal: number
+  modRmLocal: number,
+  addressLocal: number,
+  operandType: "rm32" | "m32"
 ): Readonly<{ nextDecodeReader: DecodeReader; scratchLocals: readonly number[] }> {
-  return rm === 0b100
-    ? decodeSibMemoryAddress(mod, decodeReader, context, addressLocal)
-    : decodeNonSibMemoryAddress(mod, rm, decodeReader, context, addressLocal);
+  const nextDecodeReaderLocal = materializeDecodeReader(decodeReader, context);
+
+  if (operandType === "rm32") {
+    emitIfModRmMemory(context.body, modRmLocal, () => {
+      decodeDynamicMemoryAddress(localDecodeReader(nextDecodeReaderLocal), context, modRmLocal, addressLocal);
+    });
+  } else {
+    decodeDynamicMemoryAddress(localDecodeReader(nextDecodeReaderLocal), context, modRmLocal, addressLocal);
+  }
+
+  return {
+    nextDecodeReader: localDecodeReader(nextDecodeReaderLocal),
+    scratchLocals: [nextDecodeReaderLocal]
+  };
 }
 
-function decodeNonSibMemoryAddress(
-  mod: number,
-  rm: number,
+function decodeDynamicMemoryAddress(
   decodeReader: DecodeReader,
   context: InterpreterHandlerContext,
+  modRmLocal: number,
   addressLocal: number
-): Readonly<{ nextDecodeReader: DecodeReader; scratchLocals: readonly number[] }> {
-  switch (mod) {
-    case 0:
-      if (rm === 0b101) {
-        loadDisplacementIntoAddress(32, decodeReader, context, addressLocal);
-        return { nextDecodeReader: advanceDecodeReader(decodeReader, 4, context), scratchLocals: [] };
-      }
+): void {
+  const modLocal = context.scratch.allocLocal(wasmValueType.i32);
+  const rmLocal = context.scratch.allocLocal(wasmValueType.i32);
 
-      emitLoadReg32(context.body, reg32FromIndex(rm));
-      context.body.localSet(addressLocal);
-      return { nextDecodeReader: decodeReader, scratchLocals: [] };
-    case 1:
-      emitLoadReg32(context.body, reg32FromIndex(rm));
-      context.body.localSet(addressLocal);
-      addDisplacementToAddress(8, decodeReader, context, addressLocal);
-      return { nextDecodeReader: advanceDecodeReader(decodeReader, 1, context), scratchLocals: [] };
-    case 2:
-      emitLoadReg32(context.body, reg32FromIndex(rm));
-      context.body.localSet(addressLocal);
-      addDisplacementToAddress(32, decodeReader, context, addressLocal);
-      return { nextDecodeReader: advanceDecodeReader(decodeReader, 4, context), scratchLocals: [] };
-    default:
-      throw new Error(`unsupported memory ModRM mod field: ${mod}`);
+  try {
+    context.body.localGet(modRmLocal).i32Const(6).i32ShrU().localSet(modLocal);
+    context.body.localGet(modRmLocal).i32Const(0b111).i32And().localSet(rmLocal);
+
+    emitIfLocalEqualsConst(context, rmLocal, 0b100, () => {
+      decodeDynamicSibMemoryAddress(modLocal, decodeReader, context, addressLocal);
+    });
+    emitIfLocalNotEqualsConst(context, rmLocal, 0b100, () => {
+      decodeDynamicNonSibMemoryAddress(modLocal, rmLocal, decodeReader, context, addressLocal);
+    });
+  } finally {
+    context.scratch.freeLocal(rmLocal);
+    context.scratch.freeLocal(modLocal);
   }
 }
 
-function decodeSibMemoryAddress(
-  mod: number,
+function decodeDynamicNonSibMemoryAddress(
+  modLocal: number,
+  rmLocal: number,
   decodeReader: DecodeReader,
   context: InterpreterHandlerContext,
   addressLocal: number
-): Readonly<{ nextDecodeReader: DecodeReader; scratchLocals: readonly number[] }> {
+): void {
+  emitIfLocalEqualsConst(context, modLocal, 0, () => {
+    emitIfLocalEqualsConst(context, rmLocal, 0b101, () => {
+      loadDisplacementIntoAddress(32, decodeReader, context, addressLocal);
+      advanceDecodeReader(decodeReader, 4, context);
+    });
+    emitIfLocalNotEqualsConst(context, rmLocal, 0b101, () => {
+      emitLoadReg32FromIndexLocal(context.body, rmLocal);
+      context.body.localSet(addressLocal);
+    });
+  });
+  emitIfLocalEqualsConst(context, modLocal, 1, () => {
+    emitLoadReg32FromIndexLocal(context.body, rmLocal);
+    context.body.localSet(addressLocal);
+    addDisplacementToAddress(8, decodeReader, context, addressLocal);
+    advanceDecodeReader(decodeReader, 1, context);
+  });
+  emitIfLocalEqualsConst(context, modLocal, 2, () => {
+    emitLoadReg32FromIndexLocal(context.body, rmLocal);
+    context.body.localSet(addressLocal);
+    addDisplacementToAddress(32, decodeReader, context, addressLocal);
+    advanceDecodeReader(decodeReader, 4, context);
+  });
+}
+
+function decodeDynamicSibMemoryAddress(
+  modLocal: number,
+  decodeReader: DecodeReader,
+  context: InterpreterHandlerContext,
+  addressLocal: number
+): void {
   const sibLocal = context.scratch.allocLocal(wasmValueType.i32);
+  const baseLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
     emitReadGuestByte(context, decodeReader, sibLocal);
-    const afterSibOffset = advanceDecodeReader(decodeReader, 1, context);
-
+    advanceDecodeReader(decodeReader, 1, context);
     context.body.i32Const(0).localSet(addressLocal);
     addSibIndexToAddress(context, sibLocal, addressLocal);
+    context.body.localGet(sibLocal).i32Const(0b111).i32And().localSet(baseLocal);
 
-    switch (mod) {
-      case 0:
-        return decodeSibNoDisplacementBase(afterSibOffset, context, sibLocal, addressLocal);
-      case 1:
-        addSibBaseToAddress(context, sibLocal, addressLocal);
-        addDisplacementToAddress(8, afterSibOffset, context, addressLocal);
-        return { nextDecodeReader: advanceDecodeReader(afterSibOffset, 1, context), scratchLocals: [] };
-      case 2:
-        addSibBaseToAddress(context, sibLocal, addressLocal);
-        addDisplacementToAddress(32, afterSibOffset, context, addressLocal);
-        return { nextDecodeReader: advanceDecodeReader(afterSibOffset, 4, context), scratchLocals: [] };
-      default:
-        throw new Error(`unsupported SIB ModRM mod field: ${mod}`);
-    }
-  } finally {
-    context.scratch.freeLocal(sibLocal);
-  }
-}
-
-function decodeSibNoDisplacementBase(
-  decodeReader: DecodeReader,
-  context: InterpreterHandlerContext,
-  sibLocal: number,
-  addressLocal: number
-): Readonly<{ nextDecodeReader: DecodeReader; scratchLocals: readonly number[] }> {
-  const baseLocal = context.scratch.allocLocal(wasmValueType.i32);
-  const nextDecodeReaderLocal = materializeDecodeReader(decodeReader, context);
-
-  context.body.localGet(sibLocal).i32Const(0b111).i32And().localSet(baseLocal);
-
-  try {
-    emitIfLocalNotEqualsConst(context, baseLocal, 0b101, () => {
-      addRegIndexLocalToAddress(context, baseLocal, addressLocal);
+    emitIfLocalEqualsConst(context, modLocal, 0, () => {
+      emitIfLocalEqualsConst(context, baseLocal, 0b101, () => {
+        addDisplacementToAddress(32, decodeReader, context, addressLocal);
+        advanceDecodeReader(decodeReader, 4, context);
+      });
+      emitIfLocalNotEqualsConst(context, baseLocal, 0b101, () => {
+        addRegIndexLocalToAddress(context, baseLocal, addressLocal);
+      });
     });
-    emitIfLocalEqualsConst(context, baseLocal, 0b101, () => {
+    emitIfLocalEqualsConst(context, modLocal, 1, () => {
+      addRegIndexLocalToAddress(context, baseLocal, addressLocal);
+      addDisplacementToAddress(8, decodeReader, context, addressLocal);
+      advanceDecodeReader(decodeReader, 1, context);
+    });
+    emitIfLocalEqualsConst(context, modLocal, 2, () => {
+      addRegIndexLocalToAddress(context, baseLocal, addressLocal);
       addDisplacementToAddress(32, decodeReader, context, addressLocal);
-      advanceDecodeReader(localDecodeReader(nextDecodeReaderLocal), 4, context);
+      advanceDecodeReader(decodeReader, 4, context);
     });
   } finally {
     context.scratch.freeLocal(baseLocal);
+    context.scratch.freeLocal(sibLocal);
   }
-
-  return { nextDecodeReader: localDecodeReader(nextDecodeReaderLocal), scratchLocals: [nextDecodeReaderLocal] };
 }
 
 function addSibIndexToAddress(context: InterpreterHandlerContext, sibLocal: number, addressLocal: number): void {
@@ -162,17 +171,6 @@ function addSibIndexToAddress(context: InterpreterHandlerContext, sibLocal: numb
     });
   } finally {
     context.scratch.freeLocal(indexLocal);
-  }
-}
-
-function addSibBaseToAddress(context: InterpreterHandlerContext, sibLocal: number, addressLocal: number): void {
-  const baseLocal = context.scratch.allocLocal(wasmValueType.i32);
-
-  try {
-    context.body.localGet(sibLocal).i32Const(0b111).i32And().localSet(baseLocal);
-    addRegIndexLocalToAddress(context, baseLocal, addressLocal);
-  } finally {
-    context.scratch.freeLocal(baseLocal);
   }
 }
 
@@ -246,14 +244,11 @@ function emitIfLocalNotEqualsConst(
   context.body.endBlock();
 }
 
-function reg32FromIndex(index: number): (typeof reg32)[number] {
-  const reg = reg32[index & 0b111];
-
-  if (reg === undefined) {
-    throw new Error(`register index out of range: ${index}`);
-  }
-
-  return reg;
+function emitUnsupportedIfModRmRegister(context: InterpreterHandlerContext, modRmLocal: number): void {
+  emitIfModRmRegister(context.body, modRmLocal, () => {
+    context.body.localGet(context.opcodeLocal);
+    emitExitResultFromStackPayload(context.body, ExitReason.UNSUPPORTED).returnFromFunction();
+  });
 }
 
 function emitSignExtendLocal(context: InterpreterHandlerContext, local: number, width: 8 | 16 | 32): void {
