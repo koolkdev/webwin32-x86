@@ -2,18 +2,18 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { ArrayBufferGuestMemory } from "../../../../../core/memory/guest-memory.js";
-import { GuestMemoryDecodeReader } from "../reader.js";
-import { guestReader } from "../../../../../test-support/decode-reader.js";
+import { GuestMemoryDecodeReader } from "../../runtime/decode-reader.js";
 import { decodeIsaBlock } from "../decode-block.js";
+import { ByteArrayDecodeReader } from "./helpers.js";
 
 const startAddress = 0x1000;
 
 test("decodeIsaBlock_decodes_until_control_instruction", () => {
-  const block = decodeIsaBlock(guestReader([
+  const block = decodeIsaBlock(byteReader([
     0xb8, 0x01, 0x00, 0x00, 0x00,
     0x83, 0xc0, 0x02,
     0xeb, 0x00
-  ], startAddress), startAddress);
+  ]), startAddress);
 
   strictEqual(block.startEip, startAddress);
   deepStrictEqual(block.instructions.map((instruction) => instruction.spec.id), [
@@ -25,22 +25,22 @@ test("decodeIsaBlock_decodes_until_control_instruction", () => {
 });
 
 test("decodeIsaBlock_stops_after_ret_control_instruction", () => {
-  const block = decodeIsaBlock(guestReader([
+  const block = decodeIsaBlock(byteReader([
     0x90,
     0xc3,
     0x90
-  ], startAddress), startAddress);
+  ]), startAddress);
 
   deepStrictEqual(block.instructions.map((instruction) => instruction.spec.id), ["nop.near", "ret.near"]);
   strictEqual(block.terminator.kind, "control");
 });
 
 test("decodeIsaBlock_stops_after_int_control_instruction", () => {
-  const block = decodeIsaBlock(guestReader([
+  const block = decodeIsaBlock(byteReader([
     0x90,
     0xcd, 0x2e,
     0x90
-  ], startAddress), startAddress);
+  ]), startAddress);
 
   deepStrictEqual(block.instructions.map((instruction) => instruction.spec.id), ["nop.near", "int.imm8"]);
   strictEqual(block.terminator.kind, "control");
@@ -52,18 +52,18 @@ test("decodeIsaBlock_stops_after_int_control_instruction", () => {
 });
 
 test("decodeIsaBlock_returns_fallthrough_when_instruction_limit_ends_block", () => {
-  const block = decodeIsaBlock(guestReader([
+  const block = decodeIsaBlock(byteReader([
     0x90,
     0x90,
     0xcd, 0x2e
-  ], startAddress), startAddress, { maxInstructions: 2 });
+  ]), startAddress, { maxInstructions: 2 });
 
   deepStrictEqual(block.instructions.map((instruction) => instruction.spec.id), ["nop.near", "nop.near"]);
   deepStrictEqual(block.terminator, { kind: "fallthrough", nextEip: startAddress + 2 });
 });
 
 test("decodeIsaBlock_reports_unsupported_without_caching_raw_block_state", () => {
-  const block = decodeIsaBlock(guestReader([0x62], startAddress), startAddress);
+  const block = decodeIsaBlock(byteReader([0x62]), startAddress);
 
   deepStrictEqual(block.instructions, []);
   deepStrictEqual(block.terminator, {
@@ -76,11 +76,11 @@ test("decodeIsaBlock_reports_unsupported_without_caching_raw_block_state", () =>
 });
 
 test("decodeIsaBlock_reports_unsupported_after_valid_prefix_instructions", () => {
-  const block = decodeIsaBlock(guestReader([
+  const block = decodeIsaBlock(byteReader([
     0x90,
     0x62,
     0x90
-  ], startAddress), startAddress);
+  ]), startAddress);
 
   deepStrictEqual(block.instructions.map((instruction) => instruction.spec.id), ["nop.near"]);
   deepStrictEqual(block.terminator, {
@@ -93,16 +93,20 @@ test("decodeIsaBlock_reports_unsupported_after_valid_prefix_instructions", () =>
 });
 
 test("decodeIsaBlock_reports_decode_fault_after_valid_prefix_instructions", () => {
-  const block = decodeIsaBlock(guestReader([
+  const block = decodeIsaBlock(byteReader([
     0x90,
     0xb8, 0x01
-  ], startAddress), startAddress);
+  ]), startAddress);
 
   deepStrictEqual(block.instructions.map((instruction) => instruction.spec.id), ["nop.near"]);
   strictEqual(block.terminator.kind, "decode-fault");
   strictEqual(block.terminator.fault.address, startAddress + 1);
   deepStrictEqual(block.terminator.fault.raw, [0xb8, 0x01]);
 });
+
+function byteReader(values: readonly number[]): ByteArrayDecodeReader {
+  return new ByteArrayDecodeReader(values, startAddress);
+}
 
 test("decodeIsaBlock_reports_guest_memory_decode_fault_without_byte_slice", () => {
   const memory = new ArrayBufferGuestMemory(startAddress + 3);

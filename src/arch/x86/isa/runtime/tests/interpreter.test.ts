@@ -3,8 +3,7 @@ import { test } from "node:test";
 
 import { StopReason } from "../../../../../core/execution/run-result.js";
 import { createCpuState, getFlag } from "../../../../../core/state/cpu-state.js";
-import { runIsaInterpreter } from "../interpreter.js";
-import { bytes, startAddress } from "./helpers.js";
+import { bytes, runIsaBytes, startAddress } from "./helpers.js";
 
 test("executes register control flow loop", () => {
   const program = bytes([
@@ -14,7 +13,7 @@ test("executes register control flow loop", () => {
   ]);
   const state = createCpuState({ eip: startAddress, eflags: 0xffff_0000 });
 
-  const result = runIsaInterpreter(state, program, { baseAddress: startAddress });
+  const result = runIsaBytes(state, program, { baseAddress: startAddress });
 
   strictEqual(result.stopReason, StopReason.NONE);
   strictEqual(result.finalEip, startAddress + program.length);
@@ -38,7 +37,7 @@ test("executes spec-only immediate logical forms", () => {
     0xa9, 0xff, 0xff, 0xff, 0xff // test eax, 0xffffffff
   ]);
 
-  const result = runIsaInterpreter(state, program, { baseAddress: startAddress });
+  const result = runIsaBytes(state, program, { baseAddress: startAddress });
 
   strictEqual(result.stopReason, StopReason.NONE);
   strictEqual(state.eax, 0);
@@ -51,7 +50,7 @@ test("executes spec-only immediate logical forms", () => {
 
 test("stops on unsupported opcodes", () => {
   const state = createCpuState({ eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([0x62]), { baseAddress: startAddress });
+  const result = runIsaBytes(state, bytes([0x62]), { baseAddress: startAddress });
 
   strictEqual(result.stopReason, StopReason.UNSUPPORTED);
   strictEqual(result.unsupportedByte, 0x62);
@@ -61,7 +60,7 @@ test("stops on unsupported opcodes", () => {
 
 test("honors instruction limit", () => {
   const state = createCpuState({ eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([0xeb, 0xfe]), {
+  const result = runIsaBytes(state, bytes([0xeb, 0xfe]), {
     baseAddress: startAddress,
     instructionLimit: 3
   });

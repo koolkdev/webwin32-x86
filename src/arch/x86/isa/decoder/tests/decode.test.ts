@@ -2,12 +2,12 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { ArrayBufferGuestMemory } from "../../../../../core/memory/guest-memory.js";
-import { decodeIsaInstruction, decodeIsaInstructionFromReader } from "../decode.js";
-import { GuestMemoryDecodeReader } from "../reader.js";
-import { bytes, ok, startAddress } from "./helpers.js";
+import { GuestMemoryDecodeReader } from "../../runtime/decode-reader.js";
+import { decodeIsaInstructionFromReader } from "../decode.js";
+import { decodeBytes, ok, startAddress } from "./helpers.js";
 
 test("decodes opcode-encoded register and imm32 operands", () => {
-  const decoded = ok(decodeIsaInstruction(bytes([0xbb, 0x78, 0x56, 0x34, 0x12]), 0, startAddress));
+  const decoded = ok(decodeBytes([0xbb, 0x78, 0x56, 0x34, 0x12]));
 
   strictEqual(decoded.spec.id, "mov.r32_imm32");
   strictEqual(decoded.spec.format.syntax, "mov {0}, {1}");
@@ -58,9 +58,9 @@ test("decodes multibyte ModRM/SIB instruction directly from guest memory", () =>
 
 test("decodes slash-r register/register operands positionally", () => {
   // 8B C3: MOV eax, ebx
-  const mov = ok(decodeIsaInstruction(bytes([0x8b, 0xc3]), 0, startAddress));
+  const mov = ok(decodeBytes([0x8b, 0xc3]));
   // 89 C3: MOV ebx, eax
-  const reverse = ok(decodeIsaInstruction(bytes([0x89, 0xc3]), 0, startAddress));
+  const reverse = ok(decodeBytes([0x89, 0xc3]));
 
   strictEqual(mov.spec.id, "mov.r32_rm32");
   strictEqual(mov.spec.format.syntax, "mov {0}, {1}");
@@ -79,9 +79,9 @@ test("decodes slash-r register/register operands positionally", () => {
 
 test("uses ModRM match fields for slash-digit groups", () => {
   // 83 /5 ib: SUB r/m32, sign-extended imm8
-  const sub = ok(decodeIsaInstruction(bytes([0x83, 0xeb, 0xff]), 0, startAddress));
+  const sub = ok(decodeBytes([0x83, 0xeb, 0xff]));
   // 81 /6 id: XOR r/m32, imm32
-  const xor = ok(decodeIsaInstruction(bytes([0x81, 0xf3, 0x78, 0x56, 0x34, 0x12]), 0, startAddress));
+  const xor = ok(decodeBytes([0x81, 0xf3, 0x78, 0x56, 0x34, 0x12]));
 
   strictEqual(sub.spec.id, "sub.rm32_imm8");
   strictEqual(sub.spec.format.syntax, "sub {0}, {1}");
@@ -100,7 +100,7 @@ test("uses ModRM match fields for slash-digit groups", () => {
 
 test("rejects unregistered grouped opcodes after ModRM.reg dispatch", () => {
   // 83 /1 ib is not registered in the current ISA subset.
-  const decoded = decodeIsaInstruction(bytes([0x83, 0xc8, 0x01]), 0, startAddress);
+  const decoded = decodeBytes([0x83, 0xc8, 0x01]);
 
   strictEqual(decoded.kind, "unsupported");
   if (decoded.kind === "unsupported") {
@@ -111,8 +111,8 @@ test("rejects unregistered grouped opcodes after ModRM.reg dispatch", () => {
 });
 
 test("decodes direct relative targets as absolute target operands", () => {
-  const jmp8 = ok(decodeIsaInstruction(bytes([0xeb, 0xfe]), 0, startAddress));
-  const jmp32 = ok(decodeIsaInstruction(bytes([0xe9, 0xfb, 0xff, 0xff, 0xff]), 0, startAddress));
+  const jmp8 = ok(decodeBytes([0xeb, 0xfe]));
+  const jmp32 = ok(decodeBytes([0xe9, 0xfb, 0xff, 0xff, 0xff]));
 
   strictEqual(jmp8.spec.id, "jmp.rel8");
   strictEqual(jmp8.spec.format.syntax, "jmp {0}");
@@ -130,8 +130,8 @@ test("decodes direct relative targets as absolute target operands", () => {
 });
 
 test("decodes concrete jcc rel8 and rel32 forms", () => {
-  const rel8 = ok(decodeIsaInstruction(bytes([0x75, 0x05]), 0, startAddress));
-  const rel32 = ok(decodeIsaInstruction(bytes([0x0f, 0x85, 0xfa, 0xff, 0xff, 0xff]), 0, startAddress));
+  const rel8 = ok(decodeBytes([0x75, 0x05]));
+  const rel32 = ok(decodeBytes([0x0f, 0x85, 0xfa, 0xff, 0xff, 0xff]));
 
   strictEqual(rel8.spec.id, "jne.rel8");
   strictEqual(rel8.spec.format.syntax, "jne {0}");
@@ -147,8 +147,8 @@ test("decodes concrete jcc rel8 and rel32 forms", () => {
 });
 
 test("decodes nop and int imm8 forms", () => {
-  const nop = ok(decodeIsaInstruction(bytes([0x90]), 0, startAddress));
-  const trap = ok(decodeIsaInstruction(bytes([0xcd, 0x2e]), 0, startAddress));
+  const nop = ok(decodeBytes([0x90]));
+  const trap = ok(decodeBytes([0xcd, 0x2e]));
 
   strictEqual(nop.spec.id, "nop.near");
   strictEqual(nop.spec.format.syntax, "nop");
@@ -165,7 +165,7 @@ test("decodes nop and int imm8 forms", () => {
 
 test("decodes ModRM memory operands with displacement", () => {
   // 8B 43 04: MOV eax, [ebx + 4]
-  const decoded = ok(decodeIsaInstruction(bytes([0x8b, 0x43, 0x04]), 0, startAddress));
+  const decoded = ok(decodeBytes([0x8b, 0x43, 0x04]));
 
   strictEqual(decoded.spec.id, "mov.r32_rm32");
   strictEqual(decoded.spec.format.syntax, "mov {0}, {1}");
@@ -177,7 +177,7 @@ test("decodes ModRM memory operands with displacement", () => {
 
 test("rejects address-only m32 forms when ModRM encodes a register", () => {
   // 8D C3: LEA eax, ebx is invalid because LEA requires memory/address form.
-  const decoded = decodeIsaInstruction(bytes([0x8d, 0xc3]), 0, startAddress);
+  const decoded = decodeBytes([0x8d, 0xc3]);
 
   strictEqual(decoded.kind, "unsupported");
   if (decoded.kind === "unsupported") {
@@ -188,7 +188,7 @@ test("rejects address-only m32 forms when ModRM encodes a register", () => {
 });
 
 test("reports unsupported opcode bytes", () => {
-  const decoded = decodeIsaInstruction(bytes([0x62]), 0, startAddress);
+  const decoded = decodeBytes([0x62]);
 
   strictEqual(decoded.kind, "unsupported");
   if (decoded.kind === "unsupported") {

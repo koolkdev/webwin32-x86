@@ -3,12 +3,11 @@ import { test } from "node:test";
 
 import { runResultMatchesState, StopReason } from "../../../../../core/execution/run-result.js";
 import { createCpuState } from "../../../../../core/state/cpu-state.js";
-import { runIsaInterpreter } from "../interpreter.js";
-import { bytes, startAddress } from "./helpers.js";
+import { bytes, runIsaBytes, startAddress } from "./helpers.js";
 
 test("executes mov immediate then int host trap", () => {
   const state = createCpuState({ eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([0xb8, 0x78, 0x56, 0x34, 0x12, 0xcd, 0x2e]), {
+  const result = runIsaBytes(state, bytes([0xb8, 0x78, 0x56, 0x34, 0x12, 0xcd, 0x2e]), {
     baseAddress: startAddress
   });
 
@@ -24,7 +23,7 @@ test("executes mov immediate then int host trap", () => {
 
 test("executes register mov then int host trap", () => {
   const state = createCpuState({ eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([0xb8, 0x01, 0x00, 0x00, 0x00, 0x89, 0xc1, 0xcd, 0x2e]), {
+  const result = runIsaBytes(state, bytes([0xb8, 0x01, 0x00, 0x00, 0x00, 0x89, 0xc1, 0xcd, 0x2e]), {
     baseAddress: startAddress
   });
 
@@ -48,7 +47,7 @@ test("executes nop then int host trap", () => {
     esi: state.esi,
     edi: state.edi
   };
-  const result = runIsaInterpreter(state, bytes([0x90, 0xcd, 0x2e]), { baseAddress: startAddress });
+  const result = runIsaBytes(state, bytes([0x90, 0xcd, 0x2e]), { baseAddress: startAddress });
 
   deepStrictEqual(
     {
@@ -71,7 +70,7 @@ test("executes nop then int host trap", () => {
 
 test("unsupported instruction stops without advancing eip or count", () => {
   const state = createCpuState({ eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([0x62]), { baseAddress: startAddress });
+  const result = runIsaBytes(state, bytes([0x62]), { baseAddress: startAddress });
 
   strictEqual(state.eip, startAddress);
   strictEqual(state.instructionCount, 0);
@@ -84,7 +83,7 @@ test("unsupported instruction stops without advancing eip or count", () => {
 
 test("instruction limit stop reason matches state", () => {
   const state = createCpuState({ eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([0xeb, 0xfe]), {
+  const result = runIsaBytes(state, bytes([0xeb, 0xfe]), {
     baseAddress: startAddress,
     instructionLimit: 2
   });
@@ -97,7 +96,7 @@ test("instruction limit stop reason matches state", () => {
 
 test("executes jmp forward to host trap", () => {
   const state = createCpuState({ eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([0xeb, 0x02, 0x90, 0x90, 0xcd, 0x2e]), {
+  const result = runIsaBytes(state, bytes([0xeb, 0x02, 0x90, 0x90, 0xcd, 0x2e]), {
     baseAddress: startAddress
   });
 
@@ -110,7 +109,7 @@ test("executes jmp forward to host trap", () => {
 
 test("executes rel32 jump backward with instruction limit", () => {
   const state = createCpuState({ eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([0x90, 0xe9, 0xfa, 0xff, 0xff, 0xff]), {
+  const result = runIsaBytes(state, bytes([0x90, 0xe9, 0xfa, 0xff, 0xff, 0xff]), {
     baseAddress: startAddress,
     instructionLimit: 2
   });
@@ -123,7 +122,7 @@ test("executes rel32 jump backward with instruction limit", () => {
 
 test("executes jz taken", () => {
   const state = createCpuState({ eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([
+  const result = runIsaBytes(state, bytes([
     0x39, 0xc0,
     0x74, 0x05,
     0xbb, 0x01, 0x00, 0x00, 0x00,
@@ -141,7 +140,7 @@ test("executes jz taken", () => {
 
 test("executes jz not taken", () => {
   const state = createCpuState({ eax: 2, eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([
+  const result = runIsaBytes(state, bytes([
     0x81, 0xf8, 0x01, 0x00, 0x00, 0x00,
     0x74, 0x05,
     0xbb, 0x01, 0x00, 0x00, 0x00,
@@ -158,7 +157,7 @@ test("executes jz not taken", () => {
 
 test("executes near jnz taken", () => {
   const state = createCpuState({ eax: 2, eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([
+  const result = runIsaBytes(state, bytes([
     0x81, 0xf8, 0x01, 0x00, 0x00, 0x00,
     0x0f, 0x85, 0x05, 0x00, 0x00, 0x00,
     0xbb, 0x01, 0x00, 0x00, 0x00,
@@ -176,7 +175,7 @@ test("executes near jnz taken", () => {
 
 test("executes signed jl taken", () => {
   const state = createCpuState({ eax: 0xffff_ffff, eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([
+  const result = runIsaBytes(state, bytes([
     0x81, 0xf8, 0x01, 0x00, 0x00, 0x00,
     0x7c, 0x05,
     0xbb, 0x01, 0x00, 0x00, 0x00,
@@ -195,7 +194,7 @@ test("executes signed jl taken", () => {
 
 test("executes cmp loop countdown", () => {
   const state = createCpuState({ eax: 3, eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([
+  const result = runIsaBytes(state, bytes([
     0x83, 0xe8, 0x01,
     0x83, 0xf8, 0x00,
     0x75, 0xf8,

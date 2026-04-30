@@ -1,11 +1,9 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { decodeIsaInstruction } from "../decoder/decode.js";
+import { decodeBytes, ok } from "../decoder/tests/helpers.js";
 import { formatIsaInstruction } from "../format.js";
-import type { IsaDecodeResult, IsaDecodedInstruction } from "../decoder/types.js";
-
-const startAddress = 0x1000;
+import type { IsaDecodedInstruction } from "../decoder/types.js";
 
 test("formats register and immediate operands through instruction format metadata", () => {
   const decoded = decode([0xbb, 0x78, 0x56, 0x34, 0x12]);
@@ -34,15 +32,7 @@ test("formats zero and sign-extended immediates as semantic values", () => {
 });
 
 function decode(values: readonly number[]): IsaDecodedInstruction {
-  const result = decodeIsaInstruction(Uint8Array.from(values), 0, startAddress);
+  const result = decodeBytes(values);
 
   return ok(result);
-}
-
-function ok(result: IsaDecodeResult): IsaDecodedInstruction {
-  if (result.kind !== "ok") {
-    throw new Error(`expected ISA decode success, got unsupported byte ${result.unsupportedByte}`);
-  }
-
-  return result.instruction;
 }

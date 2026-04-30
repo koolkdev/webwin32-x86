@@ -2,13 +2,14 @@ import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { decodeIsaBlock } from "../../src/arch/x86/isa/decoder/decode-block.js";
+import { GuestMemoryDecodeReader } from "../../src/arch/x86/isa/runtime/decode-reader.js";
+import { ArrayBufferGuestMemory } from "../../src/core/memory/guest-memory.js";
 import { createCpuState, cpuStateFields, type CpuState } from "../../src/core/state/cpu-state.js";
 import {
   compileWasmBlockHandle,
   type WasmBlockHandle,
   wasmBlockExitEncoding
 } from "../../src/runtime/wasm-block/wasm-block.js";
-import { guestReader } from "../../src/test-support/decode-reader.js";
 import {
   assertMemoryImports,
   createGuestMemory,
@@ -102,15 +103,30 @@ async function compileFixture(bytes: readonly number[]): Promise<Readonly<{
 }>> {
   const stateMemory = new WebAssembly.Memory({ initial: 1 });
   const guestMemory = createGuestMemory();
-  const block = decodeIsaBlock(guestReader(bytes), startAddress);
+  const guestView = new DataView(guestMemory.buffer);
+
+  writeGuestCode(guestView, bytes);
+
+  const block = decodeIsaBlock(
+    new GuestMemoryDecodeReader(new ArrayBufferGuestMemory(guestMemory.buffer), [
+      { kind: "guest-memory", baseAddress: startAddress, byteLength: bytes.length }
+    ]),
+    startAddress
+  );
   const handle = await compileWasmBlockHandle(block, { stateMemory, guestMemory });
 
   return {
     block,
     handle,
     stateView: new DataView(stateMemory.buffer),
-    guestView: new DataView(guestMemory.buffer)
+    guestView
   };
+}
+
+function writeGuestCode(view: DataView, bytes: readonly number[]): void {
+  for (let index = 0; index < bytes.length; index += 1) {
+    view.setUint8(startAddress + index, bytes[index] ?? 0);
+  }
 }
 
 function writeJitState(view: DataView, state: CpuState): void {

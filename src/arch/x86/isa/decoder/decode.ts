@@ -10,7 +10,7 @@ import { reg32, type Reg32 } from "../types.js";
 import { signedImm8, signedImm32 } from "./immediate.js";
 import { decodeRm32ModRm, rm32ModRmByteLengthAt } from "./modrm.js";
 import { buildOpcodeDispatch, opcodeLeaf, type OpcodeDispatchLeaf } from "./opcode-dispatch.js";
-import { ByteArrayDecodeReader, readRawBytes, readU16LE, readU32LE, type IsaDecodeReader } from "./reader.js";
+import { readRawBytes, readU16LE, readU32LE, type IsaDecodeReader } from "./reader.js";
 import type { IsaDecodedInstruction, IsaDecodeResult, IsaOperandBinding } from "./types.js";
 
 type DecodedModRm = Readonly<{
@@ -36,14 +36,6 @@ type DispatchedCandidates = Readonly<{
 const EXPANDED_INSTRUCTIONS: readonly ExpandedInstructionSpec<SemanticTemplate>[] =
   X86_32_CORE.instructions.flatMap((spec) => expandInstructionSpec(spec));
 const OPCODE_DISPATCH_ROOT = buildOpcodeDispatch(EXPANDED_INSTRUCTIONS);
-
-export function decodeIsaInstruction(
-  bytes: Uint8Array<ArrayBufferLike>,
-  offset: number,
-  address: number
-): IsaDecodeResult {
-  return decodeIsaInstructionFromReader(new ByteArrayDecodeReader(bytes, address, offset), address);
-}
 
 export function decodeIsaInstructionFromReader(
   reader: IsaDecodeReader,

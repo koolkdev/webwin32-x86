@@ -1,4 +1,4 @@
-import { imm8, imm16, imm32, reg32, relTarget, signImm8, testDecodeFixtures, type DecoderFixture } from "./fixtures.js";
+import { imm8, imm16, imm32, reg32, relTarget, signImm8, testDecodeFixtures, type DecoderFixture } from "./helpers.js";
 
 const fixtures: readonly DecoderFixture[] = [
   {

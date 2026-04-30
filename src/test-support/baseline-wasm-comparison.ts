@@ -1,7 +1,11 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 
 import { decodeIsaBlock, type IsaDecodedBlock } from "../arch/x86/isa/decoder/decode-block.js";
-import type { DecodeReader } from "../arch/x86/isa/decoder/reader.js";
+import {
+  GuestMemoryDecodeReader,
+  type GuestMemoryDecodeRegion,
+  type RuntimeDecodeReader
+} from "../arch/x86/isa/runtime/decode-reader.js";
 import {
   runResultFromState,
   StopReason,
@@ -25,8 +29,14 @@ import { WasmInterpreterRuntime } from "../wasm/interpreter/runtime.js";
 
 export type BaselineWasmComparisonOptions = Readonly<{
   initialState: CpuState;
+  codeRegions: readonly BaselineWasmCodeRegion[];
   guestMemory?: WebAssembly.Memory;
   instructionLimit?: number;
+}>;
+
+export type BaselineWasmCodeRegion = Readonly<{
+  baseAddress: number;
+  byteLength: number;
 }>;
 
 export type BaselineWasmComparisonExecution = Readonly<{
@@ -79,8 +89,6 @@ const defaultInstructionLimit = 10_000;
 const wasmPageByteLength = 0x1_0000;
 
 export class BaselineWasmComparator {
-  constructor(readonly decodeReader: DecodeReader) {}
-
   async run(options: BaselineWasmComparisonOptions): Promise<BaselineWasmComparisonResult> {
     const interpreter = this.#runInterpreter(options);
     const { execution: wasm, report } = await this.#runWasm(options);
@@ -96,8 +104,9 @@ export class BaselineWasmComparator {
     const state = cloneCpuState(options.initialState);
     const guestMemory = cloneGuestMemory(options.guestMemory);
     const memory = new ArrayBufferGuestMemory(guestMemory.buffer);
+    const decodeReader = guestMemoryDecodeReader(memory, options);
     const result = runT0InstructionInterpreter(
-      { state, guestMemory: memory, decodeReader: this.decodeReader },
+      { state, guestMemory: memory, decodeReader },
       options.instructionLimit ?? defaultInstructionLimit
     );
 
@@ -114,6 +123,8 @@ export class BaselineWasmComparator {
     const stateMemory = new WebAssembly.Memory({ initial: 1 });
     const stateView = new DataView(stateMemory.buffer);
     const guestMemory = cloneGuestMemory(options.guestMemory);
+    const guestMemoryView = new ArrayBufferGuestMemory(guestMemory.buffer);
+    const decodeReader = guestMemoryDecodeReader(guestMemoryView, options);
     const report = createMutableReport();
     const compiledBlocks = new Map<number, WasmBlockHandle>();
     const instructionLimit = options.instructionLimit ?? defaultInstructionLimit;
@@ -124,11 +135,11 @@ export class BaselineWasmComparator {
     for (let exits = 0; exits < instructionLimit; exits += 1) {
       const state = readJitState(stateView);
 
-      if (this.decodeReader.regionAt(state.eip) === undefined) {
+      if (decodeReader.regionAt(state.eip) === undefined) {
         return completedWasmRun(state, result, guestMemory, report);
       }
 
-      const block = decodeIsaBlock(this.decodeReader, state.eip);
+      const block = decodeIsaBlock(decodeReader, state.eip);
 
       if (block.instructions.length === 0) {
         report.fallbackBlocks += 1;
@@ -176,6 +187,21 @@ export class BaselineWasmComparator {
 
     return completedWasmRun(state, runResultFromExit(state, exit), guestMemory, report);
   }
+}
+
+function guestMemoryDecodeReader(
+  memory: ArrayBufferGuestMemory,
+  options: BaselineWasmComparisonOptions
+): RuntimeDecodeReader {
+  return new GuestMemoryDecodeReader(memory, options.codeRegions.map(codeRegion));
+}
+
+function codeRegion(region: BaselineWasmCodeRegion): GuestMemoryDecodeRegion {
+  return {
+    kind: "guest-memory",
+    baseAddress: region.baseAddress,
+    byteLength: region.byteLength
+  };
 }
 
 export async function assertBaselineWasmMatchesInterpreter(

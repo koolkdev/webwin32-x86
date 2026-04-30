@@ -5,8 +5,7 @@ import { StopReason } from "../../../../../core/execution/run-result.js";
 import { ArrayBufferGuestMemory } from "../../../../../core/memory/guest-memory.js";
 import { cloneCpuState, createCpuState } from "../../../../../core/state/cpu-state.js";
 import { fillGuestMemory, readGuestBytes, writeGuestU32 } from "../../../../../test-support/guest-memory.js";
-import { runIsaInterpreter } from "../interpreter.js";
-import { bytes, startAddress } from "./helpers.js";
+import { bytes, runIsaBytes, startAddress } from "./helpers.js";
 
 test("push pop roundtrips register", () => {
   const memory = new ArrayBufferGuestMemory(0x40);
@@ -167,7 +166,7 @@ test("call push oob fault is atomic", () => {
 });
 
 function run(state: ReturnType<typeof createCpuState>, values: readonly number[], memory: ArrayBufferGuestMemory) {
-  return runIsaInterpreter(state, bytes(values), {
+  return runIsaBytes(state, bytes(values), {
     baseAddress: startAddress,
     memory
   });

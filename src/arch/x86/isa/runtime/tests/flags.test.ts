@@ -2,9 +2,8 @@ import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { createCpuState, getFlag, supportedEflagsMask, u32 } from "../../../../../core/state/cpu-state.js";
-import { decodeIsaInstruction } from "../../decoder/decode.js";
 import { executeIsaInstruction } from "../execute.js";
-import { bytes, ok, startAddress } from "./helpers.js";
+import { decodeBytes, ok, startAddress } from "./helpers.js";
 
 test("add_wrap_sets_cf_zf_af_pf", () => {
   const state = createCpuState({ eax: 0xffff_ffff, eip: startAddress });
@@ -147,7 +146,7 @@ test("test_sets_pf_from_low_byte", () => {
 });
 
 function execute(state: ReturnType<typeof createCpuState>, values: readonly number[]): void {
-  const decoded = ok(decodeIsaInstruction(bytes(values), 0, state.eip));
+  const decoded = ok(decodeBytes(values, state.eip));
 
   executeIsaInstruction(state, decoded);
 }

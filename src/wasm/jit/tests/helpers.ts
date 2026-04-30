@@ -1,4 +1,5 @@
-import { decodeIsaInstruction } from "../../../arch/x86/isa/decoder/decode.js";
+import { decodeIsaInstructionFromReader } from "../../../arch/x86/isa/decoder/decode.js";
+import { ByteArrayDecodeReader } from "../../../arch/x86/isa/decoder/tests/helpers.js";
 import type { IsaDecodedInstruction } from "../../../arch/x86/isa/decoder/types.js";
 import { createCpuState, cpuStateFields, type CpuState } from "../../../core/state/cpu-state.js";
 import { wasmBlockExportName, wasmImport, stateOffset } from "../../abi.js";
@@ -54,19 +55,18 @@ export async function runJitSirBlock(
 
 function decodeInstructions(bytes: readonly number[], address: number): readonly IsaDecodedInstruction[] {
   const raw = Uint8Array.from(bytes);
+  const reader = new ByteArrayDecodeReader(raw, address);
   const instructions: IsaDecodedInstruction[] = [];
-  let offset = 0;
   let eip = address;
 
-  while (offset < raw.length) {
-    const result = decodeIsaInstruction(raw, offset, eip);
+  while (eip - address < raw.length) {
+    const result = decodeIsaInstructionFromReader(reader, eip);
 
     if (result.kind !== "ok") {
       throw new Error(`expected decode success, got unsupported byte ${result.unsupportedByte}`);
     }
 
     instructions.push(result.instruction);
-    offset += result.instruction.length;
     eip = result.instruction.nextEip;
   }
 

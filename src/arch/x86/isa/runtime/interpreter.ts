@@ -1,49 +1,45 @@
 import { runResultFromState, StopReason, type RunResult } from "../../../../core/execution/run-result.js";
 import type { GuestMemory } from "../../../../core/memory/guest-memory.js";
 import type { CpuState } from "../../../../core/state/cpu-state.js";
-import { decodeIsaInstruction } from "../decoder/decode.js";
+import { decodeIsaInstructionFromReader } from "../decoder/decode.js";
+import {
+  IsaDecodeError,
+  maxX86InstructionLength,
+  readAvailableBytes
+} from "../decoder/reader.js";
+import type { IsaDecodedInstruction } from "../decoder/types.js";
+import { GuestMemoryDecodeReader, type RuntimeDecodeReader } from "./decode-reader.js";
 import { executeIsaInstruction } from "./execute.js";
 
 const defaultInstructionLimit = 10_000;
 
 export type IsaInterpreterOptions = Readonly<{
-  baseAddress?: number;
   instructionLimit?: number;
-  memory?: GuestMemory;
 }>;
 
 export function runIsaInterpreter(
   state: CpuState,
-  bytes: Uint8Array<ArrayBufferLike>,
+  memory: GuestMemory,
   options: IsaInterpreterOptions = {}
 ): RunResult {
-  const baseAddress = options.baseAddress ?? state.eip;
+  const decodeReader = new GuestMemoryDecodeReader(memory, [
+    { kind: "guest-memory", baseAddress: 0, byteLength: memory.byteLength }
+  ]);
   const instructionLimit = options.instructionLimit ?? defaultInstructionLimit;
 
   for (let executed = 0; executed < instructionLimit; executed += 1) {
-    const offset = state.eip - baseAddress;
+    const decoded = decodeInstruction(state, decodeReader);
 
-    if (!Number.isInteger(offset) || offset < 0 || offset >= bytes.length) {
-      return runResultFromState(state, StopReason.NONE);
+    if (decoded.kind === "stop") {
+      if (isTrailingDecodeFault(decoded.result, executed)) {
+        state.stopReason = StopReason.NONE;
+        return runResultFromState(state, StopReason.NONE);
+      }
+
+      return decoded.result;
     }
 
-    const decoded = decodeIsaInstruction(bytes, offset, state.eip);
-
-    if (decoded.kind === "unsupported") {
-      state.stopReason = StopReason.UNSUPPORTED;
-      return runResultFromState(
-        state,
-        StopReason.UNSUPPORTED,
-        decoded.unsupportedByte === undefined
-          ? { unsupportedReason: "unsupportedOpcode" }
-          : { unsupportedByte: decoded.unsupportedByte, unsupportedReason: "unsupportedOpcode" }
-      );
-    }
-
-    const result =
-      options.memory === undefined
-        ? executeIsaInstruction(state, decoded.instruction)
-        : executeIsaInstruction(state, decoded.instruction, { memory: options.memory });
+    const result = executeIsaInstruction(state, decoded.instruction, { memory });
 
     if (result.stopReason !== StopReason.NONE) {
       return result;
@@ -52,4 +48,53 @@ export function runIsaInterpreter(
 
   state.stopReason = StopReason.INSTRUCTION_LIMIT;
   return runResultFromState(state, StopReason.INSTRUCTION_LIMIT);
+}
+
+type DecodeInstructionResult =
+  | Readonly<{ kind: "instruction"; instruction: IsaDecodedInstruction }>
+  | Readonly<{ kind: "stop"; result: RunResult }>;
+
+function decodeInstruction(
+  state: CpuState,
+  decodeReader: RuntimeDecodeReader
+): DecodeInstructionResult {
+  try {
+    const decoded = decodeIsaInstructionFromReader(decodeReader, state.eip);
+
+    if (decoded.kind === "unsupported") {
+      state.stopReason = StopReason.UNSUPPORTED;
+      return {
+        kind: "stop",
+        result: runResultFromState(
+          state,
+          StopReason.UNSUPPORTED,
+          decoded.unsupportedByte === undefined
+            ? { unsupportedReason: "unsupportedOpcode" }
+            : { unsupportedByte: decoded.unsupportedByte, unsupportedReason: "unsupportedOpcode" }
+        )
+      };
+    }
+
+    return { kind: "instruction", instruction: decoded.instruction };
+  } catch (error: unknown) {
+    if (error instanceof IsaDecodeError || error instanceof RangeError) {
+      const raw = readAvailableBytes(decodeReader, state.eip, maxX86InstructionLength);
+
+      state.stopReason = StopReason.DECODE_FAULT;
+      return {
+        kind: "stop",
+        result: runResultFromState(state, StopReason.DECODE_FAULT, {
+          faultAddress: state.eip,
+          faultSize: raw.length,
+          faultOperation: "execute"
+        })
+      };
+    }
+
+    throw error;
+  }
+}
+
+function isTrailingDecodeFault(result: RunResult, executed: number): boolean {
+  return executed > 0 && result.stopReason === StopReason.DECODE_FAULT && result.faultSize === 0;
 }

@@ -1,12 +1,11 @@
 import { deepStrictEqual, strictEqual, throws } from "node:assert";
 import { test } from "node:test";
 
-import { decodeIsaInstruction } from "../decode.js";
 import { IsaDecodeError } from "../reader.js";
-import { bytes, startAddress } from "./helpers.js";
+import { decodeBytes, startAddress } from "./helpers.js";
 
 test("reports unsupported opcode without throwing", () => {
-  const decoded = decodeIsaInstruction(bytes([0x62]), 0, startAddress);
+  const decoded = decodeBytes([0x62]);
 
   strictEqual(decoded.kind, "unsupported");
   if (decoded.kind === "unsupported") {
@@ -18,7 +17,7 @@ test("reports unsupported opcode without throwing", () => {
 });
 
 test("treats operand-size override as unsupported while prefixes are not modeled", () => {
-  const decoded = decodeIsaInstruction(bytes([0x66, 0x90]), 0, startAddress);
+  const decoded = decodeBytes([0x66, 0x90]);
 
   strictEqual(decoded.kind, "unsupported");
   if (decoded.kind === "unsupported") {
@@ -38,7 +37,7 @@ test("truncated opcode escape reports decode fault", () => {
 
 function assertDecodeFault(values: readonly number[]): void {
   throws(
-    () => decodeIsaInstruction(bytes(values), 0, startAddress),
+    () => decodeBytes(values),
     (error: unknown) => {
       if (!(error instanceof IsaDecodeError)) {
         return false;

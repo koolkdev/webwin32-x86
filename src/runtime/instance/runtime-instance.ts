@@ -1,4 +1,7 @@
-import { GuestMemoryDecodeReader, type DecodeReader } from "../../arch/x86/isa/decoder/reader.js";
+import {
+  GuestMemoryDecodeReader,
+  type RuntimeDecodeReader
+} from "../../arch/x86/isa/runtime/decode-reader.js";
 import type { RunResult } from "../../core/execution/run-result.js";
 import { ArrayBufferGuestMemory, type GuestMemory } from "../../core/memory/guest-memory.js";
 import { createCpuState, u32, type CpuState } from "../../core/state/cpu-state.js";
@@ -56,7 +59,7 @@ const wasmPageByteLength = 0x1_0000;
 export class RuntimeInstance {
   readonly state: CpuState;
   readonly guestMemory: GuestMemory;
-  readonly decodeReader: DecodeReader;
+  readonly decodeReader: RuntimeDecodeReader;
   readonly #tierExecutors: Readonly<Record<TierMode, RuntimeTierExecutor>>;
   readonly #wasmInterpreterRuntime: WasmInterpreterRuntime | undefined;
   readonly #wasmRuntime: WasmRuntimeContext | undefined;

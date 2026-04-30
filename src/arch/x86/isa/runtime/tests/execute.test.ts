@@ -4,9 +4,8 @@ import { test } from "node:test";
 import { StopReason } from "../../../../../core/execution/run-result.js";
 import { ArrayBufferGuestMemory } from "../../../../../core/memory/guest-memory.js";
 import { createCpuState, getFlag, setFlag } from "../../../../../core/state/cpu-state.js";
-import { decodeIsaInstruction } from "../../decoder/decode.js";
 import { executeIsaInstruction } from "../execute.js";
-import { bytes, ok, startAddress } from "./helpers.js";
+import { decodeBytes, ok, startAddress } from "./helpers.js";
 
 test("executes mov r32, imm32", () => {
   const state = createCpuState({ eip: startAddress });
@@ -190,7 +189,7 @@ function executeAtAddress(
   values: readonly number[],
   memory?: ArrayBufferGuestMemory
 ) {
-  const decoded = ok(decodeIsaInstruction(bytes(values), 0, address));
+  const decoded = ok(decodeBytes(values, address));
 
   state.eip = address;
   return memory === undefined

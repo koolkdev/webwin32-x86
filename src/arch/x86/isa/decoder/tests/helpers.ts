@@ -1,4 +1,15 @@
+import { deepStrictEqual, strictEqual } from "node:assert";
+import { test } from "node:test";
+
+import type { Mem32Operand, Reg32 } from "../../types.js";
+import {
+  decodeFault,
+  IsaDecodeError,
+  type IsaDecodeReader
+} from "../reader.js";
 import type { IsaDecodedInstruction, IsaDecodeResult } from "../types.js";
+import type { IsaOperandBinding } from "../types.js";
+import { decodeIsaInstructionFromReader } from "../decode.js";
 
 export const startAddress = 0x1000;
 
@@ -12,4 +23,99 @@ export function ok(result: IsaDecodeResult): IsaDecodedInstruction {
   }
 
   return result.instruction;
+}
+
+export function decodeBytes(values: readonly number[], address = startAddress): IsaDecodeResult {
+  return decodeIsaInstructionFromReader(new ByteArrayDecodeReader(values, address), address);
+}
+
+export class ByteArrayDecodeReader implements IsaDecodeReader {
+  readonly #bytes: Uint8Array<ArrayBuffer>;
+
+  constructor(values: readonly number[] | Uint8Array<ArrayBuffer>, readonly baseAddress = 0) {
+    this.#bytes = values instanceof Uint8Array ? values : Uint8Array.from(values);
+  }
+
+  readU8(eip: number): number {
+    const index = eip - this.baseAddress;
+
+    if (!Number.isInteger(index) || index < 0 || index >= this.#bytes.length) {
+      throw new IsaDecodeError(decodeFault(eip));
+    }
+
+    const value = this.#bytes[index];
+
+    if (value === undefined) {
+      throw new IsaDecodeError(decodeFault(eip));
+    }
+
+    return value;
+  }
+}
+
+export type DecoderFixture = Readonly<{
+  name: string;
+  bytes: readonly number[];
+  mnemonic: string;
+  operands?: readonly IsaOperandBinding[];
+  address?: number;
+  id?: string;
+  format?: string;
+}>;
+
+export function testDecodeFixtures(fixtures: readonly DecoderFixture[]): void {
+  for (const fixture of fixtures) {
+    test(`decodes ${fixture.name}`, () => {
+      const address = fixture.address ?? startAddress;
+      const decoded = decodeBytes(fixture.bytes, address);
+
+      strictEqual(decoded.kind, "ok");
+      if (decoded.kind !== "ok") {
+        return;
+      }
+
+      strictEqual(decoded.instruction.address, address);
+      strictEqual(decoded.instruction.length, fixture.bytes.length);
+      strictEqual(decoded.instruction.spec.mnemonic, fixture.mnemonic);
+      strictEqual(decoded.instruction.nextEip, address + fixture.bytes.length);
+      deepStrictEqual(decoded.instruction.raw, fixture.bytes);
+      deepStrictEqual(decoded.instruction.operands, fixture.operands ?? []);
+
+      if (fixture.id !== undefined) {
+        strictEqual(decoded.instruction.spec.id, fixture.id);
+      }
+
+      if (fixture.format !== undefined) {
+        strictEqual(decoded.instruction.spec.format.syntax, fixture.format);
+      }
+    });
+  }
+}
+
+export function reg32(reg: Reg32): IsaOperandBinding {
+  return { kind: "reg32", reg };
+}
+
+export function mem32(operand: Omit<Mem32Operand, "kind">): Mem32Operand {
+  return { kind: "mem32", ...operand };
+}
+
+export function imm32(value: number): IsaOperandBinding {
+  return { kind: "imm32", value, encodedWidth: 32 };
+}
+
+export function imm16(value: number): IsaOperandBinding {
+  return { kind: "imm32", value, encodedWidth: 16, extension: "zero" };
+}
+
+export function imm8(value: number): IsaOperandBinding {
+  return { kind: "imm32", value, encodedWidth: 8 };
+}
+
+export function signImm8(value: number): IsaOperandBinding {
+  return { kind: "imm32", value: value >>> 0, encodedWidth: 8, extension: "sign" };
+}
+
+export function relTarget(width: 8 | 32, displacement: number, target: number): IsaOperandBinding {
+  return { kind: "relTarget", width, displacement, target };
 }

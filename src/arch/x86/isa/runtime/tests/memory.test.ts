@@ -5,8 +5,7 @@ import { StopReason } from "../../../../../core/execution/run-result.js";
 import { ArrayBufferGuestMemory } from "../../../../../core/memory/guest-memory.js";
 import { cloneCpuState, createCpuState, getFlag } from "../../../../../core/state/cpu-state.js";
 import { fillGuestMemory, readGuestBytes, writeGuestU32 } from "../../../../../test-support/guest-memory.js";
-import { runIsaInterpreter } from "../interpreter.js";
-import { bytes, startAddress } from "./helpers.js";
+import { bytes, runIsaBytes, startAddress } from "./helpers.js";
 
 test("loads and stores absolute u32 memory", () => {
   const memory = new ArrayBufferGuestMemory(0x40);
@@ -178,7 +177,7 @@ test("memory cmp fault does not update flags", () => {
 });
 
 function run(state: ReturnType<typeof createCpuState>, values: readonly number[], memory?: ArrayBufferGuestMemory) {
-  return runIsaInterpreter(state, bytes(values), {
+  return runIsaBytes(state, bytes(values), {
     baseAddress: startAddress,
     ...(memory === undefined ? {} : { memory })
   });

@@ -9,7 +9,6 @@ import {
   type BaselineWasmComparisonResult,
   type BaselineWasmComparisonOptions
 } from "../../src/test-support/baseline-wasm-comparison.js";
-import { guestReader } from "../../src/test-support/decode-reader.js";
 import { createGuestMemory, fillViewBytes } from "../../src/test-support/wasm-codegen.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
@@ -114,14 +113,15 @@ test("baseline_wasm_unsupported_falls_back", async () => {
 async function runBytes(
   bytes: readonly number[],
   initialState: CpuState,
-  options: Omit<BaselineWasmComparisonOptions, "initialState"> = {}
+  options: Omit<BaselineWasmComparisonOptions, "codeRegions" | "initialState"> = {}
 ): Promise<BaselineWasmComparisonResult> {
   const guestMemory = options.guestMemory ?? createGuestMemory();
 
   writeGuestCode(guestMemory, bytes);
 
-  return assertBaselineWasmMatchesInterpreter(new BaselineWasmComparator(guestReader(bytes)), {
+  return assertBaselineWasmMatchesInterpreter(new BaselineWasmComparator(), {
     ...options,
+    codeRegions: [{ baseAddress: startAddress, byteLength: bytes.length }],
     guestMemory,
     initialState
   });

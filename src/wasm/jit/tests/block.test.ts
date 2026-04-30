@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { createCpuState } from "../../../core/state/cpu-state.js";
 import { ExitReason } from "../../exit.js";
-import { runJitSirBlock } from "./support.js";
+import { runJitSirBlock } from "./helpers.js";
 
 const startAddress = 0x1000;
 const preservedEflags = 0xffff_0000;
