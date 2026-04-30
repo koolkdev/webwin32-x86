@@ -17,8 +17,7 @@ import {
   type CpuState
 } from "../core/state/cpu-state.js";
 import { compileWasmBlockHandle, type WasmBlockHandle } from "../runtime/wasm-block/wasm-block.js";
-import { DecodedBlockCache } from "../runtime/decoded-block-cache/decoded-block-cache.js";
-import { DecodedBlockRunner } from "../runtime/decoded-block-runner/decoded-block-runner.js";
+import { runT0InstructionInterpreter } from "../runtime/tiering/executors/t0-instruction-interpreter.js";
 import { stateOffset } from "../wasm/abi.js";
 import { UnsupportedWasmCodegenError } from "../wasm/codegen/errors.js";
 import { ExitReason, type DecodedExit } from "../wasm/exit.js";
@@ -96,12 +95,11 @@ export class BaselineWasmComparator {
   #runInterpreter(options: BaselineWasmComparisonOptions): BaselineWasmComparisonExecution {
     const state = cloneCpuState(options.initialState);
     const guestMemory = cloneGuestMemory(options.guestMemory);
-    const runner = new DecodedBlockRunner(new DecodedBlockCache(this.decodeReader));
     const memory = new ArrayBufferGuestMemory(guestMemory.buffer);
-    const result =
-      options.instructionLimit === undefined
-        ? runner.run(state, { memory })
-        : runner.run(state, { instructionLimit: options.instructionLimit, memory });
+    const result = runT0InstructionInterpreter(
+      { state, guestMemory: memory, decodeReader: this.decodeReader },
+      options.instructionLimit ?? defaultInstructionLimit
+    );
 
     return {
       result,

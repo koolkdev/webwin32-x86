@@ -18,7 +18,6 @@ export type WasmFeatureReport = Readonly<{
   missingFeatures: readonly Extract<WasmFeatureCheck, { supported: false }>[];
   baselineJitAvailable: boolean;
   interpreterAvailable: true;
-  decodedBlockRuntimeAvailable: true;
 }>;
 
 const importNamespace = "webwin32";
@@ -46,8 +45,7 @@ export async function probeWasmFeatures(): Promise<WasmFeatureReport> {
     checks,
     missingFeatures,
     baselineJitAvailable: missingFeatures.length === 0,
-    interpreterAvailable: true,
-    decodedBlockRuntimeAvailable: true
+    interpreterAvailable: true
   };
 }
 

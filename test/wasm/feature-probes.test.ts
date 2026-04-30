@@ -8,7 +8,6 @@ test("reports required Wasm features as available", async () => {
 
   strictEqual(report.baselineJitAvailable, true);
   strictEqual(report.interpreterAvailable, true);
-  strictEqual(report.decodedBlockRuntimeAvailable, true);
   deepStrictEqual(report.missingFeatures, []);
   assertFeatureSupported(report, "multi-memory");
   assertFeatureSupported(report, "i64-return-bigint");
@@ -31,7 +30,6 @@ test("failed required probes disable only baseline JIT", async () => {
 
     strictEqual(report.baselineJitAvailable, false);
     strictEqual(report.interpreterAvailable, true);
-    strictEqual(report.decodedBlockRuntimeAvailable, true);
     strictEqual(report.missingFeatures.length, 4);
 
     for (const failure of report.missingFeatures) {
