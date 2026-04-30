@@ -2,16 +2,16 @@ import { emitExitResultFromStackPayload } from "../codegen/exit.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
 
-export type RegisterModRmDispatchCase = Readonly<{
+export type ModRmDispatchCase = Readonly<{
   bytes: readonly number[];
   emit: () => void;
 }>;
 
-export function emitRegisterModRmDispatch(
+export function emitModRmDispatch(
   body: WasmFunctionBodyEncoder,
   modRmLocal: number,
   unsupportedByteLocal: number,
-  cases: readonly RegisterModRmDispatchCase[]
+  cases: readonly ModRmDispatchCase[]
 ): void {
   body.block();
 
@@ -37,7 +37,7 @@ export function emitRegisterModRmDispatch(
   emitExitResultFromStackPayload(body, ExitReason.UNSUPPORTED).returnFromFunction();
 }
 
-function registerModRmTable(cases: readonly RegisterModRmDispatchCase[]): number[] {
+function registerModRmTable(cases: readonly ModRmDispatchCase[]): number[] {
   const table = new Array<number>(256).fill(cases.length);
 
   for (let index = 0; index < cases.length; index += 1) {

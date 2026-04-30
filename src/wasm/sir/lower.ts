@@ -16,6 +16,7 @@ export type WasmSirLoweringContext = Readonly<{
   scratch: WasmLocalScratchAllocator;
   emitGet32(source: StorageRef, helpers: WasmSirEmitHelpers): void;
   emitSet32(target: StorageRef, value: ValueRef, helpers: WasmSirEmitHelpers): void;
+  emitAddress32(source: StorageRef, helpers: WasmSirEmitHelpers): void;
   emitSetFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueRef>>, helpers: WasmSirEmitHelpers): void;
   emitCondition(cc: ConditionCode): void;
   emitNext(helpers: WasmSirEmitHelpers): void;
@@ -62,6 +63,13 @@ function lowerSirOp(
     case "set32":
       context.emitSet32(op.target, op.value, helpers);
       return;
+    case "address32": {
+      const local = localForVar(context, vars, op.dst.id);
+
+      context.emitAddress32(op.operand, helpers);
+      context.body.localSet(local);
+      return;
+    }
     case "i32.add":
       lowerI32BinaryOp(op.dst.id, op.a, op.b, context, vars, "add");
       return;

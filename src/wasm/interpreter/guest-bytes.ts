@@ -20,17 +20,19 @@ export function emitLoadGuestByte(
   }
 
   body.localSet(addressLocal);
-  body
-    .localGet(addressLocal)
-    .memorySize(wasmMemoryIndex.guest)
-    .i32Const(wasmPageByteShift)
-    .i32Shl()
-    .i32LtU()
-    .i32Eqz()
-    .ifBlock();
-  body.localGet(addressLocal);
-  emitExitResultFromStackPayload(body, ExitReason.DECODE_FAULT).returnFromFunction();
-  body.endBlock();
+  emitFaultIfGuestByteOutOfBounds(body, addressLocal);
+  body.localGet(addressLocal).i32Load8U({ align: 0, offset: 0, memoryIndex: wasmMemoryIndex.guest }).localSet(byteLocal);
+}
+
+export function emitLoadGuestByteForDecodeAtDynamicOffset(
+  body: WasmFunctionBodyEncoder,
+  eipLocal: number,
+  instructionOffsetLocal: number,
+  addressLocal: number,
+  byteLocal: number
+): void {
+  body.localGet(eipLocal).localGet(instructionOffsetLocal).i32Add().localSet(addressLocal);
+  emitFaultIfGuestByteOutOfBounds(body, addressLocal);
   body.localGet(addressLocal).i32Load8U({ align: 0, offset: 0, memoryIndex: wasmMemoryIndex.guest }).localSet(byteLocal);
 }
 
@@ -50,6 +52,32 @@ export function emitLoadGuestU32ForDecode(
   body.localSet(addressLocal);
   emitFaultIfGuestU32OutOfBounds(body, addressLocal);
   body.localGet(addressLocal).i32Load({ align: 0, offset: 0, memoryIndex: wasmMemoryIndex.guest }).localSet(valueLocal);
+}
+
+export function emitLoadGuestU32ForDecodeAtDynamicOffset(
+  body: WasmFunctionBodyEncoder,
+  eipLocal: number,
+  instructionOffsetLocal: number,
+  addressLocal: number,
+  valueLocal: number
+): void {
+  body.localGet(eipLocal).localGet(instructionOffsetLocal).i32Add().localSet(addressLocal);
+  emitFaultIfGuestU32OutOfBounds(body, addressLocal);
+  body.localGet(addressLocal).i32Load({ align: 0, offset: 0, memoryIndex: wasmMemoryIndex.guest }).localSet(valueLocal);
+}
+
+function emitFaultIfGuestByteOutOfBounds(body: WasmFunctionBodyEncoder, addressLocal: number): void {
+  body
+    .localGet(addressLocal)
+    .memorySize(wasmMemoryIndex.guest)
+    .i32Const(wasmPageByteShift)
+    .i32Shl()
+    .i32LtU()
+    .i32Eqz()
+    .ifBlock();
+  body.localGet(addressLocal);
+  emitExitResultFromStackPayload(body, ExitReason.DECODE_FAULT).returnFromFunction();
+  body.endBlock();
 }
 
 function emitFaultIfGuestU32OutOfBounds(body: WasmFunctionBodyEncoder, addressLocal: number): void {

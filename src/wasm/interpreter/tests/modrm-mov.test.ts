@@ -55,7 +55,7 @@ test("executes MOV r/m32, r32 with register ModRM", async () => {
   assertCompletedInstruction(state, startAddress + 2, 8);
 });
 
-test("memory ModRM form is unsupported until memory operands are implemented", async () => {
+test("memory ModRM with out-of-range address returns read fault without changing architectural state", async () => {
   const interpreter = await instantiateWasmInterpreter();
   const initialState = createCpuState({
     eax: 0xaaaa_aaaa,
@@ -68,7 +68,7 @@ test("memory ModRM form is unsupported until memory operands are implemented", a
 
   const exit = interpreter.run(1);
 
-  deepStrictEqual(exit, { exitReason: ExitReason.UNSUPPORTED, payload: 0x8b });
+  deepStrictEqual(exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: initialState.ebx });
   assertInterpreterStateEquals(interpreter.stateView, initialState);
 });
 

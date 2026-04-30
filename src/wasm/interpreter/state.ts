@@ -30,6 +30,14 @@ export function emitLoadReg32(body: WasmFunctionBodyEncoder, reg: Reg32): void {
   emitLoadStateU32(body, stateOffset[reg]);
 }
 
+export function emitLoadReg32FromIndexLocal(body: WasmFunctionBodyEncoder, indexLocal: number): void {
+  body.localGet(indexLocal).i32Const(2).i32Shl().i32Load({
+    align: stateU32Align,
+    memoryIndex: wasmMemoryIndex.state,
+    offset: 0
+  });
+}
+
 export function emitStoreReg32(body: WasmFunctionBodyEncoder, reg: Reg32, emitValue: () => void): void {
   emitStoreStateU32(body, stateOffset[reg], emitValue);
 }
