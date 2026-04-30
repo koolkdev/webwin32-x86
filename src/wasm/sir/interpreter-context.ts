@@ -5,6 +5,7 @@ import type {
   ValueRef
 } from "../../arch/x86/sir/types.js";
 import { wasmMemoryIndex } from "../abi.js";
+import { emitExitResultFromStackPayload } from "../codegen/exit.js";
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import { emitLoadGuestU32, emitStoreGuestU32 } from "../codegen/guest-memory.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
@@ -21,6 +22,7 @@ import {
 import { lowerSirToWasm, type WasmSirEmitHelpers } from "./lower.js";
 import { emitSetFlags } from "./flags.js";
 import { emitCondition } from "./conditions.js";
+import { ExitReason } from "../exit.js";
 
 export type InterpreterOperandBinding =
   | Readonly<{ kind: "opcode.reg32"; opcodeLocal: number }>
@@ -58,7 +60,8 @@ export function lowerSirWithInterpreterContext(program: SirProgram, context: Int
     emitNextEip: () => emitNextEip(context),
     emitJump: (target, helpers) => emitJump(context, target, helpers),
     emitConditionalJump: (condition, taken, notTaken, helpers) =>
-      emitConditionalJump(context, condition, taken, notTaken, helpers)
+      emitConditionalJump(context, condition, taken, notTaken, helpers),
+    emitHostTrap: (vector, helpers) => emitHostTrap(context, vector, helpers)
   });
 }
 
@@ -215,6 +218,17 @@ function emitConditionalJump(
   context.body.endBlock();
   emitCompleteInstructionWithTarget(context.body, context.eipLocal, () => helpers.emitValue(notTaken));
   emitContinue(context);
+}
+
+function emitHostTrap(context: InterpreterSirContext, vector: ValueRef, helpers: WasmSirEmitHelpers): void {
+  if (typeof context.instructionLength === "number") {
+    emitCompleteInstruction(context.body, context.eipLocal, context.instructionLength);
+  } else {
+    emitCompleteInstructionWithTarget(context.body, context.eipLocal, () => emitNextEip(context));
+  }
+
+  helpers.emitValue(vector);
+  emitExitResultFromStackPayload(context.body, ExitReason.HOST_TRAP).returnFromFunction();
 }
 
 function emitContinue(context: InterpreterSirContext, extraDepth = 0): void {

@@ -114,6 +114,8 @@ function executeOp(context: ExecutionContext, op: SirOp): RunResult | undefined 
         context,
         evalValueRef(context, op.condition) !== 0 ? evalValueRef(context, op.taken) : evalValueRef(context, op.notTaken)
       );
+    case "hostTrap":
+      return completeHostTrap(context, evalValueRef(context, op.vector));
   }
 }
 
@@ -312,6 +314,14 @@ function completeInstruction(context: ExecutionContext, target: number): RunResu
   context.state.instructionCount = u32(context.state.instructionCount + 1);
 
   return runResultFromState(context.state, StopReason.NONE);
+}
+
+function completeHostTrap(context: ExecutionContext, vector: number): RunResult {
+  context.state.eip = context.instruction.nextEip;
+  context.state.instructionCount = u32(context.state.instructionCount + 1);
+  context.state.stopReason = StopReason.HOST_TRAP;
+
+  return runResultFromState(context.state, StopReason.HOST_TRAP, { trapVector: vector & 0xff });
 }
 
 function stopFromAccess(state: CpuState, access: ValueResult | WriteResult): RunResult {

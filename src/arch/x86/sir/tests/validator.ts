@@ -64,6 +64,9 @@ function validateOpUses(
       validateValueRef(op.taken, definedVars);
       validateValueRef(op.notTaken, definedVars);
       break;
+    case "hostTrap":
+      validateValueRef(op.vector, definedVars);
+      break;
   }
 }
 
@@ -129,5 +132,5 @@ function validateOperandIndex(index: number, options: ValidateSirOptions): void 
 }
 
 function isTerminator(op: SirOp): boolean {
-  return op.op === "next" || op.op === "jump" || op.op === "conditionalJump";
+  return op.op === "next" || op.op === "jump" || op.op === "conditionalJump" || op.op === "hostTrap";
 }

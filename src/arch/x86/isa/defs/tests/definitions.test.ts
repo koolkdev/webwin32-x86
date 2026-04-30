@@ -9,12 +9,13 @@ import type { InstructionSpec } from "../../schema/types.js";
 
 test("x86-32 core registers the initial instruction surface", () => {
   strictEqual(X86_32_CORE.name, "x86-32-core");
-  strictEqual(X86_32_CORE.instructions.length, 71);
+  strictEqual(X86_32_CORE.instructions.length, 73);
 
   const ids = X86_32_CORE.instructions.map((spec) => spec.id);
 
   for (const id of [
     "mov.r32_rm32",
+    "nop.near",
     "mov.rm32_r32",
     "mov.r32_imm32",
     "lea.r32_m32",
@@ -29,6 +30,7 @@ test("x86-32 core registers the initial instruction surface", () => {
     "call.rm32",
     "ret.near",
     "ret.imm16",
+    "int.imm8",
     "jne.rel8",
     "jne.rel32"
   ]) {

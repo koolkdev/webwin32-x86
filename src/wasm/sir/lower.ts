@@ -23,6 +23,7 @@ export type WasmSirLoweringContext = Readonly<{
   emitNextEip(helpers: WasmSirEmitHelpers): void;
   emitJump(target: ValueRef, helpers: WasmSirEmitHelpers): void;
   emitConditionalJump(condition: ValueRef, taken: ValueRef, notTaken: ValueRef, helpers: WasmSirEmitHelpers): void;
+  emitHostTrap(vector: ValueRef, helpers: WasmSirEmitHelpers): void;
 }>;
 
 export type WasmSirEmitHelpers = Readonly<{
@@ -100,6 +101,9 @@ function lowerSirOp(
       return;
     case "conditionalJump":
       context.emitConditionalJump(op.condition, op.taken, op.notTaken, helpers);
+      return;
+    case "hostTrap":
+      context.emitHostTrap(op.vector, helpers);
       return;
     default:
       throw new Error(`unsupported SIR op for Wasm lowering: ${op.op}`);

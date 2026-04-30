@@ -108,6 +108,23 @@ test("decodes concrete jcc rel8 and rel32 forms", () => {
   ]);
 });
 
+test("decodes nop and int imm8 forms", () => {
+  const nop = ok(decodeIsaInstruction(bytes([0x90]), 0, startAddress));
+  const trap = ok(decodeIsaInstruction(bytes([0xcd, 0x2e]), 0, startAddress));
+
+  strictEqual(nop.spec.id, "nop.near");
+  strictEqual(nop.spec.format.syntax, "nop");
+  strictEqual(nop.length, 1);
+  deepStrictEqual(nop.operands, []);
+
+  strictEqual(trap.spec.id, "int.imm8");
+  strictEqual(trap.spec.format.syntax, "int {0}");
+  strictEqual(trap.length, 2);
+  deepStrictEqual(trap.operands, [
+    { kind: "imm32", value: 0x2e, encodedWidth: 8 }
+  ]);
+});
+
 test("decodes ModRM memory operands with displacement", () => {
   // 8B 43 04: MOV eax, [ebx + 4]
   const decoded = ok(decodeIsaInstruction(bytes([0x8b, 0x43, 0x04]), 0, startAddress));
@@ -133,12 +150,12 @@ test("rejects address-only m32 forms when ModRM encodes a register", () => {
 });
 
 test("reports unsupported opcode bytes", () => {
-  const decoded = decodeIsaInstruction(bytes([0x90]), 0, startAddress);
+  const decoded = decodeIsaInstruction(bytes([0x62]), 0, startAddress);
 
   strictEqual(decoded.kind, "unsupported");
   if (decoded.kind === "unsupported") {
     strictEqual(decoded.length, 1);
-    deepStrictEqual(decoded.raw, [0x90]);
-    strictEqual(decoded.unsupportedByte, 0x90);
+    deepStrictEqual(decoded.raw, [0x62]);
+    strictEqual(decoded.unsupportedByte, 0x62);
   }
 });

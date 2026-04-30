@@ -51,7 +51,8 @@ export type SirOp =
   | Readonly<{ op: "condition"; dst: VarRef; cc: ConditionCode }>
   | Readonly<{ op: "next" }>
   | Readonly<{ op: "jump"; target: TargetRef }>
-  | Readonly<{ op: "conditionalJump"; condition: ValueRef; taken: TargetRef; notTaken: TargetRef }>;
+  | Readonly<{ op: "conditionalJump"; condition: ValueRef; taken: TargetRef; notTaken: TargetRef }>
+  | Readonly<{ op: "hostTrap"; vector: ValueRef }>;
 
 export type SirProgram = readonly SirOp[];
 export type SemanticTemplate = (builder: SirBuilder) => void;
@@ -79,6 +80,7 @@ export interface SirBuilder {
   next(): void;
   jump(target: TargetInput): void;
   conditionalJump(condition: ValueInput, taken: TargetInput, notTaken: TargetInput): void;
+  hostTrap(vector: ValueInput): void;
 }
 
 export type OperandInput = OperandRef;

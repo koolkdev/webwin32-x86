@@ -6,6 +6,7 @@ import { aluSemantic } from "../alu.js";
 import { callSemantic, jccSemantic, jmpSemantic, retImmSemantic } from "../control.js";
 import { cmpSemantic } from "../cmp.js";
 import { leaSemantic } from "../lea.js";
+import { intSemantic, nopSemantic } from "../misc.js";
 import { movSemantic } from "../mov.js";
 import { popSemantic } from "../stack.js";
 import { testSemantic } from "../test.js";
@@ -21,6 +22,19 @@ test("mov semantic gets source, sets destination, and falls through", () => {
     { op: "get32", dst: v(0), source: op(1) },
     { op: "set32", target: op(0), value: v(0) },
     { op: "next" }
+  ]);
+});
+
+test("nop semantic falls through without side effects", () => {
+  deepStrictEqual(buildSir(nopSemantic()), [
+    { op: "next" }
+  ]);
+});
+
+test("int semantic reads the vector and exits to a host trap", () => {
+  deepStrictEqual(buildSir(intSemantic()), [
+    { op: "get32", dst: v(0), source: op(0) },
+    { op: "hostTrap", vector: v(0) }
   ]);
 });
 

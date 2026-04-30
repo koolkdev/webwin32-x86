@@ -5,6 +5,7 @@ import { aluSemantic } from "../../isa/semantics/alu.js";
 import { jccSemantic } from "../../isa/semantics/control.js";
 import { cmpSemantic } from "../../isa/semantics/cmp.js";
 import { leaSemantic } from "../../isa/semantics/lea.js";
+import { intSemantic } from "../../isa/semantics/misc.js";
 import { movSemantic } from "../../isa/semantics/mov.js";
 import { buildSir, const32, operand, sirVar } from "../builder.js";
 import { validateSirProgram } from "./validator.js";
@@ -15,6 +16,7 @@ test("validator accepts representative generated semantic templates", () => {
   doesNotThrow(() => validateSirProgram(buildSir(aluSemantic("add", 32)), { operandCount: 2 }));
   doesNotThrow(() => validateSirProgram(buildSir(cmpSemantic()), { operandCount: 2 }));
   doesNotThrow(() => validateSirProgram(buildSir(jccSemantic("NE")), { operandCount: 1 }));
+  doesNotThrow(() => validateSirProgram(buildSir(intSemantic()), { operandCount: 1 }));
 });
 
 test("validator rejects missing terminator and ops after terminator", () => {

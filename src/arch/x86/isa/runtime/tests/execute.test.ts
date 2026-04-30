@@ -138,6 +138,17 @@ test("executes conditional jump taken and not taken", () => {
   strictEqual(taken.eip, startAddress + 10);
 });
 
+test("executes int imm8 as a host trap", () => {
+  const state = createCpuState({ eip: startAddress });
+  const result = execute(state, [0xcd, 0x2e]);
+
+  strictEqual(result.stopReason, StopReason.HOST_TRAP);
+  strictEqual(result.trapVector, 0x2e);
+  strictEqual(state.eip, startAddress + 2);
+  strictEqual(state.instructionCount, 1);
+  strictEqual(state.stopReason, StopReason.HOST_TRAP);
+});
+
 function execute(state: ReturnType<typeof createCpuState>, values: readonly number[], memory?: ArrayBufferGuestMemory) {
   return executeAtAddress(state, startAddress, values, memory);
 }

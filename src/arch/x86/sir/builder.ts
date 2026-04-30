@@ -173,6 +173,10 @@ class ProgramSirBuilder implements SirBuilder {
     });
   }
 
+  hostTrap(vector: ValueInput): void {
+    this.#push({ op: "hostTrap", vector: toValueRef(vector) });
+  }
+
   program(): SirProgram {
     if (!this.#terminated) {
       this.next();
@@ -183,7 +187,7 @@ class ProgramSirBuilder implements SirBuilder {
 }
 
 function isTerminator(op: SirOp): boolean {
-  return op.op === "next" || op.op === "jump" || op.op === "conditionalJump";
+  return op.op === "next" || op.op === "jump" || op.op === "conditionalJump" || op.op === "hostTrap";
 }
 
 function toStorageRef(value: StorageInput): StorageRef {
