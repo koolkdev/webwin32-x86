@@ -8,7 +8,7 @@ import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import { emitLoadGuestU32, emitStoreGuestU32 } from "../codegen/guest-memory.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
-import { emitInterpreterExit, type InterpreterExitTarget } from "../interpreter/exit.js";
+import { emitWasmSirExit, type WasmSirExitTarget } from "./exit.js";
 import {
   emitCompleteInstruction,
   emitCompleteInstructionWithTarget,
@@ -43,7 +43,7 @@ export type InterpreterSirContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
   state: InterpreterStateCache;
-  exit: InterpreterExitTarget;
+  exit: WasmSirExitTarget;
   eipLocal: number;
   instructionLength: InterpreterInstructionLength;
   operands: readonly InterpreterOperandBinding[];
@@ -224,7 +224,7 @@ function emitHostTrap(context: InterpreterSirContext, vector: ValueRef, helpers:
     emitCompleteInstructionWithTarget(context.body, context.state, () => emitNextEip(context));
   }
 
-  emitInterpreterExit(context.body, context.exit, ExitReason.HOST_TRAP, () => helpers.emitValue(vector));
+  emitWasmSirExit(context.body, context.exit, ExitReason.HOST_TRAP, () => helpers.emitValue(vector));
 }
 
 function emitContinue(context: InterpreterSirContext, extraDepth = 0): void {
@@ -330,7 +330,7 @@ function emitMemoryFaultExit(
   emitPayload: () => void,
   extraDepth: number
 ): void {
-  emitInterpreterExit(
+  emitWasmSirExit(
     context.body,
     context.exit,
     access === "read" ? ExitReason.MEMORY_READ_FAULT : ExitReason.MEMORY_WRITE_FAULT,

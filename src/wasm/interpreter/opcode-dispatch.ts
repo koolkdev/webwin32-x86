@@ -2,7 +2,7 @@ import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
 import { dispatchBytes, interpreterOpcodeDispatchRoot } from "./dispatch.js";
-import { emitInterpreterExit, type InterpreterExitTarget } from "./exit.js";
+import { emitWasmSirExit, type WasmSirExitTarget } from "../sir/exit.js";
 import { emitLoadGuestByte } from "./guest-bytes.js";
 import { emitInstructionHandlerForLeaf } from "./instruction-handlers.js";
 import type { InterpreterStateCache } from "./state.js";
@@ -10,7 +10,7 @@ import type { InterpreterStateCache } from "./state.js";
 type OpcodeDispatchContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   state: InterpreterStateCache;
-  exit: InterpreterExitTarget;
+  exit: WasmSirExitTarget;
   eipLocal: number;
   opcodeOffset: number;
   byteLocal: number;
@@ -23,7 +23,7 @@ type OpcodeDispatchContext = Readonly<{
 export function emitOpcodeDispatch(
   body: WasmFunctionBodyEncoder,
   state: InterpreterStateCache,
-  exit: InterpreterExitTarget,
+  exit: WasmSirExitTarget,
   opcodeOffset: number,
   byteLocal: number,
   addressLocal: number,
@@ -116,7 +116,7 @@ function emitOpcodeDispatchNode(node: typeof interpreterOpcodeDispatchRoot, cont
 }
 
 function emitUnsupportedOpcodeExit(context: OpcodeDispatchContext): void {
-  emitInterpreterExit(context.body, context.exit, ExitReason.UNSUPPORTED, () => {
+  emitWasmSirExit(context.body, context.exit, ExitReason.UNSUPPORTED, () => {
     context.body.localGet(context.opcodeLocal);
   });
 }

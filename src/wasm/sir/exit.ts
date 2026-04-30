@@ -1,14 +1,14 @@
 import { encodeExit, type ExitReason } from "../exit.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 
-export type InterpreterExitTarget = Readonly<{
+export type WasmSirExitTarget = Readonly<{
   exitLocal: number;
   exitLabelDepth: number;
 }>;
 
-export function emitInterpreterExit(
+export function emitWasmSirExit(
   body: WasmFunctionBodyEncoder,
-  target: InterpreterExitTarget,
+  target: WasmSirExitTarget,
   exitReason: ExitReason,
   emitPayload: () => void,
   extraDepth = 0
@@ -18,9 +18,9 @@ export function emitInterpreterExit(
   body.br(target.exitLabelDepth + extraDepth);
 }
 
-export function emitInterpreterExitConstPayload(
+export function emitWasmSirExitConstPayload(
   body: WasmFunctionBodyEncoder,
-  target: InterpreterExitTarget,
+  target: WasmSirExitTarget,
   exitReason: ExitReason,
   payload: number,
   extraDepth = 0

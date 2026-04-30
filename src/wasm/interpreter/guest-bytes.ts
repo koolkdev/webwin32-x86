@@ -1,7 +1,7 @@
 import { wasmMemoryIndex } from "../abi.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
-import { emitInterpreterExit, type InterpreterExitTarget } from "./exit.js";
+import { emitWasmSirExit, type WasmSirExitTarget } from "../sir/exit.js";
 
 const wasmPageByteShift = 16;
 const u32ByteLength = 4;
@@ -12,7 +12,7 @@ export function emitLoadGuestByte(
   instructionOffset: number,
   addressLocal: number,
   byteLocal: number,
-  exit?: InterpreterExitTarget
+  exit?: WasmSirExitTarget
 ): void {
   body.localGet(eipLocal);
 
@@ -31,7 +31,7 @@ export function emitLoadGuestByteForDecodeAtDynamicOffset(
   instructionOffsetLocal: number,
   addressLocal: number,
   byteLocal: number,
-  exit?: InterpreterExitTarget
+  exit?: WasmSirExitTarget
 ): void {
   body.localGet(eipLocal).localGet(instructionOffsetLocal).i32Add().localSet(addressLocal);
   emitFaultIfGuestByteOutOfBounds(body, addressLocal, exit);
@@ -44,7 +44,7 @@ export function emitLoadGuestU32ForDecode(
   instructionOffset: number,
   addressLocal: number,
   valueLocal: number,
-  exit?: InterpreterExitTarget
+  exit?: WasmSirExitTarget
 ): void {
   body.localGet(eipLocal);
 
@@ -63,7 +63,7 @@ export function emitLoadGuestU32ForDecodeAtDynamicOffset(
   instructionOffsetLocal: number,
   addressLocal: number,
   valueLocal: number,
-  exit?: InterpreterExitTarget
+  exit?: WasmSirExitTarget
 ): void {
   body.localGet(eipLocal).localGet(instructionOffsetLocal).i32Add().localSet(addressLocal);
   emitFaultIfGuestU32OutOfBounds(body, addressLocal, exit);
@@ -73,7 +73,7 @@ export function emitLoadGuestU32ForDecodeAtDynamicOffset(
 function emitFaultIfGuestByteOutOfBounds(
   body: WasmFunctionBodyEncoder,
   addressLocal: number,
-  exit?: InterpreterExitTarget
+  exit?: WasmSirExitTarget
 ): void {
   body
     .localGet(addressLocal)
@@ -90,7 +90,7 @@ function emitFaultIfGuestByteOutOfBounds(
 function emitFaultIfGuestU32OutOfBounds(
   body: WasmFunctionBodyEncoder,
   addressLocal: number,
-  exit?: InterpreterExitTarget
+  exit?: WasmSirExitTarget
 ): void {
   body
     .memorySize(wasmMemoryIndex.guest)
@@ -108,7 +108,7 @@ function emitFaultIfGuestU32OutOfBounds(
 function emitDecodeFault(
   body: WasmFunctionBodyEncoder,
   addressLocal: number,
-  exit: InterpreterExitTarget | undefined,
+  exit: WasmSirExitTarget | undefined,
   extraDepth: number
 ): void {
   if (exit === undefined) {
@@ -116,7 +116,7 @@ function emitDecodeFault(
     throw new Error("interpreter guest-byte fault requires an exit target");
   }
 
-  emitInterpreterExit(body, exit, ExitReason.DECODE_FAULT, () => {
+  emitWasmSirExit(body, exit, ExitReason.DECODE_FAULT, () => {
     body.localGet(addressLocal);
   }, extraDepth);
 }
