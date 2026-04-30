@@ -6,13 +6,9 @@ import { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
-import {
-  createJitSirState,
-  jitBindingsFromIsaInstruction,
-  type JitOperandBinding,
-  type JitSirState,
-  lowerSirWithJitContext
-} from "./sir-context.js";
+import { jitBindingsFromIsaInstruction, type JitOperandBinding } from "./operand-bindings.js";
+import { lowerSirWithJitContext } from "./sir-context.js";
+import { createJitSirState, type JitSirState } from "./state.js";
 import { type WasmSirExitTarget } from "../sir/exit.js";
 
 export type JitSirBlockInstruction = Readonly<{

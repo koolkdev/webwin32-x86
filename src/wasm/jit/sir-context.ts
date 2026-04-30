@@ -1,41 +1,27 @@
-import type { Mem32Operand, Reg32 } from "../../arch/x86/instruction/types.js";
-import type { IsaDecodedInstruction, IsaOperandBinding } from "../../arch/x86/isa/decoder/types.js";
-import type { SirProgram, StorageRef } from "../../arch/x86/sir/types.js";
-import type { SirStorageExpr, SirValueExpr } from "../../arch/x86/sir/expressions.js";
-import { reg32 } from "../../arch/x86/instruction/types.js";
-import { i32 } from "../../core/state/cpu-state.js";
-import { stateOffset } from "../abi.js";
+import type { SirProgram } from "../../arch/x86/sir/types.js";
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
 import { emitCondition } from "../sir/conditions.js";
 import { wasmSirLocalEflagsStorage } from "../sir/eflags.js";
-import { emitWasmSirExitFromI32Stack, type WasmSirExitTarget } from "../sir/exit.js";
+import type { WasmSirExitTarget } from "../sir/exit.js";
 import { emitSetFlags } from "../sir/flags.js";
-import { lowerSirToWasm, type WasmSirEmitHelpers } from "../sir/lower.js";
-import { emitWasmSirLoadGuestU32FromStack, emitWasmSirStoreGuestU32 } from "../sir/memory.js";
-import type { WasmSirReg32Storage } from "../sir/registers.js";
-import { emitLoadStateU32, emitStoreStateU32 } from "../sir/state.js";
-
-export type JitOperandBinding =
-  | Readonly<{ kind: "static.reg32"; reg: Reg32 }>
-  | Readonly<{ kind: "static.mem32"; ea: Mem32Operand }>
-  | Readonly<{ kind: "static.imm32"; value: number }>
-  | Readonly<{ kind: "static.relTarget"; target: number }>;
-
-export type JitReg32Storage = WasmSirReg32Storage & Readonly<{
-  emitFlushDirty(): void;
-}>;
-
-export type JitSirState = Readonly<{
-  regs: JitReg32Storage;
-  eipLocal: number;
-  eflagsLocal: number;
-  instructionCountLocal: number;
-  emitEntryLoads(): void;
-  emitExitStores(): void;
-}>;
+import { lowerSirToWasm } from "../sir/lower.js";
+import {
+  emitJitConditionalJump,
+  emitJitControlExit,
+  emitJitHostTrap,
+  emitJitNext,
+  emitJitNextEip
+} from "./control.js";
+import type { JitOperandBinding } from "./operand-bindings.js";
+import {
+  canInlineJitGet32,
+  emitJitAddress32,
+  emitJitGet32,
+  emitJitSet32
+} from "./operands.js";
+import type { JitSirState } from "./state.js";
 
 export type JitSirContext = Readonly<{
   body: WasmFunctionBodyEncoder;
@@ -47,394 +33,24 @@ export type JitSirContext = Readonly<{
   nextMode: "continue" | "exit";
 }>;
 
-export function createJitSirState(body: WasmFunctionBodyEncoder): JitSirState {
-  const regs = createLazyJitReg32Storage(body);
-  const eipLocal = body.addLocal(wasmValueType.i32);
-  const eflagsLocal = body.addLocal(wasmValueType.i32);
-  const instructionCountLocal = body.addLocal(wasmValueType.i32);
-
-  return {
-    regs,
-    eipLocal,
-    eflagsLocal,
-    instructionCountLocal,
-    emitEntryLoads: () => {
-      emitLoadStateU32(body, stateOffset.eip);
-      body.localSet(eipLocal);
-      emitLoadStateU32(body, stateOffset.eflags);
-      body.localSet(eflagsLocal);
-      emitLoadStateU32(body, stateOffset.instructionCount);
-      body.localSet(instructionCountLocal);
-    },
-    emitExitStores: () => {
-      regs.emitFlushDirty();
-      emitStoreStateU32(body, stateOffset.eip, () => {
-        body.localGet(eipLocal);
-      });
-      emitStoreStateU32(body, stateOffset.eflags, () => {
-        body.localGet(eflagsLocal);
-      });
-      emitStoreStateU32(body, stateOffset.instructionCount, () => {
-        body.localGet(instructionCountLocal);
-      });
-    }
-  };
-}
-
-function createLazyJitReg32Storage(body: WasmFunctionBodyEncoder): JitReg32Storage {
-  const locals = new Map<Reg32, number>();
-  const dirty = new Set<Reg32>();
-
-  return {
-    emitGet: (reg) => {
-      body.localGet(localForReg(body, locals, reg, "load"));
-    },
-    emitSet: (reg, emitValue) => {
-      const local = localForReg(body, locals, reg, "unused");
-
-      emitValue();
-      body.localSet(local);
-      dirty.add(reg);
-    },
-    emitFlushDirty: () => {
-      for (const reg of reg32) {
-        if (!dirty.has(reg)) {
-          continue;
-        }
-
-        const local = locals.get(reg);
-
-        if (local === undefined) {
-          throw new Error(`dirty JIT register has no local: ${reg}`);
-        }
-
-        emitStoreStateU32(body, stateOffset[reg], () => {
-          body.localGet(local);
-        });
-      }
-    }
-  };
-}
-
-function localForReg(
-  body: WasmFunctionBodyEncoder,
-  locals: Map<Reg32, number>,
-  reg: Reg32,
-  mode: "load" | "unused"
-): number {
-  let local = locals.get(reg);
-
-  if (local !== undefined) {
-    return local;
-  }
-
-  local = body.addLocal(wasmValueType.i32);
-  locals.set(reg, local);
-
-  if (mode === "load") {
-    emitLoadStateU32(body, stateOffset[reg]);
-    body.localSet(local);
-  }
-
-  return local;
-}
-
 export function lowerSirWithJitContext(program: SirProgram, context: JitSirContext): void {
   const eflags = wasmSirLocalEflagsStorage(context.body, context.state.eflagsLocal);
-  const regs = context.state.regs;
 
   lowerSirToWasm(program, {
     body: context.body,
     scratch: context.scratch,
-    expression: { canInlineGet32: (source) => canInlineGet32(context, source) },
-    emitGet32: (source, helpers) => emitGet32(context, regs, source, helpers),
-    emitSet32: (target, value, helpers) => emitSet32(context, regs, target, value, helpers),
-    emitAddress32: (source) => emitAddress32(context, regs, source),
+    expression: { canInlineGet32: (source) => canInlineJitGet32(context, source) },
+    emitGet32: (source, helpers) => emitJitGet32(context, source, helpers),
+    emitSet32: (target, value, helpers) => emitJitSet32(context, target, value, helpers),
+    emitAddress32: (source) => emitJitAddress32(context, source),
     emitSetFlags: (producer, inputs, helpers) =>
       emitSetFlags(context.body, context.scratch, eflags, producer, inputs, helpers),
     emitCondition: (cc) => emitCondition(context.body, eflags, cc),
-    emitNext: () => emitNext(context),
-    emitNextEip: () => emitNextEip(context),
-    emitJump: (target, helpers) => emitControlExit(context, target, ExitReason.JUMP, helpers),
+    emitNext: () => emitJitNext(context),
+    emitNextEip: () => emitJitNextEip(context),
+    emitJump: (target, helpers) => emitJitControlExit(context, target, ExitReason.JUMP, helpers),
     emitConditionalJump: (condition, taken, notTaken, helpers) =>
-      emitConditionalJump(context, condition, taken, notTaken, helpers),
-    emitHostTrap: (vector, helpers) => emitHostTrap(context, vector, helpers)
+      emitJitConditionalJump(context, condition, taken, notTaken, helpers),
+    emitHostTrap: (vector, helpers) => emitJitHostTrap(context, vector, helpers)
   });
-}
-
-export function jitBindingsFromIsaInstruction(instruction: IsaDecodedInstruction): readonly JitOperandBinding[] {
-  return instruction.operands.map(jitBindingFromIsaOperand);
-}
-
-function jitBindingFromIsaOperand(operand: IsaOperandBinding): JitOperandBinding {
-  switch (operand.kind) {
-    case "reg32":
-      return { kind: "static.reg32", reg: operand.reg };
-    case "mem32":
-      return { kind: "static.mem32", ea: operand };
-    case "imm32":
-      return { kind: "static.imm32", value: operand.value };
-    case "relTarget":
-      return { kind: "static.relTarget", target: operand.target };
-  }
-}
-
-function canInlineGet32(context: JitSirContext, source: StorageRef): boolean {
-  switch (source.kind) {
-    case "reg":
-      return true;
-    case "mem":
-      return false;
-    case "operand": {
-      const binding = operandBinding(context, source.index);
-
-      return binding.kind !== "static.mem32";
-    }
-  }
-}
-
-function emitGet32(
-  context: JitSirContext,
-  regs: WasmSirReg32Storage,
-  source: SirStorageExpr,
-  helpers: WasmSirEmitHelpers
-): void {
-  switch (source.kind) {
-    case "operand":
-      emitGetBinding32(context, regs, operandBinding(context, source.index));
-      return;
-    case "reg":
-      regs.emitGet(source.reg);
-      return;
-    case "mem":
-      helpers.emitValue(source.address);
-      emitLoadGuestU32FromStack(context);
-      return;
-  }
-}
-
-function emitSet32(
-  context: JitSirContext,
-  regs: WasmSirReg32Storage,
-  target: SirStorageExpr,
-  value: SirValueExpr,
-  helpers: WasmSirEmitHelpers
-): void {
-  switch (target.kind) {
-    case "operand":
-      emitSetBinding32(context, regs, operandBinding(context, target.index), value, helpers);
-      return;
-    case "reg":
-      regs.emitSet(target.reg, () => helpers.emitValue(value));
-      return;
-    case "mem":
-      emitStoreMem32(context, () => helpers.emitValue(target.address), () => helpers.emitValue(value));
-      return;
-  }
-}
-
-function emitAddress32(context: JitSirContext, regs: WasmSirReg32Storage, source: SirStorageExpr): void {
-  if (source.kind !== "operand") {
-    throw new Error(`unsupported address32 source for JIT SIR: ${source.kind}`);
-  }
-
-  const binding = operandBinding(context, source.index);
-
-  if (binding.kind !== "static.mem32") {
-    throw new Error(`address32 operand is not memory: ${binding.kind}`);
-  }
-
-  emitEffectiveAddress32(context.body, regs, binding.ea);
-}
-
-function emitGetBinding32(context: JitSirContext, regs: WasmSirReg32Storage, binding: JitOperandBinding): void {
-  switch (binding.kind) {
-    case "static.reg32":
-      regs.emitGet(binding.reg);
-      return;
-    case "static.mem32":
-      emitEffectiveAddress32(context.body, regs, binding.ea);
-      emitLoadGuestU32FromStack(context);
-      return;
-    case "static.imm32":
-      context.body.i32Const(i32(binding.value));
-      return;
-    case "static.relTarget":
-      context.body.i32Const(i32(binding.target));
-      return;
-  }
-}
-
-function emitSetBinding32(
-  context: JitSirContext,
-  regs: WasmSirReg32Storage,
-  binding: JitOperandBinding,
-  value: SirValueExpr,
-  helpers: WasmSirEmitHelpers
-): void {
-  switch (binding.kind) {
-    case "static.reg32":
-      regs.emitSet(binding.reg, () => helpers.emitValue(value));
-      return;
-    case "static.mem32":
-      emitStoreMem32(
-        context,
-        () => emitEffectiveAddress32(context.body, regs, binding.ea),
-        () => helpers.emitValue(value)
-      );
-      return;
-    case "static.imm32":
-    case "static.relTarget":
-      throw new Error(`cannot set ${binding.kind} operand`);
-  }
-}
-
-function emitEffectiveAddress32(body: WasmFunctionBodyEncoder, regs: WasmSirReg32Storage, ea: Mem32Operand): void {
-  let hasTerm = false;
-
-  if (ea.base !== undefined) {
-    regs.emitGet(ea.base);
-    hasTerm = true;
-  }
-
-  if (ea.index !== undefined) {
-    regs.emitGet(ea.index);
-    emitScale(body, ea.scale);
-
-    if (hasTerm) {
-      body.i32Add();
-    }
-
-    hasTerm = true;
-  }
-
-  if (ea.disp !== 0 || !hasTerm) {
-    body.i32Const(i32(ea.disp));
-
-    if (hasTerm) {
-      body.i32Add();
-    }
-  }
-}
-
-function emitScale(body: WasmFunctionBodyEncoder, scale: Mem32Operand["scale"]): void {
-  const shift = scale === 1 ? 0 : scale === 2 ? 1 : scale === 4 ? 2 : 3;
-
-  if (shift !== 0) {
-    body.i32Const(shift).i32Shl();
-  }
-}
-
-function emitNext(context: JitSirContext): void {
-  context.body.i32Const(i32(context.nextEip));
-  emitComplete(context);
-
-  if (context.nextMode === "exit") {
-    context.body.i32Const(i32(context.nextEip));
-    emitWasmSirExitFromI32Stack(context.body, context.exit, ExitReason.FALLTHROUGH);
-  }
-}
-
-function emitNextEip(context: JitSirContext): void {
-  context.body.i32Const(i32(context.nextEip));
-}
-
-function emitConditionalJump(
-  context: JitSirContext,
-  condition: SirValueExpr,
-  taken: SirValueExpr,
-  notTaken: SirValueExpr,
-  helpers: WasmSirEmitHelpers
-): void {
-  helpers.emitValue(condition);
-  context.body.ifBlock();
-  emitControlExit(context, taken, ExitReason.BRANCH_TAKEN, helpers, 1);
-  context.body.endBlock();
-  emitControlExit(context, notTaken, ExitReason.BRANCH_NOT_TAKEN, helpers);
-}
-
-function emitHostTrap(context: JitSirContext, vector: SirValueExpr, helpers: WasmSirEmitHelpers): void {
-  const vectorLocal = context.scratch.allocLocal(wasmValueType.i32);
-
-  try {
-    helpers.emitValue(vector);
-    context.body.localSet(vectorLocal);
-    context.body.i32Const(i32(context.nextEip));
-    emitComplete(context);
-    context.body.localGet(vectorLocal);
-    emitWasmSirExitFromI32Stack(context.body, context.exit, ExitReason.HOST_TRAP);
-  } finally {
-    context.scratch.freeLocal(vectorLocal);
-  }
-}
-
-function emitControlExit(
-  context: JitSirContext,
-  target: SirValueExpr,
-  exitReason: ExitReason,
-  helpers: WasmSirEmitHelpers,
-  extraDepth = 0
-): void {
-  const targetLocal = context.scratch.allocLocal(wasmValueType.i32);
-
-  try {
-    helpers.emitValue(target);
-    context.body.localSet(targetLocal);
-    context.body.localGet(targetLocal);
-    emitComplete(context);
-    context.body.localGet(targetLocal);
-    emitWasmSirExitFromI32Stack(context.body, context.exit, exitReason, extraDepth);
-  } finally {
-    context.scratch.freeLocal(targetLocal);
-  }
-}
-
-function emitComplete(context: JitSirContext): void {
-  context.body.localSet(context.state.eipLocal);
-  context.body
-    .localGet(context.state.instructionCountLocal)
-    .i32Const(1)
-    .i32Add()
-    .localSet(context.state.instructionCountLocal);
-}
-
-function emitLoadGuestU32FromStack(context: JitSirContext): void {
-  const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
-
-  try {
-    emitWasmSirLoadGuestU32FromStack(context, addressLocal);
-  } finally {
-    context.scratch.freeLocal(addressLocal);
-  }
-}
-
-function emitStoreMem32(
-  context: JitSirContext,
-  emitAddress: () => void,
-  emitValue: () => void,
-  faultExtraDepth = 1
-): void {
-  const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
-  const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
-
-  try {
-    emitAddress();
-    context.body.localSet(addressLocal);
-    emitValue();
-    context.body.localSet(valueLocal);
-    emitWasmSirStoreGuestU32(context, addressLocal, valueLocal, faultExtraDepth);
-  } finally {
-    context.scratch.freeLocal(valueLocal);
-    context.scratch.freeLocal(addressLocal);
-  }
-}
-
-function operandBinding(context: JitSirContext, index: number): JitOperandBinding {
-  const binding = context.operands[index];
-
-  if (binding === undefined) {
-    throw new Error(`missing JIT operand binding: ${index}`);
-  }
-
-  return binding;
 }
