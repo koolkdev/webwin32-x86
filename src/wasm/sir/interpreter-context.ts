@@ -7,6 +7,7 @@ import type {
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
+import { wasmSirLocalEflagsStorage } from "./eflags.js";
 import { emitWasmSirExit, type WasmSirExitTarget } from "./exit.js";
 import { emitWasmSirLoadGuestU32, emitWasmSirStoreGuestU32 } from "./memory.js";
 import {
@@ -51,6 +52,8 @@ export type InterpreterSirContext = Readonly<{
 }>;
 
 export function lowerSirWithInterpreterContext(program: SirProgram, context: InterpreterSirContext): void {
+  const eflags = wasmSirLocalEflagsStorage(context.body, context.state.eflagsLocal);
+
   lowerSirToWasm(program, {
     body: context.body,
     scratch: context.scratch,
@@ -58,8 +61,8 @@ export function lowerSirWithInterpreterContext(program: SirProgram, context: Int
     emitSet32: (target, value, helpers) => emitSet32(context, target, value, helpers),
     emitAddress32: (source) => emitAddress32(context, source),
     emitSetFlags: (producer, inputs, helpers) =>
-      emitSetFlags(context.body, context.scratch, context.state.eflagsLocal, producer, inputs, helpers),
-    emitCondition: (cc) => emitCondition(context.body, context.state.eflagsLocal, cc),
+      emitSetFlags(context.body, context.scratch, eflags, producer, inputs, helpers),
+    emitCondition: (cc) => emitCondition(context.body, eflags, cc),
     emitNext: () => emitNext(context),
     emitNextEip: () => emitNextEip(context),
     emitJump: (target, helpers) => emitJump(context, target, helpers),

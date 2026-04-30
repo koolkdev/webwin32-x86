@@ -6,11 +6,10 @@ import type {
 import { FLAG_PRODUCERS } from "../../arch/x86/sir/flags.js";
 import type { FlagProducerName, ValueRef } from "../../arch/x86/sir/types.js";
 import { eflagsMask, i32 } from "../../core/state/cpu-state.js";
-import { stateOffset } from "../abi.js";
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
-import { emitLoadStateU32, emitStoreStateU32 } from "../interpreter/state.js";
+import type { WasmSirEflagsStorage } from "./eflags.js";
 import type { WasmSirEmitHelpers } from "./lower.js";
 
 const flagOrder = ["CF", "PF", "AF", "ZF", "SF", "OF"] as const satisfies readonly FlagName[];
@@ -18,7 +17,7 @@ const flagOrder = ["CF", "PF", "AF", "ZF", "SF", "OF"] as const satisfies readon
 export function emitSetFlags(
   body: WasmFunctionBodyEncoder,
   scratch: WasmLocalScratchAllocator,
-  eflagsLocal: number | undefined,
+  eflags: WasmSirEflagsStorage,
   producer: FlagProducerName,
   inputs: Readonly<Record<string, ValueRef>>,
   helpers: WasmSirEmitHelpers
@@ -38,20 +37,10 @@ export function emitSetFlags(
       }
     }
 
-    if (eflagsLocal === undefined) {
-      emitStoreStateU32(body, stateOffset.eflags, () => {
-        emitLoadStateU32(body, stateOffset.eflags);
-        body.i32Const(i32(~writtenFlagsMask(defs))).i32And().localGet(flagsLocal).i32Or();
-      });
-    } else {
-      body
-        .localGet(eflagsLocal)
-        .i32Const(i32(~writtenFlagsMask(defs)))
-        .i32And()
-        .localGet(flagsLocal)
-        .i32Or()
-        .localSet(eflagsLocal);
-    }
+    eflags.emitStore(() => {
+      eflags.emitLoad();
+      body.i32Const(i32(~writtenFlagsMask(defs))).i32And().localGet(flagsLocal).i32Or();
+    });
   } finally {
     scratch.freeLocal(flagsLocal);
   }
