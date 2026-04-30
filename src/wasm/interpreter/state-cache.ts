@@ -61,10 +61,6 @@ export function emitFlushInterpreterStateCache(body: WasmFunctionBodyEncoder, ca
   });
 }
 
-export function emitLoadReg32(body: WasmFunctionBodyEncoder, cache: InterpreterStateCache, reg: Reg32): void {
-  body.localGet(cache.regs[reg]);
-}
-
 export function emitCopyReg32FromIndexLocal(
   body: WasmFunctionBodyEncoder,
   cache: InterpreterStateCache,
@@ -86,16 +82,6 @@ export function emitStoreReg32ByIndexLocal(
   emitReg32IndexDispatch(body, indexLocal, (reg) => {
     body.localGet(valueLocal).localSet(cache.regs[reg]);
   });
-}
-
-export function emitStoreReg32(
-  body: WasmFunctionBodyEncoder,
-  cache: InterpreterStateCache,
-  reg: Reg32,
-  emitValue: () => void
-): void {
-  emitValue();
-  body.localSet(cache.regs[reg]);
 }
 
 export function emitOpcodeRegIndex(body: WasmFunctionBodyEncoder, opcodeLocal: number): void {

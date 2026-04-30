@@ -10,15 +10,14 @@ import { wasmValueType } from "../encoder/types.js";
 import { wasmSirLocalEflagsStorage } from "./eflags.js";
 import { emitWasmSirExit, type WasmSirExitTarget } from "./exit.js";
 import { emitWasmSirLoadGuestU32, emitWasmSirStoreGuestU32 } from "./memory.js";
+import { wasmSirLocalReg32Storage, type WasmSirReg32Storage } from "./registers.js";
 import {
   emitCompleteInstruction,
   emitCompleteInstructionWithTarget,
   emitCopyReg32FromIndexLocal,
-  emitLoadReg32,
   emitModRmRmIndex,
   emitOpcodeRegIndex,
-  emitStoreReg32ByIndexLocal,
-  emitStoreReg32
+  emitStoreReg32ByIndexLocal
 } from "../interpreter/state-cache.js";
 import type { InterpreterStateCache } from "../interpreter/state-cache.js";
 import { emitIfModRmMemory, emitIfModRmRegister, emitModRmRegIndex } from "../interpreter/modrm-bits.js";
@@ -53,12 +52,13 @@ export type InterpreterSirContext = Readonly<{
 
 export function lowerSirWithInterpreterContext(program: SirProgram, context: InterpreterSirContext): void {
   const eflags = wasmSirLocalEflagsStorage(context.body, context.state.eflagsLocal);
+  const regs = wasmSirLocalReg32Storage(context.body, context.state.regs);
 
   lowerSirToWasm(program, {
     body: context.body,
     scratch: context.scratch,
-    emitGet32: (source, helpers) => emitGet32(context, source, helpers),
-    emitSet32: (target, value, helpers) => emitSet32(context, target, value, helpers),
+    emitGet32: (source, helpers) => emitGet32(context, regs, source, helpers),
+    emitSet32: (target, value, helpers) => emitSet32(context, regs, target, value, helpers),
     emitAddress32: (source) => emitAddress32(context, source),
     emitSetFlags: (producer, inputs, helpers) =>
       emitSetFlags(context.body, context.scratch, eflags, producer, inputs, helpers),
@@ -72,13 +72,18 @@ export function lowerSirWithInterpreterContext(program: SirProgram, context: Int
   });
 }
 
-function emitGet32(context: InterpreterSirContext, source: StorageRef, helpers: WasmSirEmitHelpers): void {
+function emitGet32(
+  context: InterpreterSirContext,
+  regs: WasmSirReg32Storage,
+  source: StorageRef,
+  helpers: WasmSirEmitHelpers
+): void {
   switch (source.kind) {
     case "operand":
-      emitGetOperand32(context, source.index);
+      emitGetOperand32(context, regs, source.index);
       return;
     case "reg":
-      emitLoadReg32(context.body, context.state, source.reg);
+      regs.emitGet(source.reg);
       return;
     case "mem":
       helpers.emitValue(source.address);
@@ -89,16 +94,17 @@ function emitGet32(context: InterpreterSirContext, source: StorageRef, helpers: 
 
 function emitSet32(
   context: InterpreterSirContext,
+  regs: WasmSirReg32Storage,
   target: StorageRef,
   value: ValueRef,
   helpers: WasmSirEmitHelpers
 ): void {
   switch (target.kind) {
     case "operand":
-      emitSetOperand32(context, target.index, value, helpers);
+      emitSetOperand32(context, regs, target.index, value, helpers);
       return;
     case "reg":
-      emitStoreReg32(context.body, context.state, target.reg, () => helpers.emitValue(value));
+      regs.emitSet(target.reg, () => helpers.emitValue(value));
       return;
     case "mem":
       emitStoreMem32(context, () => helpers.emitValue(target.address), () => helpers.emitValue(value));
@@ -120,7 +126,7 @@ function emitAddress32(context: InterpreterSirContext, source: StorageRef): void
   context.body.localGet(binding.addressLocal);
 }
 
-function emitGetOperand32(context: InterpreterSirContext, index: number): void {
+function emitGetOperand32(context: InterpreterSirContext, regs: WasmSirReg32Storage, index: number): void {
   const binding = operandBinding(context, index);
 
   switch (binding.kind) {
@@ -137,7 +143,7 @@ function emitGetOperand32(context: InterpreterSirContext, index: number): void {
       emitWasmSirLoadGuestU32(context, binding.addressLocal);
       return;
     case "implicit.reg32":
-      emitLoadReg32(context.body, context.state, binding.reg);
+      regs.emitGet(binding.reg);
       return;
     case "imm32":
     case "relTarget32":
@@ -148,6 +154,7 @@ function emitGetOperand32(context: InterpreterSirContext, index: number): void {
 
 function emitSetOperand32(
   context: InterpreterSirContext,
+  regs: WasmSirReg32Storage,
   index: number,
   value: ValueRef,
   helpers: WasmSirEmitHelpers
@@ -168,7 +175,7 @@ function emitSetOperand32(
       emitStoreMem32(context, () => context.body.localGet(binding.addressLocal), () => helpers.emitValue(value));
       return;
     case "implicit.reg32":
-      emitStoreReg32(context.body, context.state, binding.reg, () => helpers.emitValue(value));
+      regs.emitSet(binding.reg, () => helpers.emitValue(value));
       return;
     case "imm32":
     case "relTarget32":
