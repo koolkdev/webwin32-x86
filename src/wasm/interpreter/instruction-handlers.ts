@@ -3,7 +3,7 @@ import type { ExpandedInstructionSpec, ModRmMatch, Reg3 } from "../../arch/x86/i
 import type { OpcodeDispatchLeaf } from "../../arch/x86/isa/decoder/opcode-dispatch.js";
 import type { SemanticTemplate } from "../../arch/x86/sir/types.js";
 import { wasmValueType } from "../encoder/types.js";
-import { lowerSirWithInterpreterContext } from "../sir/interpreter-context.js";
+import { lowerSirWithInterpreterContext } from "./sir-context.js";
 import { emitLoadGuestByte } from "./guest-bytes.js";
 import type { InterpreterHandlerContext } from "./handler-context.js";
 import { emitModRmDispatch, type ModRmDispatchCase } from "./modrm-dispatch.js";

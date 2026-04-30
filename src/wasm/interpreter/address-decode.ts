@@ -1,5 +1,5 @@
 import type { OperandSpec } from "../../arch/x86/isa/schema/types.js";
-import type { InterpreterOperandBinding } from "../sir/interpreter-context.js";
+import type { InterpreterOperandBinding } from "./sir-context.js";
 import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
 import { emitWasmSirExit } from "../sir/exit.js";

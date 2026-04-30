@@ -7,25 +7,25 @@ import type {
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
-import { wasmSirLocalEflagsStorage } from "./eflags.js";
-import { emitWasmSirExit, type WasmSirExitTarget } from "./exit.js";
-import { emitWasmSirLoadGuestU32, emitWasmSirLoadGuestU32FromStack, emitWasmSirStoreGuestU32 } from "./memory.js";
-import { wasmSirLocalReg32Storage, type WasmSirReg32Storage } from "./registers.js";
+import { wasmSirLocalEflagsStorage } from "../sir/eflags.js";
+import { emitWasmSirExit, type WasmSirExitTarget } from "../sir/exit.js";
+import { emitWasmSirLoadGuestU32, emitWasmSirLoadGuestU32FromStack, emitWasmSirStoreGuestU32 } from "../sir/memory.js";
+import { wasmSirLocalReg32Storage, type WasmSirReg32Storage } from "../sir/registers.js";
 import {
   emitCompleteInstruction,
   emitCompleteInstructionWithTarget
-} from "../interpreter/state-cache.js";
+} from "./state-cache.js";
 import {
   emitLoadReg32ByIndex,
   emitModRmRmIndex,
   emitOpcodeRegIndex,
   emitStoreReg32ByIndex
-} from "../interpreter/register-dispatch.js";
-import type { InterpreterStateCache } from "../interpreter/state-cache.js";
-import { emitIfModRmMemory, emitIfModRmRegister, emitModRmIsRegister, emitModRmRegIndex } from "../interpreter/modrm-bits.js";
-import { lowerSirToWasm, type WasmSirEmitHelpers } from "./lower.js";
-import { emitSetFlags } from "./flags.js";
-import { emitCondition } from "./conditions.js";
+} from "./register-dispatch.js";
+import type { InterpreterStateCache } from "./state-cache.js";
+import { emitIfModRmMemory, emitIfModRmRegister, emitModRmIsRegister, emitModRmRegIndex } from "./modrm-bits.js";
+import { lowerSirToWasm, type WasmSirEmitHelpers } from "../sir/lower.js";
+import { emitSetFlags } from "../sir/flags.js";
+import { emitCondition } from "../sir/conditions.js";
 import { ExitReason } from "../exit.js";
 
 export type InterpreterOperandBinding =

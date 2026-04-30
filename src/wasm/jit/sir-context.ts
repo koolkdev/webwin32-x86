@@ -9,14 +9,14 @@ import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
-import { emitCondition } from "./conditions.js";
-import { wasmSirLocalEflagsStorage } from "./eflags.js";
-import { emitWasmSirExit, type WasmSirExitTarget } from "./exit.js";
-import { emitSetFlags } from "./flags.js";
-import { lowerSirToWasm, type WasmSirEmitHelpers } from "./lower.js";
-import { emitWasmSirLoadGuestU32FromStack, emitWasmSirStoreGuestU32 } from "./memory.js";
-import { wasmSirLocalReg32Storage, type WasmSirReg32Storage } from "./registers.js";
-import { emitLoadStateU32, emitStoreStateU32 } from "./state.js";
+import { emitCondition } from "../sir/conditions.js";
+import { wasmSirLocalEflagsStorage } from "../sir/eflags.js";
+import { emitWasmSirExit, type WasmSirExitTarget } from "../sir/exit.js";
+import { emitSetFlags } from "../sir/flags.js";
+import { lowerSirToWasm, type WasmSirEmitHelpers } from "../sir/lower.js";
+import { emitWasmSirLoadGuestU32FromStack, emitWasmSirStoreGuestU32 } from "../sir/memory.js";
+import { wasmSirLocalReg32Storage, type WasmSirReg32Storage } from "../sir/registers.js";
+import { emitLoadStateU32, emitStoreStateU32 } from "../sir/state.js";
 
 export type JitOperandBinding =
   | Readonly<{ kind: "static.reg32"; reg: Reg32 }>

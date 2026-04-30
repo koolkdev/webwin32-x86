@@ -14,8 +14,8 @@ import {
   type JitOperandBinding,
   type JitSirState,
   lowerSirWithJitContext
-} from "./jit-context.js";
-import { type WasmSirExitTarget } from "./exit.js";
+} from "./sir-context.js";
+import { type WasmSirExitTarget } from "../sir/exit.js";
 
 export type JitSirBlockInstruction = Readonly<{
   instructionId: string;

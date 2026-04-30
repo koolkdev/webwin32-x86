@@ -6,7 +6,7 @@ import type { IsaDecodedInstruction } from "../../../arch/x86/isa/decoder/types.
 import { createCpuState, cpuStateFields, type CpuState } from "../../../core/state/cpu-state.js";
 import { wasmBlockExportName, wasmImport, stateOffset } from "../../abi.js";
 import { decodeExit, ExitReason, type DecodedExit } from "../../exit.js";
-import { buildJitSirBlock, encodeJitSirBlock } from "../jit-block.js";
+import { buildJitSirBlock, encodeJitSirBlock } from "../block.js";
 
 const startAddress = 0x1000;
 const preservedEflags = 0xffff_0000;
