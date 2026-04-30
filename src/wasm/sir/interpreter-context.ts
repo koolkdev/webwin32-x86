@@ -5,10 +5,10 @@ import type {
   ValueRef
 } from "../../arch/x86/sir/types.js";
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
-import { emitLoadGuestU32, emitStoreGuestU32 } from "../codegen/guest-memory.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { emitWasmSirExit, type WasmSirExitTarget } from "./exit.js";
+import { emitWasmSirLoadGuestU32, emitWasmSirStoreGuestU32 } from "./memory.js";
 import {
   emitCompleteInstruction,
   emitCompleteInstructionWithTarget,
@@ -131,9 +131,7 @@ function emitGetOperand32(context: InterpreterSirContext, index: number): void {
       emitGetRm32(context, binding);
       return;
     case "mem32":
-      emitLoadGuestU32(context.body, binding.addressLocal, (access, emitPayload) => {
-        emitMemoryFaultExit(context, access, emitPayload, 1);
-      });
+      emitWasmSirLoadGuestU32(context, binding.addressLocal);
       return;
     case "implicit.reg32":
       emitLoadReg32(context.body, context.state, binding.reg);
@@ -245,9 +243,7 @@ function emitGetRm32(
       emitCopyReg32FromIndexLocal(context.body, context.state, indexLocal, valueLocal);
     });
     emitIfModRmMemory(context.body, binding.modRmLocal, () => {
-      emitLoadGuestU32(context.body, binding.addressLocal, (access, emitPayload) => {
-        emitMemoryFaultExit(context, access, emitPayload, 2);
-      });
+      emitWasmSirLoadGuestU32(context, binding.addressLocal, 2);
       context.body.localSet(valueLocal);
     });
     context.body.localGet(valueLocal);
@@ -293,9 +289,7 @@ function emitLoadGuestU32FromStack(context: InterpreterSirContext): void {
 
   try {
     context.body.localSet(addressLocal);
-    emitLoadGuestU32(context.body, addressLocal, (access, emitPayload) => {
-      emitMemoryFaultExit(context, access, emitPayload, 1);
-    });
+    emitWasmSirLoadGuestU32(context, addressLocal);
   } finally {
     context.scratch.freeLocal(addressLocal);
   }
@@ -315,28 +309,11 @@ function emitStoreMem32(
     context.body.localSet(addressLocal);
     emitValue();
     context.body.localSet(valueLocal);
-    emitStoreGuestU32(context.body, addressLocal, valueLocal, (access, emitPayload) => {
-      emitMemoryFaultExit(context, access, emitPayload, faultExtraDepth);
-    });
+    emitWasmSirStoreGuestU32(context, addressLocal, valueLocal, faultExtraDepth);
   } finally {
     context.scratch.freeLocal(valueLocal);
     context.scratch.freeLocal(addressLocal);
   }
-}
-
-function emitMemoryFaultExit(
-  context: InterpreterSirContext,
-  access: "read" | "write",
-  emitPayload: () => void,
-  extraDepth: number
-): void {
-  emitWasmSirExit(
-    context.body,
-    context.exit,
-    access === "read" ? ExitReason.MEMORY_READ_FAULT : ExitReason.MEMORY_WRITE_FAULT,
-    emitPayload,
-    extraDepth
-  );
 }
 
 function operandBinding(context: InterpreterSirContext, index: number): InterpreterOperandBinding {
