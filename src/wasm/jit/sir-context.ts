@@ -4,7 +4,6 @@ import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
 import { emitCondition } from "../sir/conditions.js";
 import { wasmSirLocalEflagsStorage } from "../sir/eflags.js";
-import type { WasmSirExitTarget } from "../sir/exit.js";
 import { emitSetFlags } from "../sir/flags.js";
 import { lowerSirToWasm } from "../sir/lower.js";
 import {
@@ -21,13 +20,13 @@ import {
   emitJitGet32,
   emitJitSet32
 } from "./operands.js";
-import type { JitSirState } from "./state.js";
+import type { JitExitTarget, JitSirState } from "./state.js";
 
 export type JitSirContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
   state: JitSirState;
-  exit: WasmSirExitTarget;
+  exit: JitExitTarget;
   operands: readonly JitOperandBinding[];
   nextEip: number;
   nextMode: "continue" | "exit";

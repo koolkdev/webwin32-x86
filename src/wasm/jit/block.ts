@@ -8,13 +8,13 @@ import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
 import { jitBindingsFromIsaInstruction, type JitOperandBinding } from "./operand-bindings.js";
 import { lowerSirWithJitContext } from "./sir-context.js";
-import { createJitSirState, type JitSirState } from "./state.js";
-import { type WasmSirExitTarget } from "../sir/exit.js";
+import { createJitSirState, type JitExitTarget, type JitSirState } from "./state.js";
 
 export type JitSirBlockInstruction = Readonly<{
   instructionId: string;
   sir: SirProgram;
   operands: readonly JitOperandBinding[];
+  eip: number;
   nextEip: number;
   nextMode: "continue" | "exit";
 }>;
@@ -41,6 +41,7 @@ export function buildJitSirBlock(instructions: readonly IsaDecodedInstruction[])
         instructionId: instruction.spec.id,
         sir,
         operands: jitBindingsFromIsaInstruction(instruction),
+        eip: instruction.address,
         nextEip: instruction.nextEip,
         nextMode: isLastInstruction ? "exit" : "continue"
       };
@@ -68,15 +69,13 @@ export function encodeJitSirBlock(block: JitSirBlock): Uint8Array<ArrayBuffer> {
   const body = new WasmFunctionBodyEncoder();
   const scratch = new WasmLocalScratchAllocator(body);
   const exitLocal = body.addLocal(wasmValueType.i64);
-  const state = createJitSirState(body);
-  const exit: WasmSirExitTarget = { exitLocal, exitLabelDepth: 0 };
+  const state = createJitSirState(body, block.instructions.length);
+  const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitGeneration };
 
   state.emitEntryLoads();
-  body.block();
+  emitExitGenerationBlocks(body, state.maxExitGeneration);
   lowerJitSirBlockToWasm(block, { body, scratch, state, exit });
-  body.endBlock();
-  state.emitExitStores();
-  body.localGet(exitLocal).returnFromFunction();
+  emitExitGenerationStores(body, state, exitLocal);
   scratch.assertClear();
   body.end();
 
@@ -92,10 +91,11 @@ function lowerJitSirBlockToWasm(
     body: WasmFunctionBodyEncoder;
     scratch: WasmLocalScratchAllocator;
     state: JitSirState;
-    exit: WasmSirExitTarget;
+    exit: JitExitTarget;
   }>
 ): void {
   for (const instruction of block.instructions) {
+    context.state.beginInstruction(context.exit, instruction.eip);
     lowerSirWithJitContext(instruction.sir, {
       body: context.body,
       scratch: context.scratch,
@@ -105,6 +105,25 @@ function lowerJitSirBlockToWasm(
       nextEip: instruction.nextEip,
       nextMode: instruction.nextMode
     });
+  }
+}
+
+function emitExitGenerationBlocks(body: WasmFunctionBodyEncoder, maxExitGeneration: number): void {
+  for (let generation = 0; generation <= maxExitGeneration; generation += 1) {
+    void generation;
+    body.block();
+  }
+}
+
+function emitExitGenerationStores(
+  body: WasmFunctionBodyEncoder,
+  state: JitSirState,
+  exitLocal: number
+): void {
+  for (let generation = state.maxExitGeneration; generation >= 0; generation -= 1) {
+    body.endBlock();
+    state.emitExitStoresForGeneration(generation);
+    body.localGet(exitLocal).returnFromFunction();
   }
 }
 
