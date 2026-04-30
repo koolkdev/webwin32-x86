@@ -4,8 +4,8 @@ export function push32(s: SirBuilder, value: ValueInput): void {
   const esp = s.get32(s.reg32("esp"));
   const nextEsp = s.i32Sub(esp, 4);
 
-  s.set32(s.reg32("esp"), nextEsp);
   s.set32(s.mem32(nextEsp), value);
+  s.set32(s.reg32("esp"), nextEsp);
 }
 
 export function pop32(s: SirBuilder): VarRef {

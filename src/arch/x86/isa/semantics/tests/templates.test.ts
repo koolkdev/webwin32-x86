@@ -114,8 +114,8 @@ test("call semantic resolves target before pushing return address", () => {
     { op: "get32", dst: v(0), source: op(0) },
     { op: "get32", dst: v(1), source: reg("esp") },
     { op: "i32.sub", dst: v(2), a: v(1), b: c32(4) },
-    { op: "set32", target: reg("esp"), value: v(2) },
     { op: "set32", target: mem(v(2)), value: { kind: "nextEip" } },
+    { op: "set32", target: reg("esp"), value: v(2) },
     { op: "jump", target: v(0) }
   ]);
 });
