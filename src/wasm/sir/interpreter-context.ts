@@ -13,12 +13,14 @@ import { emitWasmSirLoadGuestU32, emitWasmSirStoreGuestU32 } from "./memory.js";
 import { wasmSirLocalReg32Storage, type WasmSirReg32Storage } from "./registers.js";
 import {
   emitCompleteInstruction,
-  emitCompleteInstructionWithTarget,
+  emitCompleteInstructionWithTarget
+} from "../interpreter/state-cache.js";
+import {
   emitCopyReg32FromIndexLocal,
   emitModRmRmIndex,
   emitOpcodeRegIndex,
   emitStoreReg32ByIndexLocal
-} from "../interpreter/state-cache.js";
+} from "../interpreter/register-dispatch.js";
 import type { InterpreterStateCache } from "../interpreter/state-cache.js";
 import { emitIfModRmMemory, emitIfModRmRegister, emitModRmRegIndex } from "../interpreter/modrm-bits.js";
 import { lowerSirToWasm, type WasmSirEmitHelpers } from "./lower.js";
@@ -250,7 +252,7 @@ function emitGetRm32(
     emitIfModRmRegister(context.body, binding.modRmLocal, () => {
       emitModRmRmIndex(context.body, binding.modRmLocal);
       context.body.localSet(indexLocal);
-      emitCopyReg32FromIndexLocal(context.body, context.state, indexLocal, valueLocal);
+      emitCopyReg32FromIndexLocal(context.body, context.state.regs, indexLocal, valueLocal);
     });
     emitIfModRmMemory(context.body, binding.modRmLocal, () => {
       emitWasmSirLoadGuestU32(context, binding.addressLocal, 2);
@@ -278,7 +280,7 @@ function emitSetRm32(
     emitIfModRmRegister(context.body, binding.modRmLocal, () => {
       emitModRmRmIndex(context.body, binding.modRmLocal);
       context.body.localSet(indexLocal);
-      emitStoreReg32ByIndexLocal(context.body, context.state, indexLocal, valueLocal);
+      emitStoreReg32ByIndexLocal(context.body, context.state.regs, indexLocal, valueLocal);
     });
     emitIfModRmMemory(context.body, binding.modRmLocal, () => {
       emitStoreMem32(
@@ -343,7 +345,7 @@ function emitLoadDynamicReg32(context: InterpreterSirContext, emitIndex: () => v
   try {
     emitIndex();
     context.body.localSet(indexLocal);
-    emitCopyReg32FromIndexLocal(context.body, context.state, indexLocal, valueLocal);
+    emitCopyReg32FromIndexLocal(context.body, context.state.regs, indexLocal, valueLocal);
     context.body.localGet(valueLocal);
   } finally {
     context.scratch.freeLocal(valueLocal);
@@ -365,7 +367,7 @@ function emitStoreDynamicReg32(
     context.body.localSet(indexLocal);
     helpers.emitValue(value);
     context.body.localSet(valueLocal);
-    emitStoreReg32ByIndexLocal(context.body, context.state, indexLocal, valueLocal);
+    emitStoreReg32ByIndexLocal(context.body, context.state.regs, indexLocal, valueLocal);
   } finally {
     context.scratch.freeLocal(valueLocal);
     context.scratch.freeLocal(indexLocal);

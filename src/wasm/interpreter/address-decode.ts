@@ -13,7 +13,7 @@ import {
 } from "./decode-reader.js";
 import type { InterpreterHandlerContext } from "./handler-context.js";
 import { emitIfModRmMemory, emitIfModRmRegister } from "./modrm-bits.js";
-import { emitCopyReg32FromIndexLocal } from "./state-cache.js";
+import { emitCopyReg32FromIndexLocal } from "./register-dispatch.js";
 
 export function decodeModRmRmOperand(
   operand: Extract<OperandSpec, { kind: "modrm.rm" }>,
@@ -98,16 +98,16 @@ function decodeDynamicNonSibMemoryAddress(
       advanceDecodeReader(decodeReader, 4, context);
     });
     emitIfLocalNotEqualsConst(context, rmLocal, 0b101, () => {
-      emitCopyReg32FromIndexLocal(context.body, context.state, rmLocal, addressLocal);
+      emitCopyReg32FromIndexLocal(context.body, context.state.regs, rmLocal, addressLocal);
     });
   });
   emitIfLocalEqualsConst(context, modLocal, 1, () => {
-    emitCopyReg32FromIndexLocal(context.body, context.state, rmLocal, addressLocal);
+    emitCopyReg32FromIndexLocal(context.body, context.state.regs, rmLocal, addressLocal);
     addDisplacementToAddress(8, decodeReader, context, addressLocal);
     advanceDecodeReader(decodeReader, 1, context);
   });
   emitIfLocalEqualsConst(context, modLocal, 2, () => {
-    emitCopyReg32FromIndexLocal(context.body, context.state, rmLocal, addressLocal);
+    emitCopyReg32FromIndexLocal(context.body, context.state.regs, rmLocal, addressLocal);
     addDisplacementToAddress(32, decodeReader, context, addressLocal);
     advanceDecodeReader(decodeReader, 4, context);
   });
@@ -163,7 +163,7 @@ function addSibIndexToAddress(context: InterpreterHandlerContext, sibLocal: numb
   try {
     emitIfLocalNotEqualsConst(context, indexLocal, 0b100, () => {
       context.body.localGet(addressLocal);
-      emitCopyReg32FromIndexLocal(context.body, context.state, indexLocal, indexValueLocal);
+      emitCopyReg32FromIndexLocal(context.body, context.state.regs, indexLocal, indexValueLocal);
       context.body.localGet(indexValueLocal);
       context.body.localGet(sibLocal).i32Const(6).i32ShrU().i32Shl();
       context.body.i32Add().localSet(addressLocal);
@@ -179,7 +179,7 @@ function addRegIndexLocalToAddress(context: InterpreterHandlerContext, indexLoca
 
   try {
     context.body.localGet(addressLocal);
-    emitCopyReg32FromIndexLocal(context.body, context.state, indexLocal, valueLocal);
+    emitCopyReg32FromIndexLocal(context.body, context.state.regs, indexLocal, valueLocal);
     context.body.localGet(valueLocal);
     context.body.i32Add().localSet(addressLocal);
   } finally {
