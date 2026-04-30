@@ -17,6 +17,7 @@ import {
   emitStoreReg32FromStack
 } from "../interpreter/state.js";
 import { lowerSirToWasm, type WasmSirEmitHelpers } from "./lower.js";
+import { emitSetFlags } from "./flags.js";
 
 export type InterpreterOperandBinding =
   | Readonly<{ kind: "opcode.reg32"; opcodeLocal: number }>
@@ -38,6 +39,8 @@ export function lowerSirWithInterpreterContext(program: SirProgram, context: Int
     scratch: context.scratch,
     emitGet32: (source) => emitGet32(context, source),
     emitSet32: (target, value, helpers) => emitSet32(context, target, value, helpers),
+    emitSetFlags: (producer, inputs, helpers) =>
+      emitSetFlags(context.body, context.scratch, producer, inputs, helpers),
     emitNext: () => emitNext(context),
     emitNextEip: () => emitNextEip(context)
   });

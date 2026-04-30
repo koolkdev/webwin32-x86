@@ -9,6 +9,21 @@ import { lowerSirWithInterpreterContext, type InterpreterOperandBinding } from "
 import { emitLoadGuestByte, emitLoadGuestU32ForDecode } from "./guest-bytes.js";
 import { emitRegisterModRmDispatch } from "./modrm-dispatch.js";
 
+const supportedNoModRmIds = new Set(["mov.r32_imm32"]);
+const supportedModRmIds = new Set([
+  "mov.r32_rm32",
+  "mov.rm32_r32",
+  "add.rm32_r32",
+  "add.r32_rm32",
+  "sub.rm32_r32",
+  "sub.r32_rm32",
+  "xor.rm32_r32",
+  "xor.r32_rm32",
+  "cmp.rm32_r32",
+  "cmp.r32_rm32",
+  "test.rm32_r32"
+]);
+
 export type InterpreterHandlerContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
@@ -21,15 +36,14 @@ export function emitInstructionHandlerForLeaf(
   leaf: OpcodeDispatchLeaf,
   context: InterpreterHandlerContext
 ): boolean {
-  const noModRmInstruction = leaf.noModRmCandidates.find((candidate) => candidate.spec.id === "mov.r32_imm32");
+  const noModRmInstruction = leaf.noModRmCandidates.find((candidate) => supportedNoModRmIds.has(candidate.spec.id));
 
   if (noModRmInstruction !== undefined) {
     emitInstructionHandler(noModRmInstruction, context, undefined);
     return true;
   }
 
-  const modRmInstruction = uniqueModRmCandidates(leaf)
-    .find((candidate) => candidate.spec.id === "mov.r32_rm32" || candidate.spec.id === "mov.rm32_r32");
+  const modRmInstruction = uniqueModRmCandidates(leaf).find((candidate) => supportedModRmIds.has(candidate.spec.id));
 
   if (modRmInstruction === undefined) {
     return false;

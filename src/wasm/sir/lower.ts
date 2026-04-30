@@ -4,6 +4,8 @@ import type {
   StorageRef,
   ValueRef
 } from "../../arch/x86/sir/types.js";
+import type { FlagProducerName } from "../../arch/x86/sir/types.js";
+import { i32 } from "../../core/state/cpu-state.js";
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
@@ -13,6 +15,7 @@ export type WasmSirLoweringContext = Readonly<{
   scratch: WasmLocalScratchAllocator;
   emitGet32(source: StorageRef, helpers: WasmSirEmitHelpers): void;
   emitSet32(target: StorageRef, value: ValueRef, helpers: WasmSirEmitHelpers): void;
+  emitSetFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueRef>>, helpers: WasmSirEmitHelpers): void;
   emitNext(helpers: WasmSirEmitHelpers): void;
   emitNextEip(helpers: WasmSirEmitHelpers): void;
 }>;
@@ -55,6 +58,21 @@ function lowerSirOp(
     case "set32":
       context.emitSet32(op.target, op.value, helpers);
       return;
+    case "i32.add":
+      lowerI32BinaryOp(op.dst.id, op.a, op.b, context, vars, "add");
+      return;
+    case "i32.sub":
+      lowerI32BinaryOp(op.dst.id, op.a, op.b, context, vars, "sub");
+      return;
+    case "i32.xor":
+      lowerI32BinaryOp(op.dst.id, op.a, op.b, context, vars, "xor");
+      return;
+    case "i32.and":
+      lowerI32BinaryOp(op.dst.id, op.a, op.b, context, vars, "and");
+      return;
+    case "flags.set":
+      context.emitSetFlags(op.producer, op.inputs, helpers);
+      return;
     case "next":
       context.emitNext(helpers);
       return;
@@ -63,13 +81,44 @@ function lowerSirOp(
   }
 }
 
+function lowerI32BinaryOp(
+  dstId: number,
+  a: ValueRef,
+  b: ValueRef,
+  context: WasmSirLoweringContext,
+  vars: Map<number, number>,
+  op: "add" | "sub" | "xor" | "and"
+): void {
+  const local = localForVar(context, vars, dstId);
+
+  emitValue(context, vars, a);
+  emitValue(context, vars, b);
+
+  switch (op) {
+    case "add":
+      context.body.i32Add();
+      break;
+    case "sub":
+      context.body.i32Sub();
+      break;
+    case "xor":
+      context.body.i32Xor();
+      break;
+    case "and":
+      context.body.i32And();
+      break;
+  }
+
+  context.body.localSet(local);
+}
+
 function emitValue(context: WasmSirLoweringContext, vars: Map<number, number>, value: ValueRef): void {
   switch (value.kind) {
     case "var":
       context.body.localGet(requiredVarLocal(vars, value.id));
       return;
     case "const32":
-      context.body.i32Const(value.value);
+      context.body.i32Const(i32(value.value));
       return;
     case "nextEip":
       context.emitNextEip({ emitValue: (nested) => emitValue(context, vars, nested) });
