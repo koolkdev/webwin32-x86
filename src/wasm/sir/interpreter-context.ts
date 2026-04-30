@@ -19,8 +19,8 @@ import {
   emitOpcodeRegIndex,
   emitStoreReg32ByIndexLocal,
   emitStoreReg32
-} from "../interpreter/state.js";
-import type { InterpreterStateCache } from "../interpreter/state.js";
+} from "../interpreter/state-cache.js";
+import type { InterpreterStateCache } from "../interpreter/state-cache.js";
 import { emitIfModRmMemory, emitIfModRmRegister, emitModRmRegIndex } from "../interpreter/modrm-bits.js";
 import { lowerSirToWasm, type WasmSirEmitHelpers } from "./lower.js";
 import { emitSetFlags } from "./flags.js";

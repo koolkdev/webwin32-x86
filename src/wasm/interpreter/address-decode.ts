@@ -13,7 +13,7 @@ import {
 } from "./decode-reader.js";
 import type { InterpreterHandlerContext } from "./handler-context.js";
 import { emitIfModRmMemory, emitIfModRmRegister } from "./modrm-bits.js";
-import { emitCopyReg32FromIndexLocal } from "./state.js";
+import { emitCopyReg32FromIndexLocal } from "./state-cache.js";
 
 export function decodeModRmRmOperand(
   operand: Extract<OperandSpec, { kind: "modrm.rm" }>,

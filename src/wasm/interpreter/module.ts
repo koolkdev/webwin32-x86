@@ -12,7 +12,7 @@ import {
   createInterpreterStateCache,
   emitFlushInterpreterStateCache,
   emitLoadInterpreterStateCache
-} from "./state.js";
+} from "./state-cache.js";
 
 const fuelParam = 0;
 

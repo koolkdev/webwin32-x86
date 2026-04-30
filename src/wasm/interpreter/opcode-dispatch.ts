@@ -5,7 +5,7 @@ import { dispatchBytes, interpreterOpcodeDispatchRoot } from "./dispatch.js";
 import { emitWasmSirExit, type WasmSirExitTarget } from "../sir/exit.js";
 import { emitLoadGuestByte } from "./guest-bytes.js";
 import { emitInstructionHandlerForLeaf } from "./instruction-handlers.js";
-import type { InterpreterStateCache } from "./state.js";
+import type { InterpreterStateCache } from "./state-cache.js";
 
 type OpcodeDispatchContext = Readonly<{
   body: WasmFunctionBodyEncoder;

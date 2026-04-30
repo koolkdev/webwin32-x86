@@ -1,7 +1,7 @@
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import type { WasmSirExitTarget } from "../sir/exit.js";
-import type { InterpreterStateCache } from "./state.js";
+import type { InterpreterStateCache } from "./state-cache.js";
 
 export type InterpreterHandlerContext = Readonly<{
   body: WasmFunctionBodyEncoder;
