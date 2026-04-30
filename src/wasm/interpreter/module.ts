@@ -1,5 +1,6 @@
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex, stateOffset } from "../abi.js";
-import { emitExitResult, emitExitResultFromStackPayload } from "../codegen/exit.js";
+import { emitExitResult } from "../codegen/exit.js";
+import { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
@@ -27,6 +28,7 @@ export function encodeInterpreterModule(): Uint8Array<ArrayBuffer> {
   const byteLocal = body.addLocal(wasmValueType.i32);
   const addressLocal = body.addLocal(wasmValueType.i32);
   const opcodeLocal = body.addLocal(wasmValueType.i32);
+  const scratch = new WasmLocalScratchAllocator(body);
 
   body.localGet(fuelParam).i32Eqz().ifBlock();
   emitExitResult(body, ExitReason.INSTRUCTION_LIMIT, 0).returnFromFunction();
@@ -38,7 +40,8 @@ export function encodeInterpreterModule(): Uint8Array<ArrayBuffer> {
     .localSet(eipLocal);
 
   emitLoadGuestByte(body, eipLocal, 0, addressLocal, byteLocal);
-  emitOpcodeDispatch(body, eipLocal, 0, byteLocal, addressLocal, opcodeLocal);
+  emitOpcodeDispatch(body, eipLocal, 0, byteLocal, addressLocal, opcodeLocal, scratch);
+  scratch.assertClear();
   body.end();
 
   const functionIndex = module.addFunction(typeIndex, body);
