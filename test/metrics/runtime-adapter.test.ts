@@ -12,7 +12,6 @@ import {
 } from "../../src/metrics/runtime-adapter.js";
 import { RuntimeInstance, type RuntimeInstanceCounters } from "../../src/runtime/instance/runtime-instance.js";
 import { TierMode } from "../../src/runtime/tiering/tier-policy.js";
-import { guestReader } from "../../src/test-support/decode-reader.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 const movAddFixture = [
@@ -41,11 +40,11 @@ test("runtime_metrics_adapter_records_cache_counters", () => {
   const { collector } = runAndRecord(branchLoopFixture, { eax: 3 });
   const snapshot = collector.snapshot();
 
-  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockCacheHits], 2);
-  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockCacheMisses], 2);
-  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockProfileInstructions], 10);
-  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockRuns], 4);
-  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockEdges], 3);
+  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockCacheHits], 0);
+  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockCacheMisses], 0);
+  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockProfileInstructions], 0);
+  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockRuns], 0);
+  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockEdges], 0);
 });
 
 test("runtime_metrics_adapter_records_wasm_block_cache_counters", () => {
@@ -77,11 +76,11 @@ test("runtime_metrics_adapter_records_stop_reason", () => {
 
 test("runtime_metrics_adapter_does_not_change_execution", () => {
   const runtimeWithMetrics = new RuntimeInstance({
-    decodeReader: guestReader(branchLoopFixture),
+    program: { baseAddress: startAddress, bytes: branchLoopFixture },
     initialState: { eax: 3, eip: startAddress }
   });
   const runtimeWithoutMetrics = new RuntimeInstance({
-    decodeReader: guestReader(branchLoopFixture),
+    program: { baseAddress: startAddress, bytes: branchLoopFixture },
     initialState: { eax: 3, eip: startAddress }
   });
   const collector = new MetricsCollector();
@@ -115,7 +114,7 @@ function runAndRecord(
   tierMode: TierMode = TierMode.T1_ONLY
 ): Readonly<{ collector: MetricsCollector; runtime: RuntimeInstance; result: ReturnType<RuntimeInstance["run"]> }> {
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader(bytes),
+    program: { baseAddress: startAddress, bytes },
     initialState: { ...initialState, eip: startAddress },
     tierMode
   });

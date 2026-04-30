@@ -6,7 +6,6 @@ import { ArrayBufferGuestMemory } from "../../src/core/memory/guest-memory.js";
 import { cpuStatesEqual, type CpuState } from "../../src/core/state/cpu-state.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
 import { TierMode } from "../../src/runtime/tiering/tier-policy.js";
-import { guestReader, TestDecodeReader } from "../../src/test-support/decode-reader.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 const supportedJumpFixture = [
@@ -97,7 +96,6 @@ test("unsupported_x86_still_stops_as_guest_unsupported", () => {
 
 test("decode_fault_still_stops_as_decode_fault", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: new TestDecodeReader([]),
     initialState: { eip: startAddress },
     tierMode: TierMode.T2_ONLY
   });
@@ -111,7 +109,7 @@ test("decode_fault_still_stops_as_decode_fault", () => {
 test("t2_requires_wasm_shareable_guest_memory", () => {
   throws(
     () => new RuntimeInstance({
-      decodeReader: guestReader(supportedJumpFixture),
+      program: { baseAddress: startAddress, bytes: supportedJumpFixture },
       guestMemory: new ArrayBufferGuestMemory(0x1_0000),
       tierMode: TierMode.T2_ONLY
     }),
@@ -121,7 +119,7 @@ test("t2_requires_wasm_shareable_guest_memory", () => {
 
 test("t2_rounds_guest_memory_size_to_wasm_page", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader(supportedJumpFixture),
+    program: { baseAddress: startAddress, bytes: supportedJumpFixture },
     initialState: { eip: startAddress },
     guestMemoryByteLength: 0x40,
     tierMode: TierMode.T2_ONLY
@@ -147,7 +145,7 @@ function runRuntime(
   initialState: Partial<CpuState> = {}
 ): Readonly<{ instance: RuntimeInstance; result: RunResult }> {
   const instance = new RuntimeInstance({
-    decodeReader: guestReader(bytes),
+    program: { baseAddress: startAddress, bytes },
     initialState: { ...initialState, eip: startAddress },
     tierMode
   });

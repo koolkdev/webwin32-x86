@@ -5,28 +5,27 @@ import { StopReason, type RunResult } from "../../src/core/execution/run-result.
 import { cpuStatesEqual, type CpuState } from "../../src/core/state/cpu-state.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
 import { TierMode } from "../../src/runtime/tiering/tier-policy.js";
-import { guestReader } from "../../src/test-support/decode-reader.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
-const jumpOut = [0xeb, 0x00] as const;
+const hostTrap = [0xcd, 0x2e] as const;
 
 test("wasm_lea_base_disp_matches_interpreter", () => {
   const fixture = [
     0x8d, 0x43, 0x10,
-    ...jumpOut
+    ...hostTrap
   ] as const;
   const { t0, t1, t2 } = runAllTiers(fixture, { ebx: 0x100 });
 
   assertRuntimeMatches(t1, t0);
   assertRuntimeMatches(t2, t1);
-  strictEqual(t2.result.stopReason, StopReason.NONE);
+  strictEqual(t2.result.stopReason, StopReason.HOST_TRAP);
   strictEqual(t2.instance.state.eax, 0x110);
 });
 
 test("wasm_lea_sib_matches_interpreter", () => {
   const fixture = [
     0x8d, 0x44, 0x8b, 0x10,
-    ...jumpOut
+    ...hostTrap
   ] as const;
   const { t0, t1, t2 } = runAllTiers(fixture, { ebx: 0x100, ecx: 3 });
 
@@ -38,7 +37,7 @@ test("wasm_lea_sib_matches_interpreter", () => {
 test("wasm_lea_absolute_disp_matches_interpreter", () => {
   const fixture = [
     0x8d, 0x05, 0x78, 0x56, 0x34, 0x12,
-    ...jumpOut
+    ...hostTrap
   ] as const;
   const { t0, t1, t2 } = runAllTiers(fixture, { eax: 0xffff_ffff });
 
@@ -50,7 +49,7 @@ test("wasm_lea_absolute_disp_matches_interpreter", () => {
 test("wasm_effective_address_wrap_matches_interpreter", () => {
   const fixture = [
     0x8d, 0x04, 0xcb,
-    ...jumpOut
+    ...hostTrap
   ] as const;
   const { t0, t1, t2 } = runAllTiers(fixture, {
     ebx: 0xffff_fff0,
@@ -100,7 +99,7 @@ function runRuntime(
   initialState: Partial<CpuState> = {}
 ): RuntimeRun {
   const instance = new RuntimeInstance({
-    decodeReader: guestReader(bytes),
+    program: { baseAddress: startAddress, bytes },
     initialState: { ...initialState, eip: startAddress },
     tierMode
   });

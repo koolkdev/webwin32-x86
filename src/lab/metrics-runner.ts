@@ -1,5 +1,3 @@
-import type { DecodeReader, DecodeRegion } from "../arch/x86/block-decoder/decode-reader.js";
-import type { DecodeFault } from "../arch/x86/decoder/decode-error.js";
 import type { RunResult } from "../core/execution/run-result.js";
 import type { GuestMemory } from "../core/memory/guest-memory.js";
 import { u32, type CpuState } from "../core/state/cpu-state.js";
@@ -129,7 +127,7 @@ function runFixture(
   }> = {}
 ): Readonly<{ runtime: RuntimeInstance; result: RunResult }> {
   const runtime = new RuntimeInstance({
-    decodeReader: decodeReaderForFixture(fixture),
+    program: { baseAddress: fixture.loadAddress, bytes: fixture.bytes },
     initialState: { ...fixture.initialState, eip: fixture.entryEip },
     ...(options.tierMode === undefined ? {} : { tierMode: options.tierMode }),
     ...runtimeMemoryOptions(fixture)
@@ -144,14 +142,6 @@ function runFixture(
   });
 
   return { runtime, result };
-}
-
-function decodeReaderForFixture(fixture: RawX86Fixture): DecodeReader {
-  return new RawX86FixtureDecodeReader({
-    kind: "guest-bytes",
-    baseAddress: fixture.loadAddress,
-    bytes: Uint8Array.from(fixture.bytes)
-  });
 }
 
 function runtimeMemoryOptions(fixture: RawX86Fixture): Readonly<{
@@ -191,49 +181,4 @@ function assertRunCount(value: number, label: string): void {
   if (!Number.isInteger(value) || value < 0) {
     throw new RangeError(`${label} must be a non-negative integer`);
   }
-}
-
-class RawX86FixtureDecodeReader implements DecodeReader {
-  constructor(readonly region: DecodeRegion) {}
-
-  regionAt(eip: number): DecodeRegion | undefined {
-    const offset = eip - this.region.baseAddress;
-
-    return offset >= 0 && offset < this.region.bytes.length
-      ? this.region
-      : undefined;
-  }
-
-  readU8(eip: number): number | DecodeFault {
-    const region = this.regionAt(eip);
-
-    if (region?.kind !== "guest-bytes") {
-      return decodeFault(eip);
-    }
-
-    const value = region.bytes[eip - region.baseAddress];
-
-    return value ?? decodeFault(eip);
-  }
-
-  sliceFrom(eip: number, maxBytes: number): Uint8Array<ArrayBufferLike> | DecodeFault {
-    const region = this.regionAt(eip);
-
-    if (region?.kind !== "guest-bytes") {
-      return decodeFault(eip);
-    }
-
-    const offset = eip - region.baseAddress;
-
-    return region.bytes.slice(offset, offset + maxBytes);
-  }
-}
-
-function decodeFault(eip: number): DecodeFault {
-  return {
-    reason: "truncated",
-    address: eip,
-    offset: 0,
-    raw: []
-  };
 }

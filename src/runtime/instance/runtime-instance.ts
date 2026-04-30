@@ -1,3 +1,4 @@
+import { GuestMemoryDecodeReader } from "../../arch/x86/block-decoder/guest-memory-decode-reader.js";
 import type { DecodeReader } from "../../arch/x86/block-decoder/decode-reader.js";
 import type { RunResult } from "../../core/execution/run-result.js";
 import { ArrayBufferGuestMemory, type GuestMemory } from "../../core/memory/guest-memory.js";
@@ -6,8 +7,16 @@ import type { MetricSink } from "../../metrics/collector.js";
 import { recordRuntimeMetrics, type RuntimeMetrics } from "../../metrics/runtime-adapter.js";
 import { DecodedBlockCache, type DecodedBlockCacheCounters } from "../decoded-block-cache/decoded-block-cache.js";
 import { DecodedBlockRunner, type ProfileCounters } from "../decoded-block-runner/decoded-block-runner.js";
+import {
+  loadProgramRegions,
+  normalizeProgramRegions,
+  programDecodeRegions,
+  requiredProgramByteLength,
+  type RuntimeProgramInput,
+  type RuntimeProgramRegion
+} from "./program-loader.js";
 import { runT0InstructionInterpreter } from "../tiering/executors/t0-instruction-interpreter.js";
-import { runT1DecodedBlocks } from "../tiering/executors/t1-decoded-blocks.js";
+import { runT1WasmInterpreter } from "../tiering/executors/t1-wasm-interpreter.js";
 import { runT2WasmBlocks } from "../tiering/executors/t2-wasm-blocks.js";
 import type { RuntimeTierExecutionContext } from "../tiering/executors/context.js";
 import { defaultTierMode, TierMode } from "../tiering/tier-policy.js";
@@ -16,9 +25,10 @@ import {
   WasmRuntimeContext,
   type WasmBlockCacheCounters
 } from "../wasm-block/wasm-runtime-context.js";
+import { WasmInterpreterRuntime } from "../../wasm/interpreter/runtime.js";
 
 export type RuntimeInstanceOptions = Readonly<{
-  decodeReader: DecodeReader;
+  program?: RuntimeProgramInput;
   initialState?: Partial<CpuState>;
   guestMemory?: GuestMemory;
   guestMemoryByteLength?: number;
@@ -54,24 +64,30 @@ export class RuntimeInstance {
   readonly decodedBlockCache: DecodedBlockCache;
   readonly #decodedBlockRunner: DecodedBlockRunner;
   readonly #tierExecutors: Readonly<Record<TierMode, RuntimeTierExecutor>>;
+  readonly #wasmInterpreterRuntime: WasmInterpreterRuntime | undefined;
   readonly #wasmRuntime: WasmRuntimeContext | undefined;
   readonly #tierMode: TierMode;
 
   constructor(options: RuntimeInstanceOptions) {
     this.state = createCpuState(options.initialState ?? {});
     this.#tierMode = options.tierMode ?? defaultTierMode;
-    const guestMemoryResources = createGuestMemoryResources(options, this.#tierMode);
+    const program = normalizeProgramRegions(options.program);
+    const guestMemoryResources = createGuestMemoryResources(options, this.#tierMode, program);
 
     this.guestMemory = guestMemoryResources.guestMemory;
-    this.#wasmRuntime = guestMemoryResources.wasmGuestMemory === undefined
+    loadProgramBytesToGuestMemory(program, this.guestMemory);
+    this.decodeReader = new GuestMemoryDecodeReader(this.guestMemory, programDecodeRegions(program));
+    this.#wasmInterpreterRuntime = this.#tierMode === TierMode.T1_ONLY
+      ? requiredWasmGuestMemory(guestMemoryResources, "T1")
+      : undefined;
+    this.#wasmRuntime = this.#tierMode !== TierMode.T2_ONLY || guestMemoryResources.wasmGuestMemory === undefined
       ? undefined
       : new WasmRuntimeContext(guestMemoryResources.wasmGuestMemory);
-    this.decodeReader = options.decodeReader;
     this.decodedBlockCache = new DecodedBlockCache(this.decodeReader);
     this.#decodedBlockRunner = new DecodedBlockRunner(this.decodedBlockCache);
     this.#tierExecutors = {
       [TierMode.T0_ONLY]: (instructionLimit) => runT0InstructionInterpreter(this.#executionContext(), instructionLimit),
-      [TierMode.T1_ONLY]: (instructionLimit) => runT1DecodedBlocks(this.#executionContext(), instructionLimit),
+      [TierMode.T1_ONLY]: (instructionLimit) => runT1WasmInterpreter(this.#executionContext(), instructionLimit),
       [TierMode.T2_ONLY]: (instructionLimit) =>
         runT2WasmBlocks(this.#executionContext(), instructionLimit)
     };
@@ -118,9 +134,11 @@ export class RuntimeInstance {
       decodedBlockRunner: this.#decodedBlockRunner
     };
 
-    return this.#wasmRuntime === undefined
-      ? context
-      : { ...context, wasmRuntime: this.#wasmRuntime };
+    return {
+      ...context,
+      ...(this.#wasmInterpreterRuntime === undefined ? {} : { wasmInterpreterRuntime: this.#wasmInterpreterRuntime }),
+      ...(this.#wasmRuntime === undefined ? {} : { wasmRuntime: this.#wasmRuntime })
+    };
   }
 
   #runtimeMetrics(result: RunResult): RuntimeMetrics {
@@ -137,22 +155,26 @@ export class RuntimeInstance {
   }
 }
 
-function createGuestMemoryResources(options: RuntimeInstanceOptions, tierMode: TierMode): RuntimeGuestMemoryResources {
+function createGuestMemoryResources(
+  options: RuntimeInstanceOptions,
+  tierMode: TierMode,
+  program: readonly RuntimeProgramRegion[]
+): RuntimeGuestMemoryResources {
   if (options.guestMemory !== undefined) {
-    if (tierMode === TierMode.T2_ONLY) {
-      throw new Error("T2 runtime requires runtime-owned WebAssembly guest memory");
+    if (tierMode === TierMode.T1_ONLY || tierMode === TierMode.T2_ONLY) {
+      throw new Error(`${tierModeName(tierMode)} runtime requires runtime-owned WebAssembly guest memory`);
     }
 
     return { guestMemory: options.guestMemory };
   }
 
-  const byteLength = options.guestMemoryByteLength ?? defaultGuestMemoryByteLength;
+  const byteLength = requiredGuestMemoryByteLength(options, program);
 
-  if (tierMode === TierMode.T2_ONLY && byteLength <= 0) {
-    throw new RangeError("T2 guestMemoryByteLength must be positive");
+  if ((tierMode === TierMode.T1_ONLY || tierMode === TierMode.T2_ONLY) && byteLength <= 0) {
+    throw new RangeError(`${tierModeName(tierMode)} guestMemoryByteLength must be positive`);
   }
 
-  if (tierMode === TierMode.T2_ONLY) {
+  if (tierMode === TierMode.T1_ONLY || tierMode === TierMode.T2_ONLY) {
     const wasmGuestMemory = new WebAssembly.Memory({ initial: wasmPagesForByteLength(byteLength) });
 
     return {
@@ -162,6 +184,46 @@ function createGuestMemoryResources(options: RuntimeInstanceOptions, tierMode: T
   }
 
   return { guestMemory: new ArrayBufferGuestMemory(byteLength) };
+}
+
+function requiredGuestMemoryByteLength(
+  options: RuntimeInstanceOptions,
+  program: readonly RuntimeProgramRegion[]
+): number {
+  return Math.max(
+    options.guestMemoryByteLength ?? defaultGuestMemoryByteLength,
+    requiredProgramByteLength(program) ?? 0
+  );
+}
+
+function loadProgramBytesToGuestMemory(program: readonly RuntimeProgramRegion[], guestMemory: GuestMemory): void {
+  const fault = loadProgramRegions(guestMemory, program);
+
+  if (fault !== undefined) {
+    throw new RangeError(`program byte load fault at 0x${fault.faultAddress.toString(16)}`);
+  }
+}
+
+function requiredWasmGuestMemory(
+  resources: RuntimeGuestMemoryResources,
+  tierName: string
+): WasmInterpreterRuntime {
+  if (resources.wasmGuestMemory === undefined) {
+    throw new Error(`${tierName} runtime requires runtime-owned WebAssembly guest memory`);
+  }
+
+  return new WasmInterpreterRuntime(resources.wasmGuestMemory);
+}
+
+function tierModeName(tierMode: TierMode): string {
+  switch (tierMode) {
+    case TierMode.T0_ONLY:
+      return "T0";
+    case TierMode.T1_ONLY:
+      return "T1";
+    case TierMode.T2_ONLY:
+      return "T2";
+  }
 }
 
 function wasmPagesForByteLength(byteLength: number): number {

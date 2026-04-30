@@ -48,10 +48,10 @@ test("executes spec-only immediate logical forms", () => {
 
 test("stops on unsupported opcodes", () => {
   const state = createCpuState({ eip: startAddress });
-  const result = runIsaInterpreter(state, bytes([0x90]), { baseAddress: startAddress });
+  const result = runIsaInterpreter(state, bytes([0x62]), { baseAddress: startAddress });
 
   strictEqual(result.stopReason, StopReason.UNSUPPORTED);
-  strictEqual(result.unsupportedByte, 0x90);
+  strictEqual(result.unsupportedByte, 0x62);
   strictEqual(state.eip, startAddress);
   strictEqual(state.instructionCount, 0);
 });

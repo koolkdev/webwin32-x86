@@ -5,8 +5,7 @@ import { StopReason, type RunResult } from "../../src/core/execution/run-result.
 import { cpuStatesEqual, getFlag, type CpuState } from "../../src/core/state/cpu-state.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
 import { TierMode } from "../../src/runtime/tiering/tier-policy.js";
-import { guestReader } from "../../src/test-support/decode-reader.js";
-import { fillGuestMemory, readGuestBytes, writeGuestU32 } from "../../src/test-support/guest-memory.js";
+import { fillGuestMemory, readGuestBytes, writeGuestBytes, writeGuestU32 } from "../../src/test-support/guest-memory.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 type MemoryWrite = Readonly<{
@@ -19,12 +18,12 @@ type RuntimeRun = Readonly<{
   result: RunResult;
 }>;
 
-const jumpOut = [0xeb, 0x00] as const;
+const hostTrap = [0xcd, 0x2e] as const;
 
 test("wasm_memory_add_load_matches_interpreter", () => {
   const fixture = [
     0x03, 0x05, 0x20, 0x00, 0x00, 0x00,
-    ...jumpOut
+    ...hostTrap
   ] as const;
   const { t0, t1, t2 } = runAllTiers(fixture, {
     initialState: { eax: 0xffff_ffff },
@@ -39,7 +38,7 @@ test("wasm_memory_add_load_matches_interpreter", () => {
 test("wasm_memory_add_store_matches_interpreter", () => {
   const fixture = [
     0x01, 0x18,
-    ...jumpOut
+    ...hostTrap
   ] as const;
   const { t0, t1, t2 } = runAllTiers(fixture, {
     initialState: { eax: 0x20, ebx: 2 },
@@ -55,7 +54,7 @@ test("wasm_memory_cmp_test_flags_match_interpreter", () => {
   const fixture = [
     0x39, 0x05, 0x20, 0x00, 0x00, 0x00,
     0x85, 0x1d, 0x24, 0x00, 0x00, 0x00,
-    ...jumpOut
+    ...hostTrap
   ] as const;
   const memoryRanges = [
     { address: 0x20, length: 4 },
@@ -80,7 +79,7 @@ test("wasm_memory_alu_immediate_matches_interpreter", () => {
   const fixture = [
     0x83, 0x05, 0x20, 0x00, 0x00, 0x00, 0xff,
     0x81, 0x3d, 0x24, 0x00, 0x00, 0x00, 0x34, 0x12, 0x00, 0x00,
-    ...jumpOut
+    ...hostTrap
   ] as const;
   const memoryRanges = [
     { address: 0x20, length: 4 },
@@ -155,7 +154,7 @@ function runAllTiers(
 
 function runRuntime(bytes: readonly number[], tierMode: TierMode, options: RunRuntimeOptions = {}): RuntimeRun {
   const runtimeOptions = {
-    decodeReader: guestReader(bytes),
+    program: { baseAddress: startAddress, bytes },
     initialState: { ...options.initialState, eip: startAddress },
     tierMode
   };
@@ -166,6 +165,7 @@ function runRuntime(bytes: readonly number[], tierMode: TierMode, options: RunRu
 
   if (options.fillMemory !== undefined) {
     fillGuestMemory(instance.guestMemory, options.fillMemory);
+    writeGuestBytes(instance.guestMemory, startAddress, bytes);
   }
 
   for (const write of options.memoryWrites ?? []) {

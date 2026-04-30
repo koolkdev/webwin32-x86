@@ -10,6 +10,12 @@ export function writeGuestU32(memory: GuestMemory, address: number, value: numbe
   assertGuestWriteOk(memory.writeU32(address, value));
 }
 
+export function writeGuestBytes(memory: GuestMemory, address: number, bytes: readonly number[]): void {
+  for (let index = 0; index < bytes.length; index += 1) {
+    assertGuestWriteOk(memory.writeU8(address + index, bytes[index] ?? 0));
+  }
+}
+
 export function readGuestBytes(memory: GuestMemory, address: number, length: number): number[] {
   const bytes: number[] = [];
 

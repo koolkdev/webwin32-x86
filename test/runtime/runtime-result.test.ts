@@ -3,7 +3,6 @@ import { test } from "node:test";
 
 import { StopReason } from "../../src/core/execution/run-result.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
-import { guestReader, TestDecodeReader } from "../../src/test-support/decode-reader.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 const branchLoopFixture = [
@@ -21,7 +20,7 @@ const movAddFixture = [
 
 test("runtime_state_available_after_run", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader(movAddFixture),
+    program: { baseAddress: startAddress, bytes: movAddFixture },
     initialState: { eip: startAddress }
   });
   const result = runtime.run();
@@ -33,7 +32,7 @@ test("runtime_state_available_after_run", () => {
 
 test("run_result_instruction_limit_reason", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader(branchLoopFixture),
+    program: { baseAddress: startAddress, bytes: branchLoopFixture },
     initialState: { eax: 3, eip: startAddress }
   });
   const result = runtime.run({ instructionLimit: 4 });
@@ -45,7 +44,6 @@ test("run_result_instruction_limit_reason", () => {
 
 test("run_result_decode_fault_reason", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: new TestDecodeReader([]),
     initialState: { eip: startAddress }
   });
   const result = runtime.run();
@@ -57,7 +55,7 @@ test("run_result_decode_fault_reason", () => {
 
 test("run_result_unsupported_x86_reason", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader([0x62]),
+    program: { baseAddress: startAddress, bytes: [0x62] },
     initialState: { eip: startAddress }
   });
   const result = runtime.run();
@@ -69,19 +67,19 @@ test("run_result_unsupported_x86_reason", () => {
 
 test("internal_counters_not_guest_stop_reasons", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader(branchLoopFixture),
+    program: { baseAddress: startAddress, bytes: branchLoopFixture },
     initialState: { eax: 3, eip: startAddress }
   });
   const result = runtime.run();
 
   strictEqual(result.stopReason, StopReason.HOST_TRAP);
-  strictEqual(runtime.counters.decodedBlockCache.hits, 2);
-  strictEqual(runtime.counters.decodedBlockCache.misses, 2);
+  strictEqual(runtime.counters.decodedBlockCache.hits, 0);
+  strictEqual(runtime.counters.decodedBlockCache.misses, 0);
 });
 
 test("run_result_shape_has_no_metrics_payload", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader(movAddFixture),
+    program: { baseAddress: startAddress, bytes: movAddFixture },
     initialState: { eip: startAddress }
   });
   const result = runtime.run();

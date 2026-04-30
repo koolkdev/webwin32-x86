@@ -1,4 +1,9 @@
-import type { DecodeReader, DecodeRegion } from "../arch/x86/block-decoder/decode-reader.js";
+import {
+  decodeRegionByteLength,
+  type ByteDecodeRegion,
+  type DecodeReader,
+  type DecodeRegion
+} from "../arch/x86/block-decoder/decode-reader.js";
 import type { DecodeFault } from "../arch/x86/decoder/decode-error.js";
 import { startAddress } from "./x86-code.js";
 
@@ -11,7 +16,7 @@ export class TestDecodeReader implements DecodeReader {
     for (const region of this.regions) {
       const offset = eip - region.baseAddress;
 
-      if (offset >= 0 && offset < region.bytes.length) {
+      if (offset >= 0 && offset < decodeRegionByteLength(region)) {
         return region;
       }
     }
@@ -50,7 +55,7 @@ export class TestDecodeReader implements DecodeReader {
 export function guestBytesRegion(
   bytes: readonly number[],
   baseAddress = startAddress
-): DecodeRegion {
+): ByteDecodeRegion {
   return {
     kind: "guest-bytes",
     baseAddress,

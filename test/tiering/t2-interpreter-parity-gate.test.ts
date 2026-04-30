@@ -1,13 +1,11 @@
 import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import type { DecodeReader } from "../../src/arch/x86/block-decoder/decode-reader.js";
 import { StopReason, type RunResult } from "../../src/core/execution/run-result.js";
 import { cpuStatesEqual, getFlag, type CpuState } from "../../src/core/state/cpu-state.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
 import { TierMode } from "../../src/runtime/tiering/tier-policy.js";
-import { guestReader, TestDecodeReader } from "../../src/test-support/decode-reader.js";
-import { fillGuestMemory, readGuestBytes, writeGuestU32 } from "../../src/test-support/guest-memory.js";
+import { fillGuestMemory, readGuestBytes, writeGuestBytes, writeGuestU32 } from "../../src/test-support/guest-memory.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 test("t2_parity_register_arithmetic", () => {
@@ -144,7 +142,7 @@ test("t2_parity_faults_and_guest_stops", () => {
   strictEqual(unsupported.t2.result.unsupportedByte, 0x62);
   strictEqual(unsupported.t2.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 1);
 
-  const decodeFault = runAllTiersWithReader(() => new TestDecodeReader([]));
+  const decodeFault = runAllTiers([]);
 
   assertRuntimeMatches(decodeFault.t1, decodeFault.t0);
   assertRuntimeMatches(decodeFault.t2, decodeFault.t1);
@@ -157,27 +155,20 @@ function runAllTiers(
   bytes: readonly number[],
   options: RunRuntimeOptions = {}
 ): Readonly<Record<"t0" | "t1" | "t2", RuntimeRun>> {
-  return runAllTiersWithReader(() => guestReader(bytes), options);
-}
-
-function runAllTiersWithReader(
-  createDecodeReader: () => DecodeReader,
-  options: RunRuntimeOptions = {}
-): Readonly<Record<"t0" | "t1" | "t2", RuntimeRun>> {
   return {
-    t0: runRuntime(createDecodeReader(), TierMode.T0_ONLY, options),
-    t1: runRuntime(createDecodeReader(), TierMode.T1_ONLY, options),
-    t2: runRuntime(createDecodeReader(), TierMode.T2_ONLY, options)
+    t0: runRuntime(bytes, TierMode.T0_ONLY, options),
+    t1: runRuntime(bytes, TierMode.T1_ONLY, options),
+    t2: runRuntime(bytes, TierMode.T2_ONLY, options)
   };
 }
 
 function runRuntime(
-  decodeReader: DecodeReader,
+  bytes: readonly number[],
   tierMode: TierMode,
   options: RunRuntimeOptions = {}
 ): RuntimeRun {
   const instance = new RuntimeInstance({
-    decodeReader,
+    program: { baseAddress: startAddress, bytes },
     initialState: { ...options.initialState, eip: startAddress },
     tierMode,
     ...(options.guestMemoryByteLength === undefined ? {} : { guestMemoryByteLength: options.guestMemoryByteLength })
@@ -185,6 +176,7 @@ function runRuntime(
 
   if (options.fillMemory !== undefined) {
     fillGuestMemory(instance.guestMemory, options.fillMemory);
+    writeGuestBytes(instance.guestMemory, startAddress, bytes);
   }
 
   for (const write of options.memoryWrites ?? []) {

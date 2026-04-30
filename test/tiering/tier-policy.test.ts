@@ -26,7 +26,7 @@ const movAddFixture = [
 test("t0_only_uses_instruction_interpreter", () => {
   const expected = runT1(branchLoopFixture, { eax: 3, eip: startAddress });
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader(branchLoopFixture),
+    program: { baseAddress: startAddress, bytes: branchLoopFixture },
     initialState: { eax: 3, eip: startAddress },
     tierMode: TierMode.T0_ONLY
   });
@@ -40,9 +40,9 @@ test("t0_only_uses_instruction_interpreter", () => {
   strictEqual(runtime.counters.profile.instructionsExecuted, 0);
 });
 
-test("t1_only_uses_decoded_block_engine", () => {
+test("t1_only_uses_wasm_interpreter", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader(branchLoopFixture),
+    program: { baseAddress: startAddress, bytes: branchLoopFixture },
     initialState: { eax: 3, eip: startAddress },
     tierMode: TierMode.T1_ONLY
   });
@@ -50,19 +50,19 @@ test("t1_only_uses_decoded_block_engine", () => {
 
   strictEqual(result.stopReason, StopReason.HOST_TRAP);
   strictEqual(runtime.state.instructionCount, 10);
-  strictEqual(runtime.counters.decodedBlockCache.hits, 2);
-  strictEqual(runtime.counters.decodedBlockCache.misses, 2);
-  strictEqual(runtime.counters.profile.instructionsExecuted, 10);
+  strictEqual(runtime.counters.decodedBlockCache.hits, 0);
+  strictEqual(runtime.counters.decodedBlockCache.misses, 0);
+  strictEqual(runtime.counters.profile.instructionsExecuted, 0);
 });
 
 test("tier_policy_visible_to_metrics_adapter", () => {
   const t0Runtime = new RuntimeInstance({
-    decodeReader: guestReader(movAddFixture),
+    program: { baseAddress: startAddress, bytes: movAddFixture },
     initialState: { eip: startAddress },
     tierMode: TierMode.T0_ONLY
   });
   const t1Runtime = new RuntimeInstance({
-    decodeReader: guestReader(movAddFixture),
+    program: { baseAddress: startAddress, bytes: movAddFixture },
     initialState: { eip: startAddress },
     tierMode: TierMode.T1_ONLY
   });

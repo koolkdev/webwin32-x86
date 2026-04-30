@@ -5,8 +5,7 @@ import { StopReason, type RunResult } from "../../src/core/execution/run-result.
 import { cpuStatesEqual, type CpuState } from "../../src/core/state/cpu-state.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
 import { TierMode } from "../../src/runtime/tiering/tier-policy.js";
-import { guestReader } from "../../src/test-support/decode-reader.js";
-import { fillGuestMemory, readGuestBytes } from "../../src/test-support/guest-memory.js";
+import { fillGuestMemory, readGuestBytes, writeGuestBytes } from "../../src/test-support/guest-memory.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 type RuntimeRun = Readonly<{
@@ -14,13 +13,13 @@ type RuntimeRun = Readonly<{
   result: RunResult;
 }>;
 
-const jumpOut = [0xeb, 0x00] as const;
+const hostTrap = [0xcd, 0x2e] as const;
 
 test("wasm_push_pop_reg_matches_interpreter", () => {
   const fixture = [
     0x50,
     0x5b,
-    ...jumpOut
+    ...hostTrap
   ] as const;
   const memoryRanges = [{ address: 0x3c, length: 4 }];
   const { t0, t1, t2 } = runAllTiers(fixture, {
@@ -37,7 +36,7 @@ test("wasm_push_imm_matches_interpreter", () => {
   const fixture = [
     0x68, 0x44, 0x33, 0x22, 0x11,
     0x6a, 0xff,
-    ...jumpOut
+    ...hostTrap
   ] as const;
   const memoryRanges = [{ address: 0x38, length: 8 }];
   const { t0, t1, t2 } = runAllTiers(fixture, {
@@ -115,7 +114,7 @@ function runAllTiers(
 
 function runRuntime(bytes: readonly number[], tierMode: TierMode, options: RunRuntimeOptions = {}): RuntimeRun {
   const instance = new RuntimeInstance({
-    decodeReader: guestReader(bytes),
+    program: { baseAddress: startAddress, bytes },
     initialState: { ...options.initialState, eip: startAddress },
     tierMode,
     ...(options.guestMemoryByteLength === undefined ? {} : { guestMemoryByteLength: options.guestMemoryByteLength })
@@ -123,6 +122,7 @@ function runRuntime(bytes: readonly number[], tierMode: TierMode, options: RunRu
 
   if (options.fillMemory !== undefined) {
     fillGuestMemory(instance.guestMemory, options.fillMemory);
+    writeGuestBytes(instance.guestMemory, startAddress, bytes);
   }
 
   return {

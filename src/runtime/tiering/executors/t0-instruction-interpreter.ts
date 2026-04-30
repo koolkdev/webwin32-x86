@@ -1,15 +1,13 @@
 import { maxInstructionLength } from "../../../arch/x86/decoder/decode-bounds.js";
-import { DecodeError, type DecodeFault } from "../../../arch/x86/decoder/decode-error.js";
-import { decodeOne } from "../../../arch/x86/decoder/decoder.js";
-import type { DecodedInstruction } from "../../../arch/x86/instruction/types.js";
+import { decodeIsaInstruction } from "../../../arch/x86/isa/decoder/decode.js";
+import type { IsaDecodedInstruction } from "../../../arch/x86/isa/decoder/types.js";
+import { executeIsaInstruction } from "../../../arch/x86/isa/runtime/execute.js";
 import { runResultFromState, StopReason, type RunResult } from "../../../core/execution/run-result.js";
 import { u32, type CpuState } from "../../../core/state/cpu-state.js";
-import { executeInstruction } from "../../../interp/interpreter.js";
-import type { DecodeReader } from "../../../arch/x86/block-decoder/decode-reader.js";
 import type { RuntimeTierExecutionContext } from "./context.js";
 
 type DecodeInstructionResult =
-  | Readonly<{ kind: "instruction"; instruction: DecodedInstruction }>
+  | Readonly<{ kind: "instruction"; instruction: IsaDecodedInstruction }>
   | Readonly<{ kind: "stop"; result: RunResult }>;
 
 export function runT0InstructionInterpreter(context: RuntimeTierExecutionContext, instructionLimit: number): RunResult {
@@ -17,13 +15,17 @@ export function runT0InstructionInterpreter(context: RuntimeTierExecutionContext
   let result = runResultFromState(context.state, StopReason.NONE);
 
   while (executed < instructionLimit) {
-    const decoded = decodeInstructionAt(context.decodeReader, context.state);
+    if (context.decodeReader.regionAt(context.state.eip) === undefined) {
+      return executed === 0 ? decodeFaultResult(context.state, context.state.eip, 0) : result;
+    }
+
+    const decoded = decodeInstructionAt(context);
 
     if (decoded.kind === "stop") {
       return decoded.result;
     }
 
-    result = executeInstruction(context.state, decoded.instruction, { memory: context.guestMemory });
+    result = executeIsaInstruction(context.state, decoded.instruction, { memory: context.guestMemory });
     executed += 1;
 
     if (result.stopReason !== StopReason.NONE) {
@@ -39,33 +41,58 @@ export function runT0InstructionInterpreter(context: RuntimeTierExecutionContext
   return runResultFromState(context.state, StopReason.INSTRUCTION_LIMIT);
 }
 
-function decodeInstructionAt(decodeReader: DecodeReader, state: CpuState): DecodeInstructionResult {
-  const eip = u32(state.eip);
-  const bytes = decodeReader.sliceFrom(eip, maxInstructionLength + 1);
+function decodeInstructionAt(context: RuntimeTierExecutionContext): DecodeInstructionResult {
+  const eip = u32(context.state.eip);
+  const bytes = context.decodeReader.sliceFrom(eip, maxInstructionLength + 1);
 
   if (!(bytes instanceof Uint8Array)) {
-    return stopWithDecodeFault(state, bytes);
+    return stopWithDecodeFault(context.state, bytes.address, bytes.raw.length);
   }
 
   try {
-    return { kind: "instruction", instruction: decodeOne(bytes, 0, eip) };
+    const decoded = decodeIsaInstruction(bytes, 0, eip);
+
+    if (decoded.kind === "unsupported") {
+      return stopWithUnsupported(context.state, decoded.unsupportedByte);
+    }
+
+    return { kind: "instruction", instruction: decoded.instruction };
   } catch (error: unknown) {
-    if (error instanceof DecodeError) {
-      return stopWithDecodeFault(state, error.fault);
+    if (error instanceof RangeError) {
+      return stopWithDecodeFault(context.state, eip, bytes.length);
     }
 
     throw error;
   }
 }
 
-function stopWithDecodeFault(state: CpuState, fault: DecodeFault): DecodeInstructionResult {
+function stopWithDecodeFault(state: CpuState, faultAddress: number, faultSize: number): DecodeInstructionResult {
   state.stopReason = StopReason.DECODE_FAULT;
   return {
     kind: "stop",
-    result: runResultFromState(state, StopReason.DECODE_FAULT, {
-      faultAddress: fault.address,
-      faultSize: fault.raw.length,
-      faultOperation: "execute"
-    })
+    result: decodeFaultResult(state, faultAddress, faultSize)
+  };
+}
+
+function decodeFaultResult(state: CpuState, faultAddress: number, faultSize: number): RunResult {
+  state.stopReason = StopReason.DECODE_FAULT;
+  return runResultFromState(state, StopReason.DECODE_FAULT, {
+    faultAddress,
+    faultSize,
+    faultOperation: "execute"
+  });
+}
+
+function stopWithUnsupported(state: CpuState, unsupportedByte: number | undefined): DecodeInstructionResult {
+  state.stopReason = StopReason.UNSUPPORTED;
+  return {
+    kind: "stop",
+    result: runResultFromState(
+      state,
+      StopReason.UNSUPPORTED,
+      unsupportedByte === undefined
+        ? { unsupportedReason: "unsupportedOpcode" }
+        : { unsupportedByte, unsupportedReason: "unsupportedOpcode" }
+    )
   };
 }

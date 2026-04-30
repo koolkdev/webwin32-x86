@@ -5,13 +5,12 @@ import { StopReason, type RunResult } from "../../src/core/execution/run-result.
 import { cpuStatesEqual, type CpuState } from "../../src/core/state/cpu-state.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
 import { TierMode } from "../../src/runtime/tiering/tier-policy.js";
-import { guestReader } from "../../src/test-support/decode-reader.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 const nopFixture = [
   0x90,
   0x90,
-  0xeb, 0x00
+  0xcd, 0x2e
 ] as const;
 
 const intFixture = [
@@ -24,7 +23,7 @@ test("wasm_nop_matches_interpreter", () => {
 
   assertRuntimeMatches(t1, t0);
   assertRuntimeMatches(t2, t1);
-  strictEqual(t2.result.stopReason, StopReason.NONE);
+  strictEqual(t2.result.stopReason, StopReason.HOST_TRAP);
   strictEqual(t2.instance.state.eip, startAddress + 4);
   strictEqual(t2.instance.state.instructionCount, 3);
 });
@@ -66,7 +65,7 @@ function runRuntime(
   initialState: Partial<CpuState> = {}
 ): RuntimeRun {
   const instance = new RuntimeInstance({
-    decodeReader: guestReader(bytes),
+    program: { baseAddress: startAddress, bytes },
     initialState: { ...initialState, eip: startAddress },
     tierMode
   });

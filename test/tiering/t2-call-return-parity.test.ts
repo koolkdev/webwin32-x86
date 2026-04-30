@@ -5,8 +5,7 @@ import { StopReason, type RunResult } from "../../src/core/execution/run-result.
 import { cpuStatesEqual, type CpuState } from "../../src/core/state/cpu-state.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
 import { TierMode } from "../../src/runtime/tiering/tier-policy.js";
-import { guestReader } from "../../src/test-support/decode-reader.js";
-import { fillGuestMemory, readGuestBytes, writeGuestU32 } from "../../src/test-support/guest-memory.js";
+import { fillGuestMemory, readGuestBytes, writeGuestBytes, writeGuestU32 } from "../../src/test-support/guest-memory.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 type RuntimeRun = Readonly<{
@@ -19,7 +18,8 @@ test("wasm_call_ret_matches_interpreter", () => {
     0xe8, 0x02, 0x00, 0x00, 0x00,
     0xeb, 0x06,
     0xb8, 0x78, 0x56, 0x34, 0x12,
-    0xc3
+    0xc3,
+    0xcd, 0x2e
   ] as const;
   const { t0, t1, t2 } = runAllTiers(fixture, {
     initialState: { esp: 0x40 }
@@ -29,11 +29,17 @@ test("wasm_call_ret_matches_interpreter", () => {
   assertRuntimeMatches(t2, t1, [{ address: 0x3c, length: 4 }]);
   strictEqual(t2.instance.state.eax, 0x1234_5678);
   strictEqual(t2.instance.state.esp, 0x40);
-  strictEqual(t2.instance.state.eip, 0x100d);
+  strictEqual(t2.instance.state.eip, 0x100f);
 });
 
 test("wasm_call_pushes_return_address", () => {
-  const fixture = [0xe8, 0x0b, 0x00, 0x00, 0x00] as const;
+  const fixture = [
+    0xe8, 0x0b, 0x00, 0x00, 0x00,
+    0x90, 0x90, 0x90, 0x90,
+    0x90, 0x90, 0x90, 0x90,
+    0x90, 0x90, 0x90,
+    0xcd, 0x2e
+  ] as const;
   const { t0, t1, t2 } = runAllTiers(fixture, {
     initialState: { esp: 0x40 }
   });
@@ -44,15 +50,15 @@ test("wasm_call_pushes_return_address", () => {
 });
 
 test("wasm_ret_pops_eip", () => {
-  const fixture = [0xc3] as const;
+  const fixture = [0xc3, 0xcd, 0x2e] as const;
   const { t0, t1, t2 } = runAllTiers(fixture, {
     initialState: { esp: 0x20 },
-    memoryWrites: [{ address: 0x20, value: 0x2000 }]
+    memoryWrites: [{ address: 0x20, value: startAddress + 1 }]
   });
 
   assertRuntimeMatches(t1, t0);
   assertRuntimeMatches(t2, t1);
-  strictEqual(t2.instance.state.eip, 0x2000);
+  strictEqual(t2.instance.state.eip, startAddress + 3);
   strictEqual(t2.instance.state.esp, 0x24);
 });
 
@@ -116,7 +122,7 @@ function runAllTiers(
 
 function runRuntime(bytes: readonly number[], tierMode: TierMode, options: RunRuntimeOptions = {}): RuntimeRun {
   const instance = new RuntimeInstance({
-    decodeReader: guestReader(bytes),
+    program: { baseAddress: startAddress, bytes },
     initialState: { ...options.initialState, eip: startAddress },
     tierMode,
     ...(options.guestMemoryByteLength === undefined ? {} : { guestMemoryByteLength: options.guestMemoryByteLength })
@@ -124,6 +130,7 @@ function runRuntime(bytes: readonly number[], tierMode: TierMode, options: RunRu
 
   if (options.fillMemory !== undefined) {
     fillGuestMemory(instance.guestMemory, options.fillMemory);
+    writeGuestBytes(instance.guestMemory, startAddress, bytes);
   }
 
   for (const write of options.memoryWrites ?? []) {

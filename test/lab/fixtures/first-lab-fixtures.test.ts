@@ -26,8 +26,9 @@ test("metrics_branch_countdown_loop_runs", () => {
   const snapshot = run.samples[0]?.snapshot;
 
   strictEqual(run.validation.ok, true);
-  ok((snapshot?.gauges[runtimeMetricKeys.decodedBlockCacheHits] ?? 0) > 0);
-  ok((snapshot?.gauges[runtimeMetricKeys.decodedBlockCacheMisses] ?? 0) > 0);
+  strictEqual(snapshot?.gauges[runtimeMetricKeys.guestInstructions], 3001);
+  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockCacheHits], 0);
+  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockCacheMisses], 0);
 });
 
 test("metrics_memory_load_store_loop_runs", () => {

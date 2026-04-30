@@ -6,7 +6,7 @@ import { cpuStatesEqual, createCpuState, type CpuState } from "../../src/core/st
 import { DecodedBlockCache } from "../../src/runtime/decoded-block-cache/decoded-block-cache.js";
 import { DecodedBlockRunner } from "../../src/runtime/decoded-block-runner/decoded-block-runner.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
-import { guestReader, TestDecodeReader } from "../../src/test-support/decode-reader.js";
+import { guestReader } from "../../src/test-support/decode-reader.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 const branchLoopFixture = [
@@ -25,7 +25,7 @@ const movAddFixture = [
 test("dispatch_loop_runs_branch_loop", () => {
   const expected = runT1(branchLoopFixture, { eax: 3, eip: startAddress });
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader(branchLoopFixture),
+    program: { baseAddress: startAddress, bytes: branchLoopFixture },
     initialState: { eax: 3, eip: startAddress }
   });
   const result = runtime.run();
@@ -38,7 +38,7 @@ test("dispatch_loop_runs_branch_loop", () => {
 
 test("dispatch_loop_respects_instruction_limit", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader(branchLoopFixture),
+    program: { baseAddress: startAddress, bytes: branchLoopFixture },
     initialState: { eax: 3, eip: startAddress }
   });
   const result = runtime.run({ instructionLimit: 4 });
@@ -50,7 +50,6 @@ test("dispatch_loop_respects_instruction_limit", () => {
 
 test("dispatch_loop_stops_on_decode_fault", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: new TestDecodeReader([]),
     initialState: { eip: startAddress }
   });
   const result = runtime.run();
@@ -63,7 +62,7 @@ test("dispatch_loop_stops_on_decode_fault", () => {
 
 test("dispatch_loop_stops_on_unsupported_x86", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader([0x62]),
+    program: { baseAddress: startAddress, bytes: [0x62] },
     initialState: { eip: startAddress }
   });
   const result = runtime.run();
@@ -73,21 +72,20 @@ test("dispatch_loop_stops_on_unsupported_x86", () => {
   strictEqual(result.unsupportedReason, "unsupportedOpcode");
 });
 
-test("dispatch_loop_records_edges", () => {
+test("dispatch_loop_uses_wasm_interpreter_without_decoded_block_edges", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader(branchLoopFixture),
+    program: { baseAddress: startAddress, bytes: branchLoopFixture },
     initialState: { eax: 3, eip: startAddress }
   });
 
   runtime.run();
 
-  strictEqual(runtime.counters.profile.edgeHits.get(startAddress)?.get(startAddress), 2);
-  strictEqual(runtime.counters.profile.edgeHits.get(startAddress)?.get(startAddress + 8), 1);
+  strictEqual(runtime.counters.profile.edgeHits.size, 0);
 });
 
 test("runtime_run_uses_entry_eip_option", () => {
   const runtime = new RuntimeInstance({
-    decodeReader: guestReader(movAddFixture),
+    program: { baseAddress: startAddress, bytes: movAddFixture },
     initialState: { eip: 0 }
   });
   const result = runtime.run({ entryEip: startAddress });

@@ -67,9 +67,10 @@ test("metrics_runner_uses_runtime_adapter", () => {
   const run = new MetricsRunner().run({ fixture: branchCountdownFixture, runs: 1 });
   const snapshot = run.samples[0]?.snapshot;
 
-  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockCacheHits], 2);
-  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockCacheMisses], 2);
-  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockProfileInstructions], 10);
+  strictEqual(snapshot?.gauges[runtimeMetricKeys.guestInstructions], 10);
+  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockCacheHits], 0);
+  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockCacheMisses], 0);
+  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockProfileInstructions], 0);
 });
 
 test("metrics_runner_validates_expected_state", () => {
