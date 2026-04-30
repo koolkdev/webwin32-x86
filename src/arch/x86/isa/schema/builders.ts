@@ -39,7 +39,7 @@ export function mnemonic<TSemantics>(
   return { mnemonic: mnemonicName, forms };
 }
 
-export function defineIsa(definition: IsaDefinition): DefinedIsa {
+export function defineIsa<TSemantics>(definition: IsaDefinition<TSemantics>): DefinedIsa<TSemantics> {
   validateRequiredText(definition.name, "ISA name");
 
   const instructions = definition.mnemonics.flatMap((entry) => instructionsForMnemonic(entry));
@@ -179,26 +179,18 @@ function validateModRmMatch(match: ModRmMatch | undefined): void {
     return;
   }
 
-  validateReg3Set(match.mod, "modrm.match.mod");
-  validateReg3Set(match.reg, "modrm.match.reg");
-  validateReg3Set(match.rm, "modrm.match.rm");
+  validateReg3Value(match.mod, "modrm.match.mod");
+  validateReg3Value(match.reg, "modrm.match.reg");
+  validateReg3Value(match.rm, "modrm.match.rm");
 }
 
-function validateReg3Set(value: Reg3 | readonly Reg3[] | undefined, label: string): void {
+function validateReg3Value(value: Reg3 | undefined, label: string): void {
   if (value === undefined) {
     return;
   }
 
-  const values = Array.isArray(value) ? value : [value];
-
-  if (values.length === 0) {
-    throw new Error(`${label} must not be empty`);
-  }
-
-  for (const entry of values) {
-    if (!Number.isInteger(entry) || entry < 0 || entry > 7) {
-      throw new Error(`${label} values must be integers in 0..7`);
-    }
+  if (!Number.isInteger(value) || value < 0 || value > 7) {
+    throw new Error(`${label} must be an integer in 0..7`);
   }
 }
 
@@ -229,19 +221,8 @@ function modRmMatchesOverlap(left: ModRmMatch | undefined, right: ModRmMatch | u
   );
 }
 
-function reg3SetsOverlap(left: Reg3 | readonly Reg3[] | undefined, right: Reg3 | readonly Reg3[] | undefined): boolean {
-  const leftValues = reg3Values(left);
-  const rightValues = reg3Values(right);
-
-  return leftValues.some((value) => rightValues.includes(value));
-}
-
-function reg3Values(value: Reg3 | readonly Reg3[] | undefined): readonly Reg3[] {
-  if (value === undefined) {
-    return [0, 1, 2, 3, 4, 5, 6, 7];
-  }
-
-  return typeof value === "number" ? [value] : value;
+function reg3SetsOverlap(left: Reg3 | undefined, right: Reg3 | undefined): boolean {
+  return left === undefined || right === undefined || left === right;
 }
 
 function formatPlaceholders(format: string): readonly number[] {

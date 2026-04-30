@@ -1,4 +1,4 @@
-import type { ConditionCode } from "../../sir/types.js";
+import type { ConditionCode, SemanticTemplate } from "../../sir/types.js";
 import { form, mnemonic, type InstructionForm, type InstructionMnemonic } from "../schema/builders.js";
 import { imm, modrmRm, rel } from "../schema/operands.js";
 import { callSemantic, jccSemantic, jmpSemantic, retImmSemantic, retSemantic } from "../semantics/control.js";
@@ -103,13 +103,13 @@ export const JCC_DESCRIPTORS = [
   { opcodeLow: 0xf, mnemonicName: "jg", cc: "G" }
 ] as const satisfies readonly JccDescriptor[];
 
-export const JCC: readonly InstructionMnemonic[] = JCC_DESCRIPTORS.map(jccMnemonic);
+export const JCC: readonly InstructionMnemonic<SemanticTemplate>[] = JCC_DESCRIPTORS.map(jccMnemonic);
 
-function jccMnemonic(descriptor: JccDescriptor): InstructionMnemonic {
+function jccMnemonic(descriptor: JccDescriptor): InstructionMnemonic<SemanticTemplate> {
   return mnemonic(descriptor.mnemonicName, [jccRel8(descriptor), jccRel32(descriptor)]);
 }
 
-function jccRel8(descriptor: JccDescriptor): InstructionForm {
+function jccRel8(descriptor: JccDescriptor): InstructionForm<SemanticTemplate> {
   return form("rel8", {
     opcode: [0x70 + descriptor.opcodeLow],
     operands: [rel(8)],
@@ -118,7 +118,7 @@ function jccRel8(descriptor: JccDescriptor): InstructionForm {
   });
 }
 
-function jccRel32(descriptor: JccDescriptor): InstructionForm {
+function jccRel32(descriptor: JccDescriptor): InstructionForm<SemanticTemplate> {
   return form("rel32", {
     opcode: [0x0f, 0x80 + descriptor.opcodeLow],
     operands: [rel(32)],

@@ -24,9 +24,9 @@ export type OperandSpec =
   | Readonly<{ kind: "rel"; width: 8 | 32 }>;
 
 export type ModRmMatch = Readonly<{
-  mod?: Reg3 | readonly Reg3[];
-  reg?: Reg3 | readonly Reg3[];
-  rm?: Reg3 | readonly Reg3[];
+  mod?: Reg3;
+  reg?: Reg3;
+  rm?: Reg3;
 }>;
 
 export type InstructionFormat = Readonly<{
@@ -57,14 +57,14 @@ export type InstructionMnemonic<TSemantics = unknown> = Readonly<{
   forms: readonly InstructionForm<TSemantics>[];
 }>;
 
-export type IsaDefinition = Readonly<{
+export type IsaDefinition<TSemantics = unknown> = Readonly<{
   name: string;
-  mnemonics: readonly InstructionMnemonic[];
+  mnemonics: readonly InstructionMnemonic<TSemantics>[];
 }>;
 
-export type DefinedIsa = Readonly<{
+export type DefinedIsa<TSemantics = unknown> = Readonly<{
   name: string;
-  instructions: readonly InstructionSpec[];
+  instructions: readonly InstructionSpec<TSemantics>[];
 }>;
 
 export type ExpandedInstructionSpec<TSemantics = unknown> = Readonly<{
