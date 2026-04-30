@@ -2,21 +2,24 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 
 import type { CpuState } from "../../../core/state/cpu-state.js";
 import {
-  instantiateInterpreterModule,
+  instantiateInterpreterCompiledModule,
   readInterpreterState,
   writeInterpreterState,
   type InterpreterModuleInstance
 } from "../../../test-support/wasm-interpreter.js";
 import { ExitReason, type DecodedExit } from "../../exit.js";
-import { encodeInterpreterModule } from "../module.js";
+import { readInterpreterWasmArtifact } from "../artifact.js";
 
 export type ExecutedInstruction = Readonly<{
   exit: DecodedExit;
   state: CpuState;
 }>;
 
+let interpreterModule: WebAssembly.Module | undefined;
+
 export async function instantiateWasmInterpreter(): Promise<InterpreterModuleInstance> {
-  return instantiateInterpreterModule(encodeInterpreterModule());
+  interpreterModule ??= new WebAssembly.Module(readInterpreterWasmArtifact());
+  return instantiateInterpreterCompiledModule(interpreterModule);
 }
 
 export async function executeInstruction(

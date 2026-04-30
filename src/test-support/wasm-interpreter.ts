@@ -19,7 +19,13 @@ export async function instantiateInterpreterModule(
   bytes: Uint8Array<ArrayBuffer>,
   guestMemory: WebAssembly.Memory = createGuestMemory()
 ): Promise<InterpreterModuleInstance> {
-  const module = new WebAssembly.Module(bytes);
+  return instantiateInterpreterCompiledModule(new WebAssembly.Module(bytes), guestMemory);
+}
+
+export async function instantiateInterpreterCompiledModule(
+  module: WebAssembly.Module,
+  guestMemory: WebAssembly.Memory = createGuestMemory()
+): Promise<InterpreterModuleInstance> {
   const stateMemory = new WebAssembly.Memory({ initial: 1 });
   const stateView = new DataView(stateMemory.buffer);
   const guestView = new DataView(guestMemory.buffer);

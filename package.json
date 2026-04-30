@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build:interpreter-wasm": "node dist/src/wasm/interpreter/write-artifact.js",
     "metrics": "tsc -p tsconfig.json && node dist/src/lab/metrics-cli.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run clean && tsc -p tsconfig.json && node --test 'dist/test/**/*.test.js' 'dist/src/**/tests/*.test.js'"
+    "test": "npm run clean && tsc -p tsconfig.json && npm run build:interpreter-wasm && node --test 'dist/test/**/*.test.js' 'dist/src/**/tests/*.test.js'"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

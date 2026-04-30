@@ -9,11 +9,20 @@ import {
 import { assertMemoryImports, startAddress } from "../../../test-support/wasm-codegen.js";
 import { wasmImport } from "../../abi.js";
 import { ExitReason } from "../../exit.js";
+import { readInterpreterWasmArtifact } from "../artifact.js";
 import { encodeInterpreterModule } from "../module.js";
 import { instantiateWasmInterpreter, writeGuestBytes } from "./support.js";
 
+test("generated interpreter artifact matches the encoder output", () => {
+  const artifact = readInterpreterWasmArtifact();
+  const encoded = encodeInterpreterModule();
+
+  strictEqual(artifact.byteLength, encoded.byteLength);
+  strictEqual(Buffer.compare(Buffer.from(artifact), Buffer.from(encoded)), 0);
+});
+
 test("imports state and guest memories in ABI order", () => {
-  const module = new WebAssembly.Module(encodeInterpreterModule());
+  const module = new WebAssembly.Module(readInterpreterWasmArtifact());
 
   assertMemoryImports(module);
 });
@@ -109,7 +118,7 @@ test("unsupported two-byte opcode path dispatches before unsupported exit", asyn
 });
 
 test("requires both ABI memories when instantiating", async () => {
-  const module = new WebAssembly.Module(encodeInterpreterModule());
+  const module = new WebAssembly.Module(readInterpreterWasmArtifact());
   const stateMemory = new WebAssembly.Memory({ initial: 1 });
 
   await WebAssembly.instantiate(module, {
