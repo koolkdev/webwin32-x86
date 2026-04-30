@@ -1,12 +1,18 @@
-import { wasmBlockExportName, wasmImport, wasmMemoryIndex, stateOffset } from "../abi.js";
-import { emitExitResult } from "../codegen/exit.js";
+import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "../abi.js";
 import { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
+import { encodeExit } from "../exit.js";
+import { emitInterpreterExitConstPayload, type InterpreterExitTarget } from "./exit.js";
 import { emitLoadGuestByte } from "./guest-bytes.js";
 import { emitOpcodeDispatch } from "./opcode-dispatch.js";
+import {
+  createInterpreterStateCache,
+  emitFlushInterpreterStateCache,
+  emitLoadInterpreterStateCache
+} from "./state.js";
 
 const fuelParam = 0;
 
@@ -28,27 +34,31 @@ export function encodeInterpreterModule(): Uint8Array<ArrayBuffer> {
   const byteLocal = body.addLocal(wasmValueType.i32);
   const addressLocal = body.addLocal(wasmValueType.i32);
   const opcodeLocal = body.addLocal(wasmValueType.i32);
+  const exitLocal = body.addLocal(wasmValueType.i64);
+  const state = createInterpreterStateCache(body, eipLocal);
+  const exit: InterpreterExitTarget = { exitLocal, exitLabelDepth: 2 };
   const scratch = new WasmLocalScratchAllocator(body);
 
-  body
-    .i32Const(0)
-    .i32Load({ align: 2, offset: stateOffset.eip, memoryIndex: wasmMemoryIndex.state })
-    .localSet(eipLocal);
+  emitLoadInterpreterStateCache(body, state);
+  body.i64Const(encodeExit(ExitReason.INSTRUCTION_LIMIT, 0)).localSet(exitLocal);
 
+  body.block();
   body.loop();
   body.localGet(fuelParam).i32Eqz().ifBlock();
-  emitExitResult(body, ExitReason.INSTRUCTION_LIMIT, 0).returnFromFunction();
+  emitInterpreterExitConstPayload(body, { ...exit, exitLabelDepth: 2 }, ExitReason.INSTRUCTION_LIMIT, 0);
   body.endBlock();
 
   body.block();
-  emitLoadGuestByte(body, eipLocal, 0, addressLocal, byteLocal);
-  emitOpcodeDispatch(body, eipLocal, 0, byteLocal, addressLocal, opcodeLocal, scratch);
+  emitLoadGuestByte(body, eipLocal, 0, addressLocal, byteLocal, exit);
+  emitOpcodeDispatch(body, state, exit, 0, byteLocal, addressLocal, opcodeLocal, scratch);
   body.endBlock();
   body.localGet(fuelParam).i32Const(1).i32Sub().localSet(fuelParam);
   body.br(0);
 
   body.endBlock();
-  emitExitResult(body, ExitReason.INSTRUCTION_LIMIT, 0).returnFromFunction();
+  body.endBlock();
+  emitFlushInterpreterStateCache(body, state);
+  body.localGet(exitLocal).returnFromFunction();
   scratch.assertClear();
   body.end();
 

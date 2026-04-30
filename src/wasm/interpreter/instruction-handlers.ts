@@ -29,7 +29,7 @@ export function emitInstructionHandlerForLeaf(
   const modRmLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
-    emitLoadGuestByte(context.body, context.eipLocal, leaf.opcodeLength, context.addressLocal, modRmLocal);
+    emitLoadGuestByte(context.body, context.eipLocal, leaf.opcodeLength, context.addressLocal, modRmLocal, context.exit);
 
     if (modRmCases.length === 1 && modRmCases[0]?.regs.length === reg3Values.length) {
       emitInstructionHandler(modRmCases[0].instruction, context, modRmLocal);
@@ -38,6 +38,7 @@ export function emitInstructionHandlerForLeaf(
 
     emitModRmDispatch(
       context.body,
+      context.exit,
       modRmLocal,
       context.opcodeLocal,
       bindModRmCases(modRmCases, context, modRmLocal)
@@ -61,6 +62,8 @@ function emitInstructionHandler(
     lowerSirWithInterpreterContext(program, {
       body: context.body,
       scratch: context.scratch,
+      state: context.state,
+      exit: context.exit,
       eipLocal: context.eipLocal,
       instructionLength: decoded.instructionLength,
       operands: decoded.operands,
@@ -110,7 +113,14 @@ function bindModRmCases(
     emit: () => {
       emitInstructionHandler(
         dispatchCase.instruction,
-        { ...context, instructionDoneLabelDepth: context.instructionDoneLabelDepth + 1 + index },
+        {
+          ...context,
+          instructionDoneLabelDepth: context.instructionDoneLabelDepth + 1 + index,
+          exit: {
+            ...context.exit,
+            exitLabelDepth: context.exit.exitLabelDepth + 1 + index
+          }
+        },
         modRmLocal
       );
     }

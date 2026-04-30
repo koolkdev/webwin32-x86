@@ -59,7 +59,7 @@ export function emitReadGuestByte(
   local: number
 ): void {
   if (decodeReader.kind === "static") {
-    emitLoadGuestByte(context.body, context.eipLocal, decodeReader.value, context.addressLocal, local);
+    emitLoadGuestByte(context.body, context.eipLocal, decodeReader.value, context.addressLocal, local, context.exit);
     return;
   }
 
@@ -68,7 +68,8 @@ export function emitReadGuestByte(
     context.eipLocal,
     decodeReader.local,
     context.addressLocal,
-    local
+    local,
+    context.exit
   );
 }
 
@@ -84,7 +85,14 @@ export function emitReadGuestBytePlus(
   }
 
   if (decodeReader.kind === "static") {
-    emitLoadGuestByte(context.body, context.eipLocal, decodeReader.value + byteOffset, context.addressLocal, local);
+    emitLoadGuestByte(
+      context.body,
+      context.eipLocal,
+      decodeReader.value + byteOffset,
+      context.addressLocal,
+      local,
+      context.exit
+    );
     return;
   }
 
@@ -97,7 +105,8 @@ export function emitReadGuestBytePlus(
       context.eipLocal,
       offsetLocal,
       context.addressLocal,
-      local
+      local,
+      context.exit
     );
   } finally {
     context.scratch.freeLocal(offsetLocal);
@@ -110,7 +119,7 @@ export function emitReadGuestU32(
   local: number
 ): void {
   if (decodeReader.kind === "static") {
-    emitLoadGuestU32ForDecode(context.body, context.eipLocal, decodeReader.value, context.addressLocal, local);
+    emitLoadGuestU32ForDecode(context.body, context.eipLocal, decodeReader.value, context.addressLocal, local, context.exit);
     return;
   }
 
@@ -119,6 +128,7 @@ export function emitReadGuestU32(
     context.eipLocal,
     decodeReader.local,
     context.addressLocal,
-    local
+    local,
+    context.exit
   );
 }

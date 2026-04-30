@@ -7,9 +7,14 @@ const u32ByteLength = 4;
 const u32Align = 2;
 const wasmPageShift = 16;
 type GuestMemoryAccess = "read" | "write";
+type GuestMemoryFaultHandler = (access: GuestMemoryAccess, emitPayload: () => void) => void;
 
-export function emitLoadGuestU32(body: WasmFunctionBodyEncoder, addressLocal: number): void {
-  emitFaultIfU32OutOfBounds(body, addressLocal, "read");
+export function emitLoadGuestU32(
+  body: WasmFunctionBodyEncoder,
+  addressLocal: number,
+  faultHandler?: GuestMemoryFaultHandler
+): void {
+  emitFaultIfU32OutOfBounds(body, addressLocal, "read", faultHandler);
   body.localGet(addressLocal).i32Load({
     align: u32Align,
     memoryIndex: wasmMemoryIndex.guest,
@@ -17,8 +22,13 @@ export function emitLoadGuestU32(body: WasmFunctionBodyEncoder, addressLocal: nu
   });
 }
 
-export function emitStoreGuestU32(body: WasmFunctionBodyEncoder, addressLocal: number, valueLocal: number): void {
-  emitFaultIfU32OutOfBounds(body, addressLocal, "write");
+export function emitStoreGuestU32(
+  body: WasmFunctionBodyEncoder,
+  addressLocal: number,
+  valueLocal: number,
+  faultHandler?: GuestMemoryFaultHandler
+): void {
+  emitFaultIfU32OutOfBounds(body, addressLocal, "write", faultHandler);
   body.localGet(addressLocal).localGet(valueLocal).i32Store({
     align: u32Align,
     memoryIndex: wasmMemoryIndex.guest,
@@ -29,12 +39,20 @@ export function emitStoreGuestU32(body: WasmFunctionBodyEncoder, addressLocal: n
 function emitFaultIfU32OutOfBounds(
   body: WasmFunctionBodyEncoder,
   addressLocal: number,
-  access: GuestMemoryAccess
+  access: GuestMemoryAccess,
+  faultHandler?: GuestMemoryFaultHandler
 ): void {
   emitLastValidGuestU32Address(body);
   body.localGet(addressLocal).i32LtU().ifBlock(wasmBranchHint.unlikely);
-  body.localGet(addressLocal);
-  emitExitResultFromStackPayload(body, memoryFaultExitReason(access)).returnFromFunction().endBlock();
+  if (faultHandler === undefined) {
+    body.localGet(addressLocal);
+    emitExitResultFromStackPayload(body, memoryFaultExitReason(access)).returnFromFunction();
+  } else {
+    faultHandler(access, () => {
+      body.localGet(addressLocal);
+    });
+  }
+  body.endBlock();
 }
 
 function emitLastValidGuestU32Address(body: WasmFunctionBodyEncoder): void {

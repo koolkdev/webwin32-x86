@@ -5,33 +5,37 @@ import { stateOffset } from "../abi.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { emitLoadStateU32 } from "../interpreter/state.js";
 
-export function emitCondition(body: WasmFunctionBodyEncoder, cc: ConditionCode): void {
-  emitFlagBoolExpr(body, CONDITIONS[cc].expr);
+export function emitCondition(body: WasmFunctionBodyEncoder, eflagsLocal: number | undefined, cc: ConditionCode): void {
+  emitFlagBoolExpr(body, eflagsLocal, CONDITIONS[cc].expr);
 }
 
-function emitFlagBoolExpr(body: WasmFunctionBodyEncoder, expr: FlagBoolExpr): void {
+function emitFlagBoolExpr(body: WasmFunctionBodyEncoder, eflagsLocal: number | undefined, expr: FlagBoolExpr): void {
   switch (expr.kind) {
     case "flag":
-      emitLoadStateU32(body, stateOffset.eflags);
+      if (eflagsLocal === undefined) {
+        emitLoadStateU32(body, stateOffset.eflags);
+      } else {
+        body.localGet(eflagsLocal);
+      }
       body.i32Const(eflagsMask[expr.flag]).i32And().i32Eqz().i32Eqz();
       return;
     case "not":
-      emitFlagBoolExpr(body, expr.value);
+      emitFlagBoolExpr(body, eflagsLocal, expr.value);
       body.i32Eqz();
       return;
     case "and":
-      emitFlagBoolExpr(body, expr.a);
-      emitFlagBoolExpr(body, expr.b);
+      emitFlagBoolExpr(body, eflagsLocal, expr.a);
+      emitFlagBoolExpr(body, eflagsLocal, expr.b);
       body.i32And();
       return;
     case "or":
-      emitFlagBoolExpr(body, expr.a);
-      emitFlagBoolExpr(body, expr.b);
+      emitFlagBoolExpr(body, eflagsLocal, expr.a);
+      emitFlagBoolExpr(body, eflagsLocal, expr.b);
       body.i32Or();
       return;
     case "xor":
-      emitFlagBoolExpr(body, expr.a);
-      emitFlagBoolExpr(body, expr.b);
+      emitFlagBoolExpr(body, eflagsLocal, expr.a);
+      emitFlagBoolExpr(body, eflagsLocal, expr.b);
       body.i32Xor();
       return;
   }

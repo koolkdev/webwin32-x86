@@ -1,8 +1,8 @@
 import type { OperandSpec } from "../../arch/x86/isa/schema/types.js";
 import type { InterpreterOperandBinding } from "../sir/interpreter-context.js";
-import { emitExitResultFromStackPayload } from "../codegen/exit.js";
 import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
+import { emitInterpreterExit } from "./exit.js";
 import {
   advanceDecodeReader,
   emitReadGuestByte,
@@ -13,7 +13,7 @@ import {
 } from "./decode-reader.js";
 import type { InterpreterHandlerContext } from "./handler-context.js";
 import { emitIfModRmMemory, emitIfModRmRegister } from "./modrm-bits.js";
-import { emitLoadReg32FromIndexLocal } from "./state.js";
+import { emitCopyReg32FromIndexLocal } from "./state.js";
 
 export function decodeModRmRmOperand(
   operand: Extract<OperandSpec, { kind: "modrm.rm" }>,
@@ -98,19 +98,16 @@ function decodeDynamicNonSibMemoryAddress(
       advanceDecodeReader(decodeReader, 4, context);
     });
     emitIfLocalNotEqualsConst(context, rmLocal, 0b101, () => {
-      emitLoadReg32FromIndexLocal(context.body, rmLocal);
-      context.body.localSet(addressLocal);
+      emitCopyReg32FromIndexLocal(context.body, context.state, rmLocal, addressLocal);
     });
   });
   emitIfLocalEqualsConst(context, modLocal, 1, () => {
-    emitLoadReg32FromIndexLocal(context.body, rmLocal);
-    context.body.localSet(addressLocal);
+    emitCopyReg32FromIndexLocal(context.body, context.state, rmLocal, addressLocal);
     addDisplacementToAddress(8, decodeReader, context, addressLocal);
     advanceDecodeReader(decodeReader, 1, context);
   });
   emitIfLocalEqualsConst(context, modLocal, 2, () => {
-    emitLoadReg32FromIndexLocal(context.body, rmLocal);
-    context.body.localSet(addressLocal);
+    emitCopyReg32FromIndexLocal(context.body, context.state, rmLocal, addressLocal);
     addDisplacementToAddress(32, decodeReader, context, addressLocal);
     advanceDecodeReader(decodeReader, 4, context);
   });
@@ -159,25 +156,35 @@ function decodeDynamicSibMemoryAddress(
 
 function addSibIndexToAddress(context: InterpreterHandlerContext, sibLocal: number, addressLocal: number): void {
   const indexLocal = context.scratch.allocLocal(wasmValueType.i32);
+  const indexValueLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   context.body.localGet(sibLocal).i32Const(3).i32ShrU().i32Const(0b111).i32And().localSet(indexLocal);
 
   try {
     emitIfLocalNotEqualsConst(context, indexLocal, 0b100, () => {
       context.body.localGet(addressLocal);
-      emitLoadReg32FromIndexLocal(context.body, indexLocal);
+      emitCopyReg32FromIndexLocal(context.body, context.state, indexLocal, indexValueLocal);
+      context.body.localGet(indexValueLocal);
       context.body.localGet(sibLocal).i32Const(6).i32ShrU().i32Shl();
       context.body.i32Add().localSet(addressLocal);
     });
   } finally {
+    context.scratch.freeLocal(indexValueLocal);
     context.scratch.freeLocal(indexLocal);
   }
 }
 
 function addRegIndexLocalToAddress(context: InterpreterHandlerContext, indexLocal: number, addressLocal: number): void {
-  context.body.localGet(addressLocal);
-  emitLoadReg32FromIndexLocal(context.body, indexLocal);
-  context.body.i32Add().localSet(addressLocal);
+  const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
+
+  try {
+    context.body.localGet(addressLocal);
+    emitCopyReg32FromIndexLocal(context.body, context.state, indexLocal, valueLocal);
+    context.body.localGet(valueLocal);
+    context.body.i32Add().localSet(addressLocal);
+  } finally {
+    context.scratch.freeLocal(valueLocal);
+  }
 }
 
 function loadDisplacementIntoAddress(
@@ -246,8 +253,9 @@ function emitIfLocalNotEqualsConst(
 
 function emitUnsupportedIfModRmRegister(context: InterpreterHandlerContext, modRmLocal: number): void {
   emitIfModRmRegister(context.body, modRmLocal, () => {
-    context.body.localGet(context.opcodeLocal);
-    emitExitResultFromStackPayload(context.body, ExitReason.UNSUPPORTED).returnFromFunction();
+    emitInterpreterExit(context.body, context.exit, ExitReason.UNSUPPORTED, () => {
+      context.body.localGet(context.opcodeLocal);
+    }, 1);
   });
 }
 

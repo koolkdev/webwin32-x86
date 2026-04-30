@@ -18,6 +18,7 @@ const flagOrder = ["CF", "PF", "AF", "ZF", "SF", "OF"] as const satisfies readon
 export function emitSetFlags(
   body: WasmFunctionBodyEncoder,
   scratch: WasmLocalScratchAllocator,
+  eflagsLocal: number | undefined,
   producer: FlagProducerName,
   inputs: Readonly<Record<string, ValueRef>>,
   helpers: WasmSirEmitHelpers
@@ -37,10 +38,20 @@ export function emitSetFlags(
       }
     }
 
-    emitStoreStateU32(body, stateOffset.eflags, () => {
-      emitLoadStateU32(body, stateOffset.eflags);
-      body.i32Const(i32(~writtenFlagsMask(defs))).i32And().localGet(flagsLocal).i32Or();
-    });
+    if (eflagsLocal === undefined) {
+      emitStoreStateU32(body, stateOffset.eflags, () => {
+        emitLoadStateU32(body, stateOffset.eflags);
+        body.i32Const(i32(~writtenFlagsMask(defs))).i32And().localGet(flagsLocal).i32Or();
+      });
+    } else {
+      body
+        .localGet(eflagsLocal)
+        .i32Const(i32(~writtenFlagsMask(defs)))
+        .i32And()
+        .localGet(flagsLocal)
+        .i32Or()
+        .localSet(eflagsLocal);
+    }
   } finally {
     scratch.freeLocal(flagsLocal);
   }

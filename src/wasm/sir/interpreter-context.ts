@@ -4,22 +4,23 @@ import type {
   StorageRef,
   ValueRef
 } from "../../arch/x86/sir/types.js";
-import { wasmMemoryIndex } from "../abi.js";
-import { emitExitResultFromStackPayload } from "../codegen/exit.js";
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import { emitLoadGuestU32, emitStoreGuestU32 } from "../codegen/guest-memory.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
+import { emitInterpreterExit, type InterpreterExitTarget } from "../interpreter/exit.js";
 import {
   emitCompleteInstruction,
   emitCompleteInstructionWithTarget,
+  emitCopyReg32FromIndexLocal,
   emitLoadReg32,
-  emitModRmRegAddress,
-  emitModRmRmAddress,
-  emitOpcodeRegAddress,
+  emitModRmRmIndex,
+  emitOpcodeRegIndex,
+  emitStoreReg32ByIndexLocal,
   emitStoreReg32
 } from "../interpreter/state.js";
-import { emitIfModRmMemory, emitIfModRmRegister } from "../interpreter/modrm-bits.js";
+import type { InterpreterStateCache } from "../interpreter/state.js";
+import { emitIfModRmMemory, emitIfModRmRegister, emitModRmRegIndex } from "../interpreter/modrm-bits.js";
 import { lowerSirToWasm, type WasmSirEmitHelpers } from "./lower.js";
 import { emitSetFlags } from "./flags.js";
 import { emitCondition } from "./conditions.js";
@@ -41,6 +42,8 @@ export type InterpreterInstructionLength =
 export type InterpreterSirContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
+  state: InterpreterStateCache;
+  exit: InterpreterExitTarget;
   eipLocal: number;
   instructionLength: InterpreterInstructionLength;
   operands: readonly InterpreterOperandBinding[];
@@ -55,8 +58,8 @@ export function lowerSirWithInterpreterContext(program: SirProgram, context: Int
     emitSet32: (target, value, helpers) => emitSet32(context, target, value, helpers),
     emitAddress32: (source) => emitAddress32(context, source),
     emitSetFlags: (producer, inputs, helpers) =>
-      emitSetFlags(context.body, context.scratch, producer, inputs, helpers),
-    emitCondition: (cc) => emitCondition(context.body, cc),
+      emitSetFlags(context.body, context.scratch, context.state.eflagsLocal, producer, inputs, helpers),
+    emitCondition: (cc) => emitCondition(context.body, context.state.eflagsLocal, cc),
     emitNext: () => emitNext(context),
     emitNextEip: () => emitNextEip(context),
     emitJump: (target, helpers) => emitJump(context, target, helpers),
@@ -72,7 +75,7 @@ function emitGet32(context: InterpreterSirContext, source: StorageRef, helpers: 
       emitGetOperand32(context, source.index);
       return;
     case "reg":
-      emitLoadReg32(context.body, source.reg);
+      emitLoadReg32(context.body, context.state, source.reg);
       return;
     case "mem":
       helpers.emitValue(source.address);
@@ -92,7 +95,7 @@ function emitSet32(
       emitSetOperand32(context, target.index, value, helpers);
       return;
     case "reg":
-      emitStoreReg32(context.body, target.reg, () => helpers.emitValue(value));
+      emitStoreReg32(context.body, context.state, target.reg, () => helpers.emitValue(value));
       return;
     case "mem":
       emitStoreMem32(context, () => helpers.emitValue(target.address), () => helpers.emitValue(value));
@@ -119,21 +122,21 @@ function emitGetOperand32(context: InterpreterSirContext, index: number): void {
 
   switch (binding.kind) {
     case "opcode.reg32":
-      emitOpcodeRegAddress(context.body, binding.opcodeLocal);
-      context.body.i32Load({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+      emitLoadDynamicReg32(context, () => emitOpcodeRegIndex(context.body, binding.opcodeLocal));
       return;
     case "modrm.reg32":
-      emitModRmRegAddress(context.body, binding.modRmLocal);
-      context.body.i32Load({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+      emitLoadDynamicReg32(context, () => emitModRmRegIndex(context.body, binding.modRmLocal));
       return;
     case "rm32":
       emitGetRm32(context, binding);
       return;
     case "mem32":
-      emitLoadGuestU32(context.body, binding.addressLocal);
+      emitLoadGuestU32(context.body, binding.addressLocal, (access, emitPayload) => {
+        emitMemoryFaultExit(context, access, emitPayload, 1);
+      });
       return;
     case "implicit.reg32":
-      emitLoadReg32(context.body, binding.reg);
+      emitLoadReg32(context.body, context.state, binding.reg);
       return;
     case "imm32":
     case "relTarget32":
@@ -152,14 +155,10 @@ function emitSetOperand32(
 
   switch (binding.kind) {
     case "opcode.reg32":
-      emitOpcodeRegAddress(context.body, binding.opcodeLocal);
-      helpers.emitValue(value);
-      context.body.i32Store({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+      emitStoreDynamicReg32(context, () => emitOpcodeRegIndex(context.body, binding.opcodeLocal), value, helpers);
       return;
     case "modrm.reg32":
-      emitModRmRegAddress(context.body, binding.modRmLocal);
-      helpers.emitValue(value);
-      context.body.i32Store({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+      emitStoreDynamicReg32(context, () => emitModRmRegIndex(context.body, binding.modRmLocal), value, helpers);
       return;
     case "rm32":
       emitSetRm32(context, binding, value, helpers);
@@ -168,7 +167,7 @@ function emitSetOperand32(
       emitStoreMem32(context, () => context.body.localGet(binding.addressLocal), () => helpers.emitValue(value));
       return;
     case "implicit.reg32":
-      emitStoreReg32(context.body, binding.reg, () => helpers.emitValue(value));
+      emitStoreReg32(context.body, context.state, binding.reg, () => helpers.emitValue(value));
       return;
     case "imm32":
     case "relTarget32":
@@ -178,9 +177,9 @@ function emitSetOperand32(
 
 function emitNext(context: InterpreterSirContext): void {
   if (typeof context.instructionLength === "number") {
-    emitCompleteInstruction(context.body, context.eipLocal, context.instructionLength);
+    emitCompleteInstruction(context.body, context.state, context.instructionLength);
   } else {
-    emitCompleteInstructionWithTarget(context.body, context.eipLocal, () => emitNextEip(context));
+    emitCompleteInstructionWithTarget(context.body, context.state, () => emitNextEip(context));
   }
   emitContinue(context);
 }
@@ -198,7 +197,7 @@ function emitNextEip(context: InterpreterSirContext): void {
 }
 
 function emitJump(context: InterpreterSirContext, target: ValueRef, helpers: WasmSirEmitHelpers): void {
-  emitCompleteInstructionWithTarget(context.body, context.eipLocal, () => helpers.emitValue(target));
+  emitCompleteInstructionWithTarget(context.body, context.state, () => helpers.emitValue(target));
   emitContinue(context);
 }
 
@@ -211,22 +210,21 @@ function emitConditionalJump(
 ): void {
   helpers.emitValue(condition);
   context.body.ifBlock();
-  emitCompleteInstructionWithTarget(context.body, context.eipLocal, () => helpers.emitValue(taken));
+  emitCompleteInstructionWithTarget(context.body, context.state, () => helpers.emitValue(taken));
   emitContinue(context, 1);
   context.body.endBlock();
-  emitCompleteInstructionWithTarget(context.body, context.eipLocal, () => helpers.emitValue(notTaken));
+  emitCompleteInstructionWithTarget(context.body, context.state, () => helpers.emitValue(notTaken));
   emitContinue(context);
 }
 
 function emitHostTrap(context: InterpreterSirContext, vector: ValueRef, helpers: WasmSirEmitHelpers): void {
   if (typeof context.instructionLength === "number") {
-    emitCompleteInstruction(context.body, context.eipLocal, context.instructionLength);
+    emitCompleteInstruction(context.body, context.state, context.instructionLength);
   } else {
-    emitCompleteInstructionWithTarget(context.body, context.eipLocal, () => emitNextEip(context));
+    emitCompleteInstructionWithTarget(context.body, context.state, () => emitNextEip(context));
   }
 
-  helpers.emitValue(vector);
-  emitExitResultFromStackPayload(context.body, ExitReason.HOST_TRAP).returnFromFunction();
+  emitInterpreterExit(context.body, context.exit, ExitReason.HOST_TRAP, () => helpers.emitValue(vector));
 }
 
 function emitContinue(context: InterpreterSirContext, extraDepth = 0): void {
@@ -238,18 +236,23 @@ function emitGetRm32(
   binding: Extract<InterpreterOperandBinding, { kind: "rm32" }>
 ): void {
   const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
+  const indexLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
     emitIfModRmRegister(context.body, binding.modRmLocal, () => {
-      emitModRmRmAddress(context.body, binding.modRmLocal);
-      context.body.i32Load({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state }).localSet(valueLocal);
+      emitModRmRmIndex(context.body, binding.modRmLocal);
+      context.body.localSet(indexLocal);
+      emitCopyReg32FromIndexLocal(context.body, context.state, indexLocal, valueLocal);
     });
     emitIfModRmMemory(context.body, binding.modRmLocal, () => {
-      emitLoadGuestU32(context.body, binding.addressLocal);
+      emitLoadGuestU32(context.body, binding.addressLocal, (access, emitPayload) => {
+        emitMemoryFaultExit(context, access, emitPayload, 2);
+      });
       context.body.localSet(valueLocal);
     });
     context.body.localGet(valueLocal);
   } finally {
+    context.scratch.freeLocal(indexLocal);
     context.scratch.freeLocal(valueLocal);
   }
 }
@@ -261,19 +264,26 @@ function emitSetRm32(
   helpers: WasmSirEmitHelpers
 ): void {
   const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
+  const indexLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
     helpers.emitValue(value);
     context.body.localSet(valueLocal);
     emitIfModRmRegister(context.body, binding.modRmLocal, () => {
-      emitModRmRmAddress(context.body, binding.modRmLocal);
-      context.body.localGet(valueLocal);
-      context.body.i32Store({ align: 2, offset: 0, memoryIndex: wasmMemoryIndex.state });
+      emitModRmRmIndex(context.body, binding.modRmLocal);
+      context.body.localSet(indexLocal);
+      emitStoreReg32ByIndexLocal(context.body, context.state, indexLocal, valueLocal);
     });
     emitIfModRmMemory(context.body, binding.modRmLocal, () => {
-      emitStoreMem32(context, () => context.body.localGet(binding.addressLocal), () => context.body.localGet(valueLocal));
+      emitStoreMem32(
+        context,
+        () => context.body.localGet(binding.addressLocal),
+        () => context.body.localGet(valueLocal),
+        2
+      );
     });
   } finally {
+    context.scratch.freeLocal(indexLocal);
     context.scratch.freeLocal(valueLocal);
   }
 }
@@ -283,13 +293,20 @@ function emitLoadGuestU32FromStack(context: InterpreterSirContext): void {
 
   try {
     context.body.localSet(addressLocal);
-    emitLoadGuestU32(context.body, addressLocal);
+    emitLoadGuestU32(context.body, addressLocal, (access, emitPayload) => {
+      emitMemoryFaultExit(context, access, emitPayload, 1);
+    });
   } finally {
     context.scratch.freeLocal(addressLocal);
   }
 }
 
-function emitStoreMem32(context: InterpreterSirContext, emitAddress: () => void, emitValue: () => void): void {
+function emitStoreMem32(
+  context: InterpreterSirContext,
+  emitAddress: () => void,
+  emitValue: () => void,
+  faultExtraDepth = 1
+): void {
   const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
   const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
 
@@ -298,11 +315,28 @@ function emitStoreMem32(context: InterpreterSirContext, emitAddress: () => void,
     context.body.localSet(addressLocal);
     emitValue();
     context.body.localSet(valueLocal);
-    emitStoreGuestU32(context.body, addressLocal, valueLocal);
+    emitStoreGuestU32(context.body, addressLocal, valueLocal, (access, emitPayload) => {
+      emitMemoryFaultExit(context, access, emitPayload, faultExtraDepth);
+    });
   } finally {
     context.scratch.freeLocal(valueLocal);
     context.scratch.freeLocal(addressLocal);
   }
+}
+
+function emitMemoryFaultExit(
+  context: InterpreterSirContext,
+  access: "read" | "write",
+  emitPayload: () => void,
+  extraDepth: number
+): void {
+  emitInterpreterExit(
+    context.body,
+    context.exit,
+    access === "read" ? ExitReason.MEMORY_READ_FAULT : ExitReason.MEMORY_WRITE_FAULT,
+    emitPayload,
+    extraDepth
+  );
 }
 
 function operandBinding(context: InterpreterSirContext, index: number): InterpreterOperandBinding {
@@ -313,4 +347,40 @@ function operandBinding(context: InterpreterSirContext, index: number): Interpre
   }
 
   return binding;
+}
+
+function emitLoadDynamicReg32(context: InterpreterSirContext, emitIndex: () => void): void {
+  const indexLocal = context.scratch.allocLocal(wasmValueType.i32);
+  const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
+
+  try {
+    emitIndex();
+    context.body.localSet(indexLocal);
+    emitCopyReg32FromIndexLocal(context.body, context.state, indexLocal, valueLocal);
+    context.body.localGet(valueLocal);
+  } finally {
+    context.scratch.freeLocal(valueLocal);
+    context.scratch.freeLocal(indexLocal);
+  }
+}
+
+function emitStoreDynamicReg32(
+  context: InterpreterSirContext,
+  emitIndex: () => void,
+  value: ValueRef,
+  helpers: WasmSirEmitHelpers
+): void {
+  const indexLocal = context.scratch.allocLocal(wasmValueType.i32);
+  const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
+
+  try {
+    emitIndex();
+    context.body.localSet(indexLocal);
+    helpers.emitValue(value);
+    context.body.localSet(valueLocal);
+    emitStoreReg32ByIndexLocal(context.body, context.state, indexLocal, valueLocal);
+  } finally {
+    context.scratch.freeLocal(valueLocal);
+    context.scratch.freeLocal(indexLocal);
+  }
 }

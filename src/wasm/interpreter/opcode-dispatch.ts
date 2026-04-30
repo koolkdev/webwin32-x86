@@ -1,13 +1,16 @@
-import { emitExitResultFromStackPayload } from "../codegen/exit.js";
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
 import { dispatchBytes, interpreterOpcodeDispatchRoot } from "./dispatch.js";
+import { emitInterpreterExit, type InterpreterExitTarget } from "./exit.js";
 import { emitLoadGuestByte } from "./guest-bytes.js";
 import { emitInstructionHandlerForLeaf } from "./instruction-handlers.js";
+import type { InterpreterStateCache } from "./state.js";
 
 type OpcodeDispatchContext = Readonly<{
   body: WasmFunctionBodyEncoder;
+  state: InterpreterStateCache;
+  exit: InterpreterExitTarget;
   eipLocal: number;
   opcodeOffset: number;
   byteLocal: number;
@@ -19,7 +22,8 @@ type OpcodeDispatchContext = Readonly<{
 
 export function emitOpcodeDispatch(
   body: WasmFunctionBodyEncoder,
-  eipLocal: number,
+  state: InterpreterStateCache,
+  exit: InterpreterExitTarget,
   opcodeOffset: number,
   byteLocal: number,
   addressLocal: number,
@@ -29,7 +33,9 @@ export function emitOpcodeDispatch(
   body.localGet(byteLocal).localSet(opcodeLocal);
   emitOpcodeDispatchNode(interpreterOpcodeDispatchRoot, {
     body,
-    eipLocal,
+    state,
+    exit,
+    eipLocal: state.eipLocal,
     opcodeOffset,
     byteLocal,
     addressLocal,
@@ -43,8 +49,7 @@ function emitOpcodeDispatchNode(node: typeof interpreterOpcodeDispatchRoot, cont
   const bytes = dispatchBytes(node);
 
   if (bytes.length === 0) {
-    context.body.localGet(context.opcodeLocal);
-    emitExitResultFromStackPayload(context.body, ExitReason.UNSUPPORTED).returnFromFunction();
+    emitUnsupportedOpcodeExit(context);
     return;
   }
 
@@ -71,19 +76,20 @@ function emitOpcodeDispatchNode(node: typeof interpreterOpcodeDispatchRoot, cont
 
     context.body.endBlock();
 
+    const caseContext = {
+      ...context,
+      instructionDoneLabelDepth: context.instructionDoneLabelDepth + 1 + index,
+      exit: {
+        ...context.exit,
+        exitLabelDepth: context.exit.exitLabelDepth + 1 + index
+      }
+    };
+
     if (child.leaf !== undefined) {
-      const emitted = emitInstructionHandlerForLeaf(child.leaf, {
-        body: context.body,
-        scratch: context.scratch,
-        eipLocal: context.eipLocal,
-        addressLocal: context.addressLocal,
-        opcodeLocal: context.opcodeLocal,
-        instructionDoneLabelDepth: context.instructionDoneLabelDepth + 1 + index
-      });
+      const emitted = emitInstructionHandlerForLeaf(child.leaf, caseContext);
 
       if (!emitted) {
-        context.body.localGet(context.opcodeLocal);
-        emitExitResultFromStackPayload(context.body, ExitReason.UNSUPPORTED).returnFromFunction();
+        emitUnsupportedOpcodeExit(caseContext);
       }
     } else {
       emitLoadGuestByte(
@@ -91,24 +97,28 @@ function emitOpcodeDispatchNode(node: typeof interpreterOpcodeDispatchRoot, cont
         context.eipLocal,
         context.opcodeOffset + 1,
         context.addressLocal,
-        context.byteLocal
+        context.byteLocal,
+        caseContext.exit
       );
       emitOpcodeDispatchNode(
         child,
         {
-          ...context,
-          opcodeOffset: context.opcodeOffset + 1,
-          instructionDoneLabelDepth: context.instructionDoneLabelDepth + 1 + index
+          ...caseContext,
+          opcodeOffset: context.opcodeOffset + 1
         }
       );
-      context.body.localGet(context.opcodeLocal);
-      emitExitResultFromStackPayload(context.body, ExitReason.UNSUPPORTED).returnFromFunction();
+      emitUnsupportedOpcodeExit(caseContext);
     }
   }
 
   context.body.endBlock();
-  context.body.localGet(context.opcodeLocal);
-  emitExitResultFromStackPayload(context.body, ExitReason.UNSUPPORTED).returnFromFunction();
+  emitUnsupportedOpcodeExit(context);
+}
+
+function emitUnsupportedOpcodeExit(context: OpcodeDispatchContext): void {
+  emitInterpreterExit(context.body, context.exit, ExitReason.UNSUPPORTED, () => {
+    context.body.localGet(context.opcodeLocal);
+  });
 }
 
 function dispatchTable(bytes: readonly number[]): number[] {
