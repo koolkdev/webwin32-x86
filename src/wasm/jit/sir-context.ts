@@ -15,7 +15,7 @@ import { emitWasmSirExitFromI32Stack, type WasmSirExitTarget } from "../sir/exit
 import { emitSetFlags } from "../sir/flags.js";
 import { lowerSirToWasm, type WasmSirEmitHelpers } from "../sir/lower.js";
 import { emitWasmSirLoadGuestU32FromStack, emitWasmSirStoreGuestU32 } from "../sir/memory.js";
-import { wasmSirLocalReg32Storage, type WasmSirReg32Storage } from "../sir/registers.js";
+import type { WasmSirReg32Storage } from "../sir/registers.js";
 import { emitLoadStateU32, emitStoreStateU32 } from "../sir/state.js";
 
 export type JitOperandBinding =
@@ -24,11 +24,17 @@ export type JitOperandBinding =
   | Readonly<{ kind: "static.imm32"; value: number }>
   | Readonly<{ kind: "static.relTarget"; target: number }>;
 
+export type JitReg32Storage = WasmSirReg32Storage & Readonly<{
+  emitFlushDirty(): void;
+}>;
+
 export type JitSirState = Readonly<{
-  regs: Readonly<Record<Reg32, number>>;
+  regs: JitReg32Storage;
   eipLocal: number;
   eflagsLocal: number;
   instructionCountLocal: number;
+  emitEntryLoads(): void;
+  emitExitStores(): void;
 }>;
 
 export type JitSirContext = Readonly<{
@@ -42,53 +48,100 @@ export type JitSirContext = Readonly<{
 }>;
 
 export function createJitSirState(body: WasmFunctionBodyEncoder): JitSirState {
-  const regs = Object.fromEntries(
-    reg32.map((reg) => [reg, body.addLocal(wasmValueType.i32)])
-  ) as Record<Reg32, number>;
+  const regs = createLazyJitReg32Storage(body);
+  const eipLocal = body.addLocal(wasmValueType.i32);
+  const eflagsLocal = body.addLocal(wasmValueType.i32);
+  const instructionCountLocal = body.addLocal(wasmValueType.i32);
 
   return {
     regs,
-    eipLocal: body.addLocal(wasmValueType.i32),
-    eflagsLocal: body.addLocal(wasmValueType.i32),
-    instructionCountLocal: body.addLocal(wasmValueType.i32)
+    eipLocal,
+    eflagsLocal,
+    instructionCountLocal,
+    emitEntryLoads: () => {
+      emitLoadStateU32(body, stateOffset.eip);
+      body.localSet(eipLocal);
+      emitLoadStateU32(body, stateOffset.eflags);
+      body.localSet(eflagsLocal);
+      emitLoadStateU32(body, stateOffset.instructionCount);
+      body.localSet(instructionCountLocal);
+    },
+    emitExitStores: () => {
+      regs.emitFlushDirty();
+      emitStoreStateU32(body, stateOffset.eip, () => {
+        body.localGet(eipLocal);
+      });
+      emitStoreStateU32(body, stateOffset.eflags, () => {
+        body.localGet(eflagsLocal);
+      });
+      emitStoreStateU32(body, stateOffset.instructionCount, () => {
+        body.localGet(instructionCountLocal);
+      });
+    }
   };
 }
 
-export function emitLoadJitSirState(body: WasmFunctionBodyEncoder, state: JitSirState): void {
-  for (const reg of reg32) {
-    emitLoadStateU32(body, stateOffset[reg]);
-    body.localSet(state.regs[reg]);
-  }
+function createLazyJitReg32Storage(body: WasmFunctionBodyEncoder): JitReg32Storage {
+  const locals = new Map<Reg32, number>();
+  const dirty = new Set<Reg32>();
 
-  emitLoadStateU32(body, stateOffset.eip);
-  body.localSet(state.eipLocal);
-  emitLoadStateU32(body, stateOffset.eflags);
-  body.localSet(state.eflagsLocal);
-  emitLoadStateU32(body, stateOffset.instructionCount);
-  body.localSet(state.instructionCountLocal);
+  return {
+    emitGet: (reg) => {
+      body.localGet(localForReg(body, locals, reg, "load"));
+    },
+    emitSet: (reg, emitValue) => {
+      const local = localForReg(body, locals, reg, "unused");
+
+      emitValue();
+      body.localSet(local);
+      dirty.add(reg);
+    },
+    emitFlushDirty: () => {
+      for (const reg of reg32) {
+        if (!dirty.has(reg)) {
+          continue;
+        }
+
+        const local = locals.get(reg);
+
+        if (local === undefined) {
+          throw new Error(`dirty JIT register has no local: ${reg}`);
+        }
+
+        emitStoreStateU32(body, stateOffset[reg], () => {
+          body.localGet(local);
+        });
+      }
+    }
+  };
 }
 
-export function emitFlushJitSirState(body: WasmFunctionBodyEncoder, state: JitSirState): void {
-  for (const reg of reg32) {
-    emitStoreStateU32(body, stateOffset[reg], () => {
-      body.localGet(state.regs[reg]);
-    });
+function localForReg(
+  body: WasmFunctionBodyEncoder,
+  locals: Map<Reg32, number>,
+  reg: Reg32,
+  mode: "load" | "unused"
+): number {
+  let local = locals.get(reg);
+
+  if (local !== undefined) {
+    return local;
   }
 
-  emitStoreStateU32(body, stateOffset.eip, () => {
-    body.localGet(state.eipLocal);
-  });
-  emitStoreStateU32(body, stateOffset.eflags, () => {
-    body.localGet(state.eflagsLocal);
-  });
-  emitStoreStateU32(body, stateOffset.instructionCount, () => {
-    body.localGet(state.instructionCountLocal);
-  });
+  local = body.addLocal(wasmValueType.i32);
+  locals.set(reg, local);
+
+  if (mode === "load") {
+    emitLoadStateU32(body, stateOffset[reg]);
+    body.localSet(local);
+  }
+
+  return local;
 }
 
 export function lowerSirWithJitContext(program: SirProgram, context: JitSirContext): void {
   const eflags = wasmSirLocalEflagsStorage(context.body, context.state.eflagsLocal);
-  const regs = wasmSirLocalReg32Storage(context.body, context.state.regs);
+  const regs = context.state.regs;
 
   lowerSirToWasm(program, {
     body: context.body,

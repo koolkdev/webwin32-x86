@@ -8,8 +8,6 @@ import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
 import {
   createJitSirState,
-  emitFlushJitSirState,
-  emitLoadJitSirState,
   jitBindingsFromIsaInstruction,
   type JitOperandBinding,
   type JitSirState,
@@ -77,11 +75,11 @@ export function encodeJitSirBlock(block: JitSirBlock): Uint8Array<ArrayBuffer> {
   const state = createJitSirState(body);
   const exit: WasmSirExitTarget = { exitLocal, exitLabelDepth: 0 };
 
-  emitLoadJitSirState(body, state);
+  state.emitEntryLoads();
   body.block();
   lowerJitSirBlockToWasm(block, { body, scratch, state, exit });
   body.endBlock();
-  emitFlushJitSirState(body, state);
+  state.emitExitStores();
   body.localGet(exitLocal).returnFromFunction();
   scratch.assertClear();
   body.end();
