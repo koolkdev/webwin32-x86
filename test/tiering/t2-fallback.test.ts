@@ -25,6 +25,11 @@ const branchLoopFixture = [
   0xcd, 0x2e
 ] as const;
 
+const straightLineTrapFixture = [
+  ...Array.from({ length: 80 }, () => 0x90),
+  0xcd, 0x2e
+] as const;
+
 test("supported_block_runs_as_t2", () => {
   const runtime = runRuntime(supportedJumpFixture, TierMode.T2_ONLY);
 
@@ -44,6 +49,38 @@ test("wasm_block_cache_reuses_supported_block", () => {
   strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 2);
   strictEqual(runtime.instance.counters.wasmBlockCache.hits, 2);
   strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 0);
+});
+
+test("t2_default_block_limit_keeps_medium_straight_line_code_in_one_block", () => {
+  const runtime = runRuntime(straightLineTrapFixture, TierMode.T2_ONLY);
+
+  strictEqual(runtime.result.stopReason, StopReason.HOST_TRAP);
+  strictEqual(runtime.instance.state.instructionCount, 81);
+  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 1);
+  strictEqual(runtime.instance.counters.wasmBlockCache.hits, 0);
+});
+
+test("t2_block_limit_can_be_configured_for_smaller_blocks", () => {
+  const runtime = runRuntime(straightLineTrapFixture, TierMode.T2_ONLY, {}, {
+    t2MaxInstructionsPerBlock: 16
+  });
+
+  strictEqual(runtime.result.stopReason, StopReason.HOST_TRAP);
+  strictEqual(runtime.instance.state.instructionCount, 81);
+  strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 6);
+  strictEqual(runtime.instance.counters.wasmBlockCache.hits, 0);
+});
+
+test("t2_block_limit_rejects_non_positive_values", () => {
+  throws(
+    () => new RuntimeInstance({
+      program: { baseAddress: startAddress, bytes: supportedJumpFixture },
+      initialState: { eip: startAddress },
+      tierMode: TierMode.T2_ONLY,
+      t2MaxInstructionsPerBlock: 0
+    }),
+    /maxInstructionsPerBlock must be a positive integer/
+  );
 });
 
 test("wasm_block_cache_clear_forces_recompile", () => {
@@ -142,12 +179,16 @@ test("t2_fallback_final_state_matches_t1", () => {
 function runRuntime(
   bytes: readonly number[],
   tierMode: TierMode,
-  initialState: Partial<CpuState> = {}
+  initialState: Partial<CpuState> = {},
+  options: Readonly<{
+    t2MaxInstructionsPerBlock?: number;
+  }> = {}
 ): Readonly<{ instance: RuntimeInstance; result: RunResult }> {
   const instance = new RuntimeInstance({
     program: { baseAddress: startAddress, bytes },
     initialState: { ...initialState, eip: startAddress },
-    tierMode
+    tierMode,
+    ...options
   });
   const result = instance.run();
 

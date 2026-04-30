@@ -33,6 +33,7 @@ export type RuntimeInstanceOptions = Readonly<{
   guestMemory?: GuestMemory;
   guestMemoryByteLength?: number;
   tierMode?: TierMode;
+  t2MaxInstructionsPerBlock?: number;
 }>;
 
 export type RuntimeInstanceRunOptions = Readonly<{
@@ -82,7 +83,11 @@ export class RuntimeInstance {
       : undefined;
     this.#wasmRuntime = this.#tierMode !== TierMode.T2_ONLY || guestMemoryResources.wasmGuestMemory === undefined
       ? undefined
-      : new WasmRuntimeContext(guestMemoryResources.wasmGuestMemory);
+      : new WasmRuntimeContext(guestMemoryResources.wasmGuestMemory, {
+          ...(options.t2MaxInstructionsPerBlock === undefined
+            ? {}
+            : { maxInstructionsPerBlock: options.t2MaxInstructionsPerBlock })
+        });
     this.decodedBlockCache = new DecodedBlockCache(this.decodeReader);
     this.#decodedBlockRunner = new DecodedBlockRunner(this.decodedBlockCache);
     this.#tierExecutors = {

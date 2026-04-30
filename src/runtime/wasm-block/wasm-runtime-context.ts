@@ -4,11 +4,17 @@ import { stateOffset } from "../../wasm/abi.js";
 import { UnsupportedWasmCodegenError } from "../../wasm/codegen/errors.js";
 import { type WasmBlockHandle, type WasmBlockKey, compileWasmBlockHandle } from "./wasm-block.js";
 
+export const defaultWasmBlockMaxInstructions = 1024;
+
 export type WasmBlockCacheCounters = Readonly<{
   hits: number;
   misses: number;
   inserts: number;
   unsupportedCodegenFallbacks: number;
+}>;
+
+export type WasmRuntimeContextOptions = Readonly<{
+  maxInstructionsPerBlock?: number;
 }>;
 
 export const emptyWasmBlockCacheCounters: WasmBlockCacheCounters = {
@@ -25,8 +31,8 @@ export class WasmRuntimeContext {
   readonly stateView = new DataView(this.stateMemory.buffer);
   readonly blockCache: WasmBlockCache;
 
-  constructor(readonly guestMemory: WebAssembly.Memory) {
-    this.blockCache = new WasmBlockCache(this.stateMemory, this.guestMemory);
+  constructor(readonly guestMemory: WebAssembly.Memory, options: WasmRuntimeContextOptions = {}) {
+    this.blockCache = new WasmBlockCache(this.stateMemory, this.guestMemory, options);
   }
 
   copyStateToWasm(state: CpuState): void {
@@ -51,8 +57,13 @@ export class WasmBlockCache {
 
   constructor(
     readonly stateMemory: WebAssembly.Memory,
-    readonly guestMemory: WebAssembly.Memory
-  ) {}
+    readonly guestMemory: WebAssembly.Memory,
+    options: WasmRuntimeContextOptions = {}
+  ) {
+    this.maxInstructionsPerBlock = normalizeMaxInstructionsPerBlock(options.maxInstructionsPerBlock);
+  }
+
+  readonly maxInstructionsPerBlock: number;
 
   get counters(): WasmBlockCacheCounters {
     return {
@@ -79,7 +90,7 @@ export class WasmBlockCache {
     this.#misses += 1;
 
     try {
-      const block = decodeIsaBlock(reader, blockKey);
+      const block = decodeIsaBlock(reader, blockKey, { maxInstructions: this.maxInstructionsPerBlock });
 
       if (block.instructions.length === 0) {
         this.#unsupportedCodegenFallbacks += 1;
@@ -104,4 +115,14 @@ export class WasmBlockCache {
       throw error;
     }
   }
+}
+
+function normalizeMaxInstructionsPerBlock(value: number | undefined): number {
+  const maxInstructions = value ?? defaultWasmBlockMaxInstructions;
+
+  if (!Number.isInteger(maxInstructions) || maxInstructions <= 0) {
+    throw new RangeError(`maxInstructionsPerBlock must be a positive integer: ${maxInstructions}`);
+  }
+
+  return maxInstructions;
 }
