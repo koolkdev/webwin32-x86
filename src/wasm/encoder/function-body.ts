@@ -66,6 +66,12 @@ export class WasmFunctionBodyEncoder {
     return this;
   }
 
+  block(): this {
+    this.#writeInstruction(wasmOpcode.block);
+    this.#instructions.writeByte(wasmBlockType.empty);
+    return this;
+  }
+
   ifBlock(hint?: WasmBranchHint): this {
     if (hint !== undefined) {
       this.#branchHints.push({
@@ -76,6 +82,24 @@ export class WasmFunctionBodyEncoder {
 
     this.#writeInstruction(wasmOpcode.if);
     this.#instructions.writeByte(wasmBlockType.empty);
+    return this;
+  }
+
+  br(labelDepth: number): this {
+    this.#writeInstruction(wasmOpcode.br);
+    this.#instructions.writeU32(labelDepth);
+    return this;
+  }
+
+  brTable(labelDepths: readonly number[], defaultLabelDepth: number): this {
+    this.#writeInstruction(wasmOpcode.brTable);
+    this.#instructions.writeVecLength(labelDepths.length);
+
+    for (const labelDepth of labelDepths) {
+      this.#instructions.writeU32(labelDepth);
+    }
+
+    this.#instructions.writeU32(defaultLabelDepth);
     return this;
   }
 

@@ -62,6 +62,52 @@ test("unsupported byte returns unsupported exit without changing architectural s
   assertInterpreterStateEquals(interpreter.stateView, initialState);
 });
 
+test("prefix byte is unsupported until prefix semantics are modeled", async () => {
+  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const initialState = createCpuState({
+    eip: startAddress,
+    instructionCount: 7
+  });
+  writeInterpreterState(interpreter.stateView, initialState);
+  writeGuestBytes(interpreter.guestView, startAddress, [0x66, 0xb8, 0x34, 0x12]);
+
+  const exit = interpreter.run(1);
+
+  deepStrictEqual(exit, { exitReason: ExitReason.UNSUPPORTED, payload: 0x66 });
+  assertInterpreterStateEquals(interpreter.stateView, initialState);
+});
+
+test("truncated two-byte opcode escape returns decode fault", async () => {
+  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const lastGuestByte = interpreter.guestView.byteLength - 1;
+  const initialState = createCpuState({
+    eip: lastGuestByte,
+    instructionCount: 7
+  });
+  writeInterpreterState(interpreter.stateView, initialState);
+  interpreter.guestView.setUint8(lastGuestByte, 0x0f);
+
+  const exit = interpreter.run(1);
+
+  deepStrictEqual(exit, { exitReason: ExitReason.DECODE_FAULT, payload: interpreter.guestView.byteLength });
+  assertInterpreterStateEquals(interpreter.stateView, initialState);
+});
+
+test("two-byte opcode path dispatches before unsupported exit", async () => {
+  const interpreter = await instantiateInterpreterModule(encodeInterpreterModule());
+  const initialState = createCpuState({
+    eip: startAddress,
+    instructionCount: 7
+  });
+  writeInterpreterState(interpreter.stateView, initialState);
+  writeGuestBytes(interpreter.guestView, startAddress, [0x0f, 0x85, 0x00, 0x00, 0x00, 0x00]);
+
+  const exit = interpreter.run(1);
+
+  deepStrictEqual(exit, { exitReason: ExitReason.UNSUPPORTED, payload: 0x0f });
+  assertInterpreterStateEquals(interpreter.stateView, initialState);
+});
+
 test("requires both ABI memories when instantiating", async () => {
   const module = new WebAssembly.Module(encodeInterpreterModule());
   const stateMemory = new WebAssembly.Memory({ initial: 1 });
@@ -79,3 +125,9 @@ test("requires both ABI memories when instantiating", async () => {
     }
   );
 });
+
+function writeGuestBytes(view: DataView, address: number, bytes: readonly number[]): void {
+  for (let index = 0; index < bytes.length; index += 1) {
+    view.setUint8(address + index, bytes[index] ?? 0);
+  }
+}

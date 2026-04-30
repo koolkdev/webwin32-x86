@@ -12,7 +12,10 @@ export const wasmBlockType = {
 export const wasmMagic = [0x00, 0x61, 0x73, 0x6d] as const;
 
 export const wasmOpcode = {
+  block: 0x02,
   if: 0x04,
+  br: 0x0c,
+  brTable: 0x0e,
   call: 0x10,
   returnCall: 0x12,
   return: 0x0f,

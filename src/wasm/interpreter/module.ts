@@ -4,6 +4,8 @@ import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
+import { emitLoadGuestByte } from "./guest-bytes.js";
+import { emitOpcodeDispatch } from "./opcode-dispatch.js";
 
 const fuelParam = 0;
 
@@ -22,6 +24,9 @@ export function encodeInterpreterModule(): Uint8Array<ArrayBuffer> {
   });
   const body = new WasmFunctionBodyEncoder(1);
   const eipLocal = body.addLocal(wasmValueType.i32);
+  const byteLocal = body.addLocal(wasmValueType.i32);
+  const addressLocal = body.addLocal(wasmValueType.i32);
+  const opcodeLocal = body.addLocal(wasmValueType.i32);
 
   body.localGet(fuelParam).i32Eqz().ifBlock();
   emitExitResult(body, ExitReason.INSTRUCTION_LIMIT, 0).returnFromFunction();
@@ -32,8 +37,8 @@ export function encodeInterpreterModule(): Uint8Array<ArrayBuffer> {
     .i32Load({ align: 2, offset: stateOffset.eip, memoryIndex: wasmMemoryIndex.state })
     .localSet(eipLocal);
 
-  body.localGet(eipLocal).i32Load8U({ align: 0, offset: 0, memoryIndex: wasmMemoryIndex.guest });
-  emitExitResultFromStackPayload(body, ExitReason.UNSUPPORTED).returnFromFunction();
+  emitLoadGuestByte(body, eipLocal, 0, addressLocal, byteLocal);
+  emitOpcodeDispatch(body, eipLocal, 0, byteLocal, addressLocal, opcodeLocal);
   body.end();
 
   const functionIndex = module.addFunction(typeIndex, body);
