@@ -2,29 +2,32 @@ import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { StopReason } from "../../../../../core/execution/run-result.js";
-import { cloneCpuState, cpuStatesEqual, createCpuState, getFlag } from "../../../../../core/state/cpu-state.js";
-import { runInstructionInterpreter } from "../../../../../interp/interpreter.js";
-import { decodeBytes } from "../../../../../test-support/x86-code.js";
+import { createCpuState, getFlag } from "../../../../../core/state/cpu-state.js";
 import { runIsaInterpreter } from "../interpreter.js";
 import { bytes, startAddress } from "./helpers.js";
 
-test("matches the handwritten interpreter for register control flow", () => {
-  const program = [
+test("executes register control flow loop", () => {
+  const program = bytes([
     0xb8, 0x03, 0x00, 0x00, 0x00, // mov eax, 3
     0x83, 0xe8, 0x01, // sub eax, 1
     0x75, 0xfb // jnz -5
-  ];
-  const initialState = createCpuState({ eip: startAddress, eflags: 0xffff_0000 });
-  const isaState = cloneCpuState(initialState);
-  const handwrittenState = cloneCpuState(initialState);
+  ]);
+  const state = createCpuState({ eip: startAddress, eflags: 0xffff_0000 });
 
-  const isaResult = runIsaInterpreter(isaState, bytes(program), { baseAddress: startAddress });
-  const handwrittenResult = runInstructionInterpreter(handwrittenState, decodeBytes(program));
+  const result = runIsaInterpreter(state, program, { baseAddress: startAddress });
 
-  strictEqual(cpuStatesEqual(isaState, handwrittenState), true);
-  strictEqual(isaResult.stopReason, handwrittenResult.stopReason);
-  strictEqual(isaResult.finalEip, startAddress + program.length);
-  strictEqual(isaResult.instructionCount, 7);
+  strictEqual(result.stopReason, StopReason.NONE);
+  strictEqual(result.finalEip, startAddress + program.length);
+  strictEqual(result.instructionCount, 7);
+  strictEqual(state.eax, 0);
+  strictEqual(state.eip, startAddress + program.length);
+  strictEqual(state.instructionCount, 7);
+  strictEqual(getFlag(state, "ZF"), true);
+  strictEqual(getFlag(state, "PF"), true);
+  strictEqual(getFlag(state, "CF"), false);
+  strictEqual(getFlag(state, "AF"), false);
+  strictEqual(getFlag(state, "SF"), false);
+  strictEqual(getFlag(state, "OF"), false);
 });
 
 test("executes spec-only immediate logical forms", () => {
