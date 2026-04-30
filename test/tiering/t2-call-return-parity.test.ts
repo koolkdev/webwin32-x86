@@ -104,7 +104,6 @@ test("t2_no_codegen_fallback_for_call_ret", () => {
   });
 
   strictEqual(t2.result.stopReason, StopReason.HOST_TRAP);
-  strictEqual(t2.instance.counters.profile.instructionsExecuted, 0);
   strictEqual(t2.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 0);
   strictEqual(t2.instance.counters.wasmBlockCache.inserts, 3);
 });

@@ -5,8 +5,6 @@ import { ArrayBufferGuestMemory, type GuestMemory } from "../../core/memory/gues
 import { createCpuState, u32, type CpuState } from "../../core/state/cpu-state.js";
 import type { MetricSink } from "../../metrics/collector.js";
 import { recordRuntimeMetrics, type RuntimeMetrics } from "../../metrics/runtime-adapter.js";
-import { DecodedBlockCache, type DecodedBlockCacheCounters } from "../decoded-block-cache/decoded-block-cache.js";
-import { DecodedBlockRunner, type ProfileCounters } from "../decoded-block-runner/decoded-block-runner.js";
 import {
   loadProgramRegions,
   normalizeProgramRegions,
@@ -43,8 +41,6 @@ export type RuntimeInstanceRunOptions = Readonly<{
 }>;
 
 export type RuntimeInstanceCounters = Readonly<{
-  decodedBlockCache: DecodedBlockCacheCounters;
-  profile: ProfileCounters;
   wasmBlockCache: WasmBlockCacheCounters;
 }>;
 
@@ -62,8 +58,6 @@ export class RuntimeInstance {
   readonly state: CpuState;
   readonly guestMemory: GuestMemory;
   readonly decodeReader: DecodeReader;
-  readonly decodedBlockCache: DecodedBlockCache;
-  readonly #decodedBlockRunner: DecodedBlockRunner;
   readonly #tierExecutors: Readonly<Record<TierMode, RuntimeTierExecutor>>;
   readonly #wasmInterpreterRuntime: WasmInterpreterRuntime | undefined;
   readonly #wasmRuntime: WasmRuntimeContext | undefined;
@@ -88,8 +82,6 @@ export class RuntimeInstance {
             ? {}
             : { maxInstructionsPerBlock: options.t2MaxInstructionsPerBlock })
         });
-    this.decodedBlockCache = new DecodedBlockCache(this.decodeReader);
-    this.#decodedBlockRunner = new DecodedBlockRunner(this.decodedBlockCache);
     this.#tierExecutors = {
       [TierMode.T0_ONLY]: (instructionLimit) => runT0InstructionInterpreter(this.#executionContext(), instructionLimit),
       [TierMode.T1_ONLY]: (instructionLimit) => runT1WasmInterpreter(this.#executionContext(), instructionLimit),
@@ -104,8 +96,6 @@ export class RuntimeInstance {
 
   get counters(): RuntimeInstanceCounters {
     return {
-      decodedBlockCache: this.decodedBlockCache.counters,
-      profile: this.#decodedBlockRunner.counters,
       wasmBlockCache: this.#wasmRuntime?.blockCache.counters ?? emptyWasmBlockCacheCounters
     };
   }
@@ -134,9 +124,7 @@ export class RuntimeInstance {
     const context = {
       state: this.state,
       guestMemory: this.guestMemory,
-      decodeReader: this.decodeReader,
-      decodedBlockCache: this.decodedBlockCache,
-      decodedBlockRunner: this.#decodedBlockRunner
+      decodeReader: this.decodeReader
     };
 
     return {
@@ -153,8 +141,6 @@ export class RuntimeInstance {
       guestInstructions: result.instructionCount,
       finalEip: this.state.eip,
       stopReason: result.stopReason,
-      decodedBlockCache: counters.decodedBlockCache,
-      profile: counters.profile,
       wasmBlockCache: counters.wasmBlockCache
     };
   }

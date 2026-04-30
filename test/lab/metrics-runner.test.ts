@@ -68,9 +68,7 @@ test("metrics_runner_uses_runtime_adapter", () => {
   const snapshot = run.samples[0]?.snapshot;
 
   strictEqual(snapshot?.gauges[runtimeMetricKeys.guestInstructions], 10);
-  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockCacheHits], 0);
-  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockCacheMisses], 0);
-  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockProfileInstructions], 0);
+  strictEqual(snapshot?.gauges[runtimeMetricKeys.stopReason], StopReason.HOST_TRAP);
 });
 
 test("metrics_runner_validates_expected_state", () => {

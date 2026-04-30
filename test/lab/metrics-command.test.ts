@@ -25,7 +25,6 @@ test("metrics_command_runs_fixture_t1", () => {
   ok(output.stdout.includes("Metrics report"));
   ok(output.stdout.includes("Fixture"));
   ok(output.stdout.includes("branch_countdown"));
-  ok(output.stdout.includes("Decoded block cache"));
   ok(output.stdout.includes("Final state"));
 });
 

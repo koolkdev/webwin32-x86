@@ -43,7 +43,6 @@ test("t2_no_codegen_fallback_for_nop_int", () => {
   const t2 = runRuntime(intFixture, TierMode.T2_ONLY);
 
   strictEqual(t2.result.stopReason, StopReason.HOST_TRAP);
-  strictEqual(t2.instance.counters.profile.instructionsExecuted, 0);
   strictEqual(t2.instance.counters.wasmBlockCache.inserts, 1);
   strictEqual(t2.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 0);
 });

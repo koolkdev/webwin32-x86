@@ -3,10 +3,8 @@ import { test } from "node:test";
 
 import { StopReason, type RunResult } from "../../src/core/execution/run-result.js";
 import { cpuStatesEqual, createCpuState, type CpuState } from "../../src/core/state/cpu-state.js";
-import { DecodedBlockCache } from "../../src/runtime/decoded-block-cache/decoded-block-cache.js";
-import { DecodedBlockRunner } from "../../src/runtime/decoded-block-runner/decoded-block-runner.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
-import { guestReader } from "../../src/test-support/decode-reader.js";
+import { TierMode } from "../../src/runtime/tiering/tier-policy.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 const branchLoopFixture = [
@@ -23,7 +21,7 @@ const movAddFixture = [
 ] as const;
 
 test("dispatch_loop_runs_branch_loop", () => {
-  const expected = runT1(branchLoopFixture, { eax: 3, eip: startAddress });
+  const expected = runT0(branchLoopFixture, { eax: 3, eip: startAddress });
   const runtime = new RuntimeInstance({
     program: { baseAddress: startAddress, bytes: branchLoopFixture },
     initialState: { eax: 3, eip: startAddress }
@@ -72,7 +70,7 @@ test("dispatch_loop_stops_on_unsupported_x86", () => {
   strictEqual(result.unsupportedReason, "unsupportedOpcode");
 });
 
-test("dispatch_loop_uses_wasm_interpreter_without_decoded_block_edges", () => {
+test("dispatch_loop_uses_wasm_interpreter_without_wasm_block_cache", () => {
   const runtime = new RuntimeInstance({
     program: { baseAddress: startAddress, bytes: branchLoopFixture },
     initialState: { eax: 3, eip: startAddress }
@@ -80,7 +78,9 @@ test("dispatch_loop_uses_wasm_interpreter_without_decoded_block_edges", () => {
 
   runtime.run();
 
-  strictEqual(runtime.counters.profile.edgeHits.size, 0);
+  strictEqual(runtime.counters.wasmBlockCache.hits, 0);
+  strictEqual(runtime.counters.wasmBlockCache.misses, 0);
+  strictEqual(runtime.counters.wasmBlockCache.inserts, 0);
 });
 
 test("runtime_run_uses_entry_eip_option", () => {
@@ -94,14 +94,16 @@ test("runtime_run_uses_entry_eip_option", () => {
   strictEqual(runtime.state.eax, 3);
 });
 
-function runT1(
+function runT0(
   bytes: readonly number[],
   initialState: Partial<CpuState>
 ): Readonly<{ state: CpuState; result: RunResult }> {
-  const state = createCpuState(initialState);
-  const cache = new DecodedBlockCache(guestReader(bytes));
-  const runner = new DecodedBlockRunner(cache);
-  const result = runner.run(state);
+  const runtime = new RuntimeInstance({
+    program: { baseAddress: startAddress, bytes },
+    initialState,
+    tierMode: TierMode.T0_ONLY
+  });
+  const result = runtime.run();
 
-  return { state, result };
+  return { state: createCpuState(runtime.state), result };
 }

@@ -36,8 +36,6 @@ test("supported_block_runs_as_t2", () => {
   strictEqual(runtime.result.stopReason, StopReason.NONE);
   strictEqual(runtime.instance.state.eax, 3);
   strictEqual(runtime.instance.state.instructionCount, 3);
-  strictEqual(runtime.instance.counters.decodedBlockCache.misses, 0);
-  strictEqual(runtime.instance.counters.profile.instructionsExecuted, 0);
   strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 1);
   strictEqual(runtime.instance.counters.wasmBlockCache.hits, 0);
 });
@@ -126,7 +124,6 @@ test("unsupported_x86_still_stops_as_guest_unsupported", () => {
   strictEqual(runtime.result.stopReason, StopReason.UNSUPPORTED);
   strictEqual(runtime.result.unsupportedByte, 0x62);
   strictEqual(runtime.instance.state.instructionCount, 0);
-  strictEqual(runtime.instance.counters.profile.instructionsExecuted, 0);
   strictEqual(runtime.instance.counters.wasmBlockCache.inserts, 0);
   strictEqual(runtime.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 1);
 });

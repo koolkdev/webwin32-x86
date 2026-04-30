@@ -198,10 +198,6 @@ function formatMetricsReportText(report: MetricsReport): string {
     formatField("P05 / P95", `${formatNumber(report.p05Ms)} / ${formatNumber(report.p95Ms)} ms`),
     formatField("Guest instructions", report.guestInstructions),
     formatField("ns / instruction", formatNumber(report.nsPerGuestInstruction)),
-    formatField(
-      "Decoded block cache",
-      `${report.decodedBlockCacheHits} hits / ${report.decodedBlockCacheMisses} misses`
-    ),
     ...(report.wasmBlockCacheHits === undefined
       ? []
       : [
@@ -232,7 +228,6 @@ function formatMetricsComparisonText(reports: readonly MetricsReport[]): string 
       "P95",
       "Guest insn",
       "ns / insn",
-      "Decoded cache",
       "Wasm cache",
       "Wasm fallback",
       "State"
@@ -244,7 +239,6 @@ function formatMetricsComparisonText(reports: readonly MetricsReport[]): string 
       `${formatNumber(report.p95Ms)} ms`,
       String(report.guestInstructions),
       formatNumber(report.nsPerGuestInstruction),
-      `${report.decodedBlockCacheHits}/${report.decodedBlockCacheMisses}`,
       report.wasmBlockCacheHits === undefined
         ? "-"
         : `${report.wasmBlockCacheHits}/${report.wasmBlockCacheMisses ?? 0}/${report.wasmBlockCacheInserts ?? 0}`,

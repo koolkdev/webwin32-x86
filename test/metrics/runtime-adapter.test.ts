@@ -10,7 +10,7 @@ import {
   runtimeMetricKeys,
   runtimeWasmMetricKeys
 } from "../../src/metrics/runtime-adapter.js";
-import { RuntimeInstance, type RuntimeInstanceCounters } from "../../src/runtime/instance/runtime-instance.js";
+import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
 import { TierMode } from "../../src/runtime/tiering/tier-policy.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
@@ -34,17 +34,6 @@ test("runtime_metrics_adapter_records_instruction_count", () => {
   strictEqual(result.stopReason, StopReason.HOST_TRAP);
   strictEqual(snapshot.gauges[runtimeMetricKeys.guestInstructions], runtime.state.instructionCount);
   strictEqual(snapshot.gauges[runtimeMetricKeys.finalEip], runtime.state.eip);
-});
-
-test("runtime_metrics_adapter_records_cache_counters", () => {
-  const { collector } = runAndRecord(branchLoopFixture, { eax: 3 });
-  const snapshot = collector.snapshot();
-
-  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockCacheHits], 0);
-  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockCacheMisses], 0);
-  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockProfileInstructions], 0);
-  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockRuns], 0);
-  strictEqual(snapshot.gauges[runtimeMetricKeys.decodedBlockEdges], 0);
 });
 
 test("runtime_metrics_adapter_records_wasm_block_cache_counters", () => {
@@ -90,10 +79,7 @@ test("runtime_metrics_adapter_does_not_change_execution", () => {
 
   strictEqual(resultWithMetrics.stopReason, resultWithoutMetrics.stopReason);
   ok(cpuStatesEqual(runtimeWithMetrics.state, runtimeWithoutMetrics.state));
-  deepStrictEqual(
-    snapshotRuntimeCounters(runtimeWithMetrics.counters),
-    snapshotRuntimeCounters(runtimeWithoutMetrics.counters)
-  );
+  deepStrictEqual(runtimeWithMetrics.counters, runtimeWithoutMetrics.counters);
   strictEqual(collector.snapshot().gauges[runtimeMetricKeys.guestInstructions], 10);
 });
 
@@ -122,40 +108,6 @@ function runAndRecord(
   const result = runtime.run({ metrics: collector });
 
   return { collector, runtime, result };
-}
-
-type RuntimeCounterSnapshot = Readonly<{
-  decodedBlockCache: Readonly<{ hits: number; misses: number }>;
-  profile: Readonly<{
-    instructionsExecuted: number;
-    blockHits: readonly (readonly [number, number])[];
-    edgeHits: readonly (readonly [number, readonly (readonly [number, number])[]])[];
-  }>;
-  wasmBlockCache: RuntimeInstanceCounters["wasmBlockCache"];
-}>;
-
-function snapshotRuntimeCounters(counters: RuntimeInstanceCounters): RuntimeCounterSnapshot {
-  return {
-    decodedBlockCache: counters.decodedBlockCache,
-    profile: {
-      instructionsExecuted: counters.profile.instructionsExecuted,
-      blockHits: sortedEntries(counters.profile.blockHits),
-      edgeHits: sortedNestedEntries(counters.profile.edgeHits)
-    },
-    wasmBlockCache: counters.wasmBlockCache
-  };
-}
-
-function sortedEntries(map: ReadonlyMap<number, number>): readonly (readonly [number, number])[] {
-  return [...map.entries()].sort(([left], [right]) => left - right);
-}
-
-function sortedNestedEntries(
-  map: ReadonlyMap<number, ReadonlyMap<number, number>>
-): readonly (readonly [number, readonly (readonly [number, number])[]])[] {
-  return [...map.entries()]
-    .map(([key, values]) => [key, sortedEntries(values)] as const)
-    .sort(([left], [right]) => left - right);
 }
 
 function tsFilesUnder(dir: string): string[] {

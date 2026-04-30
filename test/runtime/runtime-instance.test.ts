@@ -1,14 +1,10 @@
 import { ok, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import type { DecodeReader } from "../../src/arch/x86/block-decoder/decode-reader.js";
 import { StopReason, type RunResult } from "../../src/core/execution/run-result.js";
-import { ArrayBufferGuestMemory, type GuestMemory } from "../../src/core/memory/guest-memory.js";
 import { cpuStatesEqual, createCpuState, type CpuState } from "../../src/core/state/cpu-state.js";
-import { DecodedBlockCache } from "../../src/runtime/decoded-block-cache/decoded-block-cache.js";
-import { DecodedBlockRunner } from "../../src/runtime/decoded-block-runner/decoded-block-runner.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
-import { guestReader } from "../../src/test-support/decode-reader.js";
+import { TierMode } from "../../src/runtime/tiering/tier-policy.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 const movAddFixture = [
@@ -46,7 +42,7 @@ test("runtime_instance_runs_simple_fixture", () => {
 
 test("runtime_instance_uses_owned_guest_memory", () => {
   const expected = runT1(stackFixture, { eax: 0x1234_5678, esp: 0x40, eip: startAddress }, {
-    memory: new ArrayBufferGuestMemory(0x40)
+    guestMemoryByteLength: 0x40
   });
   const runtime = new RuntimeInstance({
     program: { baseAddress: startAddress, bytes: stackFixture },
@@ -60,7 +56,7 @@ test("runtime_instance_uses_owned_guest_memory", () => {
   strictEqual(runtime.state.ebx, 0x1234_5678);
 });
 
-test("runtime_instance_reuses_decoded_block_cache", () => {
+test("runtime_instance_t1_does_not_use_wasm_block_cache", () => {
   const runtime = new RuntimeInstance({
     program: { baseAddress: startAddress, bytes: branchLoopFixture },
     initialState: { eax: 3, eip: startAddress }
@@ -68,8 +64,9 @@ test("runtime_instance_reuses_decoded_block_cache", () => {
 
   runtime.run();
 
-  strictEqual(runtime.counters.decodedBlockCache.hits, 0);
-  strictEqual(runtime.counters.decodedBlockCache.misses, 0);
+  strictEqual(runtime.counters.wasmBlockCache.hits, 0);
+  strictEqual(runtime.counters.wasmBlockCache.misses, 0);
+  strictEqual(runtime.counters.wasmBlockCache.inserts, 0);
 });
 
 test("runtime_instance_exposes_final_state", () => {
@@ -85,35 +82,31 @@ test("runtime_instance_exposes_final_state", () => {
   strictEqual(runtime.state.stopReason, result.stopReason);
 });
 
-test("runtime_instance_exposes_counters", () => {
+test("runtime_instance_exposes_wasm_counters", () => {
   const runtime = new RuntimeInstance({
     program: { baseAddress: startAddress, bytes: branchLoopFixture },
-    initialState: { eax: 3, eip: startAddress }
+    initialState: { eax: 3, eip: startAddress },
+    tierMode: TierMode.T2_ONLY
   });
 
   runtime.run();
 
-  strictEqual(runtime.counters.profile.instructionsExecuted, 0);
-  strictEqual(runtime.counters.profile.blockHits.size, 0);
-  strictEqual(runtime.counters.profile.edgeHits.size, 0);
+  strictEqual(runtime.counters.wasmBlockCache.inserts, 2);
+  strictEqual(runtime.counters.wasmBlockCache.hits, 2);
 });
 
 function runT1(
   bytes: readonly number[],
   initialState: Partial<CpuState>,
-  options: Readonly<{ memory?: GuestMemory }> = {}
+  options: Readonly<{ guestMemoryByteLength?: number }> = {}
 ): Readonly<{ state: CpuState; result: RunResult }> {
-  const state = createCpuState(initialState);
-  const reader = guestReader(bytes);
-  const runner = runnerFor(reader);
-  const result =
-    options.memory === undefined
-      ? runner.run(state)
-      : runner.run(state, { memory: options.memory });
+  const runtime = new RuntimeInstance({
+    program: { baseAddress: startAddress, bytes },
+    initialState,
+    tierMode: TierMode.T1_ONLY,
+    ...(options.guestMemoryByteLength === undefined ? {} : { guestMemoryByteLength: options.guestMemoryByteLength })
+  });
+  const result = runtime.run();
 
-  return { state, result };
-}
-
-function runnerFor(reader: DecodeReader): DecodedBlockRunner {
-  return new DecodedBlockRunner(new DecodedBlockCache(reader));
+  return { state: createCpuState(runtime.state), result };
 }

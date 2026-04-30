@@ -16,8 +16,6 @@ export type MetricsReport = Readonly<{
   p95Ms: number;
   guestInstructions: number;
   nsPerGuestInstruction: number;
-  decodedBlockCacheHits: number;
-  decodedBlockCacheMisses: number;
   wasmBlockCacheHits?: number;
   wasmBlockCacheMisses?: number;
   wasmBlockCacheInserts?: number;
@@ -65,8 +63,6 @@ export function aggregateMetricsSamples(options: AggregateMetricsSamplesOptions)
     nsPerGuestInstruction: guestInstructions === 0
       ? 0
       : (totalDurationMs * 1_000_000) / guestInstructions,
-    decodedBlockCacheHits: sumGauge(options.samples, runtimeMetricKeys.decodedBlockCacheHits),
-    decodedBlockCacheMisses: sumGauge(options.samples, runtimeMetricKeys.decodedBlockCacheMisses),
     ...(wasmBlockCacheHits === undefined ? {} : { wasmBlockCacheHits }),
     ...(wasmBlockCacheMisses === undefined ? {} : { wasmBlockCacheMisses }),
     ...(wasmBlockCacheInserts === undefined ? {} : { wasmBlockCacheInserts }),

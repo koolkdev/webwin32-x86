@@ -3,12 +3,7 @@ import { metricKey, type MetricSink } from "./collector.js";
 export const runtimeMetricKeys = {
   guestInstructions: metricKey("runtime.guestInstructions"),
   finalEip: metricKey("runtime.finalEip"),
-  stopReason: metricKey("runtime.stopReason"),
-  decodedBlockCacheHits: metricKey("runtime.decodedBlockCacheHits"),
-  decodedBlockCacheMisses: metricKey("runtime.decodedBlockCacheMisses"),
-  decodedBlockProfileInstructions: metricKey("runtime.decodedBlockProfileInstructions"),
-  decodedBlockRuns: metricKey("runtime.decodedBlockRuns"),
-  decodedBlockEdges: metricKey("runtime.decodedBlockEdges")
+  stopReason: metricKey("runtime.stopReason")
 } as const;
 
 export const runtimeWasmMetricKeys = {
@@ -22,15 +17,6 @@ export type RuntimeMetrics = Readonly<{
   guestInstructions: number;
   finalEip: number;
   stopReason: number;
-  decodedBlockCache: Readonly<{
-    hits: number;
-    misses: number;
-  }>;
-  profile: Readonly<{
-    instructionsExecuted: number;
-    blockHits: ReadonlyMap<number, number>;
-    edgeHits: ReadonlyMap<number, ReadonlyMap<number, number>>;
-  }>;
   wasmBlockCache: RuntimeWasmBlockCacheMetrics;
 }>;
 
@@ -45,14 +31,6 @@ export function recordRuntimeMetrics(collector: MetricSink, metrics: RuntimeMetr
   collector.setGauge(runtimeMetricKeys.guestInstructions, metrics.guestInstructions);
   collector.setGauge(runtimeMetricKeys.finalEip, metrics.finalEip);
   collector.setGauge(runtimeMetricKeys.stopReason, metrics.stopReason);
-  collector.setGauge(runtimeMetricKeys.decodedBlockCacheHits, metrics.decodedBlockCache.hits);
-  collector.setGauge(runtimeMetricKeys.decodedBlockCacheMisses, metrics.decodedBlockCache.misses);
-  collector.setGauge(
-    runtimeMetricKeys.decodedBlockProfileInstructions,
-    metrics.profile.instructionsExecuted
-  );
-  collector.setGauge(runtimeMetricKeys.decodedBlockRuns, sumMapValues(metrics.profile.blockHits));
-  collector.setGauge(runtimeMetricKeys.decodedBlockEdges, sumNestedMapValues(metrics.profile.edgeHits));
 
   if (hasWasmBlockCacheActivity(metrics.wasmBlockCache)) {
     collector.setGauge(runtimeWasmMetricKeys.wasmBlockCacheHits, metrics.wasmBlockCache.hits);
@@ -63,26 +41,6 @@ export function recordRuntimeMetrics(collector: MetricSink, metrics: RuntimeMetr
       metrics.wasmBlockCache.unsupportedCodegenFallbacks
     );
   }
-}
-
-function sumMapValues(values: ReadonlyMap<number, number>): number {
-  let total = 0;
-
-  for (const value of values.values()) {
-    total += value;
-  }
-
-  return total;
-}
-
-function sumNestedMapValues(values: ReadonlyMap<number, ReadonlyMap<number, number>>): number {
-  let total = 0;
-
-  for (const innerValues of values.values()) {
-    total += sumMapValues(innerValues);
-  }
-
-  return total;
 }
 
 function hasWasmBlockCacheActivity(counters: RuntimeWasmBlockCacheMetrics): boolean {

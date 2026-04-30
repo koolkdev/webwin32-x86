@@ -3,11 +3,8 @@ import { test } from "node:test";
 
 import { StopReason, type RunResult } from "../../src/core/execution/run-result.js";
 import { cpuStatesEqual, createCpuState, type CpuState } from "../../src/core/state/cpu-state.js";
-import { DecodedBlockCache } from "../../src/runtime/decoded-block-cache/decoded-block-cache.js";
-import { DecodedBlockRunner } from "../../src/runtime/decoded-block-runner/decoded-block-runner.js";
 import { RuntimeInstance } from "../../src/runtime/instance/runtime-instance.js";
 import { TierMode } from "../../src/runtime/tiering/tier-policy.js";
-import { guestReader } from "../../src/test-support/decode-reader.js";
 import { startAddress } from "../../src/test-support/x86-code.js";
 
 const branchLoopFixture = [
@@ -35,9 +32,9 @@ test("t0_only_uses_instruction_interpreter", () => {
   ok(cpuStatesEqual(runtime.state, expected.state));
   strictEqual(result.stopReason, expected.result.stopReason);
   strictEqual(runtime.state.instructionCount, 10);
-  strictEqual(runtime.counters.decodedBlockCache.hits, 0);
-  strictEqual(runtime.counters.decodedBlockCache.misses, 0);
-  strictEqual(runtime.counters.profile.instructionsExecuted, 0);
+  strictEqual(runtime.counters.wasmBlockCache.hits, 0);
+  strictEqual(runtime.counters.wasmBlockCache.misses, 0);
+  strictEqual(runtime.counters.wasmBlockCache.inserts, 0);
 });
 
 test("t1_only_uses_wasm_interpreter", () => {
@@ -50,9 +47,9 @@ test("t1_only_uses_wasm_interpreter", () => {
 
   strictEqual(result.stopReason, StopReason.HOST_TRAP);
   strictEqual(runtime.state.instructionCount, 10);
-  strictEqual(runtime.counters.decodedBlockCache.hits, 0);
-  strictEqual(runtime.counters.decodedBlockCache.misses, 0);
-  strictEqual(runtime.counters.profile.instructionsExecuted, 0);
+  strictEqual(runtime.counters.wasmBlockCache.hits, 0);
+  strictEqual(runtime.counters.wasmBlockCache.misses, 0);
+  strictEqual(runtime.counters.wasmBlockCache.inserts, 0);
 });
 
 test("tier_policy_visible_to_metrics_adapter", () => {
@@ -75,10 +72,12 @@ function runT1(
   bytes: readonly number[],
   initialState: Partial<CpuState>
 ): Readonly<{ state: CpuState; result: RunResult }> {
-  const state = createCpuState(initialState);
-  const cache = new DecodedBlockCache(guestReader(bytes));
-  const runner = new DecodedBlockRunner(cache);
-  const result = runner.run(state);
+  const runtime = new RuntimeInstance({
+    program: { baseAddress: startAddress, bytes },
+    initialState,
+    tierMode: TierMode.T1_ONLY
+  });
+  const result = runtime.run();
 
-  return { state, result };
+  return { state: createCpuState(runtime.state), result };
 }

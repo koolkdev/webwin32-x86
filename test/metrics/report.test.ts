@@ -45,23 +45,6 @@ test("metrics_report_sums_guest_instructions", () => {
   strictEqual(report.nsPerGuestInstruction, (3 * 1_000_000) / 18);
 });
 
-test("metrics_report_includes_t1_counters", () => {
-  const report = aggregateMetricsSamples({
-    fixture: "branch_countdown",
-    tier: "t1",
-    runs: 2,
-    warmup: 0,
-    samples: [
-      sample({ durationMs: 1, instructions: 10, hits: 2, misses: 1 }),
-      sample({ durationMs: 2, instructions: 10, hits: 3, misses: 4 })
-    ],
-    finalStateValid: true
-  });
-
-  strictEqual(report.decodedBlockCacheHits, 5);
-  strictEqual(report.decodedBlockCacheMisses, 5);
-});
-
 test("metrics_report_includes_wasm_block_cache_counters_when_present", () => {
   const report = aggregateMetricsSamples({
     fixture: "branch_countdown",
@@ -100,7 +83,7 @@ test("metrics_report_json_shape_stable", () => {
     tier: "t1",
     runs: 1,
     warmup: 2,
-    samples: [sample({ durationMs: 4, instructions: 2, hits: 1, misses: 0 })],
+    samples: [sample({ durationMs: 4, instructions: 2 })],
     finalStateValid: true
   });
   const json = JSON.parse(serializeMetricsReport(report)) as Record<string, unknown>;
@@ -115,8 +98,6 @@ test("metrics_report_json_shape_stable", () => {
     "p95Ms",
     "guestInstructions",
     "nsPerGuestInstruction",
-    "decodedBlockCacheHits",
-    "decodedBlockCacheMisses",
     "finalStateValid"
   ]);
   strictEqual(json.fixture, "branch_countdown");
@@ -142,8 +123,6 @@ test("metrics_report_omits_unimplemented_tier_fields", () => {
 function sample(options: Readonly<{
   durationMs: number;
   instructions: number;
-  hits?: number;
-  misses?: number;
   wasmHits?: number;
   wasmMisses?: number;
   wasmInserts?: number;
@@ -153,8 +132,6 @@ function sample(options: Readonly<{
 
   collector.recordDurationSample(metricsReportMetricKeys.runDurationMs, options.durationMs);
   collector.setGauge(runtimeMetricKeys.guestInstructions, options.instructions);
-  collector.setGauge(runtimeMetricKeys.decodedBlockCacheHits, options.hits ?? 0);
-  collector.setGauge(runtimeMetricKeys.decodedBlockCacheMisses, options.misses ?? 0);
 
   if (options.wasmHits !== undefined) {
     collector.setGauge(runtimeWasmMetricKeys.wasmBlockCacheHits, options.wasmHits);

@@ -206,7 +206,6 @@ function assertRuntimeMatches(
 }
 
 function assertNoT2Fallback(run: RuntimeRun): void {
-  strictEqual(run.instance.counters.profile.instructionsExecuted, 0);
   strictEqual(run.instance.counters.wasmBlockCache.unsupportedCodegenFallbacks, 0);
 }
 

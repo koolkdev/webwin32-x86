@@ -27,8 +27,6 @@ test("metrics_branch_countdown_loop_runs", () => {
 
   strictEqual(run.validation.ok, true);
   strictEqual(snapshot?.gauges[runtimeMetricKeys.guestInstructions], 3001);
-  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockCacheHits], 0);
-  strictEqual(snapshot?.gauges[runtimeMetricKeys.decodedBlockCacheMisses], 0);
 });
 
 test("metrics_memory_load_store_loop_runs", () => {

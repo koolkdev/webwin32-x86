@@ -73,8 +73,8 @@ test("internal_counters_not_guest_stop_reasons", () => {
   const result = runtime.run();
 
   strictEqual(result.stopReason, StopReason.HOST_TRAP);
-  strictEqual(runtime.counters.decodedBlockCache.hits, 0);
-  strictEqual(runtime.counters.decodedBlockCache.misses, 0);
+  strictEqual(runtime.counters.wasmBlockCache.hits, 0);
+  strictEqual(runtime.counters.wasmBlockCache.misses, 0);
 });
 
 test("run_result_shape_has_no_metrics_payload", () => {
