@@ -1,8 +1,14 @@
+import {
+  buildSirExpressionProgram,
+  type SirExpressionOptions,
+  type SirExprOp,
+  type SirExprProgram,
+  type SirStorageExpr,
+  type SirValueExpr
+} from "../../arch/x86/sir/expressions.js";
 import type {
   ConditionCode,
-  SirOp,
   SirProgram,
-  StorageRef,
   ValueRef
 } from "../../arch/x86/sir/types.js";
 import type { FlagProducerName } from "../../arch/x86/sir/types.js";
@@ -14,23 +20,28 @@ import { wasmValueType } from "../encoder/types.js";
 export type WasmSirLoweringContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
-  emitGet32(source: StorageRef, helpers: WasmSirEmitHelpers): void;
-  emitSet32(target: StorageRef, value: ValueRef, helpers: WasmSirEmitHelpers): void;
-  emitAddress32(source: StorageRef, helpers: WasmSirEmitHelpers): void;
+  expression?: SirExpressionOptions;
+  emitGet32(source: SirStorageExpr, helpers: WasmSirEmitHelpers): void;
+  emitSet32(target: SirStorageExpr, value: SirValueExpr, helpers: WasmSirEmitHelpers): void;
+  emitAddress32(source: SirStorageExpr, helpers: WasmSirEmitHelpers): void;
   emitSetFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueRef>>, helpers: WasmSirEmitHelpers): void;
   emitCondition(cc: ConditionCode): void;
   emitNext(helpers: WasmSirEmitHelpers): void;
   emitNextEip(helpers: WasmSirEmitHelpers): void;
-  emitJump(target: ValueRef, helpers: WasmSirEmitHelpers): void;
-  emitConditionalJump(condition: ValueRef, taken: ValueRef, notTaken: ValueRef, helpers: WasmSirEmitHelpers): void;
-  emitHostTrap(vector: ValueRef, helpers: WasmSirEmitHelpers): void;
+  emitJump(target: SirValueExpr, helpers: WasmSirEmitHelpers): void;
+  emitConditionalJump(condition: SirValueExpr, taken: SirValueExpr, notTaken: SirValueExpr, helpers: WasmSirEmitHelpers): void;
+  emitHostTrap(vector: SirValueExpr, helpers: WasmSirEmitHelpers): void;
 }>;
 
 export type WasmSirEmitHelpers = Readonly<{
-  emitValue(value: ValueRef): void;
+  emitValue(value: SirValueExpr): void;
 }>;
 
 export function lowerSirToWasm(program: SirProgram, context: WasmSirLoweringContext): void {
+  lowerSirExpressionProgramToWasm(buildSirExpressionProgram(program, context.expression), context);
+}
+
+function lowerSirExpressionProgramToWasm(program: SirExprProgram, context: WasmSirLoweringContext): void {
   const vars = new Map<number, number>();
   const helpers: WasmSirEmitHelpers = {
     emitValue: (value) => emitValue(context, vars, value)
@@ -38,7 +49,7 @@ export function lowerSirToWasm(program: SirProgram, context: WasmSirLoweringCont
 
   try {
     for (const op of program) {
-      lowerSirOp(op, context, vars, helpers);
+      lowerSirExprOp(op, context, vars, helpers);
     }
   } finally {
     for (const local of vars.values()) {
@@ -47,52 +58,26 @@ export function lowerSirToWasm(program: SirProgram, context: WasmSirLoweringCont
   }
 }
 
-function lowerSirOp(
-  op: SirOp,
+function lowerSirExprOp(
+  op: SirExprOp,
   context: WasmSirLoweringContext,
   vars: Map<number, number>,
   helpers: WasmSirEmitHelpers
 ): void {
   switch (op.op) {
-    case "get32": {
+    case "let32": {
       const local = localForVar(context, vars, op.dst.id);
 
-      context.emitGet32(op.source, helpers);
+      emitValue(context, vars, op.value);
       context.body.localSet(local);
       return;
     }
     case "set32":
       context.emitSet32(op.target, op.value, helpers);
       return;
-    case "address32": {
-      const local = localForVar(context, vars, op.dst.id);
-
-      context.emitAddress32(op.operand, helpers);
-      context.body.localSet(local);
-      return;
-    }
-    case "i32.add":
-      lowerI32BinaryOp(op.dst.id, op.a, op.b, context, vars, "add");
-      return;
-    case "i32.sub":
-      lowerI32BinaryOp(op.dst.id, op.a, op.b, context, vars, "sub");
-      return;
-    case "i32.xor":
-      lowerI32BinaryOp(op.dst.id, op.a, op.b, context, vars, "xor");
-      return;
-    case "i32.and":
-      lowerI32BinaryOp(op.dst.id, op.a, op.b, context, vars, "and");
-      return;
     case "flags.set":
       context.emitSetFlags(op.producer, op.inputs, helpers);
       return;
-    case "condition": {
-      const local = localForVar(context, vars, op.dst.id);
-
-      context.emitCondition(op.cc);
-      context.body.localSet(local);
-      return;
-    }
     case "next":
       context.emitNext(helpers);
       return;
@@ -105,43 +90,10 @@ function lowerSirOp(
     case "hostTrap":
       context.emitHostTrap(op.vector, helpers);
       return;
-    default:
-      throw new Error(`unsupported SIR op for Wasm lowering: ${op.op}`);
   }
 }
 
-function lowerI32BinaryOp(
-  dstId: number,
-  a: ValueRef,
-  b: ValueRef,
-  context: WasmSirLoweringContext,
-  vars: Map<number, number>,
-  op: "add" | "sub" | "xor" | "and"
-): void {
-  const local = localForVar(context, vars, dstId);
-
-  emitValue(context, vars, a);
-  emitValue(context, vars, b);
-
-  switch (op) {
-    case "add":
-      context.body.i32Add();
-      break;
-    case "sub":
-      context.body.i32Sub();
-      break;
-    case "xor":
-      context.body.i32Xor();
-      break;
-    case "and":
-      context.body.i32And();
-      break;
-  }
-
-  context.body.localSet(local);
-}
-
-function emitValue(context: WasmSirLoweringContext, vars: Map<number, number>, value: ValueRef): void {
+function emitValue(context: WasmSirLoweringContext, vars: Map<number, number>, value: SirValueExpr): void {
   switch (value.kind) {
     case "var":
       context.body.localGet(requiredVarLocal(vars, value.id));
@@ -151,6 +103,35 @@ function emitValue(context: WasmSirLoweringContext, vars: Map<number, number>, v
       return;
     case "nextEip":
       context.emitNextEip({ emitValue: (nested) => emitValue(context, vars, nested) });
+      return;
+    case "src32":
+      context.emitGet32(value.source, { emitValue: (nested) => emitValue(context, vars, nested) });
+      return;
+    case "address32":
+      context.emitAddress32(value.operand, { emitValue: (nested) => emitValue(context, vars, nested) });
+      return;
+    case "condition":
+      context.emitCondition(value.cc);
+      return;
+    case "i32.add":
+      emitValue(context, vars, value.a);
+      emitValue(context, vars, value.b);
+      context.body.i32Add();
+      return;
+    case "i32.sub":
+      emitValue(context, vars, value.a);
+      emitValue(context, vars, value.b);
+      context.body.i32Sub();
+      return;
+    case "i32.xor":
+      emitValue(context, vars, value.a);
+      emitValue(context, vars, value.b);
+      context.body.i32Xor();
+      return;
+    case "i32.and":
+      emitValue(context, vars, value.a);
+      emitValue(context, vars, value.b);
+      context.body.i32And();
       return;
   }
 }

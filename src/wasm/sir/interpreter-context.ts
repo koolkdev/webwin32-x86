@@ -1,8 +1,8 @@
 import type { Reg32 } from "../../arch/x86/instruction/types.js";
+import type { SirStorageExpr, SirValueExpr } from "../../arch/x86/sir/expressions.js";
 import type {
   SirProgram,
-  StorageRef,
-  ValueRef
+  StorageRef
 } from "../../arch/x86/sir/types.js";
 import type { WasmLocalScratchAllocator } from "../codegen/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
@@ -59,6 +59,7 @@ export function lowerSirWithInterpreterContext(program: SirProgram, context: Int
   lowerSirToWasm(program, {
     body: context.body,
     scratch: context.scratch,
+    expression: { canInlineGet32: (source) => canInlineGet32(context, source) },
     emitGet32: (source, helpers) => emitGet32(context, regs, source, helpers),
     emitSet32: (target, value, helpers) => emitSet32(context, regs, target, value, helpers),
     emitAddress32: (source) => emitAddress32(context, source),
@@ -77,7 +78,7 @@ export function lowerSirWithInterpreterContext(program: SirProgram, context: Int
 function emitGet32(
   context: InterpreterSirContext,
   regs: WasmSirReg32Storage,
-  source: StorageRef,
+  source: SirStorageExpr,
   helpers: WasmSirEmitHelpers
 ): void {
   switch (source.kind) {
@@ -94,11 +95,25 @@ function emitGet32(
   }
 }
 
+function canInlineGet32(context: InterpreterSirContext, source: StorageRef): boolean {
+  switch (source.kind) {
+    case "reg":
+      return true;
+    case "mem":
+      return false;
+    case "operand": {
+      const binding = operandBinding(context, source.index);
+
+      return binding.kind === "implicit.reg32" || binding.kind === "imm32" || binding.kind === "relTarget32";
+    }
+  }
+}
+
 function emitSet32(
   context: InterpreterSirContext,
   regs: WasmSirReg32Storage,
-  target: StorageRef,
-  value: ValueRef,
+  target: SirStorageExpr,
+  value: SirValueExpr,
   helpers: WasmSirEmitHelpers
 ): void {
   switch (target.kind) {
@@ -114,7 +129,7 @@ function emitSet32(
   }
 }
 
-function emitAddress32(context: InterpreterSirContext, source: StorageRef): void {
+function emitAddress32(context: InterpreterSirContext, source: SirStorageExpr): void {
   if (source.kind !== "operand") {
     throw new Error(`unsupported address32 source for Wasm interpreter: ${source.kind}`);
   }
@@ -158,7 +173,7 @@ function emitSetOperand32(
   context: InterpreterSirContext,
   regs: WasmSirReg32Storage,
   index: number,
-  value: ValueRef,
+  value: SirValueExpr,
   helpers: WasmSirEmitHelpers
 ): void {
   const binding = operandBinding(context, index);
@@ -206,16 +221,16 @@ function emitNextEip(context: InterpreterSirContext): void {
   context.body.i32Add();
 }
 
-function emitJump(context: InterpreterSirContext, target: ValueRef, helpers: WasmSirEmitHelpers): void {
+function emitJump(context: InterpreterSirContext, target: SirValueExpr, helpers: WasmSirEmitHelpers): void {
   emitCompleteInstructionWithTarget(context.body, context.state, () => helpers.emitValue(target));
   emitContinue(context);
 }
 
 function emitConditionalJump(
   context: InterpreterSirContext,
-  condition: ValueRef,
-  taken: ValueRef,
-  notTaken: ValueRef,
+  condition: SirValueExpr,
+  taken: SirValueExpr,
+  notTaken: SirValueExpr,
   helpers: WasmSirEmitHelpers
 ): void {
   helpers.emitValue(condition);
@@ -227,7 +242,7 @@ function emitConditionalJump(
   emitContinue(context);
 }
 
-function emitHostTrap(context: InterpreterSirContext, vector: ValueRef, helpers: WasmSirEmitHelpers): void {
+function emitHostTrap(context: InterpreterSirContext, vector: SirValueExpr, helpers: WasmSirEmitHelpers): void {
   if (typeof context.instructionLength === "number") {
     emitCompleteInstruction(context.body, context.state, context.instructionLength);
   } else {
@@ -268,7 +283,7 @@ function emitGetRm32(
 function emitSetRm32(
   context: InterpreterSirContext,
   binding: Extract<InterpreterOperandBinding, { kind: "rm32" }>,
-  value: ValueRef,
+  value: SirValueExpr,
   helpers: WasmSirEmitHelpers
 ): void {
   const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
@@ -356,7 +371,7 @@ function emitLoadDynamicReg32(context: InterpreterSirContext, emitIndex: () => v
 function emitStoreDynamicReg32(
   context: InterpreterSirContext,
   emitIndex: () => void,
-  value: ValueRef,
+  value: SirValueExpr,
   helpers: WasmSirEmitHelpers
 ): void {
   const indexLocal = context.scratch.allocLocal(wasmValueType.i32);
