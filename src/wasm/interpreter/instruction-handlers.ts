@@ -2,7 +2,6 @@ import { buildSir } from "../../arch/x86/sir/builder.js";
 import type { ExpandedInstructionSpec, ModRmMatch, OperandSpec } from "../../arch/x86/isa/schema/types.js";
 import type { OpcodeDispatchLeaf } from "../../arch/x86/isa/decoder/opcode-dispatch.js";
 import type { SemanticTemplate } from "../../arch/x86/sir/types.js";
-import { JCC_DESCRIPTORS } from "../../arch/x86/isa/defs/control.js";
 import { wasmValueType } from "../encoder/types.js";
 import { lowerSirWithInterpreterContext } from "../sir/interpreter-context.js";
 import { emitLoadGuestByte } from "./guest-bytes.js";
@@ -10,49 +9,11 @@ import type { InterpreterHandlerContext } from "./handler-context.js";
 import { emitModRmDispatch, type ModRmDispatchCase } from "./modrm-dispatch.js";
 import { decodeInstructionOperands } from "./operand-decode.js";
 
-const supportedNoModRmIds = new Set([
-  "mov.r32_imm32",
-  "add.eax_imm32",
-  "sub.eax_imm32",
-  "xor.eax_imm32",
-  "cmp.eax_imm32",
-  "test.eax_imm32",
-  "jmp.rel8",
-  "jmp.rel32",
-  ...JCC_DESCRIPTORS.flatMap((descriptor) => [
-    `${descriptor.mnemonicName}.rel8`,
-    `${descriptor.mnemonicName}.rel32`
-  ])
-]);
-const supportedModRmIds = new Set([
-  "mov.r32_rm32",
-  "mov.rm32_r32",
-  "add.rm32_r32",
-  "add.r32_rm32",
-  "add.rm32_imm32",
-  "add.rm32_imm8",
-  "sub.rm32_r32",
-  "sub.r32_rm32",
-  "sub.rm32_imm32",
-  "sub.rm32_imm8",
-  "xor.rm32_r32",
-  "xor.r32_rm32",
-  "xor.rm32_imm32",
-  "xor.rm32_imm8",
-  "cmp.rm32_r32",
-  "cmp.r32_rm32",
-  "cmp.rm32_imm32",
-  "cmp.rm32_imm8",
-  "test.rm32_r32",
-  "test.rm32_imm32",
-  "lea.r32_m32"
-]);
-
 export function emitInstructionHandlerForLeaf(
   leaf: OpcodeDispatchLeaf,
   context: InterpreterHandlerContext
 ): boolean {
-  const noModRmInstruction = leaf.noModRmCandidates.find((candidate) => supportedNoModRmIds.has(candidate.spec.id));
+  const noModRmInstruction = leaf.noModRmCandidates[0];
 
   if (noModRmInstruction !== undefined) {
     emitInstructionHandler(noModRmInstruction, context, undefined, undefined);
@@ -156,7 +117,6 @@ function supportedRegisterModRmInstruction(
 
   return bucket.find(
     (candidate) =>
-      supportedModRmIds.has(candidate.spec.id) &&
       modRmByteMatches(candidate.spec.modrm?.match, modRmByte) &&
       modRmOperandFormsMatch(candidate.spec.operands ?? [], modRmByte)
   );
