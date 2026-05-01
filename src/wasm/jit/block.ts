@@ -8,6 +8,7 @@ import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
 import { jitBindingsFromIsaInstruction, type JitOperandBinding } from "./operand-bindings.js";
 import { lowerSirWithJitContext } from "./sir-context.js";
+import { optimizeJitSirBlock } from "./sir-optimization.js";
 import { createJitSirState, type JitExitTarget, type JitSirState } from "./state.js";
 
 export type JitSirBlockInstruction = Readonly<{
@@ -57,7 +58,9 @@ export function buildJitSirBlock(instructions: readonly IsaDecodedInstruction[])
     });
   }
 
-  return { sir: sirBuilder.build().program, operands, instructions: blockInstructions };
+  const sequence = sirBuilder.build();
+
+  return optimizeJitSirBlock({ sir: sequence.program, operands, instructions: blockInstructions });
 }
 
 export function encodeJitSirBlock(block: JitSirBlock): Uint8Array<ArrayBuffer> {

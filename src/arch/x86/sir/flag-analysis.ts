@@ -29,6 +29,13 @@ export type SirFlagOpLiveness = SirFlagOpEffect &
 
 export type SirFlagLivenessOptions = Readonly<{
   liveOut?: SirFlagMask;
+  barriers?: readonly SirFlagLivenessBarrier[];
+}>;
+
+export type SirFlagLivenessBarrier = Readonly<{
+  index: number;
+  placement: "before" | "after";
+  mask: SirFlagMask;
 }>;
 
 export const SIR_FLAG_MASK_NONE = 0;
@@ -109,6 +116,7 @@ export function analyzeSirFlagLiveness(
   options: SirFlagLivenessOptions = {}
 ): readonly SirFlagOpLiveness[] {
   const effects = analyzeSirFlagEffects(program);
+  const barriers = flagBarriersByIndex(program, options.barriers ?? []);
   const liveness: SirFlagOpLiveness[] = new Array(program.length);
   let live = maskArithmeticFlags(options.liveOut ?? SIR_FLAG_MASK_NONE);
 
@@ -119,9 +127,9 @@ export function analyzeSirFlagLiveness(
       throw new Error(`missing SIR flag effect for op: ${index}`);
     }
 
-    const liveOut = live;
+    const liveOut = maskArithmeticFlags(live | barriers.after[index]!);
     const killed = effect.writes | effect.undefines;
-    const liveIn = maskArithmeticFlags(effect.reads | (liveOut & ~killed));
+    const liveIn = maskArithmeticFlags(barriers.before[index]! | effect.reads | (liveOut & ~killed));
     const neededWrites = maskArithmeticFlags(effect.writes & liveOut);
     const deadWrites = maskArithmeticFlags(effect.writes & ~liveOut);
 
@@ -130,6 +138,26 @@ export function analyzeSirFlagLiveness(
   }
 
   return liveness;
+}
+
+function flagBarriersByIndex(
+  program: SirProgram,
+  barriers: readonly SirFlagLivenessBarrier[]
+): Readonly<{ before: readonly SirFlagMask[]; after: readonly SirFlagMask[] }> {
+  const before = Array.from({ length: program.length }, () => SIR_FLAG_MASK_NONE);
+  const after = Array.from({ length: program.length }, () => SIR_FLAG_MASK_NONE);
+
+  for (const barrier of barriers) {
+    if (!Number.isInteger(barrier.index) || barrier.index < 0 || barrier.index >= program.length) {
+      throw new Error(`SIR flag liveness barrier index out of range: ${barrier.index}`);
+    }
+
+    const target = barrier.placement === "before" ? before : after;
+
+    target[barrier.index] = maskArithmeticFlags(target[barrier.index]! | barrier.mask);
+  }
+
+  return { before, after };
 }
 
 function dummyFlagInputs(producer: FlagProducerName): Readonly<Record<string, ValueRef>> {

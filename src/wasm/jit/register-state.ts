@@ -22,9 +22,9 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
       body.localGet(pendingLocals.get(reg) ?? committedLocalForReg(body, committedLocals, reg));
     },
     emitSet: (reg, emitValue) => {
+      emitValue();
       const local = pendingLocalForReg(body, pendingLocals, reg);
 
-      emitValue();
       body.localSet(local);
     },
     assertNoPending: () => {

@@ -106,3 +106,29 @@ test("flag liveness treats undefined writes as kills", () => {
     deadWrites: SIR_ARITHMETIC_FLAG_MASK & ~SIR_FLAG_MASKS.AF
   });
 });
+
+test("flag liveness barriers keep flags live before observable exits", () => {
+  const program = buildSir((s) => {
+    const left = s.get32(s.reg32("eax"));
+    const right = s.get32(s.reg32("ebx"));
+    const result = s.i32Add(left, right);
+
+    s.setFlags("add32", { left, right, result });
+    s.set32(s.mem32(left), result);
+    s.setFlags("logic32", { result });
+  });
+  const liveness = analyzeSirFlagLiveness(program, {
+    liveOut: SIR_ARITHMETIC_FLAG_MASK,
+    barriers: [{ index: 4, placement: "before", mask: SIR_ARITHMETIC_FLAG_MASK }]
+  });
+
+  deepStrictEqual(liveness[3], {
+    reads: SIR_FLAG_MASK_NONE,
+    writes: SIR_ARITHMETIC_FLAG_MASK,
+    undefines: SIR_FLAG_MASK_NONE,
+    liveIn: SIR_FLAG_MASK_NONE,
+    liveOut: SIR_ARITHMETIC_FLAG_MASK,
+    neededWrites: SIR_ARITHMETIC_FLAG_MASK,
+    deadWrites: SIR_FLAG_MASK_NONE
+  });
+});

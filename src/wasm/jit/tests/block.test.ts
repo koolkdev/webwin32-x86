@@ -33,6 +33,25 @@ test("buildJitSirBlock builds one SIR program with a shared var namespace", () =
   strictEqual(new Set(defIds).size, defIds.length);
 });
 
+test("buildJitSirBlock prunes flag producers overwritten inside the block", () => {
+  const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], cmp.nextEip));
+  const block = buildJitSirBlock([cmp, add]);
+  const flagSets = block.sir.filter((op) => op.op === "flags.set");
+
+  strictEqual(flagSets.length, 1);
+  deepStrictEqual(flagSets[0], {
+    op: "flags.set",
+    producer: "add32",
+    inputs: {
+      left: { kind: "var", id: 3 },
+      right: { kind: "var", id: 4 },
+      result: { kind: "var", id: 5 }
+    }
+  });
+  strictEqual(block.instructions[0]!.opEnd, block.instructions[1]!.opStart);
+});
+
 test("jit SIR block lowers mov r32, imm32 with static operands", async () => {
   const result = await runJitSirBlock([0xb8, 0x78, 0x56, 0x34, 0x12], createCpuState({ eip: startAddress }));
 
@@ -177,6 +196,24 @@ test("jit SIR block materializes deferred flags on later fault exits", async () 
   const result = await runJitSirBlock([
     0x83, 0xc0, 0x01, // add eax, 1
     0x8b, 0x05, 0x00, 0x00, 0x01, 0x00 // mov eax, [0x10000]
+  ], createCpuState({
+    eax: 0xffff_ffff,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0);
+  strictEqual(result.state.eflags, (preservedEflags | addWraparoundEflags) >>> 0);
+  strictEqual(result.state.eip, startAddress + 3);
+  strictEqual(result.state.instructionCount, 1);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000 });
+});
+
+test("jit SIR block keeps flags live across memory fault exits before later overwrites", async () => {
+  const result = await runJitSirBlock([
+    0x83, 0xc0, 0x01, // add eax, 1
+    0x8b, 0x05, 0x00, 0x00, 0x01, 0x00, // mov eax, [0x10000]
+    0x83, 0xc0, 0x01 // add eax, 1
   ], createCpuState({
     eax: 0xffff_ffff,
     eflags: preservedEflags,

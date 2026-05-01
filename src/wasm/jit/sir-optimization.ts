@@ -1,0 +1,88 @@
+import {
+  SIR_ARITHMETIC_FLAG_MASK,
+  type SirFlagLivenessBarrier
+} from "../../arch/x86/sir/flag-analysis.js";
+import { createDeadFlagSetPruningPass } from "../../arch/x86/sir/flag-optimization.js";
+import { optimizeSirProgram } from "../../arch/x86/sir/optimization.js";
+import type { SirOp, SirProgram, StorageRef } from "../../arch/x86/sir/types.js";
+import type { JitSirBlock, JitSirBlockInstruction } from "./block.js";
+import type { JitOperandBinding } from "./operand-bindings.js";
+
+export function optimizeJitSirBlock(block: JitSirBlock): JitSirBlock {
+  const optimized = optimizeSirProgram(block.sir, [
+    createDeadFlagSetPruningPass({
+      liveOut: SIR_ARITHMETIC_FLAG_MASK,
+      barriers: jitFlagLivenessBarriers(block.sir, block.operands)
+    })
+  ]);
+
+  return {
+    sir: optimized.program,
+    operands: block.operands,
+    instructions: remapInstructionRanges(block.instructions, optimized.opBoundaryMap)
+  };
+}
+
+function jitFlagLivenessBarriers(
+  program: SirProgram,
+  operands: readonly JitOperandBinding[]
+): readonly SirFlagLivenessBarrier[] {
+  const barriers: SirFlagLivenessBarrier[] = [];
+
+  for (let index = 0; index < program.length; index += 1) {
+    const op = program[index];
+
+    if (op === undefined) {
+      throw new Error(`missing SIR op while planning JIT flag barriers: ${index}`);
+    }
+
+    if (opMayFaultBeforeCompletion(op, operands)) {
+      barriers.push({ index, placement: "before", mask: SIR_ARITHMETIC_FLAG_MASK });
+    }
+  }
+
+  return barriers;
+}
+
+function opMayFaultBeforeCompletion(op: SirOp, operands: readonly JitOperandBinding[]): boolean {
+  switch (op.op) {
+    case "get32":
+      return storageMayAccessMemory(op.source, operands);
+    case "set32":
+      return storageMayAccessMemory(op.target, operands);
+    default:
+      return false;
+  }
+}
+
+function storageMayAccessMemory(storage: StorageRef, operands: readonly JitOperandBinding[]): boolean {
+  switch (storage.kind) {
+    case "mem":
+      return true;
+    case "reg":
+      return false;
+    case "operand":
+      return operands[storage.index]?.kind === "static.mem32";
+  }
+}
+
+function remapInstructionRanges(
+  instructions: readonly JitSirBlockInstruction[],
+  opBoundaryMap: readonly number[]
+): readonly JitSirBlockInstruction[] {
+  return instructions.map((instruction) => ({
+    ...instruction,
+    opStart: remappedOpBoundary(opBoundaryMap, instruction.opStart),
+    opEnd: remappedOpBoundary(opBoundaryMap, instruction.opEnd)
+  }));
+}
+
+function remappedOpBoundary(opBoundaryMap: readonly number[], index: number): number {
+  const mapped = opBoundaryMap[index];
+
+  if (mapped === undefined) {
+    throw new Error(`missing optimized SIR op boundary: ${index}`);
+  }
+
+  return mapped;
+}
