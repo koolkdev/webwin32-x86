@@ -102,6 +102,8 @@ export function sirOpFlagEffect(op: SirOp): SirFlagOpEffect {
         writes: SIR_FLAG_MASK_NONE,
         undefines: SIR_FLAG_MASK_NONE
       };
+    case "flags.materialize":
+      return noFlagEffect;
     default:
       return noFlagEffect;
   }

@@ -26,6 +26,7 @@ export type WasmSirLoweringContext = Readonly<{
   emitSet32(target: SirStorageExpr, value: SirValueExpr, helpers: WasmSirEmitHelpers): void;
   emitAddress32(source: SirStorageExpr, helpers: WasmSirEmitHelpers): void;
   emitSetFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueRef>>, helpers: WasmSirEmitHelpers): void;
+  emitMaterializeFlags(mask: number, helpers: WasmSirEmitHelpers): void;
   emitCondition(cc: ConditionCode): void;
   emitNext(helpers: WasmSirEmitHelpers): void;
   emitNextEip(helpers: WasmSirEmitHelpers): void;
@@ -93,6 +94,9 @@ class SirExprWasmLowerer {
         return;
       case "flags.set":
         this.#context.emitSetFlags(op.producer, op.inputs, this.#helpers);
+        return;
+      case "flags.materialize":
+        this.#context.emitMaterializeFlags(op.mask, this.#helpers);
         return;
       case "next":
         this.#context.emitNext(this.#helpers);

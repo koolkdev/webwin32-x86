@@ -15,9 +15,9 @@ type PendingFlags = Readonly<{
 
 export type JitFlagState = Readonly<{
   emitSet(producer: FlagProducerName, inputs: Readonly<Record<string, ValueRef>>, helpers: WasmSirEmitHelpers): void;
+  emitMaterialize(mask: number): void;
   emitCondition(cc: ConditionCode): void;
-  emitExitMaterialization(): void;
-  materializePending(): void;
+  assertNoPending(): void;
 }>;
 
 export function createJitFlagState(
@@ -48,16 +48,16 @@ export function createJitFlagState(
 
       pending = { producer, inputs: pendingInputs };
     },
-    emitCondition: (cc) => {
-      materializePending();
-      emitCondition(body, eflags, cc);
-    },
-    emitExitMaterialization: () => {
-      if (pending !== undefined) {
-        emitPendingFlags(pending);
+    emitMaterialize: (mask) => {
+      if (mask !== 0) {
+        materializePending();
       }
     },
-    materializePending
+    emitCondition: (cc) => {
+      assertNoPending();
+      emitCondition(body, eflags, cc);
+    },
+    assertNoPending
   };
 
   function localForInput(name: string): number {
@@ -80,6 +80,12 @@ export function createJitFlagState(
 
     pending = undefined;
     emitPendingFlags(pendingFlags);
+  }
+
+  function assertNoPending(): void {
+    if (pending !== undefined) {
+      throw new Error("JIT pending flags must be materialized explicitly");
+    }
   }
 
   function emitPendingFlags(pendingFlags: PendingFlags): void {

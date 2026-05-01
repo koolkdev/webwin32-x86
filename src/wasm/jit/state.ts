@@ -116,7 +116,7 @@ export function createJitSirState(
           body.i32Const(instructionDelta).i32Add();
         }
       });
-      flags.emitExitMaterialization();
+      flags.assertNoPending();
       emitStoreStateU32(body, stateOffset.eflags, () => {
         body.localGet(eflagsLocal);
       });

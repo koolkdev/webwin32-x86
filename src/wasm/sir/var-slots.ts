@@ -100,6 +100,8 @@ function collectOpVarUses(op: SirExprOp, visit: (id: number) => void): void {
         collectValueVarUses(value, visit);
       }
       return;
+    case "flags.materialize":
+      return;
     case "next":
       return;
     case "jump":

@@ -2,6 +2,7 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { ok, decodeBytes } from "../../../arch/x86/isa/decoder/tests/helpers.js";
+import { SIR_ARITHMETIC_FLAG_MASK, SIR_FLAG_MASKS } from "../../../arch/x86/sir/flag-analysis.js";
 import type { SirOp, StorageRef } from "../../../arch/x86/sir/types.js";
 import { createCpuState } from "../../../core/state/cpu-state.js";
 import { ExitReason } from "../../exit.js";
@@ -50,6 +51,27 @@ test("buildJitSirBlock prunes flag producers overwritten inside the block", () =
     }
   });
   strictEqual(block.instructions[0]!.opEnd, block.instructions[1]!.opStart);
+});
+
+test("buildJitSirBlock inserts explicit flag materialization before consumers and exits", () => {
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
+  const jz = ok(decodeBytes([0x74, 0x05], add.nextEip));
+  const branchBlock = buildJitSirBlock([add, jz]);
+  const conditionIndex = branchBlock.sir.findIndex((op) => op.op === "condition");
+
+  deepStrictEqual(branchBlock.sir[conditionIndex - 1], {
+    op: "flags.materialize",
+    mask: SIR_FLAG_MASKS.ZF
+  });
+
+  const trap = ok(decodeBytes([0xcd, 0x2e], add.nextEip));
+  const exitBlock = buildJitSirBlock([add, trap]);
+  const hostTrapIndex = exitBlock.sir.findIndex((op) => op.op === "hostTrap");
+
+  deepStrictEqual(exitBlock.sir[hostTrapIndex - 1], {
+    op: "flags.materialize",
+    mask: SIR_ARITHMETIC_FLAG_MASK
+  });
 });
 
 test("jit SIR block lowers mov r32, imm32 with static operands", async () => {

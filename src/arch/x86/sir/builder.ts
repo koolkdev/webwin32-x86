@@ -2,6 +2,7 @@ import type { Reg32 } from "../isa/types.js";
 import type {
   ConditionCode,
   Const32Ref,
+  FlagMask,
   FlagProducerName,
   MemRef,
   NextEipRef,
@@ -226,6 +227,10 @@ class TemplateSirBuilder implements SirBuilder {
       producer,
       inputs: Object.fromEntries(Object.entries(inputs).map(([name, value]) => [name, toValueRef(value)]))
     });
+  }
+
+  materializeFlags(mask: FlagMask): void {
+    this.#push({ op: "flags.materialize", mask });
   }
 
   condition(cc: ConditionCode): VarRef {

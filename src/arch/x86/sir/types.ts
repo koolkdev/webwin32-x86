@@ -33,6 +33,7 @@ export type ConditionCode =
   | "G";
 
 export type FlagProducerName = "add32" | "sub32" | "logic32";
+export type FlagMask = number;
 
 export type SirOp =
   | Readonly<{ op: "get32"; dst: VarRef; source: StorageRef }>
@@ -48,6 +49,7 @@ export type SirOp =
       producer: FlagProducerName;
       inputs: Readonly<Record<string, ValueRef>>;
     }>
+  | Readonly<{ op: "flags.materialize"; mask: FlagMask }>
   | Readonly<{ op: "condition"; dst: VarRef; cc: ConditionCode }>
   | Readonly<{ op: "next" }>
   | Readonly<{ op: "jump"; target: TargetRef }>
@@ -75,6 +77,7 @@ export interface SirBuilder {
   i32And(a: ValueInput, b: ValueInput): VarRef;
 
   setFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueInput>>): void;
+  materializeFlags(mask: FlagMask): void;
   condition(cc: ConditionCode): VarRef;
 
   next(): void;

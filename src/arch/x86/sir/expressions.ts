@@ -28,6 +28,7 @@ export type SirExprOp =
   | Readonly<{ op: "let32"; dst: VarRef; value: SirValueExpr }>
   | Readonly<{ op: "set32"; target: SirStorageExpr; value: SirValueExpr }>
   | Readonly<{ op: "flags.set"; producer: FlagProducerName; inputs: Readonly<Record<string, ValueRef>> }>
+  | Readonly<{ op: "flags.materialize"; mask: number }>
   | Readonly<{ op: "next" }>
   | Readonly<{ op: "jump"; target: SirValueExpr }>
   | Readonly<{ op: "conditionalJump"; condition: SirValueExpr; taken: SirValueExpr; notTaken: SirValueExpr }>
@@ -92,6 +93,9 @@ class ExpressionBuilder {
               Object.entries(op.inputs).map(([name, value]) => [name, this.#materializedValue(value)])
             )
           });
+          break;
+        case "flags.materialize":
+          this.#ops.push(op);
           break;
         case "next":
           this.#ops.push(op);
@@ -200,6 +204,8 @@ function countVarUses(program: SirProgram): Map<number, number> {
         for (const value of Object.values(op.inputs)) {
           countValueUse(counts, value);
         }
+        break;
+      case "flags.materialize":
         break;
       case "jump":
         countValueUse(counts, op.target);

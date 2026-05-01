@@ -56,6 +56,8 @@ function validateOpUses(
         validateValueRef(value, definedVars);
       }
       break;
+    case "flags.materialize":
+      break;
     case "jump":
       validateValueRef(op.target, definedVars);
       break;

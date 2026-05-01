@@ -2,7 +2,11 @@ import {
   SIR_ARITHMETIC_FLAG_MASK,
   type SirFlagLivenessBarrier
 } from "../../arch/x86/sir/flag-analysis.js";
-import { createDeadFlagSetPruningPass } from "../../arch/x86/sir/flag-optimization.js";
+import {
+  createDeadFlagSetPruningPass,
+  createFlagMaterializationPass,
+  type SirFlagMaterializationPoint
+} from "../../arch/x86/sir/flag-optimization.js";
 import { optimizeSirProgram } from "../../arch/x86/sir/optimization.js";
 import type { SirOp, SirProgram, StorageRef } from "../../arch/x86/sir/types.js";
 import type { JitSirBlock, JitSirBlockInstruction } from "./block.js";
@@ -10,10 +14,15 @@ import type { JitOperandBinding } from "./operand-bindings.js";
 
 export function optimizeJitSirBlock(block: JitSirBlock): JitSirBlock {
   const optimized = optimizeSirProgram(block.sir, [
-    createDeadFlagSetPruningPass({
-      liveOut: SIR_ARITHMETIC_FLAG_MASK,
-      barriers: jitFlagLivenessBarriers(block.sir, block.operands)
-    })
+    (program) =>
+      createDeadFlagSetPruningPass({
+        liveOut: SIR_ARITHMETIC_FLAG_MASK,
+        barriers: jitFlagLivenessBarriers(program, block.operands)
+      })(program),
+    (program) =>
+      createFlagMaterializationPass({
+        points: jitFlagMaterializationPoints(program, block.operands)
+      })(program)
   ]);
 
   return {
@@ -21,6 +30,27 @@ export function optimizeJitSirBlock(block: JitSirBlock): JitSirBlock {
     operands: block.operands,
     instructions: remapInstructionRanges(block.instructions, optimized.opBoundaryMap)
   };
+}
+
+function jitFlagMaterializationPoints(
+  program: SirProgram,
+  operands: readonly JitOperandBinding[]
+): readonly SirFlagMaterializationPoint[] {
+  const points: SirFlagMaterializationPoint[] = [];
+
+  for (const barrier of jitFlagLivenessBarriers(program, operands)) {
+    points.push({ index: barrier.index, placement: "before", mask: barrier.mask });
+  }
+
+  if (program.length !== 0) {
+    points.push({
+      index: program.length - 1,
+      placement: "before",
+      mask: SIR_ARITHMETIC_FLAG_MASK
+    });
+  }
+
+  return points;
 }
 
 function jitFlagLivenessBarriers(
