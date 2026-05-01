@@ -19,32 +19,80 @@ import {
 } from "./operands.js";
 import type { JitExitTarget, JitSirState } from "./state.js";
 
+export type JitSirInstructionContext = Readonly<{
+  eip: number;
+  nextEip: number;
+  nextMode: "continue" | "exit";
+}>;
+
+export type JitSirBlockLoweringContext = Readonly<{
+  body: WasmFunctionBodyEncoder;
+  scratch: WasmLocalScratchAllocator;
+  state: JitSirState;
+  exit: JitExitTarget;
+  operands: readonly JitOperandBinding[];
+  instructions: readonly JitSirInstructionContext[];
+}>;
+
 export type JitSirContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
   state: JitSirState;
   exit: JitExitTarget;
   operands: readonly JitOperandBinding[];
-  nextEip: number;
-  nextMode: "continue" | "exit";
+  currentInstruction(): JitSirInstructionContext;
+  advanceInstruction(): void;
 }>;
 
-export function lowerSirWithJitContext(program: SirProgram, context: JitSirContext): void {
+export function lowerSirWithJitContext(program: SirProgram, context: JitSirBlockLoweringContext): void {
+  const jitContext = createJitSirContext(context);
+
+  context.state.beginInstruction(context.exit, jitContext.currentInstruction().eip);
   lowerSirToWasm(program, {
+    body: jitContext.body,
+    scratch: jitContext.scratch,
+    expression: { canInlineGet32: (source) => canInlineJitGet32(jitContext, source) },
+    emitGet32: (source, helpers) => emitJitGet32(jitContext, source, helpers),
+    emitSet32: (target, value, helpers) => emitJitSet32(jitContext, target, value, helpers),
+    emitAddress32: (source) => emitJitAddress32(jitContext, source),
+    emitSetFlags: (producer, inputs, helpers) =>
+      jitContext.state.flags.emitSet(producer, inputs, helpers),
+    emitCondition: (cc) => jitContext.state.flags.emitCondition(cc),
+    emitNext: () => emitJitNext(jitContext),
+    emitNextEip: () => emitJitNextEip(jitContext),
+    emitJump: (target, helpers) => emitJitControlExit(jitContext, target, ExitReason.JUMP, helpers),
+    emitConditionalJump: (condition, taken, notTaken, helpers) =>
+      emitJitConditionalJump(jitContext, condition, taken, notTaken, helpers),
+    emitHostTrap: (vector, helpers) => emitJitHostTrap(jitContext, vector, helpers)
+  });
+}
+
+function createJitSirContext(context: JitSirBlockLoweringContext): JitSirContext {
+  let instructionIndex = 0;
+
+  return {
     body: context.body,
     scratch: context.scratch,
-    expression: { canInlineGet32: (source) => canInlineJitGet32(context, source) },
-    emitGet32: (source, helpers) => emitJitGet32(context, source, helpers),
-    emitSet32: (target, value, helpers) => emitJitSet32(context, target, value, helpers),
-    emitAddress32: (source) => emitJitAddress32(context, source),
-    emitSetFlags: (producer, inputs, helpers) =>
-      context.state.flags.emitSet(producer, inputs, helpers),
-    emitCondition: (cc) => context.state.flags.emitCondition(cc),
-    emitNext: () => emitJitNext(context),
-    emitNextEip: () => emitJitNextEip(context),
-    emitJump: (target, helpers) => emitJitControlExit(context, target, ExitReason.JUMP, helpers),
-    emitConditionalJump: (condition, taken, notTaken, helpers) =>
-      emitJitConditionalJump(context, condition, taken, notTaken, helpers),
-    emitHostTrap: (vector, helpers) => emitJitHostTrap(context, vector, helpers)
-  });
+    state: context.state,
+    exit: context.exit,
+    operands: context.operands,
+    currentInstruction: () => {
+      const instruction = context.instructions[instructionIndex];
+
+      if (instruction === undefined) {
+        throw new Error(`missing JIT SIR instruction context: ${instructionIndex}`);
+      }
+
+      return instruction;
+    },
+    advanceInstruction: () => {
+      instructionIndex += 1;
+
+      const instruction = context.instructions[instructionIndex];
+
+      if (instruction !== undefined) {
+        context.state.beginInstruction(context.exit, instruction.eip);
+      }
+    }
+  };
 }

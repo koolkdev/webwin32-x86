@@ -7,20 +7,23 @@ import type { WasmSirEmitHelpers } from "../sir/lower.js";
 import type { JitSirContext } from "./sir-context.js";
 
 export function emitJitNext(context: JitSirContext): void {
-  if (context.nextMode === "exit") {
+  const instruction = context.currentInstruction();
+
+  if (instruction.nextMode === "exit") {
     context.state.commitInstructionExit(() => {
-      context.body.i32Const(i32(context.nextEip));
+      context.body.i32Const(i32(instruction.nextEip));
     });
-    context.body.i32Const(i32(context.nextEip));
+    context.body.i32Const(i32(instruction.nextEip));
     emitWasmSirExitFromI32Stack(context.body, context.exit, ExitReason.FALLTHROUGH);
     return;
   }
 
   context.state.commitInstruction();
+  context.advanceInstruction();
 }
 
 export function emitJitNextEip(context: JitSirContext): void {
-  context.body.i32Const(i32(context.nextEip));
+  context.body.i32Const(i32(context.currentInstruction().nextEip));
 }
 
 export function emitJitControlExit(
@@ -66,7 +69,7 @@ export function emitJitHostTrap(context: JitSirContext, vector: SirValueExpr, he
     helpers.emitValue(vector);
     context.body.localSet(vectorLocal);
     context.state.commitInstructionExit(() => {
-      context.body.i32Const(i32(context.nextEip));
+      context.body.i32Const(i32(context.currentInstruction().nextEip));
     });
     context.body.localGet(vectorLocal);
     emitWasmSirExitFromI32Stack(context.body, context.exit, ExitReason.HOST_TRAP);

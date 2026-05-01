@@ -1,5 +1,5 @@
 import type { IsaDecodedInstruction } from "../../arch/x86/isa/decoder/types.js";
-import { buildSir } from "../../arch/x86/sir/builder.js";
+import { SirProgramSequenceBuilder, type SirProgramSegment } from "../../arch/x86/sir/builder.js";
 import type { SirProgram } from "../../arch/x86/sir/types.js";
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "../abi.js";
 import { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
@@ -12,14 +12,16 @@ import { createJitSirState, type JitExitTarget, type JitSirState } from "./state
 
 export type JitSirBlockInstruction = Readonly<{
   instructionId: string;
-  sir: SirProgram;
-  operands: readonly JitOperandBinding[];
   eip: number;
   nextEip: number;
   nextMode: "continue" | "exit";
+  opStart: number;
+  opEnd: number;
 }>;
 
 export type JitSirBlock = Readonly<{
+  sir: SirProgram;
+  operands: readonly JitOperandBinding[];
   instructions: readonly JitSirBlockInstruction[];
 }>;
 
@@ -28,25 +30,34 @@ export function buildJitSirBlock(instructions: readonly IsaDecodedInstruction[])
     throw new Error("cannot build empty JIT SIR block");
   }
 
-  return {
-    instructions: instructions.map((instruction, index) => {
-      const sir = buildSir(instruction.spec.semantics);
-      const isLastInstruction = index === instructions.length - 1;
+  const operands: JitOperandBinding[] = [];
+  const blockInstructions: JitSirBlockInstruction[] = [];
+  const sirBuilder = new SirProgramSequenceBuilder();
 
-      if (!isLastInstruction) {
-        assertFallthroughInstruction(sir, instruction);
-      }
+  for (let index = 0; index < instructions.length; index += 1) {
+    const instruction = instructions[index]!;
+    const instructionOperands = jitBindingsFromIsaInstruction(instruction);
+    const segment = sirBuilder.append(instruction.spec.semantics, {
+      operandCount: instructionOperands.length
+    });
+    const isLastInstruction = index === instructions.length - 1;
 
-      return {
-        instructionId: instruction.spec.id,
-        sir,
-        operands: jitBindingsFromIsaInstruction(instruction),
-        eip: instruction.address,
-        nextEip: instruction.nextEip,
-        nextMode: isLastInstruction ? "exit" : "continue"
-      };
-    })
-  };
+    if (!isLastInstruction) {
+      assertFallthroughInstruction(segment, instruction);
+    }
+
+    operands.push(...instructionOperands);
+    blockInstructions.push({
+      instructionId: instruction.spec.id,
+      eip: instruction.address,
+      nextEip: instruction.nextEip,
+      nextMode: isLastInstruction ? "exit" : "continue",
+      opStart: segment.opStart,
+      opEnd: segment.opEnd
+    });
+  }
+
+  return { sir: sirBuilder.build().program, operands, instructions: blockInstructions };
 }
 
 export function encodeJitSirBlock(block: JitSirBlock): Uint8Array<ArrayBuffer> {
@@ -74,7 +85,14 @@ export function encodeJitSirBlock(block: JitSirBlock): Uint8Array<ArrayBuffer> {
 
   state.emitEntryLoads();
   emitExitGenerationBlocks(body, state.maxExitGeneration);
-  lowerJitSirBlockToWasm(block, { body, scratch, state, exit });
+  lowerSirWithJitContext(block.sir, {
+    body,
+    scratch,
+    state,
+    exit,
+    operands: block.operands,
+    instructions: block.instructions
+  });
   emitExitGenerationStores(body, state, exitLocal);
   scratch.assertClear();
   body.end();
@@ -83,29 +101,6 @@ export function encodeJitSirBlock(block: JitSirBlock): Uint8Array<ArrayBuffer> {
   module.exportFunction(wasmBlockExportName, functionIndex);
 
   return module.encode();
-}
-
-function lowerJitSirBlockToWasm(
-  block: JitSirBlock,
-  context: Readonly<{
-    body: WasmFunctionBodyEncoder;
-    scratch: WasmLocalScratchAllocator;
-    state: JitSirState;
-    exit: JitExitTarget;
-  }>
-): void {
-  for (const instruction of block.instructions) {
-    context.state.beginInstruction(context.exit, instruction.eip);
-    lowerSirWithJitContext(instruction.sir, {
-      body: context.body,
-      scratch: context.scratch,
-      state: context.state,
-      exit: context.exit,
-      operands: instruction.operands,
-      nextEip: instruction.nextEip,
-      nextMode: instruction.nextMode
-    });
-  }
 }
 
 function emitExitGenerationBlocks(body: WasmFunctionBodyEncoder, maxExitGeneration: number): void {
@@ -127,10 +122,8 @@ function emitExitGenerationStores(
   }
 }
 
-function assertFallthroughInstruction(program: SirProgram, instruction: IsaDecodedInstruction): void {
-  const terminator = program[program.length - 1];
-
-  if (terminator?.op !== "next") {
+function assertFallthroughInstruction(segment: SirProgramSegment, instruction: IsaDecodedInstruction): void {
+  if (segment.terminator !== "next") {
     throw new Error(`non-final JIT SIR block instruction must fall through: ${instruction.spec.id}`);
   }
 }

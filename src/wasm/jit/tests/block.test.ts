@@ -1,8 +1,11 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
+import { ok, decodeBytes } from "../../../arch/x86/isa/decoder/tests/helpers.js";
+import type { SirOp, StorageRef } from "../../../arch/x86/sir/types.js";
 import { createCpuState } from "../../../core/state/cpu-state.js";
 import { ExitReason } from "../../exit.js";
+import { buildJitSirBlock } from "../block.js";
 import { runJitSirBlock } from "./helpers.js";
 
 const startAddress = 0x1000;
@@ -10,6 +13,25 @@ const preservedEflags = 0xffff_0000;
 const zeroFlag = 1 << 6;
 const addWraparoundEflags = 0x55;
 const zeroResultEflags = 0x44;
+
+test("buildJitSirBlock builds one SIR program with a shared var namespace", () => {
+  const first = ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress));
+  const second = ok(decodeBytes([0x83, 0xc0, 0x01], first.nextEip));
+  const block = buildJitSirBlock([first, second]);
+  const firstRange = block.sir.slice(block.instructions[0]!.opStart, block.instructions[0]!.opEnd);
+  const secondRange = block.sir.slice(block.instructions[1]!.opStart, block.instructions[1]!.opEnd);
+  const defIds = block.sir.flatMap(sirOpDstId);
+  const secondOperandIndexes = new Set(secondRange.flatMap(sirOpOperandIndexes));
+
+  strictEqual("sir" in block.instructions[0]!, false);
+  strictEqual(block.instructions.length, 2);
+  strictEqual(block.operands.length, first.operands.length + second.operands.length);
+  strictEqual(block.sir.filter((op) => op.op === "next").length, 2);
+  strictEqual(firstRange.at(-1)?.op, "next");
+  strictEqual(secondRange.at(-1)?.op, "next");
+  strictEqual(Math.min(...secondOperandIndexes), first.operands.length);
+  strictEqual(new Set(defIds).size, defIds.length);
+});
 
 test("jit SIR block lowers mov r32, imm32 with static operands", async () => {
   const result = await runJitSirBlock([0xb8, 0x78, 0x56, 0x34, 0x12], createCpuState({ eip: startAddress }));
@@ -167,3 +189,43 @@ test("jit SIR block materializes deferred flags on later fault exits", async () 
   strictEqual(result.state.instructionCount, 1);
   deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000 });
 });
+
+function sirOpDstId(op: SirOp): readonly number[] {
+  switch (op.op) {
+    case "get32":
+    case "address32":
+    case "const32":
+    case "i32.add":
+    case "i32.sub":
+    case "i32.xor":
+    case "i32.and":
+    case "condition":
+      return [op.dst.id];
+    default:
+      return [];
+  }
+}
+
+function sirOpOperandIndexes(op: SirOp): readonly number[] {
+  switch (op.op) {
+    case "get32":
+      return storageOperandIndexes(op.source);
+    case "set32":
+      return storageOperandIndexes(op.target);
+    case "address32":
+      return [op.operand.index];
+    default:
+      return [];
+  }
+}
+
+function storageOperandIndexes(storage: StorageRef): readonly number[] {
+  switch (storage.kind) {
+    case "operand":
+      return [storage.index];
+    case "mem":
+      return [];
+    case "reg":
+      return [];
+  }
+}
