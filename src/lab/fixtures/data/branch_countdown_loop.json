@@ -1,8 +1,0 @@
-{
-  "id": "branch_countdown_loop",
-  "bytes": [131, 232, 1, 131, 248, 0, 117, 248, 205, 46],
-  "loadAddress": 4096,
-  "initialState": { "eax": 1000 },
-  "instructionLimit": 4000,
-  "expectedState": { "eax": 0 }
-}

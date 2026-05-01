@@ -1,11 +1,5 @@
 import type { RunResult } from "../core/execution/run-result.js";
 import { u32, type CpuState } from "../core/state/cpu-state.js";
-import type { MetricSink } from "../metrics/collector.js";
-import {
-  recordRuntimeMetrics,
-  type RuntimeMetrics,
-  type RuntimeWasmBlockCacheMetrics
-} from "../metrics/runtime-adapter.js";
 import { WasmInterpreterRuntime } from "../wasm/interpreter/runtime.js";
 import {
   WasmCompiledBlockCache,
@@ -44,18 +38,10 @@ export type RuntimeInstanceMemoryOptions = Readonly<{
 export type RuntimeInstanceRunOptions = Readonly<{
   eip?: number;
   maxInstructions?: number;
-  metrics?: MetricSink;
 }>;
 
-const defaultGuestBytes = 1024 * 1024;
 const defaultMaxInstructions = 10_000;
-
-const emptyCompiledBlockMetrics: RuntimeWasmBlockCacheMetrics = {
-  hits: 0,
-  misses: 0,
-  inserts: 0,
-  unsupportedCodegenFallbacks: 0
-};
+const defaultGuestBytes = 1024 * 1024;
 
 export class RuntimeInstance {
   readonly mode: RuntimeModeValue;
@@ -105,20 +91,7 @@ export class RuntimeInstance {
       throw new Error(`runtime engine unavailable: ${engineResult.reason}`);
     }
 
-    if (options.metrics !== undefined) {
-      recordRuntimeMetrics(options.metrics, this.snapshotMetrics(engineResult.result));
-    }
-
     return engineResult.result;
-  }
-
-  snapshotMetrics(result: RunResult): RuntimeMetrics {
-    return {
-      guestInstructions: result.instructionCount,
-      finalEip: this.memories.state.eip,
-      stopReason: result.stopReason,
-      wasmBlockCache: this.compiledBlocks.metrics ?? emptyCompiledBlockMetrics
-    };
   }
 
   clearCompiledBlocks(): void {
