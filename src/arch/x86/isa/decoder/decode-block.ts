@@ -1,6 +1,5 @@
 import { u32 } from "../../../../core/state/cpu-state.js";
-import { buildSir } from "../../sir/builder.js";
-import type { SirProgram } from "../../sir/types.js";
+import { buildSir, sirProgramTerminator } from "../../sir/builder.js";
 import { decodeIsaInstructionFromReader } from "./decode.js";
 import {
   decodeFault,
@@ -101,15 +100,5 @@ function decodeInstruction(
 }
 
 function isBlockTerminator(instruction: IsaDecodedInstruction): boolean {
-  return sirTerminator(buildSir(instruction.spec.semantics)) !== "next";
-}
-
-function sirTerminator(program: SirProgram): SirProgram[number]["op"] {
-  const terminator = program[program.length - 1];
-
-  if (terminator === undefined) {
-    throw new Error("SIR program is empty");
-  }
-
-  return terminator.op;
+  return sirProgramTerminator(buildSir(instruction.spec.semantics)) !== "next";
 }

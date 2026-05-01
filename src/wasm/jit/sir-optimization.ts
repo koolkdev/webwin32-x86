@@ -9,8 +9,8 @@ import {
 } from "../../arch/x86/sir/flag-optimization.js";
 import { optimizeSirProgram } from "../../arch/x86/sir/optimization.js";
 import type { SirOp, SirProgram, StorageRef } from "../../arch/x86/sir/types.js";
-import type { JitSirBlock } from "./block.js";
 import type { JitOperandBinding } from "./operand-bindings.js";
+import type { JitSirBlock } from "./types.js";
 
 export function optimizeJitSirBlock(block: JitSirBlock): JitSirBlock {
   const optimized = optimizeSirProgram(block.sir, [

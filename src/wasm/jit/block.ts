@@ -1,62 +1,33 @@
 import type { IsaDecodedInstruction } from "../../arch/x86/isa/decoder/types.js";
-import { SirProgramSequenceBuilder, type SirProgramAppendResult } from "../../arch/x86/sir/builder.js";
-import type { SirProgram } from "../../arch/x86/sir/types.js";
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "../abi.js";
 import { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
-import { jitBindingsFromIsaInstruction, type JitOperandBinding } from "./operand-bindings.js";
+import { JitSirProgramBuilder } from "./program-builder.js";
 import { lowerSirWithJitContext } from "./sir-context.js";
-import { optimizeJitSirBlock } from "./sir-optimization.js";
 import { createJitSirState, type JitExitTarget, type JitSirState } from "./state.js";
+import type { JitSirBlock } from "./types.js";
 
-export type JitSirBlockInstruction = Readonly<{
-  instructionId: string;
-  eip: number;
-  nextEip: number;
-  nextMode: "continue" | "exit";
-}>;
-
-export type JitSirBlock = Readonly<{
-  sir: SirProgram;
-  operands: readonly JitOperandBinding[];
-  instructions: readonly JitSirBlockInstruction[];
-}>;
+export type { JitSirBlock, JitSirBlockInstruction } from "./types.js";
 
 export function buildJitSirBlock(instructions: readonly IsaDecodedInstruction[]): JitSirBlock {
   if (instructions.length === 0) {
     throw new Error("cannot build empty JIT SIR block");
   }
 
-  const operands: JitOperandBinding[] = [];
-  const blockInstructions: JitSirBlockInstruction[] = [];
-  const sirBuilder = new SirProgramSequenceBuilder();
+  const builder = new JitSirProgramBuilder();
 
   for (let index = 0; index < instructions.length; index += 1) {
     const instruction = instructions[index]!;
-    const instructionOperands = jitBindingsFromIsaInstruction(instruction);
-    const appended = sirBuilder.append(instruction.spec.semantics, {
-      operandCount: instructionOperands.length
-    });
     const isLastInstruction = index === instructions.length - 1;
 
-    if (!isLastInstruction) {
-      assertFallthroughInstruction(appended, instruction);
-    }
-
-    operands.push(...instructionOperands);
-    blockInstructions.push({
-      instructionId: instruction.spec.id,
-      eip: instruction.address,
-      nextEip: instruction.nextEip,
+    builder.appendInstruction(instruction, {
       nextMode: isLastInstruction ? "exit" : "continue"
     });
   }
 
-  const sequence = sirBuilder.build();
-
-  return optimizeJitSirBlock({ sir: sequence.program, operands, instructions: blockInstructions });
+  return builder.build();
 }
 
 export function encodeJitSirBlock(block: JitSirBlock): Uint8Array<ArrayBuffer> {
@@ -118,11 +89,5 @@ function emitExitGenerationStores(
     body.endBlock();
     state.emitExitStoresForGeneration(generation);
     body.localGet(exitLocal).returnFromFunction();
-  }
-}
-
-function assertFallthroughInstruction(result: SirProgramAppendResult, instruction: IsaDecodedInstruction): void {
-  if (result.terminator !== "next") {
-    throw new Error(`non-final JIT SIR block instruction must fall through: ${instruction.spec.id}`);
   }
 }
