@@ -1,11 +1,11 @@
 import { deepStrictEqual, match, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { stateOffset, wasmImport } from "../../src/wasm/abi.js";
-import { WasmFunctionBodyEncoder } from "../../src/wasm/encoder/function-body.js";
-import { WasmModuleEncoder } from "../../src/wasm/encoder/module.js";
-import { wasmValueType } from "../../src/wasm/encoder/types.js";
-import { decodeExit, encodeExit, ExitReason } from "../../src/wasm/exit.js";
+import { stateOffset, wasmImport } from "../../abi.js";
+import { WasmFunctionBodyEncoder } from "../function-body.js";
+import { WasmModuleEncoder } from "../module.js";
+import { wasmValueType } from "../types.js";
+import { decodeExit, encodeExit, ExitReason } from "../../exit.js";
 
 const entryExportName = "entry";
 const statePtr = 32;

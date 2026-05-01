@@ -1,8 +1,8 @@
 import { deepStrictEqual, doesNotThrow, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { ArrayBufferGuestMemory, type MemoryReadResult } from "../../src/core/memory/guest-memory.js";
-import { assertGuestWriteOk, readGuestBytes, readGuestValue } from "../../src/test-support/guest-memory.js";
+import { ArrayBufferGuestMemory, type MemoryReadResult } from "../guest-memory.js";
+import { assertGuestWriteOk, readGuestBytes, readGuestValue } from "./helpers.js";
 
 test("u32_little_endian_roundtrip", () => {
   const memory = new ArrayBufferGuestMemory(8);

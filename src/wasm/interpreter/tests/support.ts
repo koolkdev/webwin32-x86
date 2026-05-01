@@ -6,7 +6,7 @@ import {
   readInterpreterState,
   writeInterpreterState,
   type InterpreterModuleInstance
-} from "../../../test-support/wasm-interpreter.js";
+} from "./interpreter-helpers.js";
 import { ExitReason, type DecodedExit } from "../../exit.js";
 import { readInterpreterWasmArtifact } from "../artifact.js";
 

@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { reg32 } from "../../src/arch/x86/isa/types.js";
+import { reg32 } from "../../../arch/x86/isa/types.js";
 import {
   cpuFlags,
   createCpuState,
@@ -18,7 +18,7 @@ import {
   STATE_OFFSETS,
   supportedEflagsMask,
   u32
-} from "../../src/core/state/cpu-state.js";
+} from "../cpu-state.js";
 
 test("initial_state_zeroes_registers", () => {
   const state = createCpuState();

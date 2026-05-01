@@ -1,7 +1,7 @@
 import { deepStrictEqual, match, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { probeWasmFeatures, type WasmFeatureName, type WasmFeatureReport } from "../../src/wasm/probes/features.js";
+import { probeWasmFeatures, type WasmFeatureName, type WasmFeatureReport } from "../features.js";
 
 test("reports required Wasm features as available", async () => {
   const report = await probeWasmFeatures();

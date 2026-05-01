@@ -1,10 +1,10 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { WasmFunctionBodyEncoder } from "../../src/wasm/encoder/function-body.js";
-import { encodeMemoryImmediate } from "../../src/wasm/encoder/memory.js";
-import { WasmModuleEncoder } from "../../src/wasm/encoder/module.js";
-import { wasmValueType } from "../../src/wasm/encoder/types.js";
+import { WasmFunctionBodyEncoder } from "../function-body.js";
+import { encodeMemoryImmediate } from "../memory.js";
+import { WasmModuleEncoder } from "../module.js";
+import { wasmValueType } from "../types.js";
 
 const importNamespace = "webwin32";
 const stateImportName = "state";

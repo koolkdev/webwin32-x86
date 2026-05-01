@@ -5,8 +5,8 @@ import { createCpuState } from "../../../core/state/cpu-state.js";
 import {
   assertInterpreterStateEquals,
   writeInterpreterState
-} from "../../../test-support/wasm-interpreter.js";
-import { assertMemoryImports, startAddress } from "../../../test-support/wasm-codegen.js";
+} from "./interpreter-helpers.js";
+import { assertMemoryImports, startAddress } from "../../tests/helpers.js";
 import { wasmImport } from "../../abi.js";
 import { ExitReason } from "../../exit.js";
 import { readInterpreterWasmArtifact } from "../artifact.js";
