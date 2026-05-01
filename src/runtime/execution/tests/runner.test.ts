@@ -4,15 +4,28 @@ import { test } from "node:test";
 import { runResultFromState, StopReason } from "../../../core/execution/run-result.js";
 import { createCpuState } from "../../../core/state/cpu-state.js";
 import { RuntimeCodeMap } from "../../program/code-map.js";
+import {
+  assertEngineFixtureResult,
+  createFixtureFallbackEngines,
+  createFixtureInterpreterOnlyEngines,
+  createFixtureRuntimeEngines,
+  prepareEngineFixture
+} from "../../tests/fixtures/helpers.js";
+import { ENGINE_PROGRAM_FIXTURES, MOV_ADD_TRAP } from "../../tests/fixtures/programs.js";
 import { createRuntimeWasmMemories } from "../../wasm/memories.js";
 import { createInstructionBudget } from "../budget.js";
 import { engineDone, engineUnavailable, type RuntimeEngineResult } from "../engine-result.js";
 import { RuntimeMode } from "../mode.js";
-import { runRuntimeMode, type RuntimeEngine, type RuntimeEngineContext } from "../runner.js";
+import {
+  runRuntimeProgram,
+  runRuntimeStep,
+  type RuntimeEngine,
+  type RuntimeEngineContext
+} from "../runner.js";
 
-test("interpreter mode runs only the interpreter engine", () => {
+test("interpreter runtime step runs only the interpreter engine", () => {
   const calls: string[] = [];
-  const result = runRuntimeMode(RuntimeMode.INTERPRETER, context(), createInstructionBudget(0, 10), {
+  const result = runRuntimeStep(RuntimeMode.INTERPRETER, context(), createInstructionBudget(0, 10), {
     interpreter: engine("interpreter", calls, engineDone(runResultFromState(createCpuState({ eip: 0x11 }), StopReason.NONE))),
     compiledBlocks: engine("compiled", calls, engineUnavailable("no-compiled-block"))
   });
@@ -22,9 +35,9 @@ test("interpreter mode runs only the interpreter engine", () => {
   strictEqual(calls.join(","), "interpreter");
 });
 
-test("compiled-blocks mode falls back to interpreter when no block is available", () => {
+test("compiled-blocks runtime step falls back to interpreter when no block is available", () => {
   const calls: string[] = [];
-  const result = runRuntimeMode(RuntimeMode.COMPILED_BLOCKS, context(), createInstructionBudget(0, 10), {
+  const result = runRuntimeStep(RuntimeMode.COMPILED_BLOCKS, context(), createInstructionBudget(0, 10), {
     interpreter: engine("interpreter", calls, engineDone(runResultFromState(createCpuState({ eip: 0x22 }), StopReason.NONE))),
     compiledBlocks: engine("compiled", calls, engineUnavailable("no-compiled-block"))
   });
@@ -34,9 +47,9 @@ test("compiled-blocks mode falls back to interpreter when no block is available"
   strictEqual(calls.join(","), "compiled,interpreter");
 });
 
-test("compiled-blocks mode returns compiled result when available", () => {
+test("compiled-blocks runtime step returns compiled result when available", () => {
   const calls: string[] = [];
-  const result = runRuntimeMode(RuntimeMode.COMPILED_BLOCKS, context(), createInstructionBudget(0, 10), {
+  const result = runRuntimeStep(RuntimeMode.COMPILED_BLOCKS, context(), createInstructionBudget(0, 10), {
     interpreter: engine("interpreter", calls, engineDone(runResultFromState(createCpuState({ eip: 0x11 }), StopReason.NONE))),
     compiledBlocks: engine("compiled", calls, engineDone(runResultFromState(createCpuState({ eip: 0x33 }), StopReason.NONE)))
   });
@@ -44,6 +57,46 @@ test("compiled-blocks mode returns compiled result when available", () => {
   strictEqual(result.kind, "done");
   strictEqual(result.kind === "done" ? result.result.finalEip : 0, 0x33);
   strictEqual(calls.join(","), "compiled");
+});
+
+for (const fixture of ENGINE_PROGRAM_FIXTURES) {
+  test(`interpreter executor evaluates ${fixture.name}`, () => {
+    const { codeMap, memories } = prepareEngineFixture(fixture);
+    const result = runRuntimeProgram(
+      RuntimeMode.INTERPRETER,
+      { codeMap, memories },
+      createInstructionBudget(0, 100),
+      createFixtureInterpreterOnlyEngines(memories)
+    );
+
+    assertEngineFixtureResult(fixture, result, memories);
+  });
+}
+
+for (const fixture of ENGINE_PROGRAM_FIXTURES) {
+  test(`compiled-blocks executor evaluates ${fixture.name}`, () => {
+    const { codeMap, memories } = prepareEngineFixture(fixture);
+    const result = runRuntimeProgram(
+      RuntimeMode.COMPILED_BLOCKS,
+      { codeMap, memories },
+      createInstructionBudget(0, 100),
+      createFixtureRuntimeEngines(memories)
+    );
+
+    assertEngineFixtureResult(fixture, result, memories);
+  });
+}
+
+test("compiled-blocks executor can fall back to interpreter and still evaluate the program", () => {
+  const { codeMap, memories } = prepareEngineFixture(MOV_ADD_TRAP);
+  const result = runRuntimeProgram(
+    RuntimeMode.COMPILED_BLOCKS,
+    { codeMap, memories },
+    createInstructionBudget(0, 100),
+    createFixtureFallbackEngines(memories)
+  );
+
+  assertEngineFixtureResult(MOV_ADD_TRAP, result, memories);
 });
 
 function context(): RuntimeEngineContext {
