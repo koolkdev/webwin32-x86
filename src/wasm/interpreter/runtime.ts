@@ -5,14 +5,20 @@ import { readInterpreterWasmArtifact } from "./artifact.js";
 
 let compiledInterpreterModule: WebAssembly.Module | undefined;
 
+export type WasmInterpreterRuntimeOptions = Readonly<{
+  stateMemory?: WebAssembly.Memory;
+}>;
+
 export class WasmInterpreterRuntime {
   readonly guestMemory: WebAssembly.Memory;
-  readonly stateMemory = new WebAssembly.Memory({ initial: 1 });
-  readonly stateView = new DataView(this.stateMemory.buffer);
+  readonly stateMemory: WebAssembly.Memory;
+  readonly stateView: DataView<ArrayBuffer>;
   readonly #run: (fuel: number) => bigint;
 
-  constructor(guestMemory: WebAssembly.Memory) {
+  constructor(guestMemory: WebAssembly.Memory, options: WasmInterpreterRuntimeOptions = {}) {
     this.guestMemory = guestMemory;
+    this.stateMemory = options.stateMemory ?? new WebAssembly.Memory({ initial: 1 });
+    this.stateView = new DataView(this.stateMemory.buffer);
 
     const instance = new WebAssembly.Instance(compiledModule(), {
       [wasmImport.moduleName]: {

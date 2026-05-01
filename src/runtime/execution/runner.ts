@@ -44,17 +44,9 @@ export function runRuntimeProgram(
   budget: InstructionBudget,
   engines: RuntimeEngines
 ): RuntimeEngineResult {
-  let lastResult: RuntimeEngineResult | undefined;
-
   while (!budget.exhausted(context.memories.state.instructionCount)) {
-    if (!context.codeMap.contains(context.memories.state.eip)) {
-      return lastResult ?? stopWithNone(context);
-    }
-
     const previousInstructionCount = context.memories.state.instructionCount;
     const result = runRuntimeStep(mode, context, budget, engines);
-
-    lastResult = result;
 
     if (result.kind !== "done" || result.result.stopReason !== StopReason.NONE) {
       return result;
@@ -66,11 +58,6 @@ export function runRuntimeProgram(
   }
 
   return stopWithInstructionLimit(context);
-}
-
-function stopWithNone(context: RuntimeEngineContext): RuntimeEngineResult {
-  context.memories.state.write("stopReason", StopReason.NONE);
-  return engineDone(runResultFromState(context.memories.state.snapshot(), StopReason.NONE));
 }
 
 function stopWithInstructionLimit(context: RuntimeEngineContext): RuntimeEngineResult {
