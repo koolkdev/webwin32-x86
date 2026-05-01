@@ -18,7 +18,7 @@ test("builder rejects ops after a terminator", () => {
   );
 });
 
-test("SirProgramSequenceBuilder builds segments with shared var ids and offset operands", () => {
+test("SirProgramSequenceBuilder appends programs with shared var ids and offset operands", () => {
   const builder = new SirProgramSequenceBuilder();
   const first = builder.append((s) => {
     const value = s.get32(s.operand(0));
@@ -54,13 +54,9 @@ test("SirProgramSequenceBuilder builds segments with shared var ids and offset o
         },
         { op: "next" }
       ],
-      segments: [
-        { opStart: 0, opEnd: 3, operandStart: 0, operandEnd: 1, terminator: "next" },
-        { opStart: 3, opEnd: 7, operandStart: 1, operandEnd: 3, terminator: "next" }
-      ],
       operandCount: 3
     }
   );
-  deepStrictEqual(first, { opStart: 0, opEnd: 3, operandStart: 0, operandEnd: 1, terminator: "next" });
-  deepStrictEqual(second, { opStart: 3, opEnd: 7, operandStart: 1, operandEnd: 3, terminator: "next" });
+  deepStrictEqual(first, { terminator: "next" });
+  deepStrictEqual(second, { terminator: "next" });
 });

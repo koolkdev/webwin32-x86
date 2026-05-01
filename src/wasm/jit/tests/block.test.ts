@@ -19,18 +19,14 @@ test("buildJitSirBlock builds one SIR program with a shared var namespace", () =
   const first = ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress));
   const second = ok(decodeBytes([0x83, 0xc0, 0x01], first.nextEip));
   const block = buildJitSirBlock([first, second]);
-  const firstRange = block.sir.slice(block.instructions[0]!.opStart, block.instructions[0]!.opEnd);
-  const secondRange = block.sir.slice(block.instructions[1]!.opStart, block.instructions[1]!.opEnd);
   const defIds = block.sir.flatMap(sirOpDstId);
-  const secondOperandIndexes = new Set(secondRange.flatMap(sirOpOperandIndexes));
+  const operandIndexes = new Set(block.sir.flatMap(sirOpOperandIndexes));
 
   strictEqual("sir" in block.instructions[0]!, false);
   strictEqual(block.instructions.length, 2);
   strictEqual(block.operands.length, first.operands.length + second.operands.length);
   strictEqual(block.sir.filter((op) => op.op === "next").length, 2);
-  strictEqual(firstRange.at(-1)?.op, "next");
-  strictEqual(secondRange.at(-1)?.op, "next");
-  strictEqual(Math.min(...secondOperandIndexes), first.operands.length);
+  deepStrictEqual([...operandIndexes].sort((a, b) => a - b), [0, 1, 2, 3]);
   strictEqual(new Set(defIds).size, defIds.length);
 });
 
@@ -50,7 +46,6 @@ test("buildJitSirBlock prunes flag producers overwritten inside the block", () =
       result: { kind: "var", id: 5 }
     }
   });
-  strictEqual(block.instructions[0]!.opEnd, block.instructions[1]!.opStart);
 });
 
 test("buildJitSirBlock inserts explicit flag materialization before consumers and exits", () => {

@@ -45,7 +45,6 @@ export function pruneDeadFlagSets(
 ): SirFlagPruneResult {
   const liveness = analyzeSirFlagLiveness(program, options);
   const optimized: SirOp[] = [];
-  const opBoundaryMap: number[] = [];
   let prunedCount = 0;
 
   for (let index = 0; index < program.length; index += 1) {
@@ -56,8 +55,6 @@ export function pruneDeadFlagSets(
       throw new Error(`missing SIR op while pruning dead flags: ${index}`);
     }
 
-    opBoundaryMap.push(optimized.length);
-
     if (op.op === "flags.set" && flags.neededWrites === SIR_FLAG_MASK_NONE) {
       prunedCount += 1;
       continue;
@@ -66,9 +63,7 @@ export function pruneDeadFlagSets(
     optimized.push(op);
   }
 
-  opBoundaryMap.push(optimized.length);
-
-  return { program: optimized, opBoundaryMap, prunedCount };
+  return { program: optimized, prunedCount };
 }
 
 export function insertFlagMaterializations(
@@ -77,7 +72,6 @@ export function insertFlagMaterializations(
 ): SirFlagMaterializationResult {
   const pointMasks = flagMaterializationPointMasks(program, options.points ?? []);
   const optimized: SirOp[] = [];
-  const opBoundaryMap: number[] = [];
   let pendingFlags = false;
   let insertedCount = 0;
 
@@ -87,8 +81,6 @@ export function insertFlagMaterializations(
     if (op === undefined) {
       throw new Error(`missing SIR op while inserting flag materializations: ${index}`);
     }
-
-    opBoundaryMap.push(optimized.length);
 
     const materializeMask = pointMasks[index]! | sirOpFlagEffect(op).reads;
 
@@ -107,9 +99,7 @@ export function insertFlagMaterializations(
     }
   }
 
-  opBoundaryMap.push(optimized.length);
-
-  return { program: optimized, opBoundaryMap, insertedCount };
+  return { program: optimized, insertedCount };
 }
 
 function flagMaterializationPointMasks(

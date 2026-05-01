@@ -22,11 +22,7 @@ import type {
   ValueRef
 } from "./types.js";
 
-export type SirProgramSegment = Readonly<{
-  opStart: number;
-  opEnd: number;
-  operandStart: number;
-  operandEnd: number;
+export type SirProgramAppendResult = Readonly<{
   terminator: SirProgramTerminator;
 }>;
 
@@ -34,7 +30,6 @@ export type SirProgramTerminator = "next" | "jump" | "conditionalJump" | "hostTr
 
 export type SirProgramSequence = Readonly<{
   program: SirProgram;
-  segments: readonly SirProgramSegment[];
   operandCount: number;
 }>;
 
@@ -51,14 +46,12 @@ export function buildSir(template: SemanticTemplate): SirProgram {
 
 export class SirProgramSequenceBuilder {
   readonly #ops: SirOp[] = [];
-  readonly #segments: SirProgramSegment[] = [];
   #nextVarId = 0;
   #nextOperandIndex = 0;
 
-  append(template: SemanticTemplate, options: AppendSirProgramOptions): SirProgramSegment {
-    const opStart = this.#ops.length;
-    const operandStart = this.#nextOperandIndex;
-    const builder = new TemplateSirBuilder(this.#nextVarId, operandStart, options.operandCount);
+  append(template: SemanticTemplate, options: AppendSirProgramOptions): SirProgramAppendResult {
+    const operandIndexBase = this.#nextOperandIndex;
+    const builder = new TemplateSirBuilder(this.#nextVarId, operandIndexBase, options.operandCount);
 
     template(builder);
     const program = builder.program();
@@ -66,23 +59,17 @@ export class SirProgramSequenceBuilder {
     this.#nextVarId = builder.nextVarId();
     this.#ops.push(...program);
 
-    const segment = {
-      opStart,
-      opEnd: this.#ops.length,
-      operandStart,
-      operandEnd: operandStart + options.operandCount,
+    const appended = {
       terminator: programTerminator(program)
     };
 
-    this.#nextOperandIndex = segment.operandEnd;
-    this.#segments.push(segment);
-    return segment;
+    this.#nextOperandIndex = operandIndexBase + options.operandCount;
+    return appended;
   }
 
   build(): SirProgramSequence {
     return {
       program: [...this.#ops],
-      segments: [...this.#segments],
       operandCount: this.#nextOperandIndex
     };
   }
@@ -153,7 +140,7 @@ class TemplateSirBuilder implements SirBuilder {
 
   operand(index: number): OperandRef {
     if (this.#operandCount !== undefined && index >= this.#operandCount) {
-      throw new Error(`SIR operand ${index} does not exist in ${this.#operandCount}-operand segment`);
+      throw new Error(`SIR operand ${index} does not exist in ${this.#operandCount}-operand append`);
     }
 
     return operand(this.#operandIndexBase + index);

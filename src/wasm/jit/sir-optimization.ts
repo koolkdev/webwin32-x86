@@ -9,7 +9,7 @@ import {
 } from "../../arch/x86/sir/flag-optimization.js";
 import { optimizeSirProgram } from "../../arch/x86/sir/optimization.js";
 import type { SirOp, SirProgram, StorageRef } from "../../arch/x86/sir/types.js";
-import type { JitSirBlock, JitSirBlockInstruction } from "./block.js";
+import type { JitSirBlock } from "./block.js";
 import type { JitOperandBinding } from "./operand-bindings.js";
 
 export function optimizeJitSirBlock(block: JitSirBlock): JitSirBlock {
@@ -28,7 +28,7 @@ export function optimizeJitSirBlock(block: JitSirBlock): JitSirBlock {
   return {
     sir: optimized.program,
     operands: block.operands,
-    instructions: remapInstructionRanges(block.instructions, optimized.opBoundaryMap)
+    instructions: block.instructions
   };
 }
 
@@ -94,25 +94,4 @@ function storageMayAccessMemory(storage: StorageRef, operands: readonly JitOpera
     case "operand":
       return operands[storage.index]?.kind === "static.mem32";
   }
-}
-
-function remapInstructionRanges(
-  instructions: readonly JitSirBlockInstruction[],
-  opBoundaryMap: readonly number[]
-): readonly JitSirBlockInstruction[] {
-  return instructions.map((instruction) => ({
-    ...instruction,
-    opStart: remappedOpBoundary(opBoundaryMap, instruction.opStart),
-    opEnd: remappedOpBoundary(opBoundaryMap, instruction.opEnd)
-  }));
-}
-
-function remappedOpBoundary(opBoundaryMap: readonly number[], index: number): number {
-  const mapped = opBoundaryMap[index];
-
-  if (mapped === undefined) {
-    throw new Error(`missing optimized SIR op boundary: ${index}`);
-  }
-
-  return mapped;
 }

@@ -1,5 +1,5 @@
 import type { IsaDecodedInstruction } from "../../arch/x86/isa/decoder/types.js";
-import { SirProgramSequenceBuilder, type SirProgramSegment } from "../../arch/x86/sir/builder.js";
+import { SirProgramSequenceBuilder, type SirProgramAppendResult } from "../../arch/x86/sir/builder.js";
 import type { SirProgram } from "../../arch/x86/sir/types.js";
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "../abi.js";
 import { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
@@ -16,8 +16,6 @@ export type JitSirBlockInstruction = Readonly<{
   eip: number;
   nextEip: number;
   nextMode: "continue" | "exit";
-  opStart: number;
-  opEnd: number;
 }>;
 
 export type JitSirBlock = Readonly<{
@@ -38,13 +36,13 @@ export function buildJitSirBlock(instructions: readonly IsaDecodedInstruction[])
   for (let index = 0; index < instructions.length; index += 1) {
     const instruction = instructions[index]!;
     const instructionOperands = jitBindingsFromIsaInstruction(instruction);
-    const segment = sirBuilder.append(instruction.spec.semantics, {
+    const appended = sirBuilder.append(instruction.spec.semantics, {
       operandCount: instructionOperands.length
     });
     const isLastInstruction = index === instructions.length - 1;
 
     if (!isLastInstruction) {
-      assertFallthroughInstruction(segment, instruction);
+      assertFallthroughInstruction(appended, instruction);
     }
 
     operands.push(...instructionOperands);
@@ -52,9 +50,7 @@ export function buildJitSirBlock(instructions: readonly IsaDecodedInstruction[])
       instructionId: instruction.spec.id,
       eip: instruction.address,
       nextEip: instruction.nextEip,
-      nextMode: isLastInstruction ? "exit" : "continue",
-      opStart: segment.opStart,
-      opEnd: segment.opEnd
+      nextMode: isLastInstruction ? "exit" : "continue"
     });
   }
 
@@ -125,8 +121,8 @@ function emitExitGenerationStores(
   }
 }
 
-function assertFallthroughInstruction(segment: SirProgramSegment, instruction: IsaDecodedInstruction): void {
-  if (segment.terminator !== "next") {
+function assertFallthroughInstruction(result: SirProgramAppendResult, instruction: IsaDecodedInstruction): void {
+  if (result.terminator !== "next") {
     throw new Error(`non-final JIT SIR block instruction must fall through: ${instruction.spec.id}`);
   }
 }

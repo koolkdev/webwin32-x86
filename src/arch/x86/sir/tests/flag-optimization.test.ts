@@ -24,7 +24,6 @@ test("flag optimization prunes flag producers with no live writes", () => {
     producer: "add32",
     inputs: { left: { kind: "var", id: 0 }, right: { kind: "var", id: 1 }, result: { kind: "var", id: 3 } }
   });
-  deepStrictEqual(optimized.opBoundaryMap, [0, 1, 2, 3, 4, 4, 5, 6]);
 });
 
 test("flag optimization keeps producers live at barriers", () => {
@@ -44,7 +43,6 @@ test("flag optimization keeps producers live at barriers", () => {
 
   strictEqual(optimized.prunedCount, 0);
   strictEqual(optimized.program.filter((op) => op.op === "flags.set").length, 2);
-  deepStrictEqual(optimized.opBoundaryMap, [0, 1, 2, 3, 4, 5, 6, 7]);
 });
 
 test("flag optimization inserts materialization before flag consumers", () => {
@@ -60,7 +58,6 @@ test("flag optimization inserts materialization before flag consumers", () => {
 
   strictEqual(optimized.insertedCount, 1);
   deepStrictEqual(optimized.program[4], { op: "flags.materialize", mask: SIR_FLAG_MASKS.ZF });
-  deepStrictEqual(optimized.opBoundaryMap, [0, 1, 2, 3, 4, 6, 7, 8]);
 });
 
 test("flag optimization inserts materialization before requested exits", () => {
