@@ -1,0 +1,108 @@
+import { deepStrictEqual, strictEqual } from "node:assert";
+import { test } from "node:test";
+
+import { buildSir } from "../builder.js";
+import {
+  analyzeSirFlagLiveness,
+  conditionFlagReadMask,
+  flagProducerEffect,
+  maskSirFlags,
+  SIR_ARITHMETIC_FLAG_MASK,
+  SIR_FLAG_MASK_NONE,
+  SIR_FLAG_MASKS
+} from "../flag-analysis.js";
+
+test("flag analysis records condition read masks", () => {
+  strictEqual(conditionFlagReadMask("E"), SIR_FLAG_MASKS.ZF);
+  strictEqual(conditionFlagReadMask("BE"), maskSirFlags(["CF", "ZF"]));
+  strictEqual(conditionFlagReadMask("G"), maskSirFlags(["ZF", "SF", "OF"]));
+});
+
+test("flag analysis records producer writes and undefined flags", () => {
+  deepStrictEqual(flagProducerEffect("add32"), {
+    reads: SIR_FLAG_MASK_NONE,
+    writes: SIR_ARITHMETIC_FLAG_MASK,
+    undefines: SIR_FLAG_MASK_NONE
+  });
+  deepStrictEqual(flagProducerEffect("logic32"), {
+    reads: SIR_FLAG_MASK_NONE,
+    writes: SIR_ARITHMETIC_FLAG_MASK,
+    undefines: SIR_FLAG_MASKS.AF
+  });
+});
+
+test("flag liveness marks unused flag producer writes dead", () => {
+  const program = buildSir((s) => {
+    const left = s.get32(s.reg32("eax"));
+    const right = s.get32(s.reg32("ebx"));
+    const result = s.i32Add(left, right);
+
+    s.set32(s.reg32("eax"), result);
+    s.setFlags("add32", { left, right, result });
+  });
+  const liveness = analyzeSirFlagLiveness(program);
+  const flagsSetIndex = program.findIndex((op) => op.op === "flags.set");
+
+  deepStrictEqual(liveness[flagsSetIndex], {
+    reads: SIR_FLAG_MASK_NONE,
+    writes: SIR_ARITHMETIC_FLAG_MASK,
+    undefines: SIR_FLAG_MASK_NONE,
+    liveIn: SIR_FLAG_MASK_NONE,
+    liveOut: SIR_FLAG_MASK_NONE,
+    neededWrites: SIR_FLAG_MASK_NONE,
+    deadWrites: SIR_ARITHMETIC_FLAG_MASK
+  });
+});
+
+test("flag liveness keeps only flags read by a later condition", () => {
+  const program = buildSir((s) => {
+    const left = s.get32(s.reg32("eax"));
+    const right = s.get32(s.reg32("ebx"));
+    const result = s.i32Sub(left, right);
+
+    s.setFlags("sub32", { left, right, result });
+    s.conditionalJump(s.condition("E"), s.get32(s.operand(0)), s.nextEip());
+  });
+  const liveness = analyzeSirFlagLiveness(program);
+  const flagsSetIndex = program.findIndex((op) => op.op === "flags.set");
+  const conditionIndex = program.findIndex((op) => op.op === "condition");
+
+  deepStrictEqual(liveness[flagsSetIndex], {
+    reads: SIR_FLAG_MASK_NONE,
+    writes: SIR_ARITHMETIC_FLAG_MASK,
+    undefines: SIR_FLAG_MASK_NONE,
+    liveIn: SIR_FLAG_MASK_NONE,
+    liveOut: SIR_FLAG_MASKS.ZF,
+    neededWrites: SIR_FLAG_MASKS.ZF,
+    deadWrites: SIR_ARITHMETIC_FLAG_MASK & ~SIR_FLAG_MASKS.ZF
+  });
+  deepStrictEqual(liveness[conditionIndex], {
+    reads: SIR_FLAG_MASKS.ZF,
+    writes: SIR_FLAG_MASK_NONE,
+    undefines: SIR_FLAG_MASK_NONE,
+    liveIn: SIR_FLAG_MASKS.ZF,
+    liveOut: SIR_FLAG_MASK_NONE,
+    neededWrites: SIR_FLAG_MASK_NONE,
+    deadWrites: SIR_FLAG_MASK_NONE
+  });
+});
+
+test("flag liveness treats undefined writes as kills", () => {
+  const program = buildSir((s) => {
+    const result = s.get32(s.reg32("eax"));
+
+    s.setFlags("logic32", { result });
+  });
+  const liveness = analyzeSirFlagLiveness(program, { liveOut: SIR_FLAG_MASKS.AF });
+  const flagsSetIndex = program.findIndex((op) => op.op === "flags.set");
+
+  deepStrictEqual(liveness[flagsSetIndex], {
+    reads: SIR_FLAG_MASK_NONE,
+    writes: SIR_ARITHMETIC_FLAG_MASK,
+    undefines: SIR_FLAG_MASKS.AF,
+    liveIn: SIR_FLAG_MASK_NONE,
+    liveOut: SIR_FLAG_MASKS.AF,
+    neededWrites: SIR_FLAG_MASKS.AF,
+    deadWrites: SIR_ARITHMETIC_FLAG_MASK & ~SIR_FLAG_MASKS.AF
+  });
+});
