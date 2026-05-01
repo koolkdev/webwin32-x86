@@ -16,6 +16,7 @@ import { i32 } from "../../core/state/cpu-state.js";
 import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
+import { assignSirExprVarSlots, type SirExprVarSlotAssignment } from "./var-slots.js";
 
 export type WasmSirLoweringContext = Readonly<{
   body: WasmFunctionBodyEncoder;
@@ -42,117 +43,134 @@ export function lowerSirToWasm(program: SirProgram, context: WasmSirLoweringCont
 }
 
 function lowerSirExpressionProgramToWasm(program: SirExprProgram, context: WasmSirLoweringContext): void {
-  const vars = new Map<number, number>();
-  const helpers: WasmSirEmitHelpers = {
-    emitValue: (value) => emitValue(context, vars, value)
+  new SirExprWasmLowerer(program, context).lower();
+}
+
+function allocateWasmLocalsForSirExprSlots(
+  context: WasmSirLoweringContext,
+  slotCount: number
+): number[] {
+  return Array.from(
+    { length: slotCount },
+    () => context.scratch.allocLocal(wasmValueType.i32)
+  );
+}
+
+class SirExprWasmLowerer {
+  readonly #program: SirExprProgram;
+  readonly #context: WasmSirLoweringContext;
+  readonly #slots: SirExprVarSlotAssignment;
+  readonly #slotLocals: readonly number[];
+  readonly #helpers: WasmSirEmitHelpers = {
+    emitValue: (value) => this.#emitValue(value)
   };
 
-  try {
-    for (const op of program) {
-      lowerSirExprOp(op, context, vars, helpers);
+  constructor(program: SirExprProgram, context: WasmSirLoweringContext) {
+    this.#program = program;
+    this.#context = context;
+    this.#slots = assignSirExprVarSlots(this.#program);
+    this.#slotLocals = allocateWasmLocalsForSirExprSlots(this.#context, this.#slots.slotCount);
+  }
+
+  lower(): void {
+    try {
+      for (const op of this.#program) {
+        this.#lowerOp(op);
+      }
+    } finally {
+      this.#freeSlotLocals();
     }
-  } finally {
-    for (const local of vars.values()) {
-      context.scratch.freeLocal(local);
+  }
+
+  #lowerOp(op: SirExprOp): void {
+    switch (op.op) {
+      case "let32":
+        this.#emitValue(op.value);
+        this.#context.body.localSet(this.#wasmLocalForVar(op.dst.id));
+        return;
+      case "set32":
+        this.#context.emitSet32(op.target, op.value, this.#helpers);
+        return;
+      case "flags.set":
+        this.#context.emitSetFlags(op.producer, op.inputs, this.#helpers);
+        return;
+      case "next":
+        this.#context.emitNext(this.#helpers);
+        return;
+      case "jump":
+        this.#context.emitJump(op.target, this.#helpers);
+        return;
+      case "conditionalJump":
+        this.#context.emitConditionalJump(op.condition, op.taken, op.notTaken, this.#helpers);
+        return;
+      case "hostTrap":
+        this.#context.emitHostTrap(op.vector, this.#helpers);
+        return;
     }
   }
-}
 
-function lowerSirExprOp(
-  op: SirExprOp,
-  context: WasmSirLoweringContext,
-  vars: Map<number, number>,
-  helpers: WasmSirEmitHelpers
-): void {
-  switch (op.op) {
-    case "let32": {
-      const local = localForVar(context, vars, op.dst.id);
-
-      emitValue(context, vars, op.value);
-      context.body.localSet(local);
-      return;
+  #emitValue(value: SirValueExpr): void {
+    switch (value.kind) {
+      case "var":
+        this.#context.body.localGet(this.#wasmLocalForVar(value.id));
+        return;
+      case "const32":
+        this.#context.body.i32Const(i32(value.value));
+        return;
+      case "nextEip":
+        this.#context.emitNextEip(this.#helpers);
+        return;
+      case "src32":
+        this.#context.emitGet32(value.source, this.#helpers);
+        return;
+      case "address32":
+        this.#context.emitAddress32(value.operand, this.#helpers);
+        return;
+      case "condition":
+        this.#context.emitCondition(value.cc);
+        return;
+      case "i32.add":
+        this.#emitValue(value.a);
+        this.#emitValue(value.b);
+        this.#context.body.i32Add();
+        return;
+      case "i32.sub":
+        this.#emitValue(value.a);
+        this.#emitValue(value.b);
+        this.#context.body.i32Sub();
+        return;
+      case "i32.xor":
+        this.#emitValue(value.a);
+        this.#emitValue(value.b);
+        this.#context.body.i32Xor();
+        return;
+      case "i32.and":
+        this.#emitValue(value.a);
+        this.#emitValue(value.b);
+        this.#context.body.i32And();
+        return;
     }
-    case "set32":
-      context.emitSet32(op.target, op.value, helpers);
-      return;
-    case "flags.set":
-      context.emitSetFlags(op.producer, op.inputs, helpers);
-      return;
-    case "next":
-      context.emitNext(helpers);
-      return;
-    case "jump":
-      context.emitJump(op.target, helpers);
-      return;
-    case "conditionalJump":
-      context.emitConditionalJump(op.condition, op.taken, op.notTaken, helpers);
-      return;
-    case "hostTrap":
-      context.emitHostTrap(op.vector, helpers);
-      return;
-  }
-}
-
-function emitValue(context: WasmSirLoweringContext, vars: Map<number, number>, value: SirValueExpr): void {
-  switch (value.kind) {
-    case "var":
-      context.body.localGet(requiredVarLocal(vars, value.id));
-      return;
-    case "const32":
-      context.body.i32Const(i32(value.value));
-      return;
-    case "nextEip":
-      context.emitNextEip({ emitValue: (nested) => emitValue(context, vars, nested) });
-      return;
-    case "src32":
-      context.emitGet32(value.source, { emitValue: (nested) => emitValue(context, vars, nested) });
-      return;
-    case "address32":
-      context.emitAddress32(value.operand, { emitValue: (nested) => emitValue(context, vars, nested) });
-      return;
-    case "condition":
-      context.emitCondition(value.cc);
-      return;
-    case "i32.add":
-      emitValue(context, vars, value.a);
-      emitValue(context, vars, value.b);
-      context.body.i32Add();
-      return;
-    case "i32.sub":
-      emitValue(context, vars, value.a);
-      emitValue(context, vars, value.b);
-      context.body.i32Sub();
-      return;
-    case "i32.xor":
-      emitValue(context, vars, value.a);
-      emitValue(context, vars, value.b);
-      context.body.i32Xor();
-      return;
-    case "i32.and":
-      emitValue(context, vars, value.a);
-      emitValue(context, vars, value.b);
-      context.body.i32And();
-      return;
-  }
-}
-
-function localForVar(context: WasmSirLoweringContext, vars: Map<number, number>, id: number): number {
-  let local = vars.get(id);
-
-  if (local === undefined) {
-    local = context.scratch.allocLocal(wasmValueType.i32);
-    vars.set(id, local);
   }
 
-  return local;
-}
-
-function requiredVarLocal(vars: Map<number, number>, id: number): number {
-  const local = vars.get(id);
-
-  if (local === undefined) {
-    throw new Error(`missing Wasm local for SIR var: ${id}`);
+  #freeSlotLocals(): void {
+    for (let index = this.#slotLocals.length - 1; index >= 0; index -= 1) {
+      this.#context.scratch.freeLocal(this.#slotLocals[index]!);
+    }
   }
 
-  return local;
+  #wasmLocalForVar(id: number): number {
+    const slot = this.#slots.slotByVar.get(id);
+
+    if (slot === undefined) {
+      throw new Error(`missing SIR expression slot for var: ${id}`);
+    }
+
+    const local = this.#slotLocals[slot];
+
+    if (local === undefined) {
+      throw new Error(`missing Wasm local for SIR expression slot: ${slot}`);
+    }
+
+    return local;
+  }
 }

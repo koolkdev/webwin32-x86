@@ -3,12 +3,12 @@ import { test } from "node:test";
 
 import type { Reg32 } from "../../../arch/x86/isa/types.js";
 import { buildSir } from "../../../arch/x86/sir/builder.js";
-import type { SirStorageExpr, SirValueExpr } from "../../../arch/x86/sir/expressions.js";
+import type { SirExpressionOptions, SirStorageExpr, SirValueExpr } from "../../../arch/x86/sir/expressions.js";
 import type { SirProgram } from "../../../arch/x86/sir/types.js";
 import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
 import { WasmLocalScratchAllocator } from "../../encoder/local-scratch.js";
 import { WasmModuleEncoder } from "../../encoder/module.js";
-import { wasmValueType } from "../../encoder/types.js";
+import { wasmValueType, type WasmValueType } from "../../encoder/types.js";
 import { lowerSirToWasm, type WasmSirEmitHelpers } from "../lower.js";
 
 const nextEipValue = 0x1234_5678;
@@ -41,6 +41,40 @@ test("lowerSirToWasm lowers conditional control values with nested emitValue", a
 
   strictEqual(run(1, 2), 3);
   strictEqual(run(2, 2), nextEipValue);
+});
+
+test("lowerSirToWasm uses planned slots for non-overlapping SIR locals", () => {
+  const scratch = lowerWithTrackingScratch(
+    buildSir((s) => {
+      const first = s.get32(s.operand(0));
+
+      s.set32(s.reg32("eax"), first);
+
+      const second = s.get32(s.operand(1));
+
+      s.set32(s.reg32("ebx"), second);
+      s.next();
+    }),
+    { canInlineGet32: () => false }
+  );
+
+  strictEqual(scratch.maxLive, 1);
+});
+
+test("lowerSirToWasm uses a reused input slot for a materialized let destination", () => {
+  const scratch = lowerWithTrackingScratch(
+    buildSir((s) => {
+      const input = s.get32(s.operand(0));
+      const sum = s.i32Add(input, 1);
+
+      s.set32(s.reg32("eax"), sum);
+      s.set32(s.reg32("ebx"), sum);
+      s.next();
+    }),
+    { canInlineGet32: () => false }
+  );
+
+  strictEqual(scratch.maxLive, 1);
 });
 
 async function instantiateLoweredBinary(program: SirProgram): Promise<(left: number, right: number) => number> {
@@ -112,6 +146,47 @@ function encodeLoweredBinaryModule(program: SirProgram): Uint8Array<ArrayBuffer>
   return module.encode();
 }
 
+function lowerWithTrackingScratch(
+  program: SirProgram,
+  expression: SirExpressionOptions
+): TrackingScratchAllocator {
+  const body = new WasmFunctionBodyEncoder(2);
+  const scratch = new TrackingScratchAllocator(body);
+  const regLocals: Partial<Record<Reg32, number>> = {
+    eax: body.addLocal(wasmValueType.i32),
+    ebx: body.addLocal(wasmValueType.i32)
+  };
+
+  lowerSirToWasm(program, {
+    body,
+    scratch,
+    expression,
+    emitGet32: (source) => emitGet32(body, regLocals, source),
+    emitSet32: (target, value, helpers) => emitSet32(body, regLocals, target, value, helpers),
+    emitAddress32: () => unsupported("address32"),
+    emitSetFlags: () => unsupported("flags.set"),
+    emitCondition: () => unsupported("condition"),
+    emitNext: () => {},
+    emitNextEip: () => {
+      body.i32Const(nextEipValue);
+    },
+    emitJump: (target, helpers) => {
+      helpers.emitValue(target);
+    },
+    emitConditionalJump: (condition, taken, notTaken, helpers) => {
+      helpers.emitValue(condition);
+      helpers.emitValue(taken);
+      helpers.emitValue(notTaken);
+    },
+    emitHostTrap: (vector, helpers) => {
+      helpers.emitValue(vector);
+    }
+  });
+
+  scratch.assertClear();
+  return scratch;
+}
+
 function emitGet32(
   body: WasmFunctionBodyEncoder,
   regLocals: Partial<Record<Reg32, number>>,
@@ -159,4 +234,22 @@ function requireRegLocal(regLocals: Partial<Record<Reg32, number>>, reg: Reg32):
 
 function unsupported(message: string): never {
   throw new Error(`unsupported lower test hook: ${message}`);
+}
+
+class TrackingScratchAllocator extends WasmLocalScratchAllocator {
+  readonly #liveLocals = new Set<number>();
+  maxLive = 0;
+
+  override allocLocal(type: WasmValueType): number {
+    const local = super.allocLocal(type);
+
+    this.#liveLocals.add(local);
+    this.maxLive = Math.max(this.maxLive, this.#liveLocals.size);
+    return local;
+  }
+
+  override freeLocal(index: number): void {
+    super.freeLocal(index);
+    this.#liveLocals.delete(index);
+  }
 }
