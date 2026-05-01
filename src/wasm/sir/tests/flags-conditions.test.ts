@@ -3,35 +3,39 @@ import { test } from "node:test";
 
 import type { SirValueExpr } from "../../../arch/x86/sir/expressions.js";
 import type { ConditionCode, FlagProducerName, ValueRef } from "../../../arch/x86/sir/types.js";
-import { eflagsMask, i32 } from "../../../core/state/cpu-state.js";
+import { x86ArithmeticFlagMask } from "../../../arch/x86/isa/flags.js";
+import { i32 } from "../../../core/state/cpu-state.js";
 import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
 import { WasmModuleEncoder } from "../../encoder/module.js";
 import { wasmValueType } from "../../encoder/types.js";
 import { emitCondition } from "../conditions.js";
-import { wasmSirLocalEflagsStorage } from "../eflags.js";
+import { wasmSirLocalAluFlagsStorage } from "../alu-flags.js";
 import { emitSetFlags } from "../flags.js";
 
-const preservedEflagsBit = 1 << 9;
+const unmodeledStorageBit = 1 << 9;
 
-test("emitSetFlags writes generated flags and preserves unrelated eflags bits", async () => {
+test("emitSetFlags writes generated flags and normalizes arithmetic flag storage", async () => {
   const add32 = await instantiateSetFlags("add32");
   const logic32 = await instantiateSetFlags("logic32");
 
   strictEqual(
-    add32(0xffff_ffff, 1, 0, preservedEflagsBit | eflagsMask.SF | eflagsMask.OF),
-    preservedEflagsBit | eflagsMask.CF | eflagsMask.PF | eflagsMask.AF | eflagsMask.ZF
+    add32(0xffff_ffff, 1, 0, unmodeledStorageBit | x86ArithmeticFlagMask.SF | x86ArithmeticFlagMask.OF),
+    x86ArithmeticFlagMask.CF |
+      x86ArithmeticFlagMask.PF |
+      x86ArithmeticFlagMask.AF |
+      x86ArithmeticFlagMask.ZF
   );
   strictEqual(
-    logic32(0, 0, 0, preservedEflagsBit | eflagsMask.CF | eflagsMask.AF | eflagsMask.OF),
-    preservedEflagsBit | eflagsMask.PF | eflagsMask.ZF
+    logic32(0, 0, 0, unmodeledStorageBit | x86ArithmeticFlagMask.CF | x86ArithmeticFlagMask.AF | x86ArithmeticFlagMask.OF),
+    x86ArithmeticFlagMask.PF | x86ArithmeticFlagMask.ZF
   );
 });
 
 test("emitSetFlags does not allocate an accumulator local", () => {
   const body = new WasmFunctionBodyEncoder(4);
-  const eflags = wasmSirLocalEflagsStorage(body, 3);
+  const aluFlags = wasmSirLocalAluFlagsStorage(body, 3);
 
-  emitSetFlags(body, eflags, "logic32", { result: v(2) }, {
+  emitSetFlags(body, aluFlags, "logic32", { result: v(2) }, {
     emitValue: (value) => emitValueExpr(body, value)
   });
   body.localGet(3).end();
@@ -39,23 +43,23 @@ test("emitSetFlags does not allocate an accumulator local", () => {
   strictEqual(body.encode()[0], 0);
 });
 
-test("emitCondition evaluates compound condition formulas from eflags", async () => {
+test("emitCondition evaluates compound condition formulas from arithmetic flags", async () => {
   const le = await instantiateCondition("LE");
   const g = await instantiateCondition("G");
 
-  strictEqual(le(eflagsMask.ZF), 1);
-  strictEqual(le(eflagsMask.SF), 1);
-  strictEqual(le(eflagsMask.SF | eflagsMask.OF), 0);
+  strictEqual(le(x86ArithmeticFlagMask.ZF), 1);
+  strictEqual(le(x86ArithmeticFlagMask.SF), 1);
+  strictEqual(le(x86ArithmeticFlagMask.SF | x86ArithmeticFlagMask.OF), 0);
 
   strictEqual(g(0), 1);
-  strictEqual(g(eflagsMask.ZF), 0);
-  strictEqual(g(eflagsMask.SF), 0);
-  strictEqual(g(eflagsMask.SF | eflagsMask.OF), 1);
+  strictEqual(g(x86ArithmeticFlagMask.ZF), 0);
+  strictEqual(g(x86ArithmeticFlagMask.SF), 0);
+  strictEqual(g(x86ArithmeticFlagMask.SF | x86ArithmeticFlagMask.OF), 1);
 });
 
 async function instantiateSetFlags(
   producer: FlagProducerName
-): Promise<(left: number, right: number, result: number, eflags: number) => number> {
+): Promise<(left: number, right: number, result: number, aluFlags: number) => number> {
   const module = await WebAssembly.compile(encodeSetFlagsModule(producer));
   const instance = await WebAssembly.instantiate(module);
   const run = instance.exports.run;
@@ -64,7 +68,7 @@ async function instantiateSetFlags(
     throw new Error("expected exported function 'run'");
   }
 
-  return run as (left: number, right: number, result: number, eflags: number) => number;
+  return run as (left: number, right: number, result: number, aluFlags: number) => number;
 }
 
 function encodeSetFlagsModule(producer: FlagProducerName): Uint8Array<ArrayBuffer> {
@@ -74,12 +78,12 @@ function encodeSetFlagsModule(producer: FlagProducerName): Uint8Array<ArrayBuffe
     results: [wasmValueType.i32]
   });
   const body = new WasmFunctionBodyEncoder(4);
-  const eflags = wasmSirLocalEflagsStorage(body, 3);
+  const aluFlags = wasmSirLocalAluFlagsStorage(body, 3);
   const inputs: Readonly<Record<string, ValueRef>> = producer === "logic32"
     ? { result: v(2) }
     : { left: v(0), right: v(1), result: v(2) };
 
-  emitSetFlags(body, eflags, producer, inputs, {
+  emitSetFlags(body, aluFlags, producer, inputs, {
     emitValue: (value) => emitValueExpr(body, value)
   });
   body.localGet(3).end();
@@ -90,7 +94,7 @@ function encodeSetFlagsModule(producer: FlagProducerName): Uint8Array<ArrayBuffe
   return module.encode();
 }
 
-async function instantiateCondition(cc: ConditionCode): Promise<(eflags: number) => number> {
+async function instantiateCondition(cc: ConditionCode): Promise<(aluFlags: number) => number> {
   const module = await WebAssembly.compile(encodeConditionModule(cc));
   const instance = await WebAssembly.instantiate(module);
   const run = instance.exports.run;
@@ -99,7 +103,7 @@ async function instantiateCondition(cc: ConditionCode): Promise<(eflags: number)
     throw new Error("expected exported function 'run'");
   }
 
-  return run as (eflags: number) => number;
+  return run as (aluFlags: number) => number;
 }
 
 function encodeConditionModule(cc: ConditionCode): Uint8Array<ArrayBuffer> {
@@ -110,7 +114,7 @@ function encodeConditionModule(cc: ConditionCode): Uint8Array<ArrayBuffer> {
   });
   const body = new WasmFunctionBodyEncoder(1);
 
-  emitCondition(body, wasmSirLocalEflagsStorage(body, 0), cc);
+  emitCondition(body, wasmSirLocalAluFlagsStorage(body, 0), cc);
   body.end();
 
   const functionIndex = module.addFunction(typeIndex, body);

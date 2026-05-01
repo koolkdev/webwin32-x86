@@ -6,7 +6,7 @@ import { emitLoadStateU32, emitStoreStateU32 } from "../sir/state.js";
 
 export type InterpreterStateCache = Readonly<{
   eipLocal: number;
-  eflagsLocal: number;
+  aluFlagsLocal: number;
   instructionCountLocal: number;
   regs: Readonly<Record<Reg32, number>>;
 }>;
@@ -21,7 +21,7 @@ export function createInterpreterStateCache(
 
   return {
     eipLocal,
-    eflagsLocal: body.addLocal(wasmValueType.i32),
+    aluFlagsLocal: body.addLocal(wasmValueType.i32),
     instructionCountLocal: body.addLocal(wasmValueType.i32),
     regs
   };
@@ -36,8 +36,8 @@ export function emitLoadInterpreterStateCache(body: WasmFunctionBodyEncoder, cac
   emitLoadStateU32(body, stateOffset.eip);
   body.localSet(cache.eipLocal);
 
-  emitLoadStateU32(body, stateOffset.eflags);
-  body.localSet(cache.eflagsLocal);
+  emitLoadStateU32(body, stateOffset.aluFlags);
+  body.localSet(cache.aluFlagsLocal);
 
   emitLoadStateU32(body, stateOffset.instructionCount);
   body.localSet(cache.instructionCountLocal);
@@ -53,8 +53,8 @@ export function emitFlushInterpreterStateCache(body: WasmFunctionBodyEncoder, ca
   emitStoreStateU32(body, stateOffset.eip, () => {
     body.localGet(cache.eipLocal);
   });
-  emitStoreStateU32(body, stateOffset.eflags, () => {
-    body.localGet(cache.eflagsLocal);
+  emitStoreStateU32(body, stateOffset.aluFlags, () => {
+    body.localGet(cache.aluFlagsLocal);
   });
   emitStoreStateU32(body, stateOffset.instructionCount, () => {
     body.localGet(cache.instructionCountLocal);

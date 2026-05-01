@@ -7,7 +7,7 @@ import type {
 import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
-import { wasmSirLocalEflagsStorage } from "../sir/eflags.js";
+import { wasmSirLocalAluFlagsStorage } from "../sir/alu-flags.js";
 import { emitWasmSirExitFromI32Stack, type WasmSirExitTarget } from "../sir/exit.js";
 import { emitWasmSirLoadGuestU32, emitWasmSirLoadGuestU32FromStack, emitWasmSirStoreGuestU32 } from "../sir/memory.js";
 import { wasmSirLocalReg32Storage, type WasmSirReg32Storage } from "../sir/registers.js";
@@ -53,7 +53,7 @@ export type InterpreterSirContext = Readonly<{
 }>;
 
 export function lowerSirWithInterpreterContext(program: SirProgram, context: InterpreterSirContext): void {
-  const eflags = wasmSirLocalEflagsStorage(context.body, context.state.eflagsLocal);
+  const aluFlags = wasmSirLocalAluFlagsStorage(context.body, context.state.aluFlagsLocal);
   const regs = wasmSirLocalReg32Storage(context.body, context.state.regs);
 
   lowerSirToWasm(program, {
@@ -64,9 +64,9 @@ export function lowerSirWithInterpreterContext(program: SirProgram, context: Int
     emitSet32: (target, value, helpers) => emitSet32(context, regs, target, value, helpers),
     emitAddress32: (source) => emitAddress32(context, source),
     emitSetFlags: (producer, inputs, helpers) =>
-      emitSetFlags(context.body, eflags, producer, inputs, helpers),
+      emitSetFlags(context.body, aluFlags, producer, inputs, helpers),
     emitMaterializeFlags: () => {},
-    emitCondition: (cc) => emitCondition(context.body, eflags, cc),
+    emitCondition: (cc) => emitCondition(context.body, aluFlags, cc),
     emitNext: () => emitNext(context),
     emitNextEip: () => emitNextEip(context),
     emitJump: (target, helpers) => emitJump(context, target, helpers),

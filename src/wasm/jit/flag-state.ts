@@ -4,7 +4,7 @@ import { i32 } from "../../core/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { emitCondition } from "../sir/conditions.js";
-import { wasmSirLocalEflagsStorage } from "../sir/eflags.js";
+import { wasmSirLocalAluFlagsStorage } from "../sir/alu-flags.js";
 import { emitSetFlags } from "../sir/flags.js";
 import type { WasmSirEmitHelpers } from "../sir/lower.js";
 
@@ -22,9 +22,9 @@ export type JitFlagState = Readonly<{
 
 export function createJitFlagState(
   body: WasmFunctionBodyEncoder,
-  eflagsLocal: number
+  aluFlagsLocal: number
 ): JitFlagState {
-  const eflags = wasmSirLocalEflagsStorage(body, eflagsLocal);
+  const aluFlags = wasmSirLocalAluFlagsStorage(body, aluFlagsLocal);
   const inputLocals = new Map<string, number>();
   let pending: PendingFlags | undefined;
 
@@ -55,7 +55,7 @@ export function createJitFlagState(
     },
     emitCondition: (cc) => {
       assertNoPending();
-      emitCondition(body, eflags, cc);
+      emitCondition(body, aluFlags, cc);
     },
     assertNoPending
   };
@@ -107,7 +107,7 @@ export function createJitFlagState(
       localsByVarId.set(id, local);
     }
 
-    emitSetFlags(body, eflags, pendingFlags.producer, inputRefs, {
+    emitSetFlags(body, aluFlags, pendingFlags.producer, inputRefs, {
       emitValue: (value) => {
         switch (value.kind) {
           case "var":

@@ -3,8 +3,8 @@ import { test } from "node:test";
 
 import { StopReason } from "../../../../../core/execution/run-result.js";
 import { ArrayBufferGuestMemory } from "../../../../../core/memory/guest-memory.js";
-import { cloneCpuState, createCpuState, getFlag } from "../../../../../core/state/cpu-state.js";
 import { fillGuestMemory, readGuestBytes, writeGuestU32 } from "../../../../../core/memory/tests/helpers.js";
+import { cloneCpuState, createCpuState, getFlag } from "../../../../../core/state/cpu-state.js";
 import { bytes, runIsaBytes, startAddress } from "./helpers.js";
 
 test("loads and stores absolute u32 memory", () => {

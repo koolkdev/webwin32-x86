@@ -1,5 +1,5 @@
 import type { Reg32 } from "../arch/x86/isa/types.js";
-import { STATE_OFFSETS } from "../core/state/cpu-state.js";
+import { WASM_STATE_BYTE_LENGTH, WASM_STATE_OFFSETS } from "./state-layout.js";
 
 export const wasmImport = {
   moduleName: "webwin32",
@@ -15,8 +15,9 @@ export const wasmMemoryIndex = {
 export const wasmBlockExportName = "run";
 export const wasmStatePtr = 32;
 
-export const stateOffset = STATE_OFFSETS;
+export const stateOffset = WASM_STATE_OFFSETS;
+export const stateByteLength = WASM_STATE_BYTE_LENGTH;
 
 export function reg32StateOffset(reg: Reg32): number {
-  return STATE_OFFSETS[reg];
+  return WASM_STATE_OFFSETS[reg];
 }

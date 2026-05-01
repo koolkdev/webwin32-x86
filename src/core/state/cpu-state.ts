@@ -1,6 +1,20 @@
+import {
+  x86ArithmeticEflagsMask,
+  x86ArithmeticFlags,
+  x86ControlEflagsMask,
+  x86ControlFlags,
+  x86EflagsFieldMask,
+  x86EflagsMask,
+  x86SupportedEflagsMask,
+  type X86ArithmeticFlag,
+  type X86ControlFlag,
+  type X86EflagsFlag
+} from "../../arch/x86/isa/flags.js";
 import { reg32, type Reg32 } from "../../arch/x86/isa/types.js";
 
-export type CpuFlag = "CF" | "PF" | "AF" | "ZF" | "SF" | "OF";
+export type CpuArithmeticFlag = X86ArithmeticFlag;
+export type CpuControlFlag = X86ControlFlag;
+export type CpuFlag = X86EflagsFlag;
 
 export type CpuState = {
   [Register in Reg32]: number;
@@ -11,35 +25,16 @@ export type CpuState = {
   stopReason: number;
 };
 
-export const STATE_OFFSETS = {
-  eax: 0,
-  ecx: 4,
-  edx: 8,
-  ebx: 12,
-  esp: 16,
-  ebp: 20,
-  esi: 24,
-  edi: 28,
-  eip: 32,
-  eflags: 36,
-  instructionCount: 40,
-  stopReason: 44
-} as const;
+export const cpuArithmeticFlags = x86ArithmeticFlags;
+export const cpuControlFlags = x86ControlFlags;
+export const cpuFlags = [...cpuArithmeticFlags, ...cpuControlFlags] as const satisfies readonly CpuFlag[];
 
-export const STATE_BYTE_LENGTH = 48;
+export const eflagsMask = x86EflagsMask;
+export const eflagsFieldMask = x86EflagsFieldMask;
 
-export const cpuFlags = ["CF", "PF", "AF", "ZF", "SF", "OF"] as const satisfies readonly CpuFlag[];
-
-export const eflagsMask = {
-  CF: 1 << 0,
-  PF: 1 << 2,
-  AF: 1 << 4,
-  ZF: 1 << 6,
-  SF: 1 << 7,
-  OF: 1 << 11
-} as const satisfies Readonly<Record<CpuFlag, number>>;
-
-export const supportedEflagsMask = cpuFlags.reduce((mask, flag) => mask | eflagsMask[flag], 0) >>> 0;
+export const arithmeticEflagsMask = x86ArithmeticEflagsMask;
+export const controlEflagsMask = x86ControlEflagsMask;
+export const supportedEflagsMask = x86SupportedEflagsMask;
 
 export const cpuStateFields = [...reg32, "eip", "eflags", "instructionCount", "stopReason"] as const satisfies readonly (keyof CpuState)[];
 export type CpuStateField = (typeof cpuStateFields)[number];

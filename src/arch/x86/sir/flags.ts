@@ -1,6 +1,7 @@
+import type { X86ArithmeticFlag } from "../isa/flags.js";
 import type { FlagProducerName, ValueRef } from "./types.js";
 
-export type FlagName = "CF" | "PF" | "AF" | "ZF" | "SF" | "OF";
+export type FlagName = X86ArithmeticFlag;
 
 export type ValueExpr =
   | ValueRef

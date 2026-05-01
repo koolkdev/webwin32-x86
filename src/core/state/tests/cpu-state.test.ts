@@ -3,19 +3,22 @@ import { test } from "node:test";
 
 import { reg32 } from "../../../arch/x86/isa/types.js";
 import {
+  arithmeticEflagsMask,
+  controlEflagsMask,
+  cpuArithmeticFlags,
+  cpuControlFlags,
   cpuFlags,
   createCpuState,
   cloneCpuState,
   copyCpuState,
   cpuStatesEqual,
+  eflagsFieldMask,
   eflagsMask,
   getFlag,
   getReg32,
   hasEvenParityLowByte,
   setFlag,
   setReg32,
-  STATE_BYTE_LENGTH,
-  STATE_OFFSETS,
   supportedEflagsMask,
   u32
 } from "../cpu-state.js";
@@ -89,30 +92,50 @@ test("parity_low_byte", () => {
   }
 });
 
-test("state_offsets_match_abi", () => {
-  deepStrictEqual(STATE_OFFSETS, {
-    eax: 0,
-    ecx: 4,
-    edx: 8,
-    ebx: 12,
-    esp: 16,
-    ebp: 20,
-    esi: 24,
-    edi: 28,
-    eip: 32,
-    eflags: 36,
-    instructionCount: 40,
-    stopReason: 44
-  });
-  strictEqual(STATE_BYTE_LENGTH, 48);
+test("eflags_masks_match_x86_layout", () => {
   deepStrictEqual(eflagsMask, {
     CF: 1 << 0,
     PF: 1 << 2,
     AF: 1 << 4,
     ZF: 1 << 6,
     SF: 1 << 7,
-    OF: 1 << 11
+    TF: 1 << 8,
+    IF: 1 << 9,
+    DF: 1 << 10,
+    OF: 1 << 11,
+    NT: 1 << 14,
+    RF: 1 << 16,
+    VM: 1 << 17,
+    AC: 1 << 18,
+    ID: 1 << 21
   });
+  deepStrictEqual(eflagsFieldMask, {
+    IOPL: 0b11 << 12
+  });
+  deepStrictEqual(cpuArithmeticFlags, ["CF", "PF", "AF", "ZF", "SF", "OF"]);
+  deepStrictEqual(cpuControlFlags, ["TF", "IF", "DF", "NT", "RF", "VM", "AC", "ID"]);
+  strictEqual(
+    arithmeticEflagsMask,
+    eflagsMask.CF |
+      eflagsMask.PF |
+      eflagsMask.AF |
+      eflagsMask.ZF |
+      eflagsMask.SF |
+      eflagsMask.OF
+  );
+  strictEqual(
+    controlEflagsMask,
+    eflagsMask.TF |
+      eflagsMask.IF |
+      eflagsMask.DF |
+      eflagsFieldMask.IOPL |
+      eflagsMask.NT |
+      eflagsMask.RF |
+      eflagsMask.VM |
+      eflagsMask.AC |
+      eflagsMask.ID
+  );
+  strictEqual(supportedEflagsMask, (arithmeticEflagsMask | controlEflagsMask) >>> 0);
 });
 
 test("state_clone_copy_and_compare", () => {

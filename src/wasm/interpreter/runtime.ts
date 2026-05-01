@@ -1,6 +1,7 @@
-import { cpuStateFields, u32, type CpuState } from "../../core/state/cpu-state.js";
-import { wasmBlockExportName, wasmImport, stateOffset } from "../abi.js";
+import type { CpuState } from "../../core/state/cpu-state.js";
+import { wasmBlockExportName, wasmImport } from "../abi.js";
 import { decodeExit, type DecodedExit } from "../exit.js";
+import { readWasmCpuState, writeWasmCpuState } from "../state-layout.js";
 import { readInterpreterWasmArtifact } from "./artifact.js";
 
 let compiledInterpreterModule: WebAssembly.Module | undefined;
@@ -35,15 +36,11 @@ export class WasmInterpreterRuntime {
   }
 
   copyStateToWasm(state: CpuState): void {
-    for (const field of cpuStateFields) {
-      this.stateView.setUint32(stateOffset[field], state[field], true);
-    }
+    writeWasmCpuState(this.stateView, state);
   }
 
   copyStateFromWasm(state: CpuState): void {
-    for (const field of cpuStateFields) {
-      state[field] = u32(this.stateView.getUint32(stateOffset[field], true));
-    }
+    Object.assign(state, readWasmCpuState(this.stateView));
   }
 }
 

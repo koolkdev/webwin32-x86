@@ -2,6 +2,7 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { createCpuState } from "../../../core/state/cpu-state.js";
+import { stateByteLength, stateOffset } from "../../../wasm/abi.js";
 import { createRuntimeWasmMemories, wasmPagesForByteLength } from "../memories.js";
 
 test("wasmPagesForByteLength rounds up to WebAssembly pages", () => {
@@ -16,13 +17,38 @@ test("runtime Wasm memories expose canonical state memory", () => {
 
   memories.state.load({ eax: 0x1234_5678, eip: 0x401000, instructionCount: 7 });
   memories.state.write("ebx", 0xaabb_ccdd);
+  memories.state.eflags = 0xffff_08d5;
 
-  deepStrictEqual(memories.state.snapshot(), createCpuState({
+  const snapshot = memories.state.snapshot();
+
+  deepStrictEqual(snapshot, createCpuState({
     eax: 0x1234_5678,
     ebx: 0xaabb_ccdd,
+    eflags: 0xffff_08d5,
     eip: 0x401000,
     instructionCount: 7
   }));
+  strictEqual(memories.state.eflags, 0xffff_08d5);
+  strictEqual(snapshot.eflags, 0xffff_08d5);
+});
+
+test("runtime Wasm state layout exposes raw execution fields", () => {
+  deepStrictEqual(stateOffset, {
+    eax: 0,
+    ecx: 4,
+    edx: 8,
+    ebx: 12,
+    esp: 16,
+    ebp: 20,
+    esi: 24,
+    edi: 28,
+    eip: 32,
+    aluFlags: 36,
+    ctrlFlags: 40,
+    instructionCount: 44,
+    stopReason: 48
+  });
+  strictEqual(stateByteLength, 52);
 });
 
 test("runtime Wasm guest memory reads writes and reports faults", () => {

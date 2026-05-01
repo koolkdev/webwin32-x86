@@ -21,7 +21,7 @@ export type JitSirState = Readonly<{
   regs: JitReg32State;
   flags: JitFlagState;
   eipLocal: number;
-  eflagsLocal: number;
+  aluFlagsLocal: number;
   instructionCountLocal: number;
   maxExitGeneration: number;
   emitEntryLoads(): void;
@@ -37,8 +37,8 @@ export function createJitSirState(
 ): JitSirState {
   const regs = createJitReg32State(body);
   const eipLocal = body.addLocal(wasmValueType.i32);
-  const eflagsLocal = body.addLocal(wasmValueType.i32);
-  const flags = createJitFlagState(body, eflagsLocal);
+  const aluFlagsLocal = body.addLocal(wasmValueType.i32);
+  const flags = createJitFlagState(body, aluFlagsLocal);
   const instructionCountLocal = body.addLocal(wasmValueType.i32);
   const generationState = createExitGenerationState(maxExitGeneration);
   let activeExit: JitExitTarget | undefined;
@@ -48,12 +48,12 @@ export function createJitSirState(
     regs,
     flags,
     eipLocal,
-    eflagsLocal,
+    aluFlagsLocal,
     instructionCountLocal,
     maxExitGeneration,
     emitEntryLoads: () => {
-      emitLoadStateU32(body, stateOffset.eflags);
-      body.localSet(eflagsLocal);
+      emitLoadStateU32(body, stateOffset.aluFlags);
+      body.localSet(aluFlagsLocal);
       emitLoadStateU32(body, stateOffset.instructionCount);
       body.localSet(instructionCountLocal);
     },
@@ -117,8 +117,8 @@ export function createJitSirState(
         }
       });
       flags.assertNoPending();
-      emitStoreStateU32(body, stateOffset.eflags, () => {
-        body.localGet(eflagsLocal);
+      emitStoreStateU32(body, stateOffset.aluFlags, () => {
+        body.localGet(aluFlagsLocal);
       });
     };
   }

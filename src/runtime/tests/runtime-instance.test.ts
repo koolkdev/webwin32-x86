@@ -106,7 +106,7 @@ function assertFixtureResult(
 
   for (const [field, expected] of Object.entries(fixture.expected.state)) {
     strictEqual(
-      runtime.memories.state.read(field as CpuStateField),
+      runtime.memories.state.snapshot()[field as CpuStateField],
       expected,
       `${fixture.name}: expected state.${field}`
     );

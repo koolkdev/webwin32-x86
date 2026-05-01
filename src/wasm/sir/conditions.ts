@@ -1,36 +1,44 @@
 import { CONDITIONS, type FlagBoolExpr } from "../../arch/x86/sir/conditions.js";
 import type { ConditionCode } from "../../arch/x86/sir/types.js";
-import { eflagsMask } from "../../core/state/cpu-state.js";
+import { x86ArithmeticFlagMask } from "../../arch/x86/isa/flags.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import type { WasmSirEflagsStorage } from "./eflags.js";
+import type { WasmSirAluFlagsStorage } from "./alu-flags.js";
 
-export function emitCondition(body: WasmFunctionBodyEncoder, eflags: WasmSirEflagsStorage, cc: ConditionCode): void {
-  emitFlagBoolExpr(body, eflags, CONDITIONS[cc].expr);
+export function emitCondition(
+  body: WasmFunctionBodyEncoder,
+  aluFlags: WasmSirAluFlagsStorage,
+  cc: ConditionCode
+): void {
+  emitFlagBoolExpr(body, aluFlags, CONDITIONS[cc].expr);
 }
 
-function emitFlagBoolExpr(body: WasmFunctionBodyEncoder, eflags: WasmSirEflagsStorage, expr: FlagBoolExpr): void {
+function emitFlagBoolExpr(
+  body: WasmFunctionBodyEncoder,
+  aluFlags: WasmSirAluFlagsStorage,
+  expr: FlagBoolExpr
+): void {
   switch (expr.kind) {
     case "flag":
-      eflags.emitLoad();
-      body.i32Const(eflagsMask[expr.flag]).i32And().i32Eqz().i32Eqz();
+      aluFlags.emitLoad();
+      body.i32Const(x86ArithmeticFlagMask[expr.flag]).i32And().i32Eqz().i32Eqz();
       return;
     case "not":
-      emitFlagBoolExpr(body, eflags, expr.value);
+      emitFlagBoolExpr(body, aluFlags, expr.value);
       body.i32Eqz();
       return;
     case "and":
-      emitFlagBoolExpr(body, eflags, expr.a);
-      emitFlagBoolExpr(body, eflags, expr.b);
+      emitFlagBoolExpr(body, aluFlags, expr.a);
+      emitFlagBoolExpr(body, aluFlags, expr.b);
       body.i32And();
       return;
     case "or":
-      emitFlagBoolExpr(body, eflags, expr.a);
-      emitFlagBoolExpr(body, eflags, expr.b);
+      emitFlagBoolExpr(body, aluFlags, expr.a);
+      emitFlagBoolExpr(body, aluFlags, expr.b);
       body.i32Or();
       return;
     case "xor":
-      emitFlagBoolExpr(body, eflags, expr.a);
-      emitFlagBoolExpr(body, eflags, expr.b);
+      emitFlagBoolExpr(body, aluFlags, expr.a);
+      emitFlagBoolExpr(body, aluFlags, expr.b);
       body.i32Xor();
       return;
   }

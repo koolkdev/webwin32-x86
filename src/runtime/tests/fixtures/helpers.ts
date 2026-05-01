@@ -157,9 +157,11 @@ function assertResultFields(fixture: EngineFixture, actual: RunResult): void {
 }
 
 function assertStateFields(fixture: EngineFixture, memories: RuntimeWasmMemories): void {
+  const actual = memories.state.snapshot();
+
   for (const [field, expected] of Object.entries(fixture.expected.state)) {
     strictEqual(
-      memories.state.read(field as CpuStateField),
+      actual[field as CpuStateField],
       expected,
       `${fixture.name}: expected state.${field}`
     );

@@ -1,3 +1,8 @@
+import {
+  x86ArithmeticFlagMask,
+  x86ArithmeticFlags,
+  x86ArithmeticFlagsMask
+} from "../../arch/x86/isa/flags.js";
 import type {
   FlagExpr,
   FlagName,
@@ -5,16 +10,16 @@ import type {
 } from "../../arch/x86/sir/flags.js";
 import { FLAG_PRODUCERS } from "../../arch/x86/sir/flags.js";
 import type { FlagProducerName, ValueRef } from "../../arch/x86/sir/types.js";
-import { eflagsMask, i32 } from "../../core/state/cpu-state.js";
+import { i32 } from "../../core/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import type { WasmSirEflagsStorage } from "./eflags.js";
+import type { WasmSirAluFlagsStorage } from "./alu-flags.js";
 import type { WasmSirEmitHelpers } from "./lower.js";
 
-const flagOrder = ["CF", "PF", "AF", "ZF", "SF", "OF"] as const satisfies readonly FlagName[];
+const flagOrder = x86ArithmeticFlags satisfies readonly FlagName[];
 
 export function emitSetFlags(
   body: WasmFunctionBodyEncoder,
-  eflags: WasmSirEflagsStorage,
+  aluFlags: WasmSirAluFlagsStorage,
   producer: FlagProducerName,
   inputs: Readonly<Record<string, ValueRef>>,
   helpers: WasmSirEmitHelpers
@@ -22,9 +27,9 @@ export function emitSetFlags(
   const flagProducer = FLAG_PRODUCERS[producer];
   const defs = flagProducer.define(inputs);
 
-  eflags.emitStore(() => {
-    eflags.emitLoad();
-    body.i32Const(i32(~writtenFlagsMask(defs))).i32And();
+  aluFlags.emitStore(() => {
+    aluFlags.emitLoad();
+    body.i32Const(i32(x86ArithmeticFlagsMask & ~writtenFlagsMask(defs))).i32And();
     emitWrittenFlags(body, defs, helpers);
     body.i32Or();
   });
@@ -125,11 +130,11 @@ function emitValueExpr(body: WasmFunctionBodyEncoder, expr: ValueExpr, helpers: 
 }
 
 function writtenFlagsMask(defs: Readonly<Partial<Record<FlagName, FlagExpr>>>): number {
-  return flagOrder.reduce((mask, flag) => (defs[flag] === undefined ? mask : mask | eflagsMask[flag]), 0);
+  return flagOrder.reduce((mask, flag) => (defs[flag] === undefined ? mask : mask | x86ArithmeticFlagMask[flag]), 0);
 }
 
 function flagBit(flag: FlagName): number {
-  return Math.log2(eflagsMask[flag]);
+  return Math.log2(x86ArithmeticFlagMask[flag]);
 }
 
 function signMask(width: 8 | 16 | 32): number {

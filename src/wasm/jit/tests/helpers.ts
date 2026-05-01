@@ -1,9 +1,10 @@
 import { decodeIsaInstructionFromReader } from "../../../arch/x86/isa/decoder/decode.js";
 import { ByteArrayDecodeReader } from "../../../arch/x86/isa/decoder/tests/helpers.js";
 import type { IsaDecodedInstruction } from "../../../arch/x86/isa/decoder/types.js";
-import { createCpuState, cpuStateFields, type CpuState } from "../../../core/state/cpu-state.js";
-import { wasmBlockExportName, wasmImport, stateOffset } from "../../abi.js";
+import type { CpuState } from "../../../core/state/cpu-state.js";
+import { wasmBlockExportName, wasmImport } from "../../abi.js";
 import { decodeExit, type DecodedExit } from "../../exit.js";
+import { readWasmCpuState, writeWasmCpuState } from "../../state-layout.js";
 import { buildJitSirBlock, encodeJitSirBlock } from "../block.js";
 
 export type JitSirBlockRunResult = Readonly<{
@@ -74,9 +75,7 @@ function decodeInstructions(bytes: readonly number[], address: number): readonly
 }
 
 function writeState(view: DataView, state: CpuState): void {
-  for (const field of cpuStateFields) {
-    view.setUint32(stateOffset[field], state[field], true);
-  }
+  writeWasmCpuState(view, state);
 }
 
 function writeGuestMemory(
@@ -91,11 +90,5 @@ function writeGuestMemory(
 }
 
 function readState(view: DataView): CpuState {
-  const state = createCpuState();
-
-  for (const field of cpuStateFields) {
-    state[field] = view.getUint32(stateOffset[field], true);
-  }
-
-  return state;
+  return readWasmCpuState(view);
 }

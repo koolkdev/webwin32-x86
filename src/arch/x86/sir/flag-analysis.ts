@@ -1,3 +1,4 @@
+import { x86ArithmeticFlags } from "../isa/flags.js";
 import { CONDITIONS } from "./conditions.js";
 import {
   FLAG_PRODUCERS,
@@ -39,7 +40,7 @@ export type SirFlagLivenessBarrier = Readonly<{
 }>;
 
 export const SIR_FLAG_MASK_NONE = 0;
-export const SIR_ARITHMETIC_FLAGS = ["CF", "PF", "AF", "ZF", "SF", "OF"] as const satisfies readonly FlagName[];
+export const SIR_ARITHMETIC_FLAGS = x86ArithmeticFlags satisfies readonly FlagName[];
 export const SIR_FLAG_MASKS = {
   CF: 1 << 0,
   PF: 1 << 1,

@@ -1,44 +1,36 @@
+import { type CpuState } from "../../core/state/cpu-state.js";
 import {
-  createCpuState,
-  cpuStateFields,
-  STATE_BYTE_LENGTH,
-  u32,
-  type CpuState,
-  type CpuStateField
-} from "../../core/state/cpu-state.js";
-import { stateOffset } from "../../wasm/abi.js";
+  mergeWasmEflags,
+  readWasmCpuState,
+  readWasmStateField,
+  splitEflagsForWasm,
+  writeWasmCpuState,
+  writeWasmStateField,
+  WASM_STATE_BYTE_LENGTH,
+  type WasmStateField
+} from "../../wasm/state-layout.js";
 
 export class WasmCpuState {
   constructor(readonly memory: WebAssembly.Memory) {
-    if (memory.buffer.byteLength < STATE_BYTE_LENGTH) {
-      throw new RangeError(`state memory is too small: ${memory.buffer.byteLength} < ${STATE_BYTE_LENGTH}`);
+    if (memory.buffer.byteLength < WASM_STATE_BYTE_LENGTH) {
+      throw new RangeError(`state memory is too small: ${memory.buffer.byteLength} < ${WASM_STATE_BYTE_LENGTH}`);
     }
   }
 
-  read(field: CpuStateField): number {
-    return this.#view().getUint32(stateOffset[field], true);
+  read(field: WasmStateField): number {
+    return readWasmStateField(this.#view(), field);
   }
 
-  write(field: CpuStateField, value: number): void {
-    this.#view().setUint32(stateOffset[field], u32(value), true);
+  write(field: WasmStateField, value: number): void {
+    writeWasmStateField(this.#view(), field, value);
   }
 
   load(state: Partial<CpuState>): void {
-    const normalized = createCpuState(state);
-
-    for (const field of cpuStateFields) {
-      this.write(field, normalized[field]);
-    }
+    writeWasmCpuState(this.#view(), state);
   }
 
   snapshot(): CpuState {
-    const state = createCpuState();
-
-    for (const field of cpuStateFields) {
-      state[field] = this.read(field);
-    }
-
-    return state;
+    return readWasmCpuState(this.#view());
   }
 
   get eip(): number {
@@ -47,6 +39,17 @@ export class WasmCpuState {
 
   set eip(value: number) {
     this.write("eip", value);
+  }
+
+  get eflags(): number {
+    return mergeWasmEflags(this.read("aluFlags"), this.read("ctrlFlags"));
+  }
+
+  set eflags(value: number) {
+    const flags = splitEflagsForWasm(value);
+
+    this.write("aluFlags", flags.aluFlags);
+    this.write("ctrlFlags", flags.ctrlFlags);
   }
 
   get instructionCount(): number {

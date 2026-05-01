@@ -1,8 +1,9 @@
 import { strictEqual } from "node:assert";
 
-import { cpuStateFields, createCpuState, type CpuState } from "../../../core/state/cpu-state.js";
-import { wasmBlockExportName, wasmImport, stateOffset } from "../../abi.js";
+import { type CpuState } from "../../../core/state/cpu-state.js";
+import { wasmBlockExportName, wasmImport } from "../../abi.js";
 import { decodeExit, type DecodedExit } from "../../exit.js";
+import { readWasmCpuState, readWasmStateField, WASM_STATE_FIELDS, writeWasmCpuState } from "../../state-layout.js";
 import { createGuestMemory } from "../../tests/helpers.js";
 
 export type InterpreterModuleInstance = Readonly<{
@@ -49,24 +50,20 @@ export async function instantiateInterpreterCompiledModule(
 }
 
 export function writeInterpreterState(view: DataView, state: CpuState): void {
-  for (const field of cpuStateFields) {
-    view.setUint32(stateOffset[field], state[field], true);
-  }
+  writeWasmCpuState(view, state);
 }
 
 export function readInterpreterState(view: DataView): CpuState {
-  const state = createCpuState();
-
-  for (const field of cpuStateFields) {
-    state[field] = view.getUint32(stateOffset[field], true);
-  }
-
-  return state;
+  return readWasmCpuState(view);
 }
 
 export function assertInterpreterStateEquals(view: DataView, state: CpuState): void {
-  for (const field of cpuStateFields) {
-    strictEqual(view.getUint32(stateOffset[field], true), state[field]);
+  const expectedView = new DataView(new ArrayBuffer(view.byteLength));
+
+  writeWasmCpuState(expectedView, state);
+
+  for (const field of WASM_STATE_FIELDS) {
+    strictEqual(readWasmStateField(view, field), readWasmStateField(expectedView, field));
   }
 }
 

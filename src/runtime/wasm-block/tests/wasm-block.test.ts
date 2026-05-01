@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { decodeIsaBlock } from "../../../arch/x86/isa/decoder/decode-block.js";
 import { GuestMemoryDecodeReader } from "../../../arch/x86/isa/runtime/decode-reader.js";
 import { ArrayBufferGuestMemory } from "../../../core/memory/guest-memory.js";
-import { createCpuState, cpuStateFields, type CpuState } from "../../../core/state/cpu-state.js";
+import { createCpuState, type CpuState } from "../../../core/state/cpu-state.js";
 import {
   compileWasmBlockHandle,
   type WasmBlockHandle,
@@ -16,8 +16,8 @@ import {
   readViewBytes,
   startAddress,
 } from "../../../wasm/tests/helpers.js";
-import { stateOffset } from "../../../wasm/abi.js";
 import { decodeExit, ExitReason } from "../../../wasm/exit.js";
+import { readWasmCpuState, writeWasmCpuState } from "../../../wasm/state-layout.js";
 
 const movAddJumpFixture = [
   0xb8, 0x01, 0x00, 0x00, 0x00,
@@ -130,17 +130,9 @@ function writeGuestCode(view: DataView, bytes: readonly number[]): void {
 }
 
 function writeJitState(view: DataView, state: CpuState): void {
-  for (const field of cpuStateFields) {
-    view.setUint32(stateOffset[field], state[field], true);
-  }
+  writeWasmCpuState(view, state);
 }
 
 function readJitState(view: DataView): CpuState {
-  const state = createCpuState();
-
-  for (const field of cpuStateFields) {
-    state[field] = view.getUint32(stateOffset[field], true);
-  }
-
-  return state;
+  return readWasmCpuState(view);
 }

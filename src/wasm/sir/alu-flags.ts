@@ -1,11 +1,14 @@
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 
-export type WasmSirEflagsStorage = Readonly<{
+export type WasmSirAluFlagsStorage = Readonly<{
   emitLoad(): void;
   emitStore(emitValue: () => void): void;
 }>;
 
-export function wasmSirLocalEflagsStorage(body: WasmFunctionBodyEncoder, local: number): WasmSirEflagsStorage {
+export function wasmSirLocalAluFlagsStorage(
+  body: WasmFunctionBodyEncoder,
+  local: number
+): WasmSirAluFlagsStorage {
   return {
     emitLoad: () => {
       body.localGet(local);

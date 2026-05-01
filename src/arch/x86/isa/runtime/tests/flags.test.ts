@@ -1,7 +1,13 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { createCpuState, getFlag, supportedEflagsMask, u32 } from "../../../../../core/state/cpu-state.js";
+import {
+  controlEflagsMask,
+  createCpuState,
+  getFlag,
+  supportedEflagsMask,
+  u32
+} from "../../../../../core/state/cpu-state.js";
 import { executeIsaInstruction } from "../execute.js";
 import { decodeBytes, ok, startAddress } from "./helpers.js";
 
@@ -69,6 +75,14 @@ test("arithmetic_preserves_unsupported_eflags_bits", () => {
   execute(state, [0x81, 0xc0, 0x01, 0x00, 0x00, 0x00]);
 
   strictEqual(u32(state.eflags & ~supportedEflagsMask), unsupportedBits);
+});
+
+test("arithmetic_preserves_control_eflags_bits", () => {
+  const state = createCpuState({ eax: 1, eip: startAddress, eflags: controlEflagsMask });
+
+  execute(state, [0x81, 0xc0, 0x01, 0x00, 0x00, 0x00]);
+
+  strictEqual(u32(state.eflags & controlEflagsMask), controlEflagsMask);
 });
 
 test("xor_clears_register_and_sets_zf", () => {
