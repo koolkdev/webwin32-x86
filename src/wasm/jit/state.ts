@@ -1,7 +1,6 @@
 import { reg32, type Reg32 } from "../../arch/x86/isa/types.js";
 import { i32 } from "../../core/state/cpu-state.js";
 import { stateOffset } from "../abi.js";
-import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { emitLoadStateU32, emitStoreStateU32 } from "../sir/state.js";
@@ -34,13 +33,12 @@ export type JitSirState = Readonly<{
 
 export function createJitSirState(
   body: WasmFunctionBodyEncoder,
-  scratch: WasmLocalScratchAllocator,
   maxExitGeneration: number
 ): JitSirState {
   const regs = createJitReg32State(body);
   const eipLocal = body.addLocal(wasmValueType.i32);
   const eflagsLocal = body.addLocal(wasmValueType.i32);
-  const flags = createJitFlagState(body, scratch, eflagsLocal);
+  const flags = createJitFlagState(body, eflagsLocal);
   const instructionCountLocal = body.addLocal(wasmValueType.i32);
   const generationState = createExitGenerationState(maxExitGeneration);
   let activeExit: JitExitTarget | undefined;

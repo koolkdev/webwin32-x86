@@ -5,7 +5,6 @@ import type { SirValueExpr } from "../../../arch/x86/sir/expressions.js";
 import type { ConditionCode, FlagProducerName, ValueRef } from "../../../arch/x86/sir/types.js";
 import { eflagsMask, i32 } from "../../../core/state/cpu-state.js";
 import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
-import { WasmLocalScratchAllocator } from "../../encoder/local-scratch.js";
 import { WasmModuleEncoder } from "../../encoder/module.js";
 import { wasmValueType } from "../../encoder/types.js";
 import { emitCondition } from "../conditions.js";
@@ -26,6 +25,18 @@ test("emitSetFlags writes generated flags and preserves unrelated eflags bits", 
     logic32(0, 0, 0, preservedEflagsBit | eflagsMask.CF | eflagsMask.AF | eflagsMask.OF),
     preservedEflagsBit | eflagsMask.PF | eflagsMask.ZF
   );
+});
+
+test("emitSetFlags does not allocate an accumulator local", () => {
+  const body = new WasmFunctionBodyEncoder(4);
+  const eflags = wasmSirLocalEflagsStorage(body, 3);
+
+  emitSetFlags(body, eflags, "logic32", { result: v(2) }, {
+    emitValue: (value) => emitValueExpr(body, value)
+  });
+  body.localGet(3).end();
+
+  strictEqual(body.encode()[0], 0);
 });
 
 test("emitCondition evaluates compound condition formulas from eflags", async () => {
@@ -63,16 +74,14 @@ function encodeSetFlagsModule(producer: FlagProducerName): Uint8Array<ArrayBuffe
     results: [wasmValueType.i32]
   });
   const body = new WasmFunctionBodyEncoder(4);
-  const scratch = new WasmLocalScratchAllocator(body);
   const eflags = wasmSirLocalEflagsStorage(body, 3);
   const inputs: Readonly<Record<string, ValueRef>> = producer === "logic32"
     ? { result: v(2) }
     : { left: v(0), right: v(1), result: v(2) };
 
-  emitSetFlags(body, scratch, eflags, producer, inputs, {
+  emitSetFlags(body, eflags, producer, inputs, {
     emitValue: (value) => emitValueExpr(body, value)
   });
-  scratch.assertClear();
   body.localGet(3).end();
 
   const functionIndex = module.addFunction(typeIndex, body);

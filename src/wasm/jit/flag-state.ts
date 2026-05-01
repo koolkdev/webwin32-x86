@@ -1,7 +1,6 @@
 import { FLAG_PRODUCERS } from "../../arch/x86/sir/flags.js";
 import type { ConditionCode, FlagProducerName, ValueRef } from "../../arch/x86/sir/types.js";
 import { i32 } from "../../core/state/cpu-state.js";
-import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
 import { emitCondition } from "../sir/conditions.js";
@@ -23,7 +22,6 @@ export type JitFlagState = Readonly<{
 
 export function createJitFlagState(
   body: WasmFunctionBodyEncoder,
-  scratch: WasmLocalScratchAllocator,
   eflagsLocal: number
 ): JitFlagState {
   const eflags = wasmSirLocalEflagsStorage(body, eflagsLocal);
@@ -103,7 +101,7 @@ export function createJitFlagState(
       localsByVarId.set(id, local);
     }
 
-    emitSetFlags(body, scratch, eflags, pendingFlags.producer, inputRefs, {
+    emitSetFlags(body, eflags, pendingFlags.producer, inputRefs, {
       emitValue: (value) => {
         switch (value.kind) {
           case "var":

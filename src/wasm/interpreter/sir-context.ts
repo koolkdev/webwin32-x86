@@ -64,7 +64,7 @@ export function lowerSirWithInterpreterContext(program: SirProgram, context: Int
     emitSet32: (target, value, helpers) => emitSet32(context, regs, target, value, helpers),
     emitAddress32: (source) => emitAddress32(context, source),
     emitSetFlags: (producer, inputs, helpers) =>
-      emitSetFlags(context.body, context.scratch, eflags, producer, inputs, helpers),
+      emitSetFlags(context.body, eflags, producer, inputs, helpers),
     emitCondition: (cc) => emitCondition(context.body, eflags, cc),
     emitNext: () => emitNext(context),
     emitNextEip: () => emitNextEip(context),

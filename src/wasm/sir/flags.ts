@@ -6,9 +6,7 @@ import type {
 import { FLAG_PRODUCERS } from "../../arch/x86/sir/flags.js";
 import type { FlagProducerName, ValueRef } from "../../arch/x86/sir/types.js";
 import { eflagsMask, i32 } from "../../core/state/cpu-state.js";
-import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import { wasmValueType } from "../encoder/types.js";
 import type { WasmSirEflagsStorage } from "./eflags.js";
 import type { WasmSirEmitHelpers } from "./lower.js";
 
@@ -16,7 +14,6 @@ const flagOrder = ["CF", "PF", "AF", "ZF", "SF", "OF"] as const satisfies readon
 
 export function emitSetFlags(
   body: WasmFunctionBodyEncoder,
-  scratch: WasmLocalScratchAllocator,
   eflags: WasmSirEflagsStorage,
   producer: FlagProducerName,
   inputs: Readonly<Record<string, ValueRef>>,
@@ -24,38 +21,51 @@ export function emitSetFlags(
 ): void {
   const flagProducer = FLAG_PRODUCERS[producer];
   const defs = flagProducer.define(inputs);
-  const flagsLocal = scratch.allocLocal(wasmValueType.i32);
 
-  try {
-    body.i32Const(0).localSet(flagsLocal);
+  eflags.emitStore(() => {
+    eflags.emitLoad();
+    body.i32Const(i32(~writtenFlagsMask(defs))).i32And();
+    emitWrittenFlags(body, defs, helpers);
+    body.i32Or();
+  });
+}
 
-    for (const flag of flagOrder) {
-      const expr = defs[flag];
+function emitWrittenFlags(
+  body: WasmFunctionBodyEncoder,
+  defs: Readonly<Partial<Record<FlagName, FlagExpr>>>,
+  helpers: WasmSirEmitHelpers
+): void {
+  let hasWrittenFlag = false;
 
-      if (expr !== undefined) {
-        emitOrFlag(body, flagsLocal, flag, expr, helpers);
-      }
+  for (const flag of flagOrder) {
+    const expr = defs[flag];
+
+    if (expr === undefined) {
+      continue;
     }
 
-    eflags.emitStore(() => {
-      eflags.emitLoad();
-      body.i32Const(i32(~writtenFlagsMask(defs))).i32And().localGet(flagsLocal).i32Or();
-    });
-  } finally {
-    scratch.freeLocal(flagsLocal);
+    emitFlagBit(body, flag, expr, helpers);
+
+    if (hasWrittenFlag) {
+      body.i32Or();
+    } else {
+      hasWrittenFlag = true;
+    }
+  }
+
+  if (!hasWrittenFlag) {
+    body.i32Const(0);
   }
 }
 
-function emitOrFlag(
+function emitFlagBit(
   body: WasmFunctionBodyEncoder,
-  flagsLocal: number,
   flag: FlagName,
   expr: FlagExpr,
   helpers: WasmSirEmitHelpers
 ): void {
-  body.localGet(flagsLocal);
   emitFlagExpr(body, expr, helpers);
-  body.i32Const(flagBit(flag)).i32Shl().i32Or().localSet(flagsLocal);
+  body.i32Const(flagBit(flag)).i32Shl();
 }
 
 function emitFlagExpr(body: WasmFunctionBodyEncoder, expr: FlagExpr, helpers: WasmSirEmitHelpers): void {

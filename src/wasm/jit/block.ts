@@ -69,7 +69,7 @@ export function encodeJitSirBlock(block: JitSirBlock): Uint8Array<ArrayBuffer> {
   const body = new WasmFunctionBodyEncoder();
   const scratch = new WasmLocalScratchAllocator(body);
   const exitLocal = body.addLocal(wasmValueType.i64);
-  const state = createJitSirState(body, scratch, block.instructions.length);
+  const state = createJitSirState(body, block.instructions.length);
   const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitGeneration };
 
   state.emitEntryLoads();
