@@ -7,8 +7,8 @@ import {
   getFlag,
   supportedEflagsMask,
   u32
-} from "../../../state/cpu-state.js";
-import { executeIsaInstruction } from "../execute.js";
+} from "../../../x86/state/cpu-state.js";
+import { executeDirectInstruction } from "../execute.js";
 import { decodeBytes, ok, startAddress } from "./helpers.js";
 
 test("add_wrap_sets_cf_zf_af_pf", () => {
@@ -190,5 +190,5 @@ test("test_sets_pf_from_low_byte", () => {
 function execute(state: ReturnType<typeof createCpuState>, values: readonly number[]): void {
   const decoded = ok(decodeBytes(values, state.eip));
 
-  executeIsaInstruction(state, decoded);
+  executeDirectInstruction(state, decoded);
 }

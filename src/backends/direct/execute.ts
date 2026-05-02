@@ -1,6 +1,6 @@
-import type { RunResult, RunResultDetails } from "../../execution/run-result.js";
-import { runResultFromState, StopReason } from "../../execution/run-result.js";
-import type { GuestMemory, MemoryFault } from "../../memory/guest-memory.js";
+import type { RunResult, RunResultDetails } from "../../x86/execution/run-result.js";
+import { runResultFromState, StopReason } from "../../x86/execution/run-result.js";
+import type { GuestMemory, MemoryFault } from "../../x86/memory/guest-memory.js";
 import {
   getFlag,
   getReg32,
@@ -9,18 +9,18 @@ import {
   setReg32,
   u32,
   type CpuState
-} from "../../state/cpu-state.js";
-import { buildIr } from "../../ir/builder.js";
-import { CONDITIONS, type FlagBoolExpr } from "../../ir/conditions.js";
+} from "../../x86/state/cpu-state.js";
+import { buildIr } from "../../x86/ir/builder.js";
+import { CONDITIONS, type FlagBoolExpr } from "../../x86/ir/conditions.js";
 import {
   flagProducerConditionKind,
   requiredFlagProducerConditionInput
-} from "../../ir/flag-conditions.js";
-import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "../../ir/flags.js";
-import type { MemRef, IrFlagProducerConditionOp, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "../../ir/types.js";
-import type { IsaDecodedInstruction, IsaOperandBinding } from "../decoder/types.js";
+} from "../../x86/ir/flag-conditions.js";
+import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "../../x86/ir/flags.js";
+import type { MemRef, IrFlagProducerConditionOp, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "../../x86/ir/types.js";
+import type { IsaDecodedInstruction, IsaOperandBinding } from "../../x86/isa/decoder/types.js";
 
-export type IsaExecutionOptions = Readonly<{
+export type DirectExecutionOptions = Readonly<{
   memory?: GuestMemory;
 }>;
 
@@ -41,10 +41,10 @@ type WriteResult =
   | Readonly<{ kind: "unsupported" }>
   | Readonly<{ kind: "memoryFault"; fault: MemoryFault }>;
 
-export function executeIsaInstruction(
+export function executeDirectInstruction(
   state: CpuState,
   instruction: IsaDecodedInstruction,
-  options: IsaExecutionOptions = {}
+  options: DirectExecutionOptions = {}
 ): RunResult {
   const context: ExecutionContext = { state, instruction, memory: options.memory, vars: new Map() };
   const program = buildIr(instruction.spec.semantics);

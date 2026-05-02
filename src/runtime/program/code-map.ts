@@ -2,8 +2,8 @@ import type { GuestMemory } from "../../x86/memory/guest-memory.js";
 import {
   GuestMemoryDecodeReader,
   type GuestMemoryDecodeRegion,
-  type RuntimeDecodeReader
-} from "../../x86/isa/runtime/decode-reader.js";
+  type RegionedDecodeReader
+} from "../../x86/isa/decoder/guest-memory-reader.js";
 import { regionContains, type RuntimeCodeRegion } from "./regions.js";
 
 export class RuntimeCodeMap {
@@ -21,7 +21,7 @@ export class RuntimeCodeMap {
     return this.#regions.some((region) => regionContains(region, eip));
   }
 
-  createReader(memory: GuestMemory): RuntimeDecodeReader {
+  createReader(memory: GuestMemory): RegionedDecodeReader {
     return new GuestMemoryDecodeReader(memory, this.#regions.map(decodeRegion));
   }
 }

@@ -3,12 +3,12 @@ import {
   type GuestMemory,
   type MemoryReadResult,
   type MemoryWriteResult
-} from "../../../memory/guest-memory.js";
-import type { CpuState } from "../../../state/cpu-state.js";
-import { runIsaInterpreter } from "../interpreter.js";
-import { startAddress } from "../../decoder/tests/helpers.js";
+} from "../../../x86/memory/guest-memory.js";
+import type { CpuState } from "../../../x86/state/cpu-state.js";
+import { runDirectInterpreter } from "../interpreter.js";
+import { startAddress } from "../../../x86/isa/decoder/tests/helpers.js";
 
-export { bytes, decodeBytes, ok, startAddress } from "../../decoder/tests/helpers.js";
+export { bytes, decodeBytes, ok, startAddress } from "../../../x86/isa/decoder/tests/helpers.js";
 
 export type RunIsaBytesOptions = Readonly<{
   baseAddress?: number;
@@ -28,7 +28,7 @@ export function runIsaBytes(
     options.memory ?? new ArrayBufferGuestMemory(0)
   );
 
-  return runIsaInterpreter(
+  return runDirectInterpreter(
     state,
     memory,
     options.instructionLimit === undefined ? {} : { instructionLimit: options.instructionLimit }

@@ -3,7 +3,7 @@ import {
   decodeFault,
   IsaDecodeError,
   type IsaDecodeReader
-} from "../decoder/reader.js";
+} from "./reader.js";
 
 export type GuestMemoryDecodeRegion = Readonly<{
   kind: "guest-memory";
@@ -12,12 +12,12 @@ export type GuestMemoryDecodeRegion = Readonly<{
   generation?: number;
 }>;
 
-export type RuntimeDecodeReader = IsaDecodeReader & Readonly<{
+export type RegionedDecodeReader = IsaDecodeReader & Readonly<{
   regions: readonly GuestMemoryDecodeRegion[];
   regionAt(eip: number): GuestMemoryDecodeRegion | undefined;
 }>;
 
-export class GuestMemoryDecodeReader implements RuntimeDecodeReader {
+export class GuestMemoryDecodeReader implements RegionedDecodeReader {
   constructor(
     readonly memory: GuestMemory,
     readonly regions: readonly GuestMemoryDecodeRegion[]

@@ -2,7 +2,7 @@ import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { decodeIsaBlock } from "../../../../x86/isa/decoder/decode-block.js";
-import { GuestMemoryDecodeReader } from "../../../../x86/isa/runtime/decode-reader.js";
+import { GuestMemoryDecodeReader } from "../../../../x86/isa/decoder/guest-memory-reader.js";
 import { ArrayBufferGuestMemory } from "../../../../x86/memory/guest-memory.js";
 import { createCpuState, type CpuState } from "../../../../x86/state/cpu-state.js";
 import {

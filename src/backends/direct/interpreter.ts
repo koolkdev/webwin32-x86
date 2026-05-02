@@ -1,26 +1,26 @@
-import { runResultFromState, StopReason, type RunResult } from "../../execution/run-result.js";
-import type { GuestMemory } from "../../memory/guest-memory.js";
-import type { CpuState } from "../../state/cpu-state.js";
-import { decodeIsaInstructionFromReader } from "../decoder/decode.js";
+import { runResultFromState, StopReason, type RunResult } from "../../x86/execution/run-result.js";
+import type { GuestMemory } from "../../x86/memory/guest-memory.js";
+import type { CpuState } from "../../x86/state/cpu-state.js";
+import { decodeIsaInstructionFromReader } from "../../x86/isa/decoder/decode.js";
 import {
   IsaDecodeError,
   maxX86InstructionLength,
   readAvailableBytes
-} from "../decoder/reader.js";
-import type { IsaDecodedInstruction } from "../decoder/types.js";
-import { GuestMemoryDecodeReader, type RuntimeDecodeReader } from "./decode-reader.js";
-import { executeIsaInstruction } from "./execute.js";
+} from "../../x86/isa/decoder/reader.js";
+import type { IsaDecodedInstruction } from "../../x86/isa/decoder/types.js";
+import { GuestMemoryDecodeReader, type RegionedDecodeReader } from "../../x86/isa/decoder/guest-memory-reader.js";
+import { executeDirectInstruction } from "./execute.js";
 
 const defaultInstructionLimit = 10_000;
 
-export type IsaInterpreterOptions = Readonly<{
+export type DirectInterpreterOptions = Readonly<{
   instructionLimit?: number;
 }>;
 
-export function runIsaInterpreter(
+export function runDirectInterpreter(
   state: CpuState,
   memory: GuestMemory,
-  options: IsaInterpreterOptions = {}
+  options: DirectInterpreterOptions = {}
 ): RunResult {
   const decodeReader = new GuestMemoryDecodeReader(memory, [
     { kind: "guest-memory", baseAddress: 0, byteLength: memory.byteLength }
@@ -39,7 +39,7 @@ export function runIsaInterpreter(
       return decoded.result;
     }
 
-    const result = executeIsaInstruction(state, decoded.instruction, { memory });
+    const result = executeDirectInstruction(state, decoded.instruction, { memory });
 
     if (result.stopReason !== StopReason.NONE) {
       return result;
@@ -56,7 +56,7 @@ type DecodeInstructionResult =
 
 function decodeInstruction(
   state: CpuState,
-  decodeReader: RuntimeDecodeReader
+  decodeReader: RegionedDecodeReader
 ): DecodeInstructionResult {
   try {
     const decoded = decodeIsaInstructionFromReader(decodeReader, state.eip);

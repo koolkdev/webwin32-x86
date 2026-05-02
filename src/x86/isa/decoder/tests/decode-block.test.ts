@@ -2,7 +2,7 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { ArrayBufferGuestMemory } from "../../../memory/guest-memory.js";
-import { GuestMemoryDecodeReader } from "../../runtime/decode-reader.js";
+import { GuestMemoryDecodeReader } from "../guest-memory-reader.js";
 import { decodeIsaBlock } from "../decode-block.js";
 import { ByteArrayDecodeReader } from "./helpers.js";
 
