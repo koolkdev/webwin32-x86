@@ -8,7 +8,7 @@ import { leaSemantic } from "../../isa/semantics/lea.js";
 import { intSemantic } from "../../isa/semantics/misc.js";
 import { movSemantic } from "../../isa/semantics/mov.js";
 import { buildSir, const32, operand, sirVar } from "../builder.js";
-import { createSirFlagSetOp } from "../flags.js";
+import { createSirFlagProducerConditionOp, createSirFlagSetOp } from "../flags.js";
 import { validateSirProgram } from "../validator.js";
 
 test("validator accepts representative generated semantic templates", () => {
@@ -112,5 +112,19 @@ test("validator rejects flag descriptors that disagree with producer metadata", 
         { op: "next" }
       ]),
     /flags\.set add32 undefMask does not match producer metadata/
+  );
+});
+
+test("validator rejects unsupported flag producer conditions", () => {
+  const descriptor = createSirFlagSetOp("logic32", { result: sirVar(0) });
+
+  throws(
+    () =>
+      validateSirProgram([
+        { op: "const32", dst: sirVar(0), value: 1 },
+        createSirFlagProducerConditionOp(sirVar(1), "E", descriptor),
+        { op: "next" }
+      ]),
+    /flagProducer\.condition logic32\/E is not supported/
   );
 });

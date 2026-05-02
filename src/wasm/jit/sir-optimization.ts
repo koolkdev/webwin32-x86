@@ -3,6 +3,7 @@ import {
 } from "../../arch/x86/sir/flag-analysis.js";
 import {
   createFlagBoundaryInsertionPass,
+  createAluFlagsConditionSpecializationPass,
   createDeadFlagSetPruningPass,
   createFlagMaterializationPass,
   type SirFlagBoundaryPoint
@@ -17,6 +18,7 @@ export function optimizeJitSirBlock(block: JitSirBlock): JitSirBlock {
     createFlagBoundaryInsertionPass({
       points: (program) => jitFlagBoundaryPoints(program, block.operands)
     }),
+    createAluFlagsConditionSpecializationPass(),
     createDeadFlagSetPruningPass(),
     createFlagMaterializationPass()
   ]);

@@ -139,7 +139,7 @@ test("ret imm semantic adjusts esp explicitly after popping target", () => {
 
 test("jcc semantic resolves relative target value before conditional jump", () => {
   deepStrictEqual(buildSir(jccSemantic("NE")), [
-    { op: "condition", dst: v(0), cc: "NE" },
+    { op: "aluFlags.condition", dst: v(0), cc: "NE" },
     { op: "get32", dst: v(1), source: op(0) },
     {
       op: "conditionalJump",

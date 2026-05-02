@@ -43,6 +43,22 @@ export type SirFlagSetOp = Readonly<{
   inputs: Readonly<Record<string, ValueRef>>;
 }>;
 
+export type SirFlagProducerConditionOp = Readonly<{
+  op: "flagProducer.condition";
+  dst: VarRef;
+  cc: ConditionCode;
+  producer: FlagProducerName;
+  writtenMask: FlagMask;
+  undefMask: FlagMask;
+  inputs: Readonly<Record<string, ValueRef>>;
+}>;
+
+export type SirAluFlagsConditionOp = Readonly<{
+  op: "aluFlags.condition";
+  dst: VarRef;
+  cc: ConditionCode;
+}>;
+
 export type SirOp =
   | Readonly<{ op: "get32"; dst: VarRef; source: StorageRef }>
   | Readonly<{ op: "set32"; target: StorageRef; value: ValueRef }>
@@ -53,9 +69,10 @@ export type SirOp =
   | Readonly<{ op: "i32.xor"; dst: VarRef; a: ValueRef; b: ValueRef }>
   | Readonly<{ op: "i32.and"; dst: VarRef; a: ValueRef; b: ValueRef }>
   | SirFlagSetOp
+  | SirFlagProducerConditionOp
   | Readonly<{ op: "flags.materialize"; mask: FlagMask }>
   | Readonly<{ op: "flags.boundary"; mask: FlagMask }>
-  | Readonly<{ op: "condition"; dst: VarRef; cc: ConditionCode }>
+  | SirAluFlagsConditionOp
   | Readonly<{ op: "next" }>
   | Readonly<{ op: "jump"; target: TargetRef }>
   | Readonly<{ op: "conditionalJump"; condition: ValueRef; taken: TargetRef; notTaken: TargetRef }>

@@ -10,7 +10,7 @@ import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
 import { WasmModuleEncoder } from "../../encoder/module.js";
 import { wasmOpcode, wasmValueType } from "../../encoder/types.js";
 import { wasmBodyOpcodes } from "../../tests/body-opcodes.js";
-import { emitCondition } from "../conditions.js";
+import { emitAluFlagsCondition, emitFlagProducerCondition } from "../conditions.js";
 import { wasmSirLocalAluFlagsStorage } from "../alu-flags.js";
 import { emitSetFlags } from "../flags.js";
 
@@ -70,7 +70,7 @@ test("emitSetFlags does not allocate an accumulator local", () => {
   strictEqual(body.encode()[0], 0);
 });
 
-test("emitCondition evaluates compound condition formulas from arithmetic flags", async () => {
+test("emitAluFlagsCondition evaluates compound condition formulas from arithmetic flags", async () => {
   const le = await instantiateCondition("LE");
   const g = await instantiateCondition("G");
 
@@ -82,6 +82,20 @@ test("emitCondition evaluates compound condition formulas from arithmetic flags"
   strictEqual(g(x86ArithmeticFlagMask.ZF), 0);
   strictEqual(g(x86ArithmeticFlagMask.SF), 0);
   strictEqual(g(x86ArithmeticFlagMask.SF | x86ArithmeticFlagMask.OF), 1);
+});
+
+test("emitFlagProducerCondition evaluates producer-backed sub32 comparisons directly", async () => {
+  const eq = await instantiateFlagProducerCondition("E");
+  const below = await instantiateFlagProducerCondition("B");
+  const signedLess = await instantiateFlagProducerCondition("L");
+  const signedGreater = await instantiateFlagProducerCondition("G");
+
+  strictEqual(eq(5, 5), 1);
+  strictEqual(eq(5, 6), 0);
+  strictEqual(below(0, 1), 1);
+  strictEqual(below(0xffff_ffff, 1), 0);
+  strictEqual(signedLess(0xffff_ffff, 1), 1);
+  strictEqual(signedGreater(0x7fff_ffff, 0xffff_ffff), 1);
 });
 
 async function instantiateSetFlags(
@@ -140,6 +154,18 @@ async function instantiateCondition(cc: ConditionCode): Promise<(aluFlags: numbe
   return run as (aluFlags: number) => number;
 }
 
+async function instantiateFlagProducerCondition(cc: ConditionCode): Promise<(left: number, right: number) => number> {
+  const module = await WebAssembly.compile(encodeFlagProducerConditionModule(cc));
+  const instance = await WebAssembly.instantiate(module);
+  const run = instance.exports.run;
+
+  if (typeof run !== "function") {
+    throw new Error("expected exported function 'run'");
+  }
+
+  return run as (left: number, right: number) => number;
+}
+
 function encodeConditionModule(cc: ConditionCode): Uint8Array<ArrayBuffer> {
   const module = new WasmModuleEncoder();
   const typeIndex = module.addFunctionType({
@@ -148,7 +174,33 @@ function encodeConditionModule(cc: ConditionCode): Uint8Array<ArrayBuffer> {
   });
   const body = new WasmFunctionBodyEncoder(1);
 
-  emitCondition(body, wasmSirLocalAluFlagsStorage(body, 0), cc);
+  emitAluFlagsCondition(body, wasmSirLocalAluFlagsStorage(body, 0), cc);
+  body.end();
+
+  const functionIndex = module.addFunction(typeIndex, body);
+  module.exportFunction("run", functionIndex);
+
+  return module.encode();
+}
+
+function encodeFlagProducerConditionModule(cc: ConditionCode): Uint8Array<ArrayBuffer> {
+  const module = new WasmModuleEncoder();
+  const typeIndex = module.addFunctionType({
+    params: [wasmValueType.i32, wasmValueType.i32],
+    results: [wasmValueType.i32]
+  });
+  const body = new WasmFunctionBodyEncoder(2);
+
+  emitFlagProducerCondition(body, {
+    kind: "flagProducer.condition",
+    cc,
+    producer: "sub32",
+    writtenMask: createSirFlagSetOp("sub32", { left: v(0), right: v(1), result: v(2) }).writtenMask,
+    undefMask: 0,
+    inputs: { left: v(0), right: v(1) }
+  }, {
+    emitValue: (value) => emitValueExpr(body, value)
+  });
   body.end();
 
   const functionIndex = module.addFunction(typeIndex, body);

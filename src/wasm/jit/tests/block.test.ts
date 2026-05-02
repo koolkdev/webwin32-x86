@@ -54,7 +54,7 @@ test("buildJitSirBlock inserts explicit flag materialization before consumers an
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const jz = ok(decodeBytes([0x74, 0x05], add.nextEip));
   const branchBlock = buildJitSirBlock([add, jz]);
-  const conditionIndex = branchBlock.sir.findIndex((op) => op.op === "condition");
+  const conditionIndex = branchBlock.sir.findIndex((op) => op.op === "aluFlags.condition");
   const conditionalJumpIndex = branchBlock.sir.findIndex((op) => op.op === "conditionalJump");
 
   deepStrictEqual(branchBlock.sir[conditionIndex - 1], {
@@ -82,13 +82,43 @@ test("buildJitSirBlock keeps earlier CF producer live across INC", () => {
   const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
   const block = buildJitSirBlock([add, inc, jc]);
   const flagSets = block.sir.filter((op) => op.op === "flags.set");
-  const conditionIndex = block.sir.findIndex((op) => op.op === "condition");
+  const conditionIndex = block.sir.findIndex((op) => op.op === "aluFlags.condition");
 
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
   deepStrictEqual(block.sir[conditionIndex - 1], {
     op: "flags.materialize",
     mask: SIR_ALU_FLAG_MASKS.CF
   });
+});
+
+test("buildJitSirBlock specializes cmp and jcc conditions without flag materialization", () => {
+  const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
+  const je = ok(decodeBytes([0x74, 0x05], cmp.nextEip));
+  const block = buildJitSirBlock([cmp, je]);
+  const flagProducerConditionIndex = block.sir.findIndex((op) => op.op === "flagProducer.condition");
+  const flagProducerCondition = block.sir[flagProducerConditionIndex];
+
+  if (flagProducerCondition === undefined || flagProducerCondition.op !== "flagProducer.condition") {
+    throw new Error("missing flagProducer.condition");
+  }
+
+  strictEqual(flagProducerCondition.producer, "sub32");
+  strictEqual(flagProducerCondition.cc, "E");
+  strictEqual(block.sir.some((op) => op.op === "flags.materialize"), false);
+});
+
+test("buildJitSirBlock does not specialize incoming CF after INC", () => {
+  const inc = ok(decodeBytes([0x40], startAddress));
+  const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
+  const block = buildJitSirBlock([inc, jc]);
+  const conditionIndex = block.sir.findIndex((op) => op.op === "aluFlags.condition");
+
+  strictEqual(block.sir.some((op) => op.op === "flagProducer.condition"), false);
+  deepStrictEqual(block.sir[conditionIndex - 1], {
+    op: "flags.materialize",
+    mask: SIR_ALU_FLAG_MASKS.CF
+  });
+  deepStrictEqual(aluFlagMemoryAccessCounts(block), { loads: 1, stores: 1 });
 });
 
 test("buildJitSirBlock represents JIT flag exits as explicit SIR boundaries", () => {
@@ -105,7 +135,7 @@ test("buildJitSirBlock represents JIT flag exits as explicit SIR boundaries", ()
   });
 
   const jzBlock = buildJitSirBlock([ok(decodeBytes([0x74, 0x05], startAddress))]);
-  const jzConditionIndex = jzBlock.sir.findIndex((op) => op.op === "condition");
+  const jzConditionIndex = jzBlock.sir.findIndex((op) => op.op === "aluFlags.condition");
   const jzJumpIndex = jzBlock.sir.findIndex((op) => op.op === "conditionalJump");
 
   deepStrictEqual(jzBlock.sir[jzConditionIndex - 1], {
@@ -244,6 +274,37 @@ test("jit SIR block preserves CF across INC partial flag writes", async () => {
   deepStrictEqual(result.exit, { exitReason: ExitReason.BRANCH_TAKEN, payload: startAddress + 11 });
 });
 
+test("jit SIR block branches on incoming CF after INC", async () => {
+  const taken = await runJitSirBlock([
+    0x40, // inc eax
+    0x72, 0x05 // jc +5
+  ], createCpuState({
+    eax: 0,
+    eflags: preservedEflags | 0x01,
+    eip: startAddress
+  }));
+  const notTaken = await runJitSirBlock([
+    0x40, // inc eax
+    0x72, 0x05 // jc +5
+  ], createCpuState({
+    eax: 0,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(taken.state.eax, 1);
+  strictEqual(taken.state.eflags, (preservedEflags | 0x01) >>> 0);
+  strictEqual(taken.state.eip, startAddress + 8);
+  strictEqual(taken.state.instructionCount, 2);
+  deepStrictEqual(taken.exit, { exitReason: ExitReason.BRANCH_TAKEN, payload: startAddress + 8 });
+
+  strictEqual(notTaken.state.eax, 1);
+  strictEqual(notTaken.state.eflags, preservedEflags);
+  strictEqual(notTaken.state.eip, startAddress + 3);
+  strictEqual(notTaken.state.instructionCount, 2);
+  deepStrictEqual(notTaken.exit, { exitReason: ExitReason.BRANCH_NOT_TAKEN, payload: startAddress + 3 });
+});
+
 test("jit SIR block lowers cmp without writing operands", async () => {
   const result = await runJitSirBlock([0x39, 0xd8], createCpuState({
     eax: 5,
@@ -257,6 +318,34 @@ test("jit SIR block lowers cmp without writing operands", async () => {
   strictEqual(result.state.eflags, (preservedEflags | zeroResultEflags) >>> 0);
   strictEqual(result.state.eip, startAddress + 2);
   strictEqual(result.state.instructionCount, 1);
+});
+
+test("jit SIR block handles specialized cmp condition branches", async () => {
+  const takenCases = [
+    { name: "JE", opcode: 0x74, eax: 5, ebx: 5 },
+    { name: "JNE", opcode: 0x75, eax: 5, ebx: 6 },
+    { name: "JB", opcode: 0x72, eax: 1, ebx: 2 },
+    { name: "JAE", opcode: 0x73, eax: 2, ebx: 1 },
+    { name: "JL", opcode: 0x7c, eax: 0xffff_ffff, ebx: 1 },
+    { name: "JGE", opcode: 0x7d, eax: 1, ebx: 0xffff_ffff },
+    { name: "JLE", opcode: 0x7e, eax: 0xffff_ffff, ebx: 1 },
+    { name: "JG", opcode: 0x7f, eax: 1, ebx: 0xffff_ffff }
+  ] as const;
+
+  for (const testCase of takenCases) {
+    const result = await runJitSirBlock([
+      0x39, 0xd8, // cmp eax, ebx
+      testCase.opcode, 0x05
+    ], createCpuState({
+      eax: testCase.eax,
+      ebx: testCase.ebx,
+      eip: startAddress
+    }));
+
+    strictEqual(result.state.eip, startAddress + 9, testCase.name);
+    strictEqual(result.state.instructionCount, 2, testCase.name);
+    deepStrictEqual(result.exit, { exitReason: ExitReason.BRANCH_TAKEN, payload: startAddress + 9 });
+  }
 });
 
 test("jit SIR block materializes deferred flags before condition consumers", async () => {
@@ -339,7 +428,8 @@ function sirOpDstId(op: SirOp): readonly number[] {
     case "i32.sub":
     case "i32.xor":
     case "i32.and":
-    case "condition":
+    case "aluFlags.condition":
+    case "flagProducer.condition":
       return [op.dst.id];
     default:
       return [];

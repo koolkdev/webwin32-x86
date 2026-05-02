@@ -25,7 +25,7 @@ import type { InterpreterStateCache } from "./state-cache.js";
 import { emitIfModRmMemory, emitIfModRmRegister, emitModRmIsRegister, emitModRmRegIndex } from "./modrm-bits.js";
 import { lowerSirToWasm, type WasmSirEmitHelpers } from "../sir/lower.js";
 import { emitSetFlags } from "../sir/flags.js";
-import { emitCondition } from "../sir/conditions.js";
+import { emitAluFlagsCondition, emitFlagProducerCondition } from "../sir/conditions.js";
 import { ExitReason } from "../exit.js";
 
 export type InterpreterOperandBinding =
@@ -67,7 +67,8 @@ export function lowerSirWithInterpreterContext(program: SirProgram, context: Int
       emitSetFlags(context.body, aluFlags, descriptor, helpers),
     emitMaterializeFlags: () => {},
     emitBoundaryFlags: () => {},
-    emitCondition: (cc) => emitCondition(context.body, aluFlags, cc),
+    emitAluFlagsCondition: (cc) => emitAluFlagsCondition(context.body, aluFlags, cc),
+    emitFlagProducerCondition: (condition, helpers) => emitFlagProducerCondition(context.body, condition, helpers),
     emitNext: () => emitNext(context),
     emitNextEip: () => emitNextEip(context),
     emitJump: (target, helpers) => emitJump(context, target, helpers),

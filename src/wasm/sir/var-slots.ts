@@ -4,6 +4,10 @@ import type {
   SirStorageExpr,
   SirValueExpr
 } from "../../arch/x86/sir/expressions.js";
+import {
+  flagProducerConditionInputNames,
+  requiredFlagProducerConditionInput
+} from "../../arch/x86/sir/flag-conditions.js";
 
 export type SirExprVarSlotAssignment = Readonly<{
   slotCount: number;
@@ -133,7 +137,12 @@ function collectValueVarUses(value: SirValueExpr, visit: (id: number) => void): 
     case "const32":
     case "nextEip":
     case "address32":
-    case "condition":
+    case "aluFlags.condition":
+      return;
+    case "flagProducer.condition":
+      for (const name of flagProducerConditionInputNames(value)) {
+        collectValueVarUses(requiredFlagProducerConditionInput(value, name), visit);
+      }
       return;
     case "src32":
       collectStorageVarUses(value.source, visit);

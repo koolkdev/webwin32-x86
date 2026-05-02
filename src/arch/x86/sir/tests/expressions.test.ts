@@ -120,13 +120,13 @@ test("expression selector keeps condition reads before later flag boundaries", (
   deepStrictEqual(
     buildSirExpressionProgram([
       { op: "flags.materialize", mask: SIR_ALU_FLAG_MASKS.ZF },
-      { op: "condition", dst: v(0), cc: "E" },
+      { op: "aluFlags.condition", dst: v(0), cc: "E" },
       { op: "flags.boundary", mask: SIR_ALU_FLAG_MASK },
       { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
     ]),
     [
       { op: "flags.materialize", mask: SIR_ALU_FLAG_MASKS.ZF },
-      { op: "let32", dst: v(0), value: { kind: "condition", cc: "E" } },
+      { op: "let32", dst: v(0), value: { kind: "aluFlags.condition", cc: "E" } },
       { op: "flags.boundary", mask: SIR_ALU_FLAG_MASK },
       { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
     ]

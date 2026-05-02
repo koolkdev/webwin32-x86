@@ -1,6 +1,6 @@
 import { x86ArithmeticFlagMask } from "../isa/flags.js";
 import type { X86ArithmeticFlag } from "../isa/flags.js";
-import type { FlagProducerName, SirFlagSetOp, ValueRef } from "./types.js";
+import type { ConditionCode, FlagProducerName, SirFlagProducerConditionOp, SirFlagSetOp, ValueRef, VarRef } from "./types.js";
 
 export type FlagName = X86ArithmeticFlag;
 
@@ -165,6 +165,22 @@ export function createSirFlagSetOp(
     writtenMask: flagProducer.writtenMask,
     undefMask: flagProducer.undefMask,
     inputs
+  };
+}
+
+export function createSirFlagProducerConditionOp(
+  dst: VarRef,
+  cc: ConditionCode,
+  descriptor: SirFlagSetOp
+): SirFlagProducerConditionOp {
+  return {
+    op: "flagProducer.condition",
+    dst,
+    cc,
+    producer: descriptor.producer,
+    writtenMask: descriptor.writtenMask,
+    undefMask: descriptor.undefMask,
+    inputs: descriptor.inputs
   };
 }
 

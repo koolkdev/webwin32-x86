@@ -167,7 +167,7 @@ export class SirEmitter implements SirBuilder {
   condition(cc: ConditionCode): VarRef {
     const dst = this.#allocVar();
 
-    this.#push({ op: "condition", dst, cc });
+    this.#push({ op: "aluFlags.condition", dst, cc });
     return dst;
   }
 

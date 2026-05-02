@@ -131,7 +131,7 @@ test("jcc forms are concrete specs with condition-specific semantics", () => {
   deepStrictEqual(near.format, { syntax: "jne {0}" });
 
   const program = buildSir(short.semantics as SemanticTemplate);
-  deepStrictEqual(program[0], { op: "condition", dst: { kind: "var", id: 0 }, cc: "NE" });
+  deepStrictEqual(program[0], { op: "aluFlags.condition", dst: { kind: "var", id: 0 }, cc: "NE" });
   strictEqual(program.at(-1)?.op, "conditionalJump");
 });
 

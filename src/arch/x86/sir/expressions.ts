@@ -1,5 +1,11 @@
+import {
+  flagProducerConditionInputNames,
+  requiredFlagProducerConditionInput,
+  type SirFlagProducerConditionDescriptor
+} from "./flag-conditions.js";
 import type {
   ConditionCode,
+  SirFlagProducerConditionOp,
   SirFlagSetOp,
   OperandRef,
   RegRef,
@@ -18,7 +24,15 @@ export type SirValueExpr =
   | ValueRef
   | Readonly<{ kind: "src32"; source: SirStorageExpr }>
   | Readonly<{ kind: "address32"; operand: OperandRef }>
-  | Readonly<{ kind: "condition"; cc: ConditionCode }>
+  | Readonly<{ kind: "aluFlags.condition"; cc: ConditionCode }>
+  | Readonly<{
+      kind: "flagProducer.condition";
+      cc: ConditionCode;
+      producer: SirFlagProducerConditionOp["producer"];
+      writtenMask: SirFlagProducerConditionOp["writtenMask"];
+      undefMask: SirFlagProducerConditionOp["undefMask"];
+      inputs: Readonly<Record<string, ValueRef>>;
+    }>
   | Readonly<{ kind: "i32.add"; a: SirValueExpr; b: SirValueExpr }>
   | Readonly<{ kind: "i32.sub"; a: SirValueExpr; b: SirValueExpr }>
   | Readonly<{ kind: "i32.xor"; a: SirValueExpr; b: SirValueExpr }>
@@ -83,8 +97,18 @@ class ExpressionBuilder {
         case "i32.and":
           this.#defineValue(op.dst, { kind: op.op, a: this.#valueExpr(op.a), b: this.#valueExpr(op.b) }, true);
           break;
-        case "condition":
-          this.#defineValue(op.dst, { kind: "condition", cc: op.cc }, false);
+        case "aluFlags.condition":
+          this.#defineValue(op.dst, { kind: "aluFlags.condition", cc: op.cc }, false);
+          break;
+        case "flagProducer.condition":
+          this.#defineValue(op.dst, {
+            kind: "flagProducer.condition",
+            cc: op.cc,
+            producer: op.producer,
+            writtenMask: op.writtenMask,
+            undefMask: op.undefMask,
+            inputs: this.#materializedFlagProducerConditionInputs(op)
+          }, true);
           break;
         case "flags.set":
           this.#ops.push({
@@ -153,6 +177,15 @@ class ExpressionBuilder {
     return materialized;
   }
 
+  #materializedFlagProducerConditionInputs(op: SirFlagProducerConditionDescriptor): Readonly<Record<string, ValueRef>> {
+    return Object.fromEntries(
+      flagProducerConditionInputNames(op).map((name) => [
+        name,
+        this.#materializedValue(requiredFlagProducerConditionInput(op, name))
+      ])
+    );
+  }
+
   #storageExpr(storage: StorageRef): SirStorageExpr {
     switch (storage.kind) {
       case "operand":
@@ -196,8 +229,13 @@ function countVarUses(program: SirProgram): Map<number, number> {
         break;
       case "address32":
       case "const32":
-      case "condition":
+      case "aluFlags.condition":
       case "next":
+        break;
+      case "flagProducer.condition":
+        for (const name of flagProducerConditionInputNames(op)) {
+          countValueUse(counts, requiredFlagProducerConditionInput(op, name));
+        }
         break;
       case "i32.add":
       case "i32.sub":

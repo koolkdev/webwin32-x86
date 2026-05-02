@@ -31,7 +31,7 @@ test("JIT flag state materializes only requested pending flags", () => {
     emitValue: (value) => emitValueExpr(body, value)
   });
   flags.emitMaterialize(SIR_ALU_FLAG_MASKS.ZF);
-  flags.emitCondition("E");
+  flags.emitAluFlagsCondition("E");
   body.localSet(conditionLocal).end();
 
   const opcodes = wasmBodyOpcodes(body.encode());

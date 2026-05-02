@@ -3,8 +3,8 @@ import { test } from "node:test";
 
 import { buildSir } from "../builder.js";
 import { SIR_ALU_FLAG_MASK, SIR_ALU_FLAG_MASKS } from "../flag-analysis.js";
-import { insertFlagBoundaries, insertFlagMaterializations, pruneDeadFlagSets } from "../flag-optimization.js";
-import { createSirFlagSetOp } from "../flags.js";
+import { specializeAluFlagsConditions, insertFlagBoundaries, insertFlagMaterializations, pruneDeadFlagSets } from "../flag-optimization.js";
+import { createSirFlagProducerConditionOp, createSirFlagSetOp } from "../flags.js";
 
 test("flag optimization prunes flag producers with no live writes", () => {
   const program = buildSir((s) => {
@@ -129,6 +129,127 @@ test("flag optimization inserts materialization before requested exits", () => {
     op: "flags.materialize",
     mask: SIR_ALU_FLAG_MASK
   });
+});
+
+test("flag optimization specializes sub32 conditions into direct flag conditions", () => {
+  const program = buildSir((s) => {
+    const left = s.get32(s.reg32("eax"));
+    const right = s.get32(s.reg32("ebx"));
+    const result = s.i32Sub(left, right);
+
+    s.setFlags("sub32", { left, right, result });
+    s.conditionalJump(s.condition("E"), s.get32(s.operand(0)), s.nextEip());
+  });
+  const optimized = specializeAluFlagsConditions(program);
+  const flagSet = program.find((op) => op.op === "flags.set");
+  const conditionIndex = optimized.program.findIndex((op) => op.op === "flagProducer.condition");
+
+  if (flagSet === undefined || flagSet.op !== "flags.set") {
+    throw new Error("missing test flags.set");
+  }
+
+  strictEqual(optimized.specializedCount, 1);
+  deepStrictEqual(
+    optimized.program[conditionIndex],
+    createSirFlagProducerConditionOp({ kind: "var", id: 3 }, "E", flagSet)
+  );
+});
+
+test("flag optimization specializes all supported sub32 condition codes", () => {
+  const conditionCodes = ["E", "NE", "B", "AE", "L", "GE", "LE", "G"] as const;
+
+  for (const cc of conditionCodes) {
+    const program = buildSir((s) => {
+      const left = s.get32(s.reg32("eax"));
+      const right = s.get32(s.reg32("ebx"));
+      const result = s.i32Sub(left, right);
+
+      s.setFlags("sub32", { left, right, result });
+      s.conditionalJump(s.condition(cc), s.get32(s.operand(0)), s.nextEip());
+    });
+    const optimized = specializeAluFlagsConditions(program);
+    const condition = optimized.program.find((op) => op.op === "flagProducer.condition");
+
+    strictEqual(optimized.specializedCount, 1);
+    strictEqual(condition?.op, "flagProducer.condition");
+    strictEqual(condition?.cc, cc);
+    strictEqual(condition?.producer, "sub32");
+  }
+});
+
+test("flag optimization specializes conditions from the per-flag current producer", () => {
+  const program = buildSir((s) => {
+    const cmpLeft = s.get32(s.reg32("eax"));
+    const cmpRight = s.get32(s.reg32("ebx"));
+    const cmpResult = s.i32Sub(cmpLeft, cmpRight);
+    const incLeft = s.get32(s.reg32("eax"));
+    const incResult = s.i32Add(incLeft, s.const32(1));
+
+    s.setFlags("sub32", { left: cmpLeft, right: cmpRight, result: cmpResult });
+    s.setFlags("inc32", { left: incLeft, result: incResult });
+    s.conditionalJump(s.condition("B"), s.get32(s.operand(0)), s.nextEip());
+  });
+  const optimized = specializeAluFlagsConditions(program);
+  const subFlags = program.find((op) => op.op === "flags.set" && op.producer === "sub32");
+  const flagProducerCondition = optimized.program.find((op) => op.op === "flagProducer.condition");
+
+  if (subFlags === undefined || subFlags.op !== "flags.set") {
+    throw new Error("missing test sub32 flags.set");
+  }
+
+  strictEqual(optimized.specializedCount, 1);
+  deepStrictEqual(
+    flagProducerCondition,
+    createSirFlagProducerConditionOp({ kind: "var", id: 5 }, "B", subFlags)
+  );
+});
+
+test("flag optimization does not specialize CF conditions from INC alone", () => {
+  const program = buildSir((s) => {
+    const incLeft = s.get32(s.reg32("eax"));
+    const incResult = s.i32Add(incLeft, s.const32(1));
+
+    s.setFlags("inc32", { left: incLeft, result: incResult });
+    s.conditionalJump(s.condition("B"), s.get32(s.operand(0)), s.nextEip());
+  });
+  const optimized = specializeAluFlagsConditions(program);
+
+  strictEqual(optimized.specializedCount, 0);
+  strictEqual(optimized.program.some((op) => op.op === "flagProducer.condition"), false);
+});
+
+test("flag optimization does not specialize conditions from overwritten compare flags", () => {
+  const program = buildSir((s) => {
+    const cmpLeft = s.get32(s.reg32("eax"));
+    const cmpRight = s.get32(s.reg32("ebx"));
+    const cmpResult = s.i32Sub(cmpLeft, cmpRight);
+    const incLeft = s.get32(s.reg32("eax"));
+    const incResult = s.i32Add(incLeft, s.const32(1));
+
+    s.setFlags("sub32", { left: cmpLeft, right: cmpRight, result: cmpResult });
+    s.setFlags("inc32", { left: incLeft, result: incResult });
+    s.conditionalJump(s.condition("E"), s.get32(s.operand(0)), s.nextEip());
+  });
+  const optimized = specializeAluFlagsConditions(program);
+
+  strictEqual(optimized.specializedCount, 0);
+  strictEqual(optimized.program.some((op) => op.op === "flagProducer.condition"), false);
+});
+
+test("flag optimization keeps specialized conditions independent of pruned flag producers", () => {
+  const program = buildSir((s) => {
+    const left = s.get32(s.reg32("eax"));
+    const right = s.get32(s.reg32("ebx"));
+    const result = s.i32Sub(left, right);
+
+    s.setFlags("sub32", { left, right, result });
+    s.conditionalJump(s.condition("E"), s.get32(s.operand(0)), s.nextEip());
+  });
+  const specialized = specializeAluFlagsConditions(program);
+  const pruned = pruneDeadFlagSets(specialized.program);
+
+  strictEqual(pruned.program.some((op) => op.op === "flags.set"), false);
+  strictEqual(pruned.program.some((op) => op.op === "flagProducer.condition"), true);
 });
 
 test("flag optimization inserts explicit boundary operations before requested points", () => {

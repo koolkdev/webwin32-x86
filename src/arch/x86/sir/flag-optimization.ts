@@ -1,12 +1,16 @@
 import {
   analyzeSirFlagLiveness,
+  conditionFlagReadMask,
+  SIR_ALU_FLAG_MASKS,
   SIR_FLAG_MASK_NONE,
   sirIndexedFlagPointMasks,
   sirOpFlagEffect,
   type SirFlagLivenessOptions
 } from "./flag-analysis.js";
+import { canUseFlagProducerCondition } from "./flag-conditions.js";
+import { createSirFlagProducerConditionOp } from "./flags.js";
 import type { SirOptimizationPass, SirOptimizationResult } from "./optimization.js";
-import type { FlagMask, SirOp, SirProgram } from "./types.js";
+import type { FlagMask, SirFlagSetOp, SirOp, SirProgram } from "./types.js";
 
 export type DeadFlagSetPruningOptions = SirFlagLivenessOptions;
 
@@ -46,6 +50,14 @@ export type SirFlagBoundaryInsertionResult = SirOptimizationResult & Readonly<{
   insertedCount: number;
 }>;
 
+export type SirAluFlagsConditionSpecializationResult = SirOptimizationResult & Readonly<{
+  specializedCount: number;
+}>;
+
+type FlagSource =
+  | Readonly<{ kind: "incoming" }>
+  | Readonly<{ kind: "producer"; descriptor: SirFlagSetOp }>;
+
 export function createDeadFlagSetPruningPass(
   options: DeadFlagSetPruningOptions = {}
 ): SirOptimizationPass {
@@ -62,6 +74,10 @@ export function createFlagBoundaryInsertionPass(
   options: SirFlagBoundaryInsertionOptions = {}
 ): SirOptimizationPass {
   return (program) => insertFlagBoundaries(program, options);
+}
+
+export function createAluFlagsConditionSpecializationPass(): SirOptimizationPass {
+  return specializeAluFlagsConditions;
 }
 
 export function pruneDeadFlagSets(
@@ -163,6 +179,40 @@ export function insertFlagBoundaries(
   return { program: optimized, insertedCount };
 }
 
+export function specializeAluFlagsConditions(program: SirProgram): SirAluFlagsConditionSpecializationResult {
+  const optimized: SirOp[] = [];
+  const flagSources = new Map<number, FlagSource>(
+    aluFlagMasks.map((mask) => [mask, incomingFlagSource])
+  );
+  let specializedCount = 0;
+
+  for (let index = 0; index < program.length; index += 1) {
+    const op = program[index];
+
+    if (op === undefined) {
+      throw new Error(`missing SIR op while specializing flag conditions: ${index}`);
+    }
+
+    if (op.op === "aluFlags.condition") {
+      const descriptor = commonProducerSource(flagSources, conditionFlagReadMask(op.cc));
+
+      if (descriptor !== undefined && canUseFlagProducerCondition(descriptor, op.cc)) {
+        optimized.push(createSirFlagProducerConditionOp(op.dst, op.cc, descriptor));
+        specializedCount += 1;
+        continue;
+      }
+    }
+
+    optimized.push(op);
+
+    if (op.op === "flags.set") {
+      setSource(flagSources, op.writtenMask | op.undefMask, { kind: "producer", descriptor: op });
+    }
+  }
+
+  return { program: optimized, specializedCount };
+}
+
 function flagMaterializationPointMasks(
   program: SirProgram,
   points: readonly SirFlagMaterializationPoint[]
@@ -189,3 +239,41 @@ function resolveFlagPoints<Point>(
 ): readonly Point[] {
   return typeof points === "function" ? points(program) : points ?? [];
 }
+
+function commonProducerSource(
+  flagSources: ReadonlyMap<number, FlagSource>,
+  mask: FlagMask
+): SirFlagSetOp | undefined {
+  let descriptor: SirFlagSetOp | undefined;
+
+  for (const flagMask of aluFlagMasks) {
+    if ((mask & flagMask) === 0) {
+      continue;
+    }
+
+    const source = flagSources.get(flagMask);
+
+    if (source === undefined || source.kind !== "producer") {
+      return undefined;
+    }
+
+    if (descriptor === undefined) {
+      descriptor = source.descriptor;
+    } else if (descriptor !== source.descriptor) {
+      return undefined;
+    }
+  }
+
+  return descriptor;
+}
+
+function setSource(flagSources: Map<number, FlagSource>, mask: FlagMask, source: FlagSource): void {
+  for (const flagMask of aluFlagMasks) {
+    if ((mask & flagMask) !== 0) {
+      flagSources.set(flagMask, source);
+    }
+  }
+}
+
+const aluFlagMasks = Object.values(SIR_ALU_FLAG_MASKS);
+const incomingFlagSource = { kind: "incoming" } as const satisfies FlagSource;

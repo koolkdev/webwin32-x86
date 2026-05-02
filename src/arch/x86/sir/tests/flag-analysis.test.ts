@@ -70,7 +70,7 @@ test("flag liveness keeps only flags read by a later condition", () => {
   });
   const liveness = analyzeSirFlagLiveness(program);
   const flagsSetIndex = program.findIndex((op) => op.op === "flags.set");
-  const conditionIndex = program.findIndex((op) => op.op === "condition");
+  const conditionIndex = program.findIndex((op) => op.op === "aluFlags.condition");
 
   deepStrictEqual(liveness[flagsSetIndex], {
     reads: SIR_FLAG_MASK_NONE,

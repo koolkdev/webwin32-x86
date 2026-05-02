@@ -3,6 +3,7 @@ import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";
 import { lowerSirToWasm } from "../sir/lower.js";
+import { emitFlagProducerCondition } from "../sir/conditions.js";
 import {
   emitJitConditionalJump,
   emitJitControlExit,
@@ -59,7 +60,8 @@ export function lowerSirWithJitContext(program: SirProgram, context: JitSirBlock
       jitContext.state.flags.emitSet(descriptor, helpers),
     emitMaterializeFlags: (mask) => jitContext.state.flags.emitMaterialize(mask),
     emitBoundaryFlags: (mask) => jitContext.state.flags.emitBoundary(mask),
-    emitCondition: (cc) => jitContext.state.flags.emitCondition(cc),
+    emitAluFlagsCondition: (cc) => jitContext.state.flags.emitAluFlagsCondition(cc),
+    emitFlagProducerCondition: (condition, helpers) => emitFlagProducerCondition(jitContext.body, condition, helpers),
     emitNext: () => emitJitNext(jitContext),
     emitNextEip: () => emitJitNextEip(jitContext),
     emitJump: (target, helpers) => emitJitControlExit(jitContext, target, ExitReason.JUMP, helpers),

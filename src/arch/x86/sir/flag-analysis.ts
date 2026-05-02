@@ -98,7 +98,9 @@ export function sirOpFlagEffect(op: SirOp): SirFlagOpEffect {
         writes: op.writtenMask,
         undefines: op.undefMask
       };
-    case "condition":
+    case "flagProducer.condition":
+      return noFlagEffect;
+    case "aluFlags.condition":
       return {
         reads: conditionFlagReadMask(op.cc),
         writes: SIR_FLAG_MASK_NONE,

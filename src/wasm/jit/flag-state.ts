@@ -8,7 +8,7 @@ import type { ConditionCode, SirFlagSetOp, ValueRef } from "../../arch/x86/sir/t
 import { i32 } from "../../core/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
-import { emitCondition } from "../sir/conditions.js";
+import { emitAluFlagsCondition } from "../sir/conditions.js";
 import { wasmSirLocalAluFlagsStorage } from "../sir/alu-flags.js";
 import { emitSetFlags } from "../sir/flags.js";
 import type { WasmSirEmitHelpers } from "../sir/lower.js";
@@ -37,7 +37,7 @@ export type JitFlagState = Readonly<{
   emitSet(descriptor: SirFlagSetOp, helpers: WasmSirEmitHelpers): void;
   emitMaterialize(mask: number): void;
   emitBoundary(mask: number): void;
-  emitCondition(cc: ConditionCode): void;
+  emitAluFlagsCondition(cc: ConditionCode): void;
   assertNoPending(): void;
 }>;
 
@@ -109,9 +109,9 @@ export function createJitFlagState(
       });
       aluFlagsLocalDirty = false;
     },
-    emitCondition: (cc) => {
+    emitAluFlagsCondition: (cc) => {
       assertMaterialized(conditionFlagReadMask(cc), `JIT condition ${cc}`);
-      emitCondition(body, aluFlags, cc);
+      emitAluFlagsCondition(body, aluFlags, cc);
     },
     assertNoPending
   };

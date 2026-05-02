@@ -1,4 +1,5 @@
 import { assertSirAluFlagMask, SIR_FLAG_MASK_NONE } from "./flag-analysis.js";
+import { canUseFlagProducerCondition, type SirFlagProducerDescriptor } from "./flag-conditions.js";
 import { FLAG_PRODUCERS } from "./flags.js";
 import type { FlagMask, SirOp, SirProgram, StorageRef, ValueRef, VarRef } from "./types.js";
 
@@ -60,7 +61,13 @@ function validateOpUses(
       validateValueRef(op.b, definedVars);
       break;
     case "flags.set":
-      validateFlagSet(op, definedVars);
+      validateFlagDescriptor(op, definedVars, "flags.set");
+      break;
+    case "flagProducer.condition":
+      validateFlagDescriptor(op, definedVars, "flagProducer.condition");
+      validateFlagProducerCondition(op);
+      break;
+    case "aluFlags.condition":
       break;
     case "flags.materialize":
     case "flags.boundary":
@@ -103,7 +110,8 @@ function opDst(op: SirOp): VarRef | undefined {
     case "i32.sub":
     case "i32.xor":
     case "i32.and":
-    case "condition":
+    case "aluFlags.condition":
+    case "flagProducer.condition":
       return op.dst;
     default:
       return undefined;
@@ -139,33 +147,34 @@ function validateAluFlagOpMask(mask: FlagMask, op: "flags.materialize" | "flags.
   }
 }
 
-function validateFlagSet(
-  op: Extract<SirOp, { op: "flags.set" }>,
-  definedVars: ReadonlySet<number>
+function validateFlagDescriptor(
+  op: SirFlagProducerDescriptor,
+  definedVars: ReadonlySet<number>,
+  label: "flags.set" | "flagProducer.condition"
 ): void {
   const producer = FLAG_PRODUCERS[op.producer];
   const expectedInputs: ReadonlySet<string> = new Set(producer.inputs);
 
-  assertSirAluFlagMask(op.writtenMask, "flags.set writtenMask");
-  assertSirAluFlagMask(op.undefMask, "flags.set undefMask");
+  assertSirAluFlagMask(op.writtenMask, `${label} writtenMask`);
+  assertSirAluFlagMask(op.undefMask, `${label} undefMask`);
 
   if (op.writtenMask !== producer.writtenMask) {
-    throw new Error(`flags.set ${op.producer} writtenMask does not match producer metadata`);
+    throw new Error(`${label} ${op.producer} writtenMask does not match producer metadata`);
   }
 
   if (op.undefMask !== producer.undefMask) {
-    throw new Error(`flags.set ${op.producer} undefMask does not match producer metadata`);
+    throw new Error(`${label} ${op.producer} undefMask does not match producer metadata`);
   }
 
   if ((op.undefMask & ~op.writtenMask) !== 0) {
-    throw new Error(`flags.set ${op.producer} undefMask must be contained in writtenMask`);
+    throw new Error(`${label} ${op.producer} undefMask must be contained in writtenMask`);
   }
 
   for (const inputName of producer.inputs) {
     const value = op.inputs[inputName];
 
     if (value === undefined) {
-      throw new Error(`flags.set ${op.producer} is missing input '${inputName}'`);
+      throw new Error(`${label} ${op.producer} is missing input '${inputName}'`);
     }
 
     validateValueRef(value, definedVars);
@@ -173,8 +182,14 @@ function validateFlagSet(
 
   for (const inputName of Object.keys(op.inputs)) {
     if (!expectedInputs.has(inputName)) {
-      throw new Error(`flags.set ${op.producer} has unexpected input '${inputName}'`);
+      throw new Error(`${label} ${op.producer} has unexpected input '${inputName}'`);
     }
+  }
+}
+
+function validateFlagProducerCondition(op: Extract<SirOp, { op: "flagProducer.condition" }>): void {
+  if (!canUseFlagProducerCondition(op, op.cc)) {
+    throw new Error(`flagProducer.condition ${op.producer}/${op.cc} is not supported`);
   }
 }
 
