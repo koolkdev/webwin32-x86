@@ -28,3 +28,14 @@ export function popSemantic(): SemanticTemplate {
     s.set32(s.operand(0), pop32(s));
   };
 }
+
+export function leaveSemantic(): SemanticTemplate {
+  return (s) => {
+    const frame = s.get32(s.reg32("ebp"));
+    const savedFrame = s.get32(s.mem32(frame));
+    const nextEsp = s.i32Add(frame, 4);
+
+    s.set32(s.reg32("esp"), nextEsp);
+    s.set32(s.reg32("ebp"), savedFrame);
+  };
+}

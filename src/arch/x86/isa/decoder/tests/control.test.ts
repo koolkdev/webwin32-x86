@@ -128,6 +128,13 @@ const fixtures: readonly DecoderFixture[] = [
     id: "pop.r32"
   },
   {
+    name: "leave",
+    bytes: [0xc9],
+    mnemonic: "leave",
+    id: "leave.near",
+    format: "leave"
+  },
+  {
     name: "push imm32",
     bytes: [0x68, 0x44, 0x33, 0x22, 0x11],
     mnemonic: "push",

@@ -9,7 +9,7 @@ import type { InstructionSpec } from "../../schema/types.js";
 
 test("x86-32 core registers the initial instruction surface", () => {
   strictEqual(X86_32_CORE.name, "x86-32-core");
-  strictEqual(X86_32_CORE.instructions.length, 88);
+  strictEqual(X86_32_CORE.instructions.length, 89);
 
   const ids = X86_32_CORE.instructions.map((spec) => spec.id);
 
@@ -33,6 +33,7 @@ test("x86-32 core registers the initial instruction surface", () => {
     "test.rm32_imm32",
     "push.r32",
     "pop.r32",
+    "leave.near",
     "jmp.rel8",
     "call.rm32",
     "ret.near",
@@ -43,6 +44,14 @@ test("x86-32 core registers the initial instruction surface", () => {
   ]) {
     strictEqual(ids.includes(id), true, `missing ${id}`);
   }
+});
+
+test("leave is a no-operand stack frame instruction", () => {
+  const spec = instruction("leave.near");
+
+  deepStrictEqual(spec.opcode, [0xc9]);
+  strictEqual(spec.operands, undefined);
+  deepStrictEqual(spec.format, { syntax: "leave" });
 });
 
 test("slash-r forms use ModRM operands without an explicit ModRM match", () => {

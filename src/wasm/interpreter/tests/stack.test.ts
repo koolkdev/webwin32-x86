@@ -105,6 +105,25 @@ test("executes POP ESP with popped value as final ESP", async () => {
   assertCompletedInstruction(state, startAddress + 1, 8);
 });
 
+test("executes LEAVE by restoring EBP and ESP from the frame", async () => {
+  const initialState = createCpuState({
+    ebp: 0x40,
+    esp: 0x20,
+    eip: startAddress,
+    instructionCount: 7
+  });
+
+  const { state } = await executeStackInstruction(
+    [0xc9],
+    initialState,
+    (guest) => guest.setUint32(0x40, 0x5566_7788, true)
+  );
+
+  strictEqual(state.ebp, 0x5566_7788);
+  strictEqual(state.esp, 0x44);
+  assertCompletedInstruction(state, startAddress + 1, 8);
+});
+
 test("executes PUSH [ESP] by reading the source before writing the new stack slot", async () => {
   const initialState = createCpuState({
     esp: 0x40,

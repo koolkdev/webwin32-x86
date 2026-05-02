@@ -217,6 +217,19 @@ test("jit SIR block lowers memory mov with static effective addresses", async ()
   strictEqual(storeImmediate.guestView.getUint32(0x200c, true), 0x1234_5678);
 });
 
+test("jit SIR block lowers leave", async () => {
+  const result = await runJitSirBlock(
+    [0xc9],
+    createCpuState({ ebp: 0x20, esp: 0x100, eip: startAddress }),
+    [{ address: 0x20, bytes: [0x78, 0x56, 0x34, 0x12] }]
+  );
+
+  strictEqual(result.state.ebp, 0x1234_5678);
+  strictEqual(result.state.esp, 0x24);
+  strictEqual(result.state.eip, startAddress + 1);
+  strictEqual(result.state.instructionCount, 1);
+});
+
 test("jit SIR block keeps deferred flags live after memory-store fault branch emission", async () => {
   const result = await runJitSirBlock([
     0x01, 0x18, // add [eax], ebx

@@ -59,6 +59,43 @@ test("pop oob fault is atomic", () => {
   deepStrictEqual(readGuestBytes(memory, 0, memory.byteLength), beforeBytes);
 });
 
+test("leave restores caller frame", () => {
+  const memory = new ArrayBufferGuestMemory(0x40);
+  const state = createCpuState({ ebp: 0x20, esp: 0x38, eip: startAddress });
+
+  writeGuestU32(memory, 0x20, 0x1234_5678);
+
+  const result = run(state, [0xc9], memory);
+
+  strictEqual(result.stopReason, StopReason.NONE);
+  strictEqual(state.ebp, 0x1234_5678);
+  strictEqual(state.esp, 0x24);
+  strictEqual(state.eip, startAddress + 1);
+  strictEqual(state.instructionCount, 1);
+});
+
+test("leave pop fault is atomic", () => {
+  const memory = new ArrayBufferGuestMemory(0x40);
+  const state = createCpuState({ eax: 0x1234_5678, ebp: 0x3e, esp: 0x20, eip: startAddress, instructionCount: 7 });
+
+  fillGuestMemory(memory, 0xaa);
+
+  const beforeState = cloneCpuState(state);
+  const beforeBytes = readGuestBytes(memory, 0, memory.byteLength);
+  const result = run(state, [0xc9], memory);
+
+  strictEqual(result.stopReason, StopReason.MEMORY_FAULT);
+  strictEqual(result.faultAddress, 0x3e);
+  strictEqual(result.faultSize, 4);
+  strictEqual(result.faultOperation, "read");
+  strictEqual(state.eax, beforeState.eax);
+  strictEqual(state.ebp, beforeState.ebp);
+  strictEqual(state.esp, beforeState.esp);
+  strictEqual(state.eip, beforeState.eip);
+  strictEqual(state.instructionCount, beforeState.instructionCount);
+  deepStrictEqual(readGuestBytes(memory, 0, memory.byteLength), beforeBytes);
+});
+
 test("push oob fault is atomic", () => {
   const memory = new ArrayBufferGuestMemory(0x40);
   const state = createCpuState({ eax: 0x1234_5678, esp: 0x42, eip: startAddress, instructionCount: 7 });

@@ -9,7 +9,7 @@ import { cmpSemantic } from "../cmp.js";
 import { leaSemantic } from "../lea.js";
 import { intSemantic, nopSemantic } from "../misc.js";
 import { movSemantic } from "../mov.js";
-import { popSemantic } from "../stack.js";
+import { leaveSemantic, popSemantic } from "../stack.js";
 import { testSemantic } from "../test.js";
 
 const v = (id: number) => ({ kind: "var" as const, id });
@@ -120,6 +120,17 @@ test("pop semantic expands to generic stack get/set operations", () => {
     { op: "i32.add", dst: v(2), a: v(0), b: c32(4) },
     { op: "set32", target: reg("esp"), value: v(2) },
     { op: "set32", target: op(0), value: v(1) },
+    { op: "next" }
+  ]);
+});
+
+test("leave semantic reads saved frame before updating esp and ebp", () => {
+  deepStrictEqual(buildSir(leaveSemantic()), [
+    { op: "get32", dst: v(0), source: { kind: "reg", reg: "ebp" } },
+    { op: "get32", dst: v(1), source: mem(v(0)) },
+    { op: "i32.add", dst: v(2), a: v(0), b: c32(4) },
+    { op: "set32", target: reg("esp"), value: v(2) },
+    { op: "set32", target: { kind: "reg", reg: "ebp" }, value: v(1) },
     { op: "next" }
   ]);
 });

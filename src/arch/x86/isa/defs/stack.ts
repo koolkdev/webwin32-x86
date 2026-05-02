@@ -1,7 +1,7 @@
 import { form, mnemonic } from "../schema/builders.js";
 import { imm, modrmRm, opReg } from "../schema/operands.js";
 import { opcodePlusReg } from "../schema/opcodes.js";
-import { popSemantic, pushSemantic } from "../semantics/stack.js";
+import { leaveSemantic, popSemantic, pushSemantic } from "../semantics/stack.js";
 
 export const PUSH = mnemonic("push", [
   // 50+rd: PUSH r32
@@ -42,5 +42,14 @@ export const POP = mnemonic("pop", [
     operands: [opReg()],
     format: { syntax: "pop {0}" },
     semantics: popSemantic()
+  })
+]);
+
+export const LEAVE = mnemonic("leave", [
+  // C9: LEAVE
+  form("near", {
+    opcode: [0xc9],
+    format: { syntax: "leave" },
+    semantics: leaveSemantic()
   })
 ]);
