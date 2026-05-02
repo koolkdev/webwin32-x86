@@ -7,8 +7,8 @@ import {
   getFlag,
   supportedEflagsMask,
   u32
-} from "../../../x86/state/cpu-state.js";
-import { executeDirectInstruction } from "../execute.js";
+} from "#x86/state/cpu-state.js";
+import { executeDirectInstruction } from "#backends/direct/execute.js";
 import { decodeBytes, ok, startAddress } from "./helpers.js";
 
 test("add_wrap_sets_cf_zf_af_pf", () => {

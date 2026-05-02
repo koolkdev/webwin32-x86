@@ -1,6 +1,6 @@
-import type { RuntimeCodeMap } from "../program/code-map.js";
-import type { WasmHostMemories } from "../../backends/wasm/host/memories.js";
-import { runResultFromState, StopReason } from "../../x86/execution/run-result.js";
+import type { RuntimeCodeMap } from "#runtime/program/code-map.js";
+import type { WasmHostMemories } from "#backends/wasm/host/memories.js";
+import { runResultFromState, StopReason } from "#x86/execution/run-result.js";
 import type { InstructionBudget } from "./budget.js";
 import { engineDone, type RuntimeEngineResult } from "./engine-result.js";
 import { RuntimeMode, type RuntimeMode as RuntimeModeValue } from "./mode.js";

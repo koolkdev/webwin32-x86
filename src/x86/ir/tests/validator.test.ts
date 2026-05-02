@@ -1,15 +1,15 @@
 import { doesNotThrow, throws } from "node:assert";
 import { test } from "node:test";
 
-import { aluSemantic } from "../../isa/semantics/alu.js";
-import { jccSemantic } from "../../isa/semantics/control.js";
-import { cmpSemantic } from "../../isa/semantics/cmp.js";
-import { leaSemantic } from "../../isa/semantics/lea.js";
-import { intSemantic } from "../../isa/semantics/misc.js";
-import { movSemantic } from "../../isa/semantics/mov.js";
-import { buildIr, const32, operand, irVar } from "../build/builder.js";
-import { createIrFlagProducerConditionOp, createIrFlagSetOp } from "../model/flags.js";
-import { validateIrProgram } from "../passes/validator.js";
+import { aluSemantic } from "#x86/isa/semantics/alu.js";
+import { jccSemantic } from "#x86/isa/semantics/control.js";
+import { cmpSemantic } from "#x86/isa/semantics/cmp.js";
+import { leaSemantic } from "#x86/isa/semantics/lea.js";
+import { intSemantic } from "#x86/isa/semantics/misc.js";
+import { movSemantic } from "#x86/isa/semantics/mov.js";
+import { buildIr, const32, operand, irVar } from "#x86/ir/build/builder.js";
+import { createIrFlagProducerConditionOp, createIrFlagSetOp } from "#x86/ir/model/flags.js";
+import { validateIrProgram } from "#x86/ir/passes/validator.js";
 
 test("validator accepts representative generated semantic templates", () => {
   doesNotThrow(() => validateIrProgram(buildIr(movSemantic()), { operandCount: 2 }));

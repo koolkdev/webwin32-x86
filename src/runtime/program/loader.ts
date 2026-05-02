@@ -1,4 +1,4 @@
-import type { GuestMemory, MemoryFault } from "../../x86/memory/guest-memory.js";
+import type { GuestMemory, MemoryFault } from "#x86/memory/guest-memory.js";
 import type { RuntimeProgramRegion } from "./regions.js";
 
 export function loadProgramRegions(

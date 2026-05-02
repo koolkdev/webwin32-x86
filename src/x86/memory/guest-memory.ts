@@ -1,4 +1,4 @@
-import type { FaultOperation } from "../execution/run-result.js";
+import type { FaultOperation } from "#x86/execution/run-result.js";
 
 export type MemoryFault = Readonly<{
   faultAddress: number;

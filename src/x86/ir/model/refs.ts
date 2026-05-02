@@ -1,4 +1,4 @@
-import type { Reg32 } from "../../isa/types.js";
+import type { Reg32 } from "#x86/isa/types.js";
 import type {
   Const32Ref,
   MemRef,

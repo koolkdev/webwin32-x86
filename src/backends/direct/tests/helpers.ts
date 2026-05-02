@@ -3,12 +3,12 @@ import {
   type GuestMemory,
   type MemoryReadResult,
   type MemoryWriteResult
-} from "../../../x86/memory/guest-memory.js";
-import type { CpuState } from "../../../x86/state/cpu-state.js";
-import { runDirectInterpreter } from "../interpreter.js";
-import { startAddress } from "../../../x86/isa/decoder/tests/helpers.js";
+} from "#x86/memory/guest-memory.js";
+import type { CpuState } from "#x86/state/cpu-state.js";
+import { runDirectInterpreter } from "#backends/direct/interpreter.js";
+import { startAddress } from "#x86/isa/decoder/tests/helpers.js";
 
-export { bytes, decodeBytes, ok, startAddress } from "../../../x86/isa/decoder/tests/helpers.js";
+export { bytes, decodeBytes, ok, startAddress } from "#x86/isa/decoder/tests/helpers.js";
 
 export type RunIsaBytesOptions = Readonly<{
   baseAddress?: number;

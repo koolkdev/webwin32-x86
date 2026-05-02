@@ -1,9 +1,9 @@
 import { deepStrictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { optimizeIrProgram } from "../passes/optimization.js";
-import type { IrOptimizationPass } from "../passes/optimization.js";
-import type { IrProgram } from "../model/types.js";
+import { optimizeIrProgram } from "#x86/ir/passes/optimization.js";
+import type { IrOptimizationPass } from "#x86/ir/passes/optimization.js";
+import type { IrProgram } from "#x86/ir/model/types.js";
 
 const program = [
   { op: "get32", dst: { kind: "var", id: 0 }, source: { kind: "reg", reg: "eax" } },

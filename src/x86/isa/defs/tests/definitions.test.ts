@@ -1,11 +1,11 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { buildIr } from "../../../ir/build/builder.js";
-import type { SemanticTemplate } from "../../../ir/model/types.js";
-import { X86_32_CORE } from "../../index.js";
-import { expandInstructionSpec } from "../../schema/builders.js";
-import type { InstructionSpec } from "../../schema/types.js";
+import { buildIr } from "#x86/ir/build/builder.js";
+import type { SemanticTemplate } from "#x86/ir/model/types.js";
+import { X86_32_CORE } from "#x86/isa/index.js";
+import { expandInstructionSpec } from "#x86/isa/schema/builders.js";
+import type { InstructionSpec } from "#x86/isa/schema/types.js";
 
 test("x86-32 core registers the initial instruction surface", () => {
   strictEqual(X86_32_CORE.name, "x86-32-core");

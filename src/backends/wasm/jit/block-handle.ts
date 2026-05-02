@@ -1,8 +1,8 @@
-import type { IsaDecodedBlock } from "../../../x86/isa/decoder/decode-block.js";
-import { u32 } from "../../../x86/state/cpu-state.js";
-import { wasmBlockExportName, wasmImport } from "../abi.js";
-import { UnsupportedWasmCodegenError } from "../errors.js";
-import { decodeExit, type DecodedExit } from "../exit.js";
+import type { IsaDecodedBlock } from "#x86/isa/decoder/decode-block.js";
+import { u32 } from "#x86/state/cpu-state.js";
+import { wasmBlockExportName, wasmImport } from "#backends/wasm/abi.js";
+import { UnsupportedWasmCodegenError } from "#backends/wasm/errors.js";
+import { decodeExit, type DecodedExit } from "#backends/wasm/exit.js";
 import { buildJitIrBlock, encodeJitIrBlock } from "./block.js";
 
 export const wasmBlockExitEncoding = {

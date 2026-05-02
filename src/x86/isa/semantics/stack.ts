@@ -1,4 +1,4 @@
-import type { SemanticTemplate, IrBuilder, ValueInput, VarRef } from "../../ir/model/types.js";
+import type { SemanticTemplate, IrBuilder, ValueInput, VarRef } from "#x86/ir/model/types.js";
 
 export function push32(s: IrBuilder, value: ValueInput): void {
   const esp = s.get32(s.reg32("esp"));

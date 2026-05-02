@@ -1,7 +1,7 @@
-import type { Reg32 } from "../../../../x86/isa/types.js";
-import { reg32 } from "../../../../x86/isa/types.js";
-import type { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
-import { wasmValueType } from "../../encoder/types.js";
+import type { Reg32 } from "#x86/isa/types.js";
+import { reg32 } from "#x86/isa/types.js";
+import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { wasmValueType } from "#backends/wasm/encoder/types.js";
 
 type Reg32Locals = Readonly<Record<Reg32, number>>;
 

@@ -1,10 +1,10 @@
-import type { IsaDecodedInstruction } from "../../../x86/isa/decoder/types.js";
-import { validateIrProgram } from "../../../x86/ir/passes/validator.js";
-import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "../abi.js";
-import { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
-import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import { WasmModuleEncoder } from "../encoder/module.js";
-import { wasmValueType } from "../encoder/types.js";
+import type { IsaDecodedInstruction } from "#x86/isa/decoder/types.js";
+import { validateIrProgram } from "#x86/ir/passes/validator.js";
+import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "#backends/wasm/abi.js";
+import { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
+import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
+import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { JitIrProgramBuilder } from "./lowering/program-builder.js";
 import { lowerIrWithJitContext } from "./lowering/ir-context.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";

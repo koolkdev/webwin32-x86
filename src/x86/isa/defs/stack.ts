@@ -1,7 +1,7 @@
-import { form, mnemonic } from "../schema/builders.js";
-import { imm, modrmRm, opReg } from "../schema/operands.js";
-import { opcodePlusReg } from "../schema/opcodes.js";
-import { leaveSemantic, popSemantic, pushSemantic } from "../semantics/stack.js";
+import { form, mnemonic } from "#x86/isa/schema/builders.js";
+import { imm, modrmRm, opReg } from "#x86/isa/schema/operands.js";
+import { opcodePlusReg } from "#x86/isa/schema/opcodes.js";
+import { leaveSemantic, popSemantic, pushSemantic } from "#x86/isa/semantics/stack.js";
 
 export const PUSH = mnemonic("push", [
   // 50+rd: PUSH r32

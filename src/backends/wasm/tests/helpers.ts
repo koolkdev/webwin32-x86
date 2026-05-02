@@ -1,6 +1,6 @@
 import { deepStrictEqual } from "node:assert";
 
-import { wasmImport } from "../abi.js";
+import { wasmImport } from "#backends/wasm/abi.js";
 
 export const startAddress = 0x1000;
 

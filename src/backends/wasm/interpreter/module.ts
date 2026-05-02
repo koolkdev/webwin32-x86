@@ -1,11 +1,11 @@
-import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "../abi.js";
-import { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
-import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import { WasmModuleEncoder } from "../encoder/module.js";
-import { wasmValueType } from "../encoder/types.js";
-import { ExitReason } from "../exit.js";
-import { encodeExit } from "../exit.js";
-import { emitWasmIrExitConstPayload, type WasmIrExitTarget } from "../lowering/exit.js";
+import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "#backends/wasm/abi.js";
+import { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
+import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
+import { wasmValueType } from "#backends/wasm/encoder/types.js";
+import { ExitReason } from "#backends/wasm/exit.js";
+import { encodeExit } from "#backends/wasm/exit.js";
+import { emitWasmIrExitConstPayload, type WasmIrExitTarget } from "#backends/wasm/lowering/exit.js";
 import { emitLoadGuestByte } from "./decode/guest-bytes.js";
 import { emitOpcodeDispatch } from "./dispatch/opcode-dispatch.js";
 import {

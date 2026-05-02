@@ -3,11 +3,11 @@ import type {
   IrExprProgram,
   IrStorageExpr,
   IrValueExpr
-} from "../../../x86/ir/model/expressions.js";
+} from "#x86/ir/model/expressions.js";
 import {
   flagProducerConditionInputNames,
   requiredFlagProducerConditionInput
-} from "../../../x86/ir/model/flag-conditions.js";
+} from "#x86/ir/model/flag-conditions.js";
 
 export type IrExprVarSlotAssignment = Readonly<{
   slotCount: number;

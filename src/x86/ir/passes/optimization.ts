@@ -1,4 +1,4 @@
-import type { IrProgram } from "../model/types.js";
+import type { IrProgram } from "#x86/ir/model/types.js";
 
 export type IrOptimizationResult = Readonly<{
   program: IrProgram;

@@ -1,10 +1,10 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { buildIr } from "../build/builder.js";
-import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "../passes/flag-analysis.js";
-import { specializeAluFlagsConditions, insertFlagBoundaries, insertFlagMaterializations, pruneDeadFlagSets } from "../passes/flag-optimization.js";
-import { createIrFlagProducerConditionOp, createIrFlagSetOp } from "../model/flags.js";
+import { buildIr } from "#x86/ir/build/builder.js";
+import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
+import { specializeAluFlagsConditions, insertFlagBoundaries, insertFlagMaterializations, pruneDeadFlagSets } from "#x86/ir/passes/flag-optimization.js";
+import { createIrFlagProducerConditionOp, createIrFlagSetOp } from "#x86/ir/model/flags.js";
 
 test("flag optimization prunes flag producers with no live writes", () => {
   const program = buildIr((s) => {

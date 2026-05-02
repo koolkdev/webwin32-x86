@@ -2,16 +2,16 @@ import {
   conditionFlagReadMask,
   IR_ALU_FLAG_MASK,
   IR_ALU_FLAG_MASKS
-} from "../../../../x86/ir/passes/flag-analysis.js";
-import { FLAG_PRODUCERS } from "../../../../x86/ir/model/flags.js";
-import type { ConditionCode, IrFlagSetOp, ValueRef } from "../../../../x86/ir/model/types.js";
-import { i32 } from "../../../../x86/state/cpu-state.js";
-import type { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
-import { wasmValueType } from "../../encoder/types.js";
-import { emitAluFlagsCondition } from "../../lowering/conditions.js";
-import { wasmIrLocalAluFlagsStorage } from "../../lowering/alu-flags.js";
-import { emitSetFlags } from "../../lowering/flags.js";
-import type { WasmIrEmitHelpers } from "../../lowering/lower.js";
+} from "#x86/ir/passes/flag-analysis.js";
+import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
+import type { ConditionCode, IrFlagSetOp, ValueRef } from "#x86/ir/model/types.js";
+import { i32 } from "#x86/state/cpu-state.js";
+import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { wasmValueType } from "#backends/wasm/encoder/types.js";
+import { emitAluFlagsCondition } from "#backends/wasm/lowering/conditions.js";
+import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/lowering/alu-flags.js";
+import { emitSetFlags } from "#backends/wasm/lowering/flags.js";
+import type { WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
 
 type PendingFlags = Readonly<{
   producer: IrFlagSetOp["producer"];

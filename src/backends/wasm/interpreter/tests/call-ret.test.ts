@@ -1,13 +1,13 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { createCpuState, type CpuState } from "../../../../x86/state/cpu-state.js";
+import { createCpuState, type CpuState } from "#x86/state/cpu-state.js";
 import {
   readInterpreterState,
   writeInterpreterState,
   type InterpreterModuleInstance
 } from "./interpreter-helpers.js";
-import { startAddress } from "../../tests/helpers.js";
+import { startAddress } from "#backends/wasm/tests/helpers.js";
 import {
   assertSingleInstructionExit,
   instantiateWasmInterpreter,

@@ -1,5 +1,5 @@
-import type { RunResult } from "../../../x86/execution/run-result.js";
-import type { CpuState } from "../../../x86/state/cpu-state.js";
+import type { RunResult } from "#x86/execution/run-result.js";
+import type { CpuState } from "#x86/state/cpu-state.js";
 
 export type MemoryPatch = Readonly<{
   address: number;

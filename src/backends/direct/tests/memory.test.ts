@@ -1,10 +1,10 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { StopReason } from "../../../x86/execution/run-result.js";
-import { ArrayBufferGuestMemory } from "../../../x86/memory/guest-memory.js";
-import { fillGuestMemory, readGuestBytes, writeGuestU32 } from "../../../x86/memory/tests/helpers.js";
-import { cloneCpuState, createCpuState, getFlag } from "../../../x86/state/cpu-state.js";
+import { StopReason } from "#x86/execution/run-result.js";
+import { ArrayBufferGuestMemory } from "#x86/memory/guest-memory.js";
+import { fillGuestMemory, readGuestBytes, writeGuestU32 } from "#x86/memory/tests/helpers.js";
+import { cloneCpuState, createCpuState, getFlag } from "#x86/state/cpu-state.js";
 import { bytes, runIsaBytes, startAddress } from "./helpers.js";
 
 test("loads and stores absolute u32 memory", () => {

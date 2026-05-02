@@ -1,7 +1,7 @@
-import { form, mnemonic } from "../schema/builders.js";
-import { opcodePlusReg } from "../schema/opcodes.js";
-import { imm, implicitReg, modrmReg, modrmRm, opReg } from "../schema/operands.js";
-import { aluSemantic, incDecSemantic } from "../semantics/alu.js";
+import { form, mnemonic } from "#x86/isa/schema/builders.js";
+import { opcodePlusReg } from "#x86/isa/schema/opcodes.js";
+import { imm, implicitReg, modrmReg, modrmRm, opReg } from "#x86/isa/schema/operands.js";
+import { aluSemantic, incDecSemantic } from "#x86/isa/semantics/alu.js";
 
 export const ADD = mnemonic("add", [
   // 01 /r: ADD r/m32, r32

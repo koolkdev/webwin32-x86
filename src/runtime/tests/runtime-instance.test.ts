@@ -1,11 +1,11 @@
 import { strictEqual, throws } from "node:assert";
 import { test } from "node:test";
 
-import { StopReason } from "../../x86/execution/run-result.js";
-import type { CpuStateField } from "../../x86/state/cpu-state.js";
-import { CompiledBlockDecodeError } from "../../backends/wasm/jit/compiled-blocks/wasm-cache.js";
-import { RuntimeMode } from "../execution/mode.js";
-import { RuntimeInstance } from "../runtime-instance.js";
+import { StopReason } from "#x86/execution/run-result.js";
+import type { CpuStateField } from "#x86/state/cpu-state.js";
+import { CompiledBlockDecodeError } from "#backends/wasm/jit/compiled-blocks/wasm-cache.js";
+import { RuntimeMode } from "#runtime/execution/mode.js";
+import { RuntimeInstance } from "#runtime/runtime-instance.js";
 import {
   COUNTDOWN_BRANCH_TRAP,
   engineFixtureStartAddress,

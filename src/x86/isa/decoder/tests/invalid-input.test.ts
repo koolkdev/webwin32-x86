@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual, throws } from "node:assert";
 import { test } from "node:test";
 
-import { IsaDecodeError } from "../reader.js";
+import { IsaDecodeError } from "#x86/isa/decoder/reader.js";
 import { decodeBytes, startAddress } from "./helpers.js";
 
 test("reports unsupported opcode without throwing", () => {

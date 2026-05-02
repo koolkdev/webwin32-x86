@@ -1,12 +1,12 @@
-import type { SemanticTemplate } from "../../ir/model/types.js";
-import { u32 } from "../../state/cpu-state.js";
-import { X86_32_CORE } from "../index.js";
+import type { SemanticTemplate } from "#x86/ir/model/types.js";
+import { u32 } from "#x86/state/cpu-state.js";
+import { X86_32_CORE } from "#x86/isa/index.js";
 import {
   expandInstructionSpec,
   instructionReadsModRm
-} from "../schema/builders.js";
-import type { ExpandedInstructionSpec, ModRmMatch, OperandSpec, Reg3 } from "../schema/types.js";
-import { reg32, type Reg32 } from "../types.js";
+} from "#x86/isa/schema/builders.js";
+import type { ExpandedInstructionSpec, ModRmMatch, OperandSpec, Reg3 } from "#x86/isa/schema/types.js";
+import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { signedImm8, signedImm32 } from "./immediate.js";
 import { decodeRm32ModRm, rm32ModRmByteLengthAt } from "./modrm.js";
 import { buildOpcodeDispatch, opcodeLeaf, type OpcodeDispatchLeaf } from "./opcode-dispatch.js";

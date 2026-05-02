@@ -1,11 +1,11 @@
-import type { WasmLocalScratchAllocator } from "../../encoder/local-scratch.js";
-import type { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
-import { ExitReason } from "../../exit.js";
+import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
+import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { ExitReason } from "#backends/wasm/exit.js";
 import { dispatchBytes, interpreterOpcodeDispatchRoot } from "./dispatch.js";
-import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "../../lowering/exit.js";
-import { emitLoadGuestByte } from "../decode/guest-bytes.js";
+import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "#backends/wasm/lowering/exit.js";
+import { emitLoadGuestByte } from "#backends/wasm/interpreter/decode/guest-bytes.js";
 import { emitInstructionHandlerForLeaf } from "./instruction-handlers.js";
-import type { InterpreterStateCache } from "../lowering/state-cache.js";
+import type { InterpreterStateCache } from "#backends/wasm/interpreter/lowering/state-cache.js";
 
 type OpcodeDispatchContext = Readonly<{
   body: WasmFunctionBodyEncoder;

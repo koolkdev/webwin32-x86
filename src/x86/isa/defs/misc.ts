@@ -1,6 +1,6 @@
-import { form, mnemonic } from "../schema/builders.js";
-import { imm } from "../schema/operands.js";
-import { intSemantic, nopSemantic } from "../semantics/misc.js";
+import { form, mnemonic } from "#x86/isa/schema/builders.js";
+import { imm } from "#x86/isa/schema/operands.js";
+import { intSemantic, nopSemantic } from "#x86/isa/semantics/misc.js";
 
 export const NOP = mnemonic("nop", [
   // 90: NOP

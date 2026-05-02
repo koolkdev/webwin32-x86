@@ -1,12 +1,12 @@
-import { x86ArithmeticFlags } from "../../isa/flags.js";
-import { CONDITIONS } from "../model/conditions.js";
-import { FLAG_PRODUCERS, type FlagName } from "../model/flags.js";
+import { x86ArithmeticFlags } from "#x86/isa/flags.js";
+import { CONDITIONS } from "#x86/ir/model/conditions.js";
+import { FLAG_PRODUCERS, type FlagName } from "#x86/ir/model/flags.js";
 import type {
   ConditionCode,
   FlagProducerName,
   IrOp,
   IrProgram
-} from "../model/types.js";
+} from "#x86/ir/model/types.js";
 
 export type IrFlagMask = number;
 

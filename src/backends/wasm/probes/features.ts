@@ -1,7 +1,7 @@
-import { wasmBranchHint, WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import { WasmModuleEncoder } from "../encoder/module.js";
-import { wasmValueType } from "../encoder/types.js";
-import { decodeExit, encodeExit, ExitReason } from "../exit.js";
+import { wasmBranchHint, WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
+import { wasmValueType } from "#backends/wasm/encoder/types.js";
+import { decodeExit, encodeExit, ExitReason } from "#backends/wasm/exit.js";
 
 export type WasmFeatureName =
   | "multi-memory"

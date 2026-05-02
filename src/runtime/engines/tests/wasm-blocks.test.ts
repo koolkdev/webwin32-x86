@@ -1,16 +1,16 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { createInstructionBudget } from "../../execution/budget.js";
-import { RuntimeCodeMap } from "../../program/code-map.js";
-import { COMPILED_BLOCK_FIXTURES } from "../../tests/fixtures/blocks.js";
+import { createInstructionBudget } from "#runtime/execution/budget.js";
+import { RuntimeCodeMap } from "#runtime/program/code-map.js";
+import { COMPILED_BLOCK_FIXTURES } from "#runtime/tests/fixtures/blocks.js";
 import {
   assertEngineFixtureResult,
   createFixtureCompiledBlockCache,
   prepareEngineFixture
-} from "../../tests/fixtures/helpers.js";
-import { createWasmHostMemories } from "../../../backends/wasm/host/memories.js";
-import { WasmBlocksEngine } from "../wasm-blocks.js";
+} from "#runtime/tests/fixtures/helpers.js";
+import { createWasmHostMemories } from "#backends/wasm/host/memories.js";
+import { WasmBlocksEngine } from "#runtime/engines/wasm-blocks.js";
 
 test("wasm blocks engine reports unavailable when no compiled block exists", () => {
   const engine = new WasmBlocksEngine({

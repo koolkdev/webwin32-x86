@@ -1,8 +1,8 @@
 import { deepStrictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { operand } from "../build/builder.js";
-import { IrProgramBuilder } from "../build/program.js";
+import { operand } from "#x86/ir/build/builder.js";
+import { IrProgramBuilder } from "#x86/ir/build/program.js";
 
 test("IrProgramBuilder appends instructions with one var namespace", () => {
   const builder = new IrProgramBuilder();

@@ -1,6 +1,6 @@
-import { wasmMemoryIndex } from "../abi.js";
-import { wasmBranchHint, type WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import { ExitReason } from "../exit.js";
+import { wasmMemoryIndex } from "#backends/wasm/abi.js";
+import { wasmBranchHint, type WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { ExitReason } from "#backends/wasm/exit.js";
 import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "./exit.js";
 
 type WasmIrMemoryAccess = "read" | "write";

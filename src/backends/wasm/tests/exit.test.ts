@@ -1,10 +1,10 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import { WasmModuleEncoder } from "../encoder/module.js";
-import { wasmValueType } from "../encoder/types.js";
-import { decodeExit, encodeExit, ExitReason, type DecodedExit } from "../exit.js";
+import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
+import { wasmValueType } from "#backends/wasm/encoder/types.js";
+import { decodeExit, encodeExit, ExitReason, type DecodedExit } from "#backends/wasm/exit.js";
 
 const fixtures: readonly ExitFixture[] = [
   {

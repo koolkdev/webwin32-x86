@@ -1,12 +1,12 @@
 import { IrEmitter, type IrProgramTerminator } from "./emitter.js";
-import { irVar } from "../model/refs.js";
+import { irVar } from "#x86/ir/model/refs.js";
 import type {
   OperandRef,
   SemanticTemplate,
   IrOp,
   IrProgram,
   VarRef
-} from "../model/types.js";
+} from "#x86/ir/model/types.js";
 
 export type IrProgramInstruction = Readonly<{
   semantics: SemanticTemplate;

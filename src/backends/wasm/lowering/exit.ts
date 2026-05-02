@@ -1,5 +1,5 @@
-import { encodeExit, type ExitReason } from "../exit.js";
-import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
+import { encodeExit, type ExitReason } from "#backends/wasm/exit.js";
+import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 
 export type WasmIrExitTarget = Readonly<{
   exitLocal: number;

@@ -1,4 +1,4 @@
-import type { WasmHostMemories } from "../../host/memories.js";
+import type { WasmHostMemories } from "#backends/wasm/host/memories.js";
 import type { CompiledBlockHandle, WasmCompiledBlockCodeMap } from "./block-cache.js";
 
 export type CompiledBlockCompiler = Readonly<{

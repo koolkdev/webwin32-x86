@@ -1,10 +1,10 @@
-import type { RunResult } from "../x86/execution/run-result.js";
-import { u32, type CpuState } from "../x86/state/cpu-state.js";
-import { WasmInterpreterRuntime } from "../backends/wasm/interpreter/runtime.js";
+import type { RunResult } from "#x86/execution/run-result.js";
+import { u32, type CpuState } from "#x86/state/cpu-state.js";
+import { WasmInterpreterRuntime } from "#backends/wasm/interpreter/runtime.js";
 import {
   WasmCompiledBlockCache,
   type WasmCompiledBlockCacheLike
-} from "../backends/wasm/jit/compiled-blocks/wasm-cache.js";
+} from "#backends/wasm/jit/compiled-blocks/wasm-cache.js";
 import { WasmBlocksEngine } from "./engines/wasm-blocks.js";
 import { WasmInterpreterEngine } from "./engines/wasm-interpreter.js";
 import { createInstructionBudget } from "./execution/budget.js";
@@ -19,7 +19,7 @@ import {
   type RuntimeProgramInput,
   type RuntimeProgramRegion
 } from "./program/regions.js";
-import { createWasmHostMemories, type WasmHostMemories } from "../backends/wasm/host/memories.js";
+import { createWasmHostMemories, type WasmHostMemories } from "#backends/wasm/host/memories.js";
 
 export type RuntimeInstanceOptions = Readonly<{
   program?: RuntimeProgramInput;

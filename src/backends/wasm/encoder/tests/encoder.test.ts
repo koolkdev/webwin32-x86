@@ -1,9 +1,9 @@
 import { match, ok, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { wasmBranchHint, WasmFunctionBodyEncoder } from "../function-body.js";
-import { WasmModuleEncoder } from "../module.js";
-import { wasmValueType } from "../types.js";
+import { wasmBranchHint, WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
+import { wasmValueType } from "#backends/wasm/encoder/types.js";
 
 test("constant i64 function compiles", async () => {
   const bytes = encodeConstantI64TestModule("constant", 0x0006_0000_1234_5678n);

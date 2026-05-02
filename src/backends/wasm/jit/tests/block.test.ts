@@ -1,15 +1,15 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { ok, decodeBytes } from "../../../../x86/isa/decoder/tests/helpers.js";
-import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "../../../../x86/ir/passes/flag-analysis.js";
-import { createIrFlagSetOp } from "../../../../x86/ir/model/flags.js";
-import type { IrOp, StorageRef } from "../../../../x86/ir/model/types.js";
-import { createCpuState } from "../../../../x86/state/cpu-state.js";
-import { stateOffset } from "../../abi.js";
-import { wasmOpcode, wasmSectionId } from "../../encoder/types.js";
-import { ExitReason } from "../../exit.js";
-import { buildJitIrBlock, encodeJitIrBlock } from "../block.js";
+import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
+import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
+import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
+import type { IrOp, StorageRef } from "#x86/ir/model/types.js";
+import { createCpuState } from "#x86/state/cpu-state.js";
+import { stateOffset } from "#backends/wasm/abi.js";
+import { wasmOpcode, wasmSectionId } from "#backends/wasm/encoder/types.js";
+import { ExitReason } from "#backends/wasm/exit.js";
+import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
 import { runJitIrBlock } from "./helpers.js";
 
 const startAddress = 0x1000;

@@ -1,4 +1,4 @@
-import { wasmOpcode } from "../encoder/types.js";
+import { wasmOpcode } from "#backends/wasm/encoder/types.js";
 
 export function wasmBodyOpcodes(functionBody: Uint8Array<ArrayBuffer>): readonly number[] {
   const opcodes: number[] = [];

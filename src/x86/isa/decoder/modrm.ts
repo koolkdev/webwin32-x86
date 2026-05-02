@@ -1,7 +1,7 @@
 import type { IsaDecodeReader } from "./reader.js";
 import { readU32LE } from "./reader.js";
 import { signedImm8, signedImm32 } from "./immediate.js";
-import { reg32, type Mem32Operand, type Reg32 } from "../types.js";
+import { reg32, type Mem32Operand, type Reg32 } from "#x86/isa/types.js";
 
 type Scale = Mem32Operand["scale"];
 type Sib = Readonly<{

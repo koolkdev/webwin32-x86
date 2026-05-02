@@ -1,13 +1,13 @@
 import { test } from "node:test";
 
-import { createInstructionBudget } from "../../execution/budget.js";
+import { createInstructionBudget } from "#runtime/execution/budget.js";
 import {
   assertEngineFixtureResult,
   instantiateFixtureWasmInterpreter,
   prepareEngineFixture
-} from "../../tests/fixtures/helpers.js";
-import { ENGINE_PROGRAM_FIXTURES } from "../../tests/fixtures/programs.js";
-import { WasmInterpreterEngine } from "../wasm-interpreter.js";
+} from "#runtime/tests/fixtures/helpers.js";
+import { ENGINE_PROGRAM_FIXTURES } from "#runtime/tests/fixtures/programs.js";
+import { WasmInterpreterEngine } from "#runtime/engines/wasm-interpreter.js";
 
 for (const fixture of ENGINE_PROGRAM_FIXTURES) {
   test(`wasm interpreter engine runs ${fixture.name}`, () => {

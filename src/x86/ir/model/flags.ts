@@ -1,5 +1,5 @@
-import { x86ArithmeticFlagMask } from "../../isa/flags.js";
-import type { X86ArithmeticFlag } from "../../isa/flags.js";
+import { x86ArithmeticFlagMask } from "#x86/isa/flags.js";
+import type { X86ArithmeticFlag } from "#x86/isa/flags.js";
 import type { ConditionCode, FlagProducerName, IrFlagProducerConditionOp, IrFlagSetOp, ValueRef, VarRef } from "./types.js";
 
 export type FlagName = X86ArithmeticFlag;

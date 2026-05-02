@@ -1,9 +1,9 @@
-import type { GuestMemory } from "../../x86/memory/guest-memory.js";
+import type { GuestMemory } from "#x86/memory/guest-memory.js";
 import {
   GuestMemoryDecodeReader,
   type GuestMemoryDecodeRegion,
   type RegionedDecodeReader
-} from "../../x86/isa/decoder/guest-memory-reader.js";
+} from "#x86/isa/decoder/guest-memory-reader.js";
 import { regionContains, type RuntimeCodeRegion } from "./regions.js";
 
 export class RuntimeCodeMap {

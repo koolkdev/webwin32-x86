@@ -1,7 +1,7 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { interpreterOpcodeDispatchRoot } from "../dispatch/dispatch.js";
+import { interpreterOpcodeDispatchRoot } from "#backends/wasm/interpreter/dispatch/dispatch.js";
 
 test("interpreter dispatch includes one-byte opcode forms from the ISA", () => {
   strictEqual(interpreterOpcodeDispatchRoot.next[0xb8]?.leaf?.opcodeLength, 1);

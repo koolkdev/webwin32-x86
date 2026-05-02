@@ -1,7 +1,7 @@
-import { form, mnemonic } from "../schema/builders.js";
-import { imm, implicitReg, modrmReg, modrmRm } from "../schema/operands.js";
-import { cmpSemantic } from "../semantics/cmp.js";
-import { testSemantic } from "../semantics/test.js";
+import { form, mnemonic } from "#x86/isa/schema/builders.js";
+import { imm, implicitReg, modrmReg, modrmRm } from "#x86/isa/schema/operands.js";
+import { cmpSemantic } from "#x86/isa/semantics/cmp.js";
+import { testSemantic } from "#x86/isa/semantics/test.js";
 
 export const CMP = mnemonic("cmp", [
   // 39 /r: CMP r/m32, r32

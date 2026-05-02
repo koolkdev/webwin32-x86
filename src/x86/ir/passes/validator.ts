@@ -1,7 +1,7 @@
 import { assertIrAluFlagMask, IR_FLAG_MASK_NONE } from "./flag-analysis.js";
-import { canUseFlagProducerCondition, type IrFlagProducerDescriptor } from "../model/flag-conditions.js";
-import { FLAG_PRODUCERS } from "../model/flags.js";
-import type { FlagMask, IrOp, IrProgram, StorageRef, ValueRef, VarRef } from "../model/types.js";
+import { canUseFlagProducerCondition, type IrFlagProducerDescriptor } from "#x86/ir/model/flag-conditions.js";
+import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
+import type { FlagMask, IrOp, IrProgram, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
 
 export type ValidateIrOptions = Readonly<{
   operandCount?: number;

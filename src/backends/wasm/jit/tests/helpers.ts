@@ -1,11 +1,11 @@
-import { decodeIsaInstructionFromReader } from "../../../../x86/isa/decoder/decode.js";
-import { ByteArrayDecodeReader } from "../../../../x86/isa/decoder/tests/helpers.js";
-import type { IsaDecodedInstruction } from "../../../../x86/isa/decoder/types.js";
-import type { CpuState } from "../../../../x86/state/cpu-state.js";
-import { wasmBlockExportName, wasmImport } from "../../abi.js";
-import { decodeExit, type DecodedExit } from "../../exit.js";
-import { readWasmCpuState, writeWasmCpuState } from "../../state-layout.js";
-import { buildJitIrBlock, encodeJitIrBlock } from "../block.js";
+import { decodeIsaInstructionFromReader } from "#x86/isa/decoder/decode.js";
+import { ByteArrayDecodeReader } from "#x86/isa/decoder/tests/helpers.js";
+import type { IsaDecodedInstruction } from "#x86/isa/decoder/types.js";
+import type { CpuState } from "#x86/state/cpu-state.js";
+import { wasmBlockExportName, wasmImport } from "#backends/wasm/abi.js";
+import { decodeExit, type DecodedExit } from "#backends/wasm/exit.js";
+import { readWasmCpuState, writeWasmCpuState } from "#backends/wasm/state-layout.js";
+import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
 
 export type JitIrBlockRunResult = Readonly<{
   state: CpuState;

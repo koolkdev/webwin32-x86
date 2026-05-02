@@ -1,8 +1,8 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { createCpuState } from "../../../../x86/state/cpu-state.js";
-import { ExitReason } from "../../exit.js";
+import { createCpuState } from "#x86/state/cpu-state.js";
+import { ExitReason } from "#backends/wasm/exit.js";
 import { runJitIrBlock } from "./helpers.js";
 
 const startAddress = 0x1000;

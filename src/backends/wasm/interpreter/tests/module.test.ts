@@ -1,16 +1,16 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { createCpuState } from "../../../../x86/state/cpu-state.js";
+import { createCpuState } from "#x86/state/cpu-state.js";
 import {
   assertInterpreterStateEquals,
   writeInterpreterState
 } from "./interpreter-helpers.js";
-import { assertMemoryImports, startAddress } from "../../tests/helpers.js";
-import { wasmImport } from "../../abi.js";
-import { ExitReason } from "../../exit.js";
-import { readInterpreterWasmArtifact } from "../artifact.js";
-import { encodeInterpreterModule } from "../module.js";
+import { assertMemoryImports, startAddress } from "#backends/wasm/tests/helpers.js";
+import { wasmImport } from "#backends/wasm/abi.js";
+import { ExitReason } from "#backends/wasm/exit.js";
+import { readInterpreterWasmArtifact } from "#backends/wasm/interpreter/artifact.js";
+import { encodeInterpreterModule } from "#backends/wasm/interpreter/module.js";
 import { instantiateWasmInterpreter, writeGuestBytes } from "./support.js";
 
 test("generated interpreter artifact matches the encoder output", () => {

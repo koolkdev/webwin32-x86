@@ -1,6 +1,6 @@
-import type { RunResult, RunResultDetails } from "../../x86/execution/run-result.js";
-import { runResultFromState, StopReason } from "../../x86/execution/run-result.js";
-import type { GuestMemory, MemoryFault } from "../../x86/memory/guest-memory.js";
+import type { RunResult, RunResultDetails } from "#x86/execution/run-result.js";
+import { runResultFromState, StopReason } from "#x86/execution/run-result.js";
+import type { GuestMemory, MemoryFault } from "#x86/memory/guest-memory.js";
 import {
   getFlag,
   getReg32,
@@ -9,16 +9,16 @@ import {
   setReg32,
   u32,
   type CpuState
-} from "../../x86/state/cpu-state.js";
-import { buildIr } from "../../x86/ir/build/builder.js";
-import { CONDITIONS, type FlagBoolExpr } from "../../x86/ir/model/conditions.js";
+} from "#x86/state/cpu-state.js";
+import { buildIr } from "#x86/ir/build/builder.js";
+import { CONDITIONS, type FlagBoolExpr } from "#x86/ir/model/conditions.js";
 import {
   flagProducerConditionKind,
   requiredFlagProducerConditionInput
-} from "../../x86/ir/model/flag-conditions.js";
-import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "../../x86/ir/model/flags.js";
-import type { MemRef, IrFlagProducerConditionOp, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "../../x86/ir/model/types.js";
-import type { IsaDecodedInstruction, IsaOperandBinding } from "../../x86/isa/decoder/types.js";
+} from "#x86/ir/model/flag-conditions.js";
+import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "#x86/ir/model/flags.js";
+import type { MemRef, IrFlagProducerConditionOp, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
+import type { IsaDecodedInstruction, IsaOperandBinding } from "#x86/isa/decoder/types.js";
 
 export type DirectExecutionOptions = Readonly<{
   memory?: GuestMemory;

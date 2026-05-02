@@ -1,9 +1,9 @@
-import type { Reg32 } from "../../../../x86/isa/types.js";
-import { stateOffset } from "../../abi.js";
-import type { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
-import { wasmValueType } from "../../encoder/types.js";
-import type { WasmIrReg32Storage } from "../../lowering/registers.js";
-import { emitLoadStateU32, emitStoreStateU32 } from "../../lowering/state.js";
+import type { Reg32 } from "#x86/isa/types.js";
+import { stateOffset } from "#backends/wasm/abi.js";
+import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { wasmValueType } from "#backends/wasm/encoder/types.js";
+import type { WasmIrReg32Storage } from "#backends/wasm/lowering/registers.js";
+import { emitLoadStateU32, emitStoreStateU32 } from "#backends/wasm/lowering/state.js";
 
 export type JitReg32State = WasmIrReg32Storage & Readonly<{
   assertNoPending(): void;

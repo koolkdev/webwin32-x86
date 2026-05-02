@@ -1,5 +1,5 @@
-import type { Mem32Operand, Reg32 } from "../../../../x86/isa/types.js";
-import type { IsaDecodedInstruction, IsaOperandBinding } from "../../../../x86/isa/decoder/types.js";
+import type { Mem32Operand, Reg32 } from "#x86/isa/types.js";
+import type { IsaDecodedInstruction, IsaOperandBinding } from "#x86/isa/decoder/types.js";
 
 export type JitOperandBinding =
   | Readonly<{ kind: "static.reg32"; reg: Reg32 }>

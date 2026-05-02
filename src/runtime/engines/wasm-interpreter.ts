@@ -1,8 +1,8 @@
-import type { DecodedExit } from "../../backends/wasm/exit.js";
-import type { InstructionBudget } from "../execution/budget.js";
-import { engineDone, type RuntimeEngineResult } from "../execution/engine-result.js";
-import type { RuntimeEngine, RuntimeEngineContext } from "../execution/runner.js";
-import { runResultFromWasmExit } from "../execution/wasm-exit-result.js";
+import type { DecodedExit } from "#backends/wasm/exit.js";
+import type { InstructionBudget } from "#runtime/execution/budget.js";
+import { engineDone, type RuntimeEngineResult } from "#runtime/execution/engine-result.js";
+import type { RuntimeEngine, RuntimeEngineContext } from "#runtime/execution/runner.js";
+import { runResultFromWasmExit } from "#runtime/execution/wasm-exit-result.js";
 
 export type WasmInterpreter = Readonly<{
   run(fuel: number): DecodedExit;

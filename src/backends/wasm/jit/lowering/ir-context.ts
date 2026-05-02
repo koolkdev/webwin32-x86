@@ -1,9 +1,9 @@
-import type { IrProgram } from "../../../../x86/ir/model/types.js";
-import type { WasmLocalScratchAllocator } from "../../encoder/local-scratch.js";
-import type { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
-import { ExitReason } from "../../exit.js";
-import { lowerIrToWasm } from "../../lowering/lower.js";
-import { emitFlagProducerCondition } from "../../lowering/conditions.js";
+import type { IrProgram } from "#x86/ir/model/types.js";
+import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
+import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { ExitReason } from "#backends/wasm/exit.js";
+import { lowerIrToWasm } from "#backends/wasm/lowering/lower.js";
+import { emitFlagProducerCondition } from "#backends/wasm/lowering/conditions.js";
 import {
   emitJitConditionalJump,
   emitJitControlExit,
@@ -18,7 +18,7 @@ import {
   emitJitGet32,
   emitJitSet32
 } from "./operands.js";
-import type { JitExitTarget, JitIrState } from "../state/state.js";
+import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
 
 export type JitIrInstructionContext = Readonly<{
   eip: number;

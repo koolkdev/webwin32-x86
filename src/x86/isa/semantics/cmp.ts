@@ -1,4 +1,4 @@
-import type { SemanticTemplate } from "../../ir/model/types.js";
+import type { SemanticTemplate } from "#x86/ir/model/types.js";
 
 export function cmpSemantic(): SemanticTemplate {
   return (s) => {

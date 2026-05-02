@@ -1,4 +1,4 @@
-import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
+import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 
 export type WasmIrAluFlagsStorage = Readonly<{
   emitLoad(): void;

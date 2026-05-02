@@ -1,4 +1,4 @@
-import type { Reg32 } from "../types.js";
+import type { Reg32 } from "#x86/isa/types.js";
 import type { ImmediateExtension, OperandSpec } from "./types.js";
 
 export function modrmReg(type: "reg32"): OperandSpec {

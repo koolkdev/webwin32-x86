@@ -1,4 +1,4 @@
-import type { CpuState } from "../state/cpu-state.js";
+import type { CpuState } from "#x86/state/cpu-state.js";
 
 export const StopReason = {
   NONE: 0,

@@ -1,5 +1,5 @@
-import { wasmMemoryIndex } from "../abi.js";
-import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
+import { wasmMemoryIndex } from "#backends/wasm/abi.js";
+import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 
 export const stateU32Align = 2;
 

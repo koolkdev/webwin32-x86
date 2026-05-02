@@ -1,17 +1,17 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { wasmImport, wasmMemoryIndex } from "../../abi.js";
-import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
-import { WasmModuleEncoder } from "../../encoder/module.js";
-import { wasmValueType } from "../../encoder/types.js";
-import { decodeExit, ExitReason } from "../../exit.js";
-import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "../exit.js";
+import { wasmImport, wasmMemoryIndex } from "#backends/wasm/abi.js";
+import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
+import { wasmValueType } from "#backends/wasm/encoder/types.js";
+import { decodeExit, ExitReason } from "#backends/wasm/exit.js";
+import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "#backends/wasm/lowering/exit.js";
 import {
   emitWasmIrLoadGuestU32,
   emitWasmIrLoadGuestU32FromStack,
   emitWasmIrStoreGuestU32
-} from "../memory.js";
+} from "#backends/wasm/lowering/memory.js";
 
 test("guest u32 load helpers return values and fault before out-of-bounds reads", async () => {
   for (const mode of ["local", "stack"] as const) {

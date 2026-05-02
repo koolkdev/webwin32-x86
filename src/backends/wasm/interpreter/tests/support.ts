@@ -1,14 +1,14 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 
-import type { CpuState } from "../../../../x86/state/cpu-state.js";
+import type { CpuState } from "#x86/state/cpu-state.js";
 import {
   instantiateInterpreterCompiledModule,
   readInterpreterState,
   writeInterpreterState,
   type InterpreterModuleInstance
 } from "./interpreter-helpers.js";
-import { ExitReason, type DecodedExit } from "../../exit.js";
-import { readInterpreterWasmArtifact } from "../artifact.js";
+import { ExitReason, type DecodedExit } from "#backends/wasm/exit.js";
+import { readInterpreterWasmArtifact } from "#backends/wasm/interpreter/artifact.js";
 
 export type ExecutedInstruction = Readonly<{
   exit: DecodedExit;

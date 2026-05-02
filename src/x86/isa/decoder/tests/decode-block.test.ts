@@ -1,9 +1,9 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { ArrayBufferGuestMemory } from "../../../memory/guest-memory.js";
-import { GuestMemoryDecodeReader } from "../guest-memory-reader.js";
-import { decodeIsaBlock } from "../decode-block.js";
+import { ArrayBufferGuestMemory } from "#x86/memory/guest-memory.js";
+import { GuestMemoryDecodeReader } from "#x86/isa/decoder/guest-memory-reader.js";
+import { decodeIsaBlock } from "#x86/isa/decoder/decode-block.js";
 import { ByteArrayDecodeReader } from "./helpers.js";
 
 const startAddress = 0x1000;

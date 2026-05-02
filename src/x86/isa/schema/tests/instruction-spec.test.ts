@@ -9,10 +9,10 @@ import {
   instructionReadsModRm,
   mnemonic,
   validateInstructionSet
-} from "../builders.js";
-import { opcodePathMatches, opcodePlusReg, validateOpcodePath } from "../opcodes.js";
-import { imm, modrmReg, modrmRm, opReg } from "../operands.js";
-import type { InstructionSpec } from "../types.js";
+} from "#x86/isa/schema/builders.js";
+import { opcodePathMatches, opcodePlusReg, validateOpcodePath } from "#x86/isa/schema/opcodes.js";
+import { imm, modrmReg, modrmRm, opReg } from "#x86/isa/schema/operands.js";
+import type { InstructionSpec } from "#x86/isa/schema/types.js";
 
 const semantics = { test: "semantics-placeholder" } as const;
 

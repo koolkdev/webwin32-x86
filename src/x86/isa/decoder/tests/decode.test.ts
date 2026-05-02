@@ -1,9 +1,9 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { ArrayBufferGuestMemory } from "../../../memory/guest-memory.js";
-import { GuestMemoryDecodeReader } from "../guest-memory-reader.js";
-import { decodeIsaInstructionFromReader } from "../decode.js";
+import { ArrayBufferGuestMemory } from "#x86/memory/guest-memory.js";
+import { GuestMemoryDecodeReader } from "#x86/isa/decoder/guest-memory-reader.js";
+import { decodeIsaInstructionFromReader } from "#x86/isa/decoder/decode.js";
 import { decodeBytes, ok, startAddress } from "./helpers.js";
 
 test("decodes opcode-encoded register and imm32 operands", () => {

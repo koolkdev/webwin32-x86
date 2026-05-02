@@ -1,7 +1,7 @@
-import { form, mnemonic } from "../schema/builders.js";
-import { imm, modrmReg, modrmRm, opReg } from "../schema/operands.js";
-import { opcodePlusReg } from "../schema/opcodes.js";
-import { movSemantic } from "../semantics/mov.js";
+import { form, mnemonic } from "#x86/isa/schema/builders.js";
+import { imm, modrmReg, modrmRm, opReg } from "#x86/isa/schema/operands.js";
+import { opcodePlusReg } from "#x86/isa/schema/opcodes.js";
+import { movSemantic } from "#x86/isa/semantics/mov.js";
 
 export const MOV = mnemonic("mov", [
   // 8B /r: MOV r32, r/m32

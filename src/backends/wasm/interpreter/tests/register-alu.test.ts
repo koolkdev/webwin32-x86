@@ -1,8 +1,8 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { createCpuState } from "../../../../x86/state/cpu-state.js";
-import { startAddress } from "../../tests/helpers.js";
+import { createCpuState } from "#x86/state/cpu-state.js";
+import { startAddress } from "#backends/wasm/tests/helpers.js";
 import { assertCompletedInstruction, assertSingleInstructionExit, executeInstruction } from "./support.js";
 
 const preservedEflags = 0x0020_0000;

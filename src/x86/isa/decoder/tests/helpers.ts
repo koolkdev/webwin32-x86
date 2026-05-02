@@ -1,15 +1,15 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import type { Mem32Operand, Reg32 } from "../../types.js";
+import type { Mem32Operand, Reg32 } from "#x86/isa/types.js";
 import {
   decodeFault,
   IsaDecodeError,
   type IsaDecodeReader
-} from "../reader.js";
-import type { IsaDecodedInstruction, IsaDecodeResult } from "../types.js";
-import type { IsaOperandBinding } from "../types.js";
-import { decodeIsaInstructionFromReader } from "../decode.js";
+} from "#x86/isa/decoder/reader.js";
+import type { IsaDecodedInstruction, IsaDecodeResult } from "#x86/isa/decoder/types.js";
+import type { IsaOperandBinding } from "#x86/isa/decoder/types.js";
+import { decodeIsaInstructionFromReader } from "#x86/isa/decoder/decode.js";
 
 export const startAddress = 0x1000;
 

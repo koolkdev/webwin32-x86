@@ -5,9 +5,9 @@ import {
   x86ControlFlagsFromEflags,
   x86MergeSplitEflags,
   x86NonArithmeticEflagsMask
-} from "../../x86/isa/flags.js";
-import { reg32, type Reg32 } from "../../x86/isa/types.js";
-import { createCpuState, u32, type CpuState } from "../../x86/state/cpu-state.js";
+} from "#x86/isa/flags.js";
+import { reg32, type Reg32 } from "#x86/isa/types.js";
+import { createCpuState, u32, type CpuState } from "#x86/state/cpu-state.js";
 
 export type WasmStateField = Reg32 | "eip" | "aluFlags" | "ctrlFlags" | "instructionCount" | "stopReason";
 

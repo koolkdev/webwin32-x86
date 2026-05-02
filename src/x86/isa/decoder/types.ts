@@ -1,6 +1,6 @@
-import type { Mem32Operand, Reg32 } from "../types.js";
-import type { SemanticTemplate } from "../../ir/model/types.js";
-import type { InstructionSpec, ImmediateExtension } from "../schema/types.js";
+import type { Mem32Operand, Reg32 } from "#x86/isa/types.js";
+import type { SemanticTemplate } from "#x86/ir/model/types.js";
+import type { InstructionSpec, ImmediateExtension } from "#x86/isa/schema/types.js";
 
 export type IsaOperandBinding =
   | Readonly<{ kind: "reg32"; reg: Reg32 }>

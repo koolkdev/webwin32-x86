@@ -1,16 +1,16 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { buildIr } from "../../../ir/build/builder.js";
-import { createIrFlagSetOp } from "../../../ir/model/flags.js";
-import { aluSemantic, incDecSemantic } from "../alu.js";
-import { callSemantic, jccSemantic, jmpSemantic, retImmSemantic } from "../control.js";
-import { cmpSemantic } from "../cmp.js";
-import { leaSemantic } from "../lea.js";
-import { intSemantic, nopSemantic } from "../misc.js";
-import { movSemantic } from "../mov.js";
-import { leaveSemantic, popSemantic } from "../stack.js";
-import { testSemantic } from "../test.js";
+import { buildIr } from "#x86/ir/build/builder.js";
+import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
+import { aluSemantic, incDecSemantic } from "#x86/isa/semantics/alu.js";
+import { callSemantic, jccSemantic, jmpSemantic, retImmSemantic } from "#x86/isa/semantics/control.js";
+import { cmpSemantic } from "#x86/isa/semantics/cmp.js";
+import { leaSemantic } from "#x86/isa/semantics/lea.js";
+import { intSemantic, nopSemantic } from "#x86/isa/semantics/misc.js";
+import { movSemantic } from "#x86/isa/semantics/mov.js";
+import { leaveSemantic, popSemantic } from "#x86/isa/semantics/stack.js";
+import { testSemantic } from "#x86/isa/semantics/test.js";
 
 const v = (id: number) => ({ kind: "var" as const, id });
 const op = (index: number) => ({ kind: "operand" as const, index });

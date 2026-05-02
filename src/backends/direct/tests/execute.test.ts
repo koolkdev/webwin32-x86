@@ -1,10 +1,10 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { StopReason } from "../../../x86/execution/run-result.js";
-import { ArrayBufferGuestMemory } from "../../../x86/memory/guest-memory.js";
-import { createCpuState, getFlag, setFlag } from "../../../x86/state/cpu-state.js";
-import { executeDirectInstruction } from "../execute.js";
+import { StopReason } from "#x86/execution/run-result.js";
+import { ArrayBufferGuestMemory } from "#x86/memory/guest-memory.js";
+import { createCpuState, getFlag, setFlag } from "#x86/state/cpu-state.js";
+import { executeDirectInstruction } from "#backends/direct/execute.js";
 import { decodeBytes, ok, startAddress } from "./helpers.js";
 
 test("executes mov r32, imm32", () => {

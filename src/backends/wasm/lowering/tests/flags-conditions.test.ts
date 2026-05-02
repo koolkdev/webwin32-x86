@@ -1,18 +1,18 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import type { IrValueExpr } from "../../../../x86/ir/model/expressions.js";
-import { createIrFlagSetOp } from "../../../../x86/ir/model/flags.js";
-import type { ConditionCode, FlagProducerName, ValueRef } from "../../../../x86/ir/model/types.js";
-import { x86ArithmeticFlagMask } from "../../../../x86/isa/flags.js";
-import { i32 } from "../../../../x86/state/cpu-state.js";
-import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
-import { WasmModuleEncoder } from "../../encoder/module.js";
-import { wasmOpcode, wasmValueType } from "../../encoder/types.js";
-import { wasmBodyOpcodes } from "../../tests/body-opcodes.js";
-import { emitAluFlagsCondition, emitFlagProducerCondition } from "../conditions.js";
-import { wasmIrLocalAluFlagsStorage } from "../alu-flags.js";
-import { emitSetFlags } from "../flags.js";
+import type { IrValueExpr } from "#x86/ir/model/expressions.js";
+import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
+import type { ConditionCode, FlagProducerName, ValueRef } from "#x86/ir/model/types.js";
+import { x86ArithmeticFlagMask } from "#x86/isa/flags.js";
+import { i32 } from "#x86/state/cpu-state.js";
+import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
+import { wasmOpcode, wasmValueType } from "#backends/wasm/encoder/types.js";
+import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
+import { emitAluFlagsCondition, emitFlagProducerCondition } from "#backends/wasm/lowering/conditions.js";
+import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/lowering/alu-flags.js";
+import { emitSetFlags } from "#backends/wasm/lowering/flags.js";
 
 const unmodeledStorageBit = 1 << 9;
 

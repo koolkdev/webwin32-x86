@@ -1,7 +1,7 @@
-import type { ConditionCode, SemanticTemplate } from "../../ir/model/types.js";
-import { form, mnemonic, type InstructionForm, type InstructionMnemonic } from "../schema/builders.js";
-import { imm, modrmRm, rel } from "../schema/operands.js";
-import { callSemantic, jccSemantic, jmpSemantic, retImmSemantic, retSemantic } from "../semantics/control.js";
+import type { ConditionCode, SemanticTemplate } from "#x86/ir/model/types.js";
+import { form, mnemonic, type InstructionForm, type InstructionMnemonic } from "#x86/isa/schema/builders.js";
+import { imm, modrmRm, rel } from "#x86/isa/schema/operands.js";
+import { callSemantic, jccSemantic, jmpSemantic, retImmSemantic, retSemantic } from "#x86/isa/semantics/control.js";
 
 export const JMP = mnemonic("jmp", [
   // EB cb: JMP rel8

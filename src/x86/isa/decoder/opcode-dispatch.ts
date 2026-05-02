@@ -1,6 +1,6 @@
-import type { SemanticTemplate } from "../../ir/model/types.js";
-import { instructionReadsModRm } from "../schema/builders.js";
-import type { ExpandedInstructionSpec, Reg3 } from "../schema/types.js";
+import type { SemanticTemplate } from "#x86/ir/model/types.js";
+import { instructionReadsModRm } from "#x86/isa/schema/builders.js";
+import type { ExpandedInstructionSpec, Reg3 } from "#x86/isa/schema/types.js";
 import type { IsaDecodeReader } from "./reader.js";
 
 export type OpcodeDispatchLeaf = Readonly<{

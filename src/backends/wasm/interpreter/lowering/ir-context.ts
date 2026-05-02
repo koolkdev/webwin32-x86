@@ -1,16 +1,16 @@
-import type { Reg32 } from "../../../../x86/isa/types.js";
-import type { IrStorageExpr, IrValueExpr } from "../../../../x86/ir/model/expressions.js";
+import type { Reg32 } from "#x86/isa/types.js";
+import type { IrStorageExpr, IrValueExpr } from "#x86/ir/model/expressions.js";
 import type {
   IrProgram,
   StorageRef
-} from "../../../../x86/ir/model/types.js";
-import type { WasmLocalScratchAllocator } from "../../encoder/local-scratch.js";
-import type { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
-import { wasmValueType } from "../../encoder/types.js";
-import { wasmIrLocalAluFlagsStorage } from "../../lowering/alu-flags.js";
-import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "../../lowering/exit.js";
-import { emitWasmIrLoadGuestU32, emitWasmIrLoadGuestU32FromStack, emitWasmIrStoreGuestU32 } from "../../lowering/memory.js";
-import { wasmIrLocalReg32Storage, type WasmIrReg32Storage } from "../../lowering/registers.js";
+} from "#x86/ir/model/types.js";
+import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
+import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { wasmValueType } from "#backends/wasm/encoder/types.js";
+import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/lowering/alu-flags.js";
+import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "#backends/wasm/lowering/exit.js";
+import { emitWasmIrLoadGuestU32, emitWasmIrLoadGuestU32FromStack, emitWasmIrStoreGuestU32 } from "#backends/wasm/lowering/memory.js";
+import { wasmIrLocalReg32Storage, type WasmIrReg32Storage } from "#backends/wasm/lowering/registers.js";
 import {
   emitCompleteInstruction,
   emitCompleteInstructionWithTarget
@@ -20,13 +20,13 @@ import {
   emitModRmRmIndex,
   emitOpcodeRegIndex,
   emitStoreReg32ByIndex
-} from "../dispatch/register-dispatch.js";
+} from "#backends/wasm/interpreter/dispatch/register-dispatch.js";
 import type { InterpreterStateCache } from "./state-cache.js";
-import { emitIfModRmMemory, emitIfModRmRegister, emitModRmIsRegister, emitModRmRegIndex } from "../decode/modrm-bits.js";
-import { lowerIrToWasm, type WasmIrEmitHelpers } from "../../lowering/lower.js";
-import { emitSetFlags } from "../../lowering/flags.js";
-import { emitAluFlagsCondition, emitFlagProducerCondition } from "../../lowering/conditions.js";
-import { ExitReason } from "../../exit.js";
+import { emitIfModRmMemory, emitIfModRmRegister, emitModRmIsRegister, emitModRmRegIndex } from "#backends/wasm/interpreter/decode/modrm-bits.js";
+import { lowerIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
+import { emitSetFlags } from "#backends/wasm/lowering/flags.js";
+import { emitAluFlagsCondition, emitFlagProducerCondition } from "#backends/wasm/lowering/conditions.js";
+import { ExitReason } from "#backends/wasm/exit.js";
 
 export type InterpreterOperandBinding =
   | Readonly<{ kind: "opcode.reg32"; opcodeLocal: number }>

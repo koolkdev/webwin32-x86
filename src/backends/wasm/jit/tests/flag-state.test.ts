@@ -1,15 +1,15 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import type { IrValueExpr } from "../../../../x86/ir/model/expressions.js";
-import { IR_ALU_FLAG_MASKS } from "../../../../x86/ir/passes/flag-analysis.js";
-import { createIrFlagSetOp } from "../../../../x86/ir/model/flags.js";
-import type { ValueRef } from "../../../../x86/ir/model/types.js";
-import { i32 } from "../../../../x86/state/cpu-state.js";
-import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
-import { wasmOpcode, wasmValueType } from "../../encoder/types.js";
-import { wasmBodyOpcodes } from "../../tests/body-opcodes.js";
-import { createJitFlagState } from "../state/flag-state.js";
+import type { IrValueExpr } from "#x86/ir/model/expressions.js";
+import { IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
+import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
+import type { ValueRef } from "#x86/ir/model/types.js";
+import { i32 } from "#x86/state/cpu-state.js";
+import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { wasmOpcode, wasmValueType } from "#backends/wasm/encoder/types.js";
+import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
+import { createJitFlagState } from "#backends/wasm/jit/state/flag-state.js";
 
 test("JIT flag state materializes only requested pending flags", () => {
   const body = new WasmFunctionBodyEncoder(3);

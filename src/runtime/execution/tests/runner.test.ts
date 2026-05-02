@@ -1,27 +1,27 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { runResultFromState, StopReason } from "../../../x86/execution/run-result.js";
-import { createCpuState } from "../../../x86/state/cpu-state.js";
-import { RuntimeCodeMap } from "../../program/code-map.js";
+import { runResultFromState, StopReason } from "#x86/execution/run-result.js";
+import { createCpuState } from "#x86/state/cpu-state.js";
+import { RuntimeCodeMap } from "#runtime/program/code-map.js";
 import {
   assertEngineFixtureResult,
   createFixtureFallbackEngines,
   createFixtureInterpreterOnlyEngines,
   createFixtureRuntimeEngines,
   prepareEngineFixture
-} from "../../tests/fixtures/helpers.js";
-import { ENGINE_PROGRAM_FIXTURES, MOV_ADD_TRAP } from "../../tests/fixtures/programs.js";
-import { createWasmHostMemories } from "../../../backends/wasm/host/memories.js";
-import { createInstructionBudget } from "../budget.js";
-import { engineDone, engineUnavailable, type RuntimeEngineResult } from "../engine-result.js";
-import { RuntimeMode } from "../mode.js";
+} from "#runtime/tests/fixtures/helpers.js";
+import { ENGINE_PROGRAM_FIXTURES, MOV_ADD_TRAP } from "#runtime/tests/fixtures/programs.js";
+import { createWasmHostMemories } from "#backends/wasm/host/memories.js";
+import { createInstructionBudget } from "#runtime/execution/budget.js";
+import { engineDone, engineUnavailable, type RuntimeEngineResult } from "#runtime/execution/engine-result.js";
+import { RuntimeMode } from "#runtime/execution/mode.js";
 import {
   runRuntimeProgram,
   runRuntimeStep,
   type RuntimeEngine,
   type RuntimeEngineContext
-} from "../runner.js";
+} from "#runtime/execution/runner.js";
 
 test("interpreter runtime step runs only the interpreter engine", () => {
   const calls: string[] = [];

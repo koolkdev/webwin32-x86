@@ -1,4 +1,4 @@
-import type { GuestMemory } from "../../memory/guest-memory.js";
+import type { GuestMemory } from "#x86/memory/guest-memory.js";
 import {
   decodeFault,
   IsaDecodeError,

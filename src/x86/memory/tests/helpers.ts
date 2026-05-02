@@ -1,4 +1,4 @@
-import type { GuestMemory, MemoryReadResult, MemoryWriteResult } from "../guest-memory.js";
+import type { GuestMemory, MemoryReadResult, MemoryWriteResult } from "#x86/memory/guest-memory.js";
 
 export function fillGuestMemory(memory: GuestMemory, value: number): void {
   for (let address = 0; address < memory.byteLength; address += 1) {

@@ -1,14 +1,14 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { createCpuState } from "../../../../x86/state/cpu-state.js";
+import { createCpuState } from "#x86/state/cpu-state.js";
 import {
   assertInterpreterStateEquals,
   readInterpreterState,
   writeInterpreterState
 } from "./interpreter-helpers.js";
-import { startAddress } from "../../tests/helpers.js";
-import { ExitReason } from "../../exit.js";
+import { startAddress } from "#backends/wasm/tests/helpers.js";
+import { ExitReason } from "#backends/wasm/exit.js";
 import {
   assertCompletedInstruction,
   assertSingleInstructionExit,

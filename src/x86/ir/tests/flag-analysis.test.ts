@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { buildIr } from "../build/builder.js";
+import { buildIr } from "#x86/ir/build/builder.js";
 import {
   analyzeIrFlagLiveness,
   conditionFlagReadMask,
@@ -10,7 +10,7 @@ import {
   IR_ALU_FLAG_MASK,
   IR_FLAG_MASK_NONE,
   IR_ALU_FLAG_MASKS
-} from "../passes/flag-analysis.js";
+} from "#x86/ir/passes/flag-analysis.js";
 
 test("flag analysis records condition read masks", () => {
   strictEqual(conditionFlagReadMask("E"), IR_ALU_FLAG_MASKS.ZF);
