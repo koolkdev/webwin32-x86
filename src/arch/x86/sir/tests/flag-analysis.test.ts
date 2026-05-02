@@ -29,6 +29,11 @@ test("flag analysis records producer writes and undefined flags", () => {
     writes: SIR_ALU_FLAG_MASK,
     undefines: SIR_ALU_FLAG_MASKS.AF
   });
+  deepStrictEqual(flagProducerEffect("inc32"), {
+    reads: SIR_FLAG_MASK_NONE,
+    writes: SIR_ALU_FLAG_MASK & ~SIR_ALU_FLAG_MASKS.CF,
+    undefines: SIR_FLAG_MASK_NONE
+  });
 });
 
 test("flag liveness marks unused flag producer writes dead", () => {
@@ -105,6 +110,31 @@ test("flag liveness treats undefined writes as kills", () => {
     neededWrites: SIR_ALU_FLAG_MASKS.AF,
     deadWrites: SIR_ALU_FLAG_MASK & ~SIR_ALU_FLAG_MASKS.AF
   });
+});
+
+test("flag liveness keeps CF live across INC partial flag writes", () => {
+  const program = buildSir((s) => {
+    const addLeft = s.get32(s.reg32("eax"));
+    const addRight = s.const32(1);
+    const addResult = s.i32Add(addLeft, addRight);
+    const incLeft = s.get32(s.reg32("eax"));
+    const incResult = s.i32Add(incLeft, s.const32(1));
+
+    s.setFlags("add32", { left: addLeft, right: addRight, result: addResult });
+    s.setFlags("inc32", { left: incLeft, result: incResult });
+    s.conditionalJump(s.condition("B"), s.get32(s.operand(0)), s.nextEip());
+  });
+  const flagSets = program
+    .map((op, index) => ({ op, index }))
+    .filter((entry) => entry.op.op === "flags.set");
+  const liveness = analyzeSirFlagLiveness(program);
+  const addIndex = flagSets[0]!.index;
+  const incIndex = flagSets[1]!.index;
+
+  deepStrictEqual(liveness[addIndex]?.neededWrites, SIR_ALU_FLAG_MASKS.CF);
+  deepStrictEqual(liveness[incIndex]?.neededWrites, SIR_FLAG_MASK_NONE);
+  deepStrictEqual(liveness[incIndex]?.liveIn, SIR_ALU_FLAG_MASKS.CF);
+  deepStrictEqual(liveness[incIndex]?.liveOut, SIR_ALU_FLAG_MASKS.CF);
 });
 
 test("flag liveness barriers keep flags live before observable exits", () => {

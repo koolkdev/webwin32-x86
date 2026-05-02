@@ -18,6 +18,9 @@ test("JIT flag state materializes only requested pending flags", () => {
     emitLoadAluFlags: () => {
       throw new Error("ZF materialization from add32 should not load incoming aluFlags");
     },
+    emitLoadAluFlagsValue: () => {
+      throw new Error("ZF materialization from add32 should not merge incoming aluFlags");
+    },
     emitStoreAluFlags: () => {
       throw new Error("flags.materialize should not store aluFlags");
     }

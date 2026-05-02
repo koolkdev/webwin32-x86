@@ -31,7 +31,9 @@ export function emitSetFlags(
 ): void {
   const flagProducer = FLAG_PRODUCERS[producer];
   const defs = flagProducer.define(inputs);
-  const writeMask = writtenFlagsMask(defs) & (options.mask ?? x86ArithmeticFlagsMask);
+  // Masked materialization computes only requested bits; partial producers also
+  // preserve bits outside writtenMask, such as CF for INC/DEC.
+  const writeMask = flagProducer.writtenMask & (options.mask ?? x86ArithmeticFlagsMask);
 
   if (writeMask === 0) {
     return;
@@ -54,10 +56,14 @@ function emitWrittenFlags(
   let hasWrittenFlag = false;
 
   for (const flag of flagOrder) {
+    if ((mask & x86ArithmeticFlagMask[flag]) === 0) {
+      continue;
+    }
+
     const expr = defs[flag];
 
-    if (expr === undefined || (mask & x86ArithmeticFlagMask[flag]) === 0) {
-      continue;
+    if (expr === undefined) {
+      throw new Error(`flag producer metadata writes ${flag} without defining it`);
     }
 
     emitFlagBit(body, flag, expr, helpers);
@@ -138,10 +144,6 @@ function emitValueExpr(body: WasmFunctionBodyEncoder, expr: ValueExpr, helpers: 
       body.i32Xor();
       return;
   }
-}
-
-function writtenFlagsMask(defs: Readonly<Partial<Record<FlagName, FlagExpr>>>): number {
-  return flagOrder.reduce((mask, flag) => (defs[flag] === undefined ? mask : mask | x86ArithmeticFlagMask[flag]), 0);
 }
 
 function flagBit(flag: FlagName): number {

@@ -38,7 +38,11 @@ export function createJitSirState(
   const regs = createJitReg32State(body);
   const eipLocal = body.addLocal(wasmValueType.i32);
   const aluFlagsLocal = body.addLocal(wasmValueType.i32);
-  const flags = createJitFlagState(body, aluFlagsLocal, { emitLoadAluFlags, emitStoreAluFlags });
+  const flags = createJitFlagState(body, aluFlagsLocal, {
+    emitLoadAluFlags,
+    emitLoadAluFlagsValue,
+    emitStoreAluFlags
+  });
   const instructionCountLocal = body.addLocal(wasmValueType.i32);
   const generationState = createExitGenerationState(maxExitGeneration);
   let activeExit: JitExitTarget | undefined;
@@ -105,8 +109,12 @@ export function createJitSirState(
   }
 
   function emitLoadAluFlags(): void {
-    emitLoadStateU32(body, stateOffset.aluFlags);
+    emitLoadAluFlagsValue();
     body.localSet(aluFlagsLocal);
+  }
+
+  function emitLoadAluFlagsValue(): void {
+    emitLoadStateU32(body, stateOffset.aluFlags);
   }
 
   function emitStoreAluFlags(emitValue: () => void): void {

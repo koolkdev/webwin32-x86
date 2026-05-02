@@ -45,6 +45,24 @@ test("flag optimization keeps producers live at barriers", () => {
   strictEqual(optimized.program.filter((op) => op.op === "flags.set").length, 2);
 });
 
+test("flag optimization tracks partial flag producers independently", () => {
+  const program = buildSir((s) => {
+    const addLeft = s.get32(s.reg32("eax"));
+    const addRight = s.const32(1);
+    const addResult = s.i32Add(addLeft, addRight);
+    const incLeft = s.get32(s.reg32("eax"));
+    const incResult = s.i32Add(incLeft, s.const32(1));
+
+    s.setFlags("add32", { left: addLeft, right: addRight, result: addResult });
+    s.setFlags("inc32", { left: incLeft, result: incResult });
+    s.boundaryFlags(SIR_ALU_FLAG_MASK);
+  });
+  const optimized = pruneDeadFlagSets(program);
+  const flagSets = optimized.program.filter((op) => op.op === "flags.set");
+
+  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
+});
+
 test("flag optimization keeps producers live for explicit materialization", () => {
   const program = buildSir((s) => {
     const left = s.get32(s.reg32("eax"));

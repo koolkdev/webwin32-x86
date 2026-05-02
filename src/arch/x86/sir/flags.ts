@@ -1,3 +1,4 @@
+import { x86ArithmeticFlagMask } from "../isa/flags.js";
 import type { X86ArithmeticFlag } from "../isa/flags.js";
 import type { FlagProducerName, ValueRef } from "./types.js";
 
@@ -22,6 +23,11 @@ export type FlagDefs = Readonly<Partial<Record<FlagName, FlagExpr>>>;
 
 export type FlagProducer<InputName extends string> = Readonly<{
   inputs: readonly InputName[];
+  // Masks are explicit metadata so analysis can reason about partial writers
+  // without inspecting every symbolic expression. The define() result must
+  // still provide expressions for every written bit.
+  writtenMask: number;
+  undefMask: number;
   define(inputs: Readonly<Record<InputName, ValueRef>>): FlagDefs;
 }>;
 
@@ -96,21 +102,71 @@ export function logicFlags(width: 8 | 16 | 32, result: ValueExpr): FlagDefs {
 
 export function flagProducer<const InputName extends string>(
   inputs: readonly InputName[],
+  writtenFlags: readonly FlagName[],
+  undefFlags: readonly FlagName[],
   define: (inputs: Readonly<Record<InputName, ValueRef>>) => FlagDefs
 ): FlagProducer<InputName> {
-  return { inputs, define };
+  return {
+    inputs,
+    writtenMask: maskFlags(writtenFlags),
+    undefMask: maskFlags(undefFlags),
+    define
+  };
 }
 
+const arithmeticFlagNames = ["CF", "PF", "AF", "ZF", "SF", "OF"] as const satisfies readonly FlagName[];
+const incDecWrittenFlagNames = ["PF", "AF", "ZF", "SF", "OF"] as const satisfies readonly FlagName[];
+
 export const FLAG_PRODUCERS = {
-  add32: flagProducer(["left", "right", "result"], ({ left, right, result }) => ({
+  add32: flagProducer(["left", "right", "result"], arithmeticFlagNames, [], ({ left, right, result }) => ({
     ...zspFlags(32, result),
     ...addCarryFlags(32, left, right, result)
   })),
 
-  sub32: flagProducer(["left", "right", "result"], ({ left, right, result }) => ({
+  sub32: flagProducer(["left", "right", "result"], arithmeticFlagNames, [], ({ left, right, result }) => ({
     ...zspFlags(32, result),
     ...subCarryFlags(32, left, right, result)
   })),
 
-  logic32: flagProducer(["result"], ({ result }) => logicFlags(32, result))
+  logic32: flagProducer(["result"], arithmeticFlagNames, ["AF"], ({ result }) => logicFlags(32, result)),
+
+  // INC/DEC intentionally omit CF from writtenMask. Consumers of CF after INC/DEC
+  // must keep using the previous CF source.
+  inc32: flagProducer(["left", "result"], incDecWrittenFlagNames, [], ({ left, result }) => {
+    const carry = addCarryFlags(32, left, const32(1), result);
+
+    return {
+      ...zspFlags(32, result),
+      AF: requiredFlagExpr(carry, "AF", "inc32"),
+      OF: requiredFlagExpr(carry, "OF", "inc32")
+    };
+  }),
+
+  dec32: flagProducer(["left", "result"], incDecWrittenFlagNames, [], ({ left, result }) => {
+    const carry = subCarryFlags(32, left, const32(1), result);
+
+    return {
+      ...zspFlags(32, result),
+      AF: requiredFlagExpr(carry, "AF", "dec32"),
+      OF: requiredFlagExpr(carry, "OF", "dec32")
+    };
+  })
 } as const satisfies Record<FlagProducerName, FlagProducer<string>>;
+
+function const32(value: number): ValueExpr {
+  return { kind: "const32", value };
+}
+
+function maskFlags(flags: readonly FlagName[]): number {
+  return flags.reduce((mask, flag) => mask | x86ArithmeticFlagMask[flag], 0);
+}
+
+function requiredFlagExpr(defs: FlagDefs, flag: FlagName, producer: FlagProducerName): FlagExpr {
+  const expr = defs[flag];
+
+  if (expr === undefined) {
+    throw new Error(`${producer} missing generated ${flag} expression`);
+  }
+
+  return expr;
+}

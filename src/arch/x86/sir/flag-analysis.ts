@@ -1,15 +1,11 @@
 import { x86ArithmeticFlags } from "../isa/flags.js";
 import { CONDITIONS } from "./conditions.js";
-import {
-  FLAG_PRODUCERS,
-  type FlagName
-} from "./flags.js";
+import { FLAG_PRODUCERS, type FlagName } from "./flags.js";
 import type {
   ConditionCode,
   FlagProducerName,
   SirOp,
-  SirProgram,
-  ValueRef
+  SirProgram
 } from "./types.js";
 
 export type SirFlagMask = number;
@@ -85,25 +81,13 @@ export function conditionFlagReadMask(cc: ConditionCode): SirFlagMask {
 }
 
 export function flagProducerEffect(producer: FlagProducerName): SirFlagOpEffect {
-  const defs = FLAG_PRODUCERS[producer].define(dummyFlagInputs(producer));
-  let writes = SIR_FLAG_MASK_NONE;
-  let undefines = SIR_FLAG_MASK_NONE;
+  const flagProducer = FLAG_PRODUCERS[producer];
 
-  for (const flag of SIR_ALU_FLAGS) {
-    const expr = defs[flag];
-
-    if (expr === undefined) {
-      continue;
-    }
-
-    writes |= SIR_ALU_FLAG_MASKS[flag];
-
-    if (expr.kind === "undefFlag") {
-      undefines |= SIR_ALU_FLAG_MASKS[flag];
-    }
-  }
-
-  return { reads: SIR_FLAG_MASK_NONE, writes, undefines };
+  return {
+    reads: SIR_FLAG_MASK_NONE,
+    writes: flagProducer.writtenMask,
+    undefines: flagProducer.undefMask
+  };
 }
 
 export function sirOpFlagEffect(op: SirOp): SirFlagOpEffect {
@@ -197,14 +181,4 @@ export function sirIndexedFlagPointMasks(
   }
 
   return { before, after };
-}
-
-function dummyFlagInputs(producer: FlagProducerName): Readonly<Record<string, ValueRef>> {
-  const inputs: Record<string, ValueRef> = {};
-
-  for (const [id, name] of FLAG_PRODUCERS[producer].inputs.entries()) {
-    inputs[name] = { kind: "var", id };
-  }
-
-  return inputs;
 }

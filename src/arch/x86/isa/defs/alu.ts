@@ -1,6 +1,7 @@
 import { form, mnemonic } from "../schema/builders.js";
-import { imm, implicitReg, modrmReg, modrmRm } from "../schema/operands.js";
-import { aluSemantic } from "../semantics/alu.js";
+import { opcodePlusReg } from "../schema/opcodes.js";
+import { imm, implicitReg, modrmReg, modrmRm, opReg } from "../schema/operands.js";
+import { aluSemantic, incDecSemantic } from "../semantics/alu.js";
 
 export const ADD = mnemonic("add", [
   // 01 /r: ADD r/m32, r32
@@ -119,5 +120,41 @@ export const XOR = mnemonic("xor", [
     operands: [modrmRm("rm32"), imm(8, "sign")],
     format: { syntax: "xor {0}, {1}" },
     semantics: aluSemantic("xor", 32)
+  })
+]);
+
+export const INC = mnemonic("inc", [
+  // 40+rd: INC r32
+  form("r32", {
+    opcode: [opcodePlusReg(0x40)],
+    operands: [opReg()],
+    format: { syntax: "inc {0}" },
+    semantics: incDecSemantic("inc", 32)
+  }),
+  // FF /0: INC r/m32
+  form("rm32", {
+    opcode: [0xff],
+    modrm: { match: { reg: 0 } },
+    operands: [modrmRm("rm32")],
+    format: { syntax: "inc {0}" },
+    semantics: incDecSemantic("inc", 32)
+  })
+]);
+
+export const DEC = mnemonic("dec", [
+  // 48+rd: DEC r32
+  form("r32", {
+    opcode: [opcodePlusReg(0x48)],
+    operands: [opReg()],
+    format: { syntax: "dec {0}" },
+    semantics: incDecSemantic("dec", 32)
+  }),
+  // FF /1: DEC r/m32
+  form("rm32", {
+    opcode: [0xff],
+    modrm: { match: { reg: 1 } },
+    operands: [modrmRm("rm32")],
+    format: { syntax: "dec {0}" },
+    semantics: incDecSemantic("dec", 32)
   })
 ]);

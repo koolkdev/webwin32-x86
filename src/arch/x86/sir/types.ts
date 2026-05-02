@@ -32,7 +32,7 @@ export type ConditionCode =
   | "LE"
   | "G";
 
-export type FlagProducerName = "add32" | "sub32" | "logic32";
+export type FlagProducerName = "add32" | "sub32" | "logic32" | "inc32" | "dec32";
 export type FlagMask = number;
 
 export type SirOp =

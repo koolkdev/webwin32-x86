@@ -1,6 +1,7 @@
 import type { SemanticTemplate } from "../../sir/types.js";
 
 export type AluOp = "add" | "sub" | "xor";
+export type IncDecOp = "inc" | "dec";
 
 export function aluSemantic(op: AluOp, width: 32): SemanticTemplate {
   void width;
@@ -27,6 +28,22 @@ export function aluSemantic(op: AluOp, width: 32): SemanticTemplate {
         break;
     }
 
+    s.set32(dst, result);
+  };
+}
+
+export function incDecSemantic(op: IncDecOp, width: 32): SemanticTemplate {
+  void width;
+
+  return (s) => {
+    const dst = s.operand(0);
+    const left = s.get32(dst);
+    const one = s.const32(1);
+    const result = op === "inc"
+      ? s.i32Add(left, one)
+      : s.i32Sub(left, one);
+
+    s.setFlags(op === "inc" ? "inc32" : "dec32", { left, result });
     s.set32(dst, result);
   };
 }

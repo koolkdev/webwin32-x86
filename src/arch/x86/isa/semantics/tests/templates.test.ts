@@ -2,7 +2,7 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { buildSir } from "../../../sir/builder.js";
-import { aluSemantic } from "../alu.js";
+import { aluSemantic, incDecSemantic } from "../alu.js";
 import { callSemantic, jccSemantic, jmpSemantic, retImmSemantic } from "../control.js";
 import { cmpSemantic } from "../cmp.js";
 import { leaSemantic } from "../lea.js";
@@ -60,6 +60,20 @@ test("add semantic sets add32 flags before destination writeback", () => {
       inputs: { left: v(0), right: v(1), result: v(2) }
     },
     { op: "set32", target: op(0), value: v(2) },
+    { op: "next" }
+  ]);
+});
+
+test("inc semantic sets partial inc32 flags before destination writeback", () => {
+  deepStrictEqual(buildSir(incDecSemantic("inc", 32)), [
+    { op: "get32", dst: v(0), source: op(0) },
+    { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+    {
+      op: "flags.set",
+      producer: "inc32",
+      inputs: { left: v(0), result: v(1) }
+    },
+    { op: "set32", target: op(0), value: v(1) },
     { op: "next" }
   ]);
 });

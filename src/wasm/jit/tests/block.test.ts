@@ -76,6 +76,21 @@ test("buildJitSirBlock inserts explicit flag materialization before consumers an
   });
 });
 
+test("buildJitSirBlock keeps earlier CF producer live across INC", () => {
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
+  const inc = ok(decodeBytes([0x40], add.nextEip));
+  const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
+  const block = buildJitSirBlock([add, inc, jc]);
+  const flagSets = block.sir.filter((op) => op.op === "flags.set");
+  const conditionIndex = block.sir.findIndex((op) => op.op === "condition");
+
+  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
+  deepStrictEqual(block.sir[conditionIndex - 1], {
+    op: "flags.materialize",
+    mask: SIR_ALU_FLAG_MASKS.CF
+  });
+});
+
 test("buildJitSirBlock represents JIT flag exits as explicit SIR boundaries", () => {
   const flagFreeBlock = buildJitSirBlock([
     ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress)),
@@ -209,6 +224,24 @@ test("jit SIR block materializes the latest deferred flags on exit", async () =>
   strictEqual(result.state.eip, startAddress + 8);
   strictEqual(result.state.instructionCount, 3);
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
+test("jit SIR block preserves CF across INC partial flag writes", async () => {
+  const result = await runJitSirBlock([
+    0x83, 0xc0, 0x01, // add eax, 1
+    0x40, // inc eax
+    0x72, 0x05 // jc +5
+  ], createCpuState({
+    eax: 0xffff_ffff,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 1);
+  strictEqual(result.state.eflags, (preservedEflags | 0x01) >>> 0);
+  strictEqual(result.state.eip, startAddress + 11);
+  strictEqual(result.state.instructionCount, 3);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.BRANCH_TAKEN, payload: startAddress + 11 });
 });
 
 test("jit SIR block lowers cmp without writing operands", async () => {

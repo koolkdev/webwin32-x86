@@ -32,6 +32,18 @@ test("emitSetFlags writes generated flags and normalizes arithmetic flag storage
   );
 });
 
+test("emitSetFlags supports partial producers that preserve CF", async () => {
+  const inc32 = await instantiateSetFlags("inc32");
+
+  strictEqual(
+    inc32(0xffff_ffff, 0, 0, x86ArithmeticFlagMask.CF | x86ArithmeticFlagMask.SF),
+    x86ArithmeticFlagMask.CF |
+      x86ArithmeticFlagMask.PF |
+      x86ArithmeticFlagMask.AF |
+      x86ArithmeticFlagMask.ZF
+  );
+});
+
 test("emitSetFlags computes and writes only requested materialization bits", async () => {
   const add32 = await instantiateSetFlags("add32", x86ArithmeticFlagMask.ZF);
   const opcodes = wasmBodyOpcodes(encodeSetFlagsFunctionBody("add32", x86ArithmeticFlagMask.ZF).encode());

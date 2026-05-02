@@ -98,6 +98,34 @@ test("xor_clears_register_and_sets_zf", () => {
   strictEqual(getFlag(state, "AF"), false);
 });
 
+test("inc_updates_status_flags_without_changing_cf", () => {
+  const state = createCpuState({ eax: 0xffff_ffff, eip: startAddress, eflags: 1 });
+
+  execute(state, [0x40]);
+
+  strictEqual(state.eax, 0);
+  strictEqual(getFlag(state, "CF"), true);
+  strictEqual(getFlag(state, "ZF"), true);
+  strictEqual(getFlag(state, "SF"), false);
+  strictEqual(getFlag(state, "OF"), false);
+  strictEqual(getFlag(state, "AF"), true);
+  strictEqual(getFlag(state, "PF"), true);
+});
+
+test("dec_updates_status_flags_without_changing_cf", () => {
+  const state = createCpuState({ eax: 0, eip: startAddress, eflags: 1 });
+
+  execute(state, [0x48]);
+
+  strictEqual(state.eax, 0xffff_ffff);
+  strictEqual(getFlag(state, "CF"), true);
+  strictEqual(getFlag(state, "ZF"), false);
+  strictEqual(getFlag(state, "SF"), true);
+  strictEqual(getFlag(state, "OF"), false);
+  strictEqual(getFlag(state, "AF"), true);
+  strictEqual(getFlag(state, "PF"), true);
+});
+
 test("cmp_equal_sets_zf_without_write", () => {
   const state = createCpuState({ eax: 5, eip: startAddress });
 

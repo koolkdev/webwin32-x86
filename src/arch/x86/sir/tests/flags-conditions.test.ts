@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { sirVar } from "../builder.js";
 import { CONDITIONS } from "../conditions.js";
+import { SIR_ALU_FLAG_MASK, SIR_ALU_FLAG_MASKS, maskSirAluFlags } from "../flag-analysis.js";
 import { FLAG_PRODUCERS } from "../flags.js";
 
 const left = sirVar(0);
@@ -11,6 +12,8 @@ const result = sirVar(2);
 
 test("add32 producer defines aluFlags symbolically", () => {
   deepStrictEqual(FLAG_PRODUCERS.add32.inputs, ["left", "right", "result"]);
+  deepStrictEqual(FLAG_PRODUCERS.add32.writtenMask, SIR_ALU_FLAG_MASK);
+  deepStrictEqual(FLAG_PRODUCERS.add32.undefMask, 0);
   deepStrictEqual(FLAG_PRODUCERS.add32.define({ left, right, result }), {
     ZF: { kind: "eqz", value: result },
     SF: { kind: "signBit", value: result, width: 32 },
@@ -63,6 +66,8 @@ test("sub32 producer defines borrow and overflow symbolically", () => {
 
 test("logic32 producer defines logical flags and keeps AF undefined", () => {
   deepStrictEqual(FLAG_PRODUCERS.logic32.inputs, ["result"]);
+  deepStrictEqual(FLAG_PRODUCERS.logic32.writtenMask, SIR_ALU_FLAG_MASK);
+  deepStrictEqual(FLAG_PRODUCERS.logic32.undefMask, SIR_ALU_FLAG_MASKS.AF);
   deepStrictEqual(FLAG_PRODUCERS.logic32.define({ result }), {
     ZF: { kind: "eqz", value: result },
     SF: { kind: "signBit", value: result, width: 32 },
@@ -70,6 +75,44 @@ test("logic32 producer defines logical flags and keeps AF undefined", () => {
     CF: { kind: "constFlag", value: 0 },
     OF: { kind: "constFlag", value: 0 },
     AF: { kind: "undefFlag" }
+  });
+});
+
+test("inc32 and dec32 producers write all arithmetic flags except CF", () => {
+  const writtenMask = maskSirAluFlags(["PF", "AF", "ZF", "SF", "OF"]);
+
+  deepStrictEqual(FLAG_PRODUCERS.inc32.inputs, ["left", "result"]);
+  deepStrictEqual(FLAG_PRODUCERS.inc32.writtenMask, writtenMask);
+  deepStrictEqual(FLAG_PRODUCERS.inc32.undefMask, 0);
+  deepStrictEqual(FLAG_PRODUCERS.inc32.define({ left, result }).CF, undefined);
+  deepStrictEqual(FLAG_PRODUCERS.inc32.define({ left, result }).OF, {
+    kind: "ne0",
+    value: {
+      kind: "and",
+      a: {
+        kind: "and",
+        a: { kind: "xor", a: left, b: result },
+        b: { kind: "xor", a: { kind: "const32", value: 1 }, b: result }
+      },
+      b: { kind: "const32", value: 0x8000_0000 }
+    }
+  });
+
+  deepStrictEqual(FLAG_PRODUCERS.dec32.inputs, ["left", "result"]);
+  deepStrictEqual(FLAG_PRODUCERS.dec32.writtenMask, writtenMask);
+  deepStrictEqual(FLAG_PRODUCERS.dec32.undefMask, 0);
+  deepStrictEqual(FLAG_PRODUCERS.dec32.define({ left, result }).CF, undefined);
+  deepStrictEqual(FLAG_PRODUCERS.dec32.define({ left, result }).OF, {
+    kind: "ne0",
+    value: {
+      kind: "and",
+      a: {
+        kind: "and",
+        a: { kind: "xor", a: left, b: { kind: "const32", value: 1 } },
+        b: { kind: "xor", a: left, b: result }
+      },
+      b: { kind: "const32", value: 0x8000_0000 }
+    }
   });
 });
 

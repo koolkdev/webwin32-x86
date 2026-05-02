@@ -65,6 +65,34 @@ const fixtures: readonly DecoderFixture[] = [
     id: "test.rm32_r32"
   },
   {
+    name: "inc eax",
+    bytes: [0x40],
+    mnemonic: "inc",
+    operands: [reg32("eax")],
+    id: "inc.r32"
+  },
+  {
+    name: "dec ebx",
+    bytes: [0x4b],
+    mnemonic: "dec",
+    operands: [reg32("ebx")],
+    id: "dec.r32"
+  },
+  {
+    name: "inc [eax]",
+    bytes: [0xff, 0x00],
+    mnemonic: "inc",
+    operands: [mem32({ base: "eax", scale: 1, disp: 0 })],
+    id: "inc.rm32"
+  },
+  {
+    name: "dec [ecx]",
+    bytes: [0xff, 0x09],
+    mnemonic: "dec",
+    operands: [mem32({ base: "ecx", scale: 1, disp: 0 })],
+    id: "dec.rm32"
+  },
+  {
     name: "group 81 add eax, imm32",
     bytes: [0x81, 0xc0, 0x78, 0x56, 0x34, 0x12],
     mnemonic: "add",
