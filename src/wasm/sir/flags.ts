@@ -9,7 +9,7 @@ import type {
   ValueExpr
 } from "../../arch/x86/sir/flags.js";
 import { FLAG_PRODUCERS } from "../../arch/x86/sir/flags.js";
-import type { FlagProducerName, ValueRef } from "../../arch/x86/sir/types.js";
+import type { SirFlagSetOp } from "../../arch/x86/sir/types.js";
 import { i32 } from "../../core/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import type { WasmSirAluFlagsStorage } from "./alu-flags.js";
@@ -24,16 +24,15 @@ export type EmitSetFlagsOptions = Readonly<{
 export function emitSetFlags(
   body: WasmFunctionBodyEncoder,
   aluFlags: WasmSirAluFlagsStorage,
-  producer: FlagProducerName,
-  inputs: Readonly<Record<string, ValueRef>>,
+  descriptor: SirFlagSetOp,
   helpers: WasmSirEmitHelpers,
   options: EmitSetFlagsOptions = {}
 ): void {
-  const flagProducer = FLAG_PRODUCERS[producer];
-  const defs = flagProducer.define(inputs);
+  const flagProducer = FLAG_PRODUCERS[descriptor.producer];
+  const defs = flagProducer.define(descriptor.inputs);
   // Masked materialization computes only requested bits; partial producers also
   // preserve bits outside writtenMask, such as CF for INC/DEC.
-  const writeMask = flagProducer.writtenMask & (options.mask ?? x86ArithmeticFlagsMask);
+  const writeMask = descriptor.writtenMask & (options.mask ?? x86ArithmeticFlagsMask);
 
   if (writeMask === 0) {
     return;

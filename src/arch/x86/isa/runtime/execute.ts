@@ -13,7 +13,7 @@ import {
 import { buildSir } from "../../sir/builder.js";
 import { CONDITIONS, type FlagBoolExpr } from "../../sir/conditions.js";
 import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "../../sir/flags.js";
-import type { MemRef, SirOp, StorageRef, ValueRef, VarRef } from "../../sir/types.js";
+import type { MemRef, SirFlagSetOp, SirOp, StorageRef, ValueRef, VarRef } from "../../sir/types.js";
 import type { IsaDecodedInstruction, IsaOperandBinding } from "../decoder/types.js";
 
 export type IsaExecutionOptions = Readonly<{
@@ -100,7 +100,7 @@ function executeOp(context: ExecutionContext, op: SirOp): RunResult | undefined 
       setVar(context, op.dst, u32(evalValueRef(context, op.a) & evalValueRef(context, op.b)));
       return undefined;
     case "flags.set":
-      setFlags(context, op.producer, op.inputs);
+      setFlags(context, op);
       return undefined;
     case "flags.materialize":
     case "flags.boundary":
@@ -207,21 +207,20 @@ function writeGuestU32(context: ExecutionContext, address: number, value: number
 
 function setFlags(
   context: ExecutionContext,
-  producerName: keyof typeof FLAG_PRODUCERS,
-  inputs: Readonly<Record<string, ValueRef>>
+  descriptor: SirFlagSetOp
 ): void {
-  const producer = FLAG_PRODUCERS[producerName] as Readonly<{
+  const producer = FLAG_PRODUCERS[descriptor.producer] as Readonly<{
     inputs: readonly string[];
     define(inputs: Readonly<Record<string, ValueRef>>): FlagDefs;
   }>;
 
   for (const name of producer.inputs) {
-    if (inputs[name] === undefined) {
-      throw new Error(`missing ${producerName} flag input: ${name}`);
+    if (descriptor.inputs[name] === undefined) {
+      throw new Error(`missing ${descriptor.producer} flag input: ${name}`);
     }
   }
 
-  for (const [flag, expr] of Object.entries(producer.define(inputs)) as [FlagName, FlagExpr][]) {
+  for (const [flag, expr] of Object.entries(producer.define(descriptor.inputs)) as [FlagName, FlagExpr][]) {
     setFlag(context.state, flag, evalFlagExpr(context, expr));
   }
 }

@@ -93,7 +93,11 @@ export function flagProducerEffect(producer: FlagProducerName): SirFlagOpEffect 
 export function sirOpFlagEffect(op: SirOp): SirFlagOpEffect {
   switch (op.op) {
     case "flags.set":
-      return flagProducerEffect(op.producer);
+      return {
+        reads: SIR_FLAG_MASK_NONE,
+        writes: op.writtenMask,
+        undefines: op.undefMask
+      };
     case "condition":
       return {
         reads: conditionFlagReadMask(op.cc),

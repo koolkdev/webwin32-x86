@@ -1,6 +1,6 @@
 import { x86ArithmeticFlagMask } from "../isa/flags.js";
 import type { X86ArithmeticFlag } from "../isa/flags.js";
-import type { FlagProducerName, ValueRef } from "./types.js";
+import type { FlagProducerName, SirFlagSetOp, ValueRef } from "./types.js";
 
 export type FlagName = X86ArithmeticFlag;
 
@@ -152,6 +152,21 @@ export const FLAG_PRODUCERS = {
     };
   })
 } as const satisfies Record<FlagProducerName, FlagProducer<string>>;
+
+export function createSirFlagSetOp(
+  producer: FlagProducerName,
+  inputs: Readonly<Record<string, ValueRef>>
+): SirFlagSetOp {
+  const flagProducer = FLAG_PRODUCERS[producer];
+
+  return {
+    op: "flags.set",
+    producer,
+    writtenMask: flagProducer.writtenMask,
+    undefMask: flagProducer.undefMask,
+    inputs
+  };
+}
 
 function const32(value: number): ValueExpr {
   return { kind: "const32", value };

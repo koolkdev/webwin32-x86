@@ -146,6 +146,21 @@ function validateFlagSet(
   const producer = FLAG_PRODUCERS[op.producer];
   const expectedInputs: ReadonlySet<string> = new Set(producer.inputs);
 
+  assertSirAluFlagMask(op.writtenMask, "flags.set writtenMask");
+  assertSirAluFlagMask(op.undefMask, "flags.set undefMask");
+
+  if (op.writtenMask !== producer.writtenMask) {
+    throw new Error(`flags.set ${op.producer} writtenMask does not match producer metadata`);
+  }
+
+  if (op.undefMask !== producer.undefMask) {
+    throw new Error(`flags.set ${op.producer} undefMask does not match producer metadata`);
+  }
+
+  if ((op.undefMask & ~op.writtenMask) !== 0) {
+    throw new Error(`flags.set ${op.producer} undefMask must be contained in writtenMask`);
+  }
+
   for (const inputName of producer.inputs) {
     const value = op.inputs[inputName];
 

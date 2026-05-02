@@ -8,6 +8,7 @@ import { leaSemantic } from "../../isa/semantics/lea.js";
 import { intSemantic } from "../../isa/semantics/misc.js";
 import { movSemantic } from "../../isa/semantics/mov.js";
 import { buildSir, const32, operand, sirVar } from "../builder.js";
+import { createSirFlagSetOp } from "../flags.js";
 import { validateSirProgram } from "../validator.js";
 
 test("validator accepts representative generated semantic templates", () => {
@@ -75,7 +76,7 @@ test("validator rejects malformed flag producer inputs", () => {
     () =>
       validateSirProgram([
         { op: "const32", dst: sirVar(0), value: 1 },
-        { op: "flags.set", producer: "logic32", inputs: {} },
+        createSirFlagSetOp("logic32", {}),
         { op: "next" }
       ]),
     /flags\.set logic32 is missing input 'result'/
@@ -85,9 +86,31 @@ test("validator rejects malformed flag producer inputs", () => {
     () =>
       validateSirProgram([
         { op: "const32", dst: sirVar(0), value: 1 },
-        { op: "flags.set", producer: "logic32", inputs: { result: sirVar(0), extra: sirVar(0) } },
+        createSirFlagSetOp("logic32", { result: sirVar(0), extra: sirVar(0) }),
         { op: "next" }
       ]),
     /flags\.set logic32 has unexpected input 'extra'/
+  );
+});
+
+test("validator rejects flag descriptors that disagree with producer metadata", () => {
+  throws(
+    () =>
+      validateSirProgram([
+        { op: "const32", dst: sirVar(0), value: 1 },
+        { ...createSirFlagSetOp("logic32", { result: sirVar(0) }), writtenMask: 1 },
+        { op: "next" }
+      ]),
+    /flags\.set logic32 writtenMask does not match producer metadata/
+  );
+
+  throws(
+    () =>
+      validateSirProgram([
+        { op: "const32", dst: sirVar(0), value: 1 },
+        { ...createSirFlagSetOp("add32", { left: sirVar(0), right: const32(1), result: sirVar(0) }), undefMask: 1 },
+        { op: "next" }
+      ]),
+    /flags\.set add32 undefMask does not match producer metadata/
   );
 });

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { buildSir } from "../builder.js";
 import { SIR_ALU_FLAG_MASK, SIR_ALU_FLAG_MASKS } from "../flag-analysis.js";
 import { insertFlagBoundaries, insertFlagMaterializations, pruneDeadFlagSets } from "../flag-optimization.js";
+import { createSirFlagSetOp } from "../flags.js";
 
 test("flag optimization prunes flag producers with no live writes", () => {
   const program = buildSir((s) => {
@@ -19,11 +20,14 @@ test("flag optimization prunes flag producers with no live writes", () => {
 
   strictEqual(optimized.prunedCount, 1);
   strictEqual(optimized.program.filter((op) => op.op === "flags.set").length, 1);
-  deepStrictEqual(optimized.program.at(-2), {
-    op: "flags.set",
-    producer: "add32",
-    inputs: { left: { kind: "var", id: 0 }, right: { kind: "var", id: 1 }, result: { kind: "var", id: 3 } }
-  });
+  deepStrictEqual(
+    optimized.program.at(-2),
+    createSirFlagSetOp("add32", {
+      left: { kind: "var", id: 0 },
+      right: { kind: "var", id: 1 },
+      result: { kind: "var", id: 3 }
+    })
+  );
 });
 
 test("flag optimization keeps producers live at barriers", () => {

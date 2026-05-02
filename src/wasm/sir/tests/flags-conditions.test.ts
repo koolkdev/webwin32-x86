@@ -2,6 +2,7 @@ import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import type { SirValueExpr } from "../../../arch/x86/sir/expressions.js";
+import { createSirFlagSetOp } from "../../../arch/x86/sir/flags.js";
 import type { ConditionCode, FlagProducerName, ValueRef } from "../../../arch/x86/sir/types.js";
 import { x86ArithmeticFlagMask } from "../../../arch/x86/isa/flags.js";
 import { i32 } from "../../../core/state/cpu-state.js";
@@ -61,7 +62,7 @@ test("emitSetFlags does not allocate an accumulator local", () => {
   const body = new WasmFunctionBodyEncoder(4);
   const aluFlags = wasmSirLocalAluFlagsStorage(body, 3);
 
-  emitSetFlags(body, aluFlags, "logic32", { result: v(2) }, {
+  emitSetFlags(body, aluFlags, createSirFlagSetOp("logic32", { result: v(2) }), {
     emitValue: (value) => emitValueExpr(body, value)
   });
   body.localGet(3).end();
@@ -119,7 +120,7 @@ function encodeSetFlagsFunctionBody(producer: FlagProducerName, mask?: number): 
     ? { result: v(2) }
     : { left: v(0), right: v(1), result: v(2) };
 
-  emitSetFlags(body, aluFlags, producer, inputs, {
+  emitSetFlags(body, aluFlags, createSirFlagSetOp(producer, inputs), {
     emitValue: (value) => emitValueExpr(body, value)
   }, mask === undefined ? undefined : { mask });
   body.localGet(3).end();

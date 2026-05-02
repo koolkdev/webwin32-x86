@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import type { SirValueExpr } from "../../../arch/x86/sir/expressions.js";
 import { SIR_ALU_FLAG_MASKS } from "../../../arch/x86/sir/flag-analysis.js";
+import { createSirFlagSetOp } from "../../../arch/x86/sir/flags.js";
 import type { ValueRef } from "../../../arch/x86/sir/types.js";
 import { i32 } from "../../../core/state/cpu-state.js";
 import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
@@ -26,7 +27,7 @@ test("JIT flag state materializes only requested pending flags", () => {
     }
   });
 
-  flags.emitSet("add32", { left: v(0), right: v(1), result: v(2) }, {
+  flags.emitSet(createSirFlagSetOp("add32", { left: v(0), right: v(1), result: v(2) }), {
     emitValue: (value) => emitValueExpr(body, value)
   });
   flags.emitMaterialize(SIR_ALU_FLAG_MASKS.ZF);

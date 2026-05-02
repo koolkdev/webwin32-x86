@@ -1,6 +1,6 @@
 import type {
   ConditionCode,
-  FlagProducerName,
+  SirFlagSetOp,
   OperandRef,
   RegRef,
   SirProgram,
@@ -27,7 +27,7 @@ export type SirValueExpr =
 export type SirExprOp =
   | Readonly<{ op: "let32"; dst: VarRef; value: SirValueExpr }>
   | Readonly<{ op: "set32"; target: SirStorageExpr; value: SirValueExpr }>
-  | Readonly<{ op: "flags.set"; producer: FlagProducerName; inputs: Readonly<Record<string, ValueRef>> }>
+  | SirFlagSetOp
   | Readonly<{ op: "flags.materialize"; mask: number }>
   | Readonly<{ op: "flags.boundary"; mask: number }>
   | Readonly<{ op: "next" }>
@@ -90,6 +90,8 @@ class ExpressionBuilder {
           this.#ops.push({
             op: "flags.set",
             producer: op.producer,
+            writtenMask: op.writtenMask,
+            undefMask: op.undefMask,
             inputs: Object.fromEntries(
               Object.entries(op.inputs).map(([name, value]) => [name, this.#materializedValue(value)])
             )

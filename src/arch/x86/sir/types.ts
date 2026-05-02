@@ -35,6 +35,14 @@ export type ConditionCode =
 export type FlagProducerName = "add32" | "sub32" | "logic32" | "inc32" | "dec32";
 export type FlagMask = number;
 
+export type SirFlagSetOp = Readonly<{
+  op: "flags.set";
+  producer: FlagProducerName;
+  writtenMask: FlagMask;
+  undefMask: FlagMask;
+  inputs: Readonly<Record<string, ValueRef>>;
+}>;
+
 export type SirOp =
   | Readonly<{ op: "get32"; dst: VarRef; source: StorageRef }>
   | Readonly<{ op: "set32"; target: StorageRef; value: ValueRef }>
@@ -44,11 +52,7 @@ export type SirOp =
   | Readonly<{ op: "i32.sub"; dst: VarRef; a: ValueRef; b: ValueRef }>
   | Readonly<{ op: "i32.xor"; dst: VarRef; a: ValueRef; b: ValueRef }>
   | Readonly<{ op: "i32.and"; dst: VarRef; a: ValueRef; b: ValueRef }>
-  | Readonly<{
-      op: "flags.set";
-      producer: FlagProducerName;
-      inputs: Readonly<Record<string, ValueRef>>;
-    }>
+  | SirFlagSetOp
   | Readonly<{ op: "flags.materialize"; mask: FlagMask }>
   | Readonly<{ op: "flags.boundary"; mask: FlagMask }>
   | Readonly<{ op: "condition"; dst: VarRef; cc: ConditionCode }>

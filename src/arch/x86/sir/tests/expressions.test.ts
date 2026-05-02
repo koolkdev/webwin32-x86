@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { buildSirExpressionProgram } from "../expressions.js";
 import { SIR_ALU_FLAG_MASK, SIR_ALU_FLAG_MASKS } from "../flag-analysis.js";
+import { createSirFlagSetOp } from "../flags.js";
 
 const v = (id: number) => ({ kind: "var" as const, id });
 const op = (index: number) => ({ kind: "operand" as const, index });
@@ -100,7 +101,7 @@ test("expression selector materializes flag inputs that still need value refs", 
         { op: "get32", dst: v(0), source: op(0) },
         { op: "get32", dst: v(1), source: op(1) },
         { op: "i32.sub", dst: v(2), a: v(0), b: v(1) },
-        { op: "flags.set", producer: "sub32", inputs: { left: v(0), right: v(1), result: v(2) } },
+        createSirFlagSetOp("sub32", { left: v(0), right: v(1), result: v(2) }),
         { op: "next" }
       ],
       { canInlineGet32: () => true }
@@ -109,7 +110,7 @@ test("expression selector materializes flag inputs that still need value refs", 
       { op: "let32", dst: v(0), value: { kind: "src32", source: op(0) } },
       { op: "let32", dst: v(1), value: { kind: "src32", source: op(1) } },
       { op: "let32", dst: v(2), value: { kind: "i32.sub", a: v(0), b: v(1) } },
-      { op: "flags.set", producer: "sub32", inputs: { left: v(0), right: v(1), result: v(2) } },
+      createSirFlagSetOp("sub32", { left: v(0), right: v(1), result: v(2) }),
       { op: "next" }
     ]
   );

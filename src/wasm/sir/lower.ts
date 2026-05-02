@@ -8,10 +8,9 @@ import {
 } from "../../arch/x86/sir/expressions.js";
 import type {
   ConditionCode,
+  SirFlagSetOp,
   SirProgram,
-  ValueRef
 } from "../../arch/x86/sir/types.js";
-import type { FlagProducerName } from "../../arch/x86/sir/types.js";
 import { i32 } from "../../core/state/cpu-state.js";
 import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
@@ -25,7 +24,7 @@ export type WasmSirLoweringContext = Readonly<{
   emitGet32(source: SirStorageExpr, helpers: WasmSirEmitHelpers): void;
   emitSet32(target: SirStorageExpr, value: SirValueExpr, helpers: WasmSirEmitHelpers): void;
   emitAddress32(source: SirStorageExpr, helpers: WasmSirEmitHelpers): void;
-  emitSetFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueRef>>, helpers: WasmSirEmitHelpers): void;
+  emitSetFlags(descriptor: SirFlagSetOp, helpers: WasmSirEmitHelpers): void;
   emitMaterializeFlags(mask: number, helpers: WasmSirEmitHelpers): void;
   emitBoundaryFlags(mask: number, helpers: WasmSirEmitHelpers): void;
   emitCondition(cc: ConditionCode): void;
@@ -94,7 +93,7 @@ class SirExprWasmLowerer {
         this.#context.emitSet32(op.target, op.value, this.#helpers);
         return;
       case "flags.set":
-        this.#context.emitSetFlags(op.producer, op.inputs, this.#helpers);
+        this.#context.emitSetFlags(op, this.#helpers);
         return;
       case "flags.materialize":
         this.#context.emitMaterializeFlags(op.mask, this.#helpers);

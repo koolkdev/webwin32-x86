@@ -1,4 +1,5 @@
 import type { Reg32 } from "../isa/types.js";
+import { createSirFlagSetOp } from "./flags.js";
 import {
   const32,
   mem32,
@@ -147,11 +148,12 @@ export class SirEmitter implements SirBuilder {
   }
 
   setFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueInput>>): void {
-    this.#push({
-      op: "flags.set",
-      producer,
-      inputs: Object.fromEntries(Object.entries(inputs).map(([name, value]) => [name, toValueRef(value)]))
-    });
+    this.#push(
+      createSirFlagSetOp(
+        producer,
+        Object.fromEntries(Object.entries(inputs).map(([name, value]) => [name, toValueRef(value)]))
+      )
+    );
   }
 
   materializeFlags(mask: FlagMask): void {

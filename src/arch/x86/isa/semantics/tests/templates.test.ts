@@ -2,6 +2,7 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { buildSir } from "../../../sir/builder.js";
+import { createSirFlagSetOp } from "../../../sir/flags.js";
 import { aluSemantic, incDecSemantic } from "../alu.js";
 import { callSemantic, jccSemantic, jmpSemantic, retImmSemantic } from "../control.js";
 import { cmpSemantic } from "../cmp.js";
@@ -54,11 +55,7 @@ test("add semantic sets add32 flags before destination writeback", () => {
     { op: "get32", dst: v(0), source: op(0) },
     { op: "get32", dst: v(1), source: op(1) },
     { op: "i32.add", dst: v(2), a: v(0), b: v(1) },
-    {
-      op: "flags.set",
-      producer: "add32",
-      inputs: { left: v(0), right: v(1), result: v(2) }
-    },
+    createSirFlagSetOp("add32", { left: v(0), right: v(1), result: v(2) }),
     { op: "set32", target: op(0), value: v(2) },
     { op: "next" }
   ]);
@@ -68,11 +65,7 @@ test("inc semantic sets partial inc32 flags before destination writeback", () =>
   deepStrictEqual(buildSir(incDecSemantic("inc", 32)), [
     { op: "get32", dst: v(0), source: op(0) },
     { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-    {
-      op: "flags.set",
-      producer: "inc32",
-      inputs: { left: v(0), result: v(1) }
-    },
+    createSirFlagSetOp("inc32", { left: v(0), result: v(1) }),
     { op: "set32", target: op(0), value: v(1) },
     { op: "next" }
   ]);
@@ -85,11 +78,7 @@ test("cmp semantic subtracts for flags only", () => {
     { op: "get32", dst: v(0), source: op(0) },
     { op: "get32", dst: v(1), source: op(1) },
     { op: "i32.sub", dst: v(2), a: v(0), b: v(1) },
-    {
-      op: "flags.set",
-      producer: "sub32",
-      inputs: { left: v(0), right: v(1), result: v(2) }
-    },
+    createSirFlagSetOp("sub32", { left: v(0), right: v(1), result: v(2) }),
     { op: "next" }
   ]);
   strictEqual(program.some((op) => op.op === "set32"), false);
@@ -100,7 +89,7 @@ test("test semantic uses i32.and and logic32 flags", () => {
     { op: "get32", dst: v(0), source: op(0) },
     { op: "get32", dst: v(1), source: op(1) },
     { op: "i32.and", dst: v(2), a: v(0), b: v(1) },
-    { op: "flags.set", producer: "logic32", inputs: { result: v(2) } },
+    createSirFlagSetOp("logic32", { result: v(2) }),
     { op: "next" }
   ]);
 });

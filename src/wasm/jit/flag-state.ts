@@ -1,11 +1,10 @@
 import {
   conditionFlagReadMask,
-  flagProducerEffect,
   SIR_ALU_FLAG_MASK,
   SIR_ALU_FLAG_MASKS
 } from "../../arch/x86/sir/flag-analysis.js";
 import { FLAG_PRODUCERS } from "../../arch/x86/sir/flags.js";
-import type { ConditionCode, FlagProducerName, ValueRef } from "../../arch/x86/sir/types.js";
+import type { ConditionCode, SirFlagSetOp, ValueRef } from "../../arch/x86/sir/types.js";
 import { i32 } from "../../core/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
@@ -15,7 +14,9 @@ import { emitSetFlags } from "../sir/flags.js";
 import type { WasmSirEmitHelpers } from "../sir/lower.js";
 
 type PendingFlags = Readonly<{
-  producer: FlagProducerName;
+  producer: SirFlagSetOp["producer"];
+  writtenMask: SirFlagSetOp["writtenMask"];
+  undefMask: SirFlagSetOp["undefMask"];
   inputs: ReadonlyMap<string, number>;
 }>;
 
@@ -33,7 +34,7 @@ type JitFlagStateOptions = Readonly<{
 }>;
 
 export type JitFlagState = Readonly<{
-  emitSet(producer: FlagProducerName, inputs: Readonly<Record<string, ValueRef>>, helpers: WasmSirEmitHelpers): void;
+  emitSet(descriptor: SirFlagSetOp, helpers: WasmSirEmitHelpers): void;
   emitMaterialize(mask: number): void;
   emitBoundary(mask: number): void;
   emitCondition(cc: ConditionCode): void;
@@ -54,14 +55,14 @@ export function createJitFlagState(
   let materializedMask = 0;
 
   return {
-    emitSet: (producer, inputs, helpers) => {
+    emitSet: (descriptor, helpers) => {
       const pendingInputs = new Map<string, number>();
 
-      for (const inputName of FLAG_PRODUCERS[producer].inputs) {
-        const input = inputs[inputName];
+      for (const inputName of FLAG_PRODUCERS[descriptor.producer].inputs) {
+        const input = descriptor.inputs[inputName];
 
         if (input === undefined) {
-          throw new Error(`missing flag input '${inputName}' for ${producer}`);
+          throw new Error(`missing flag input '${inputName}' for ${descriptor.producer}`);
         }
 
         // A pending producer may outlive later flag producers. Allocate fresh
@@ -73,8 +74,13 @@ export function createJitFlagState(
         pendingInputs.set(inputName, local);
       }
 
-      const pendingFlags = { producer, inputs: pendingInputs };
-      const writtenMask = producerFlagMask(producer);
+      const pendingFlags = {
+        producer: descriptor.producer,
+        writtenMask: descriptor.writtenMask,
+        undefMask: descriptor.undefMask,
+        inputs: pendingInputs
+      };
+      const writtenMask = descriptor.writtenMask | descriptor.undefMask;
 
       setSource(writtenMask, { kind: "pending", pending: pendingFlags });
       materializedMask &= ~writtenMask;
@@ -190,8 +196,13 @@ export function createJitFlagState(
     emitSetFlags(
       body,
       aluFlags,
-      pendingFlags.producer,
-      inputRefs,
+      {
+        op: "flags.set",
+        producer: pendingFlags.producer,
+        writtenMask: pendingFlags.writtenMask,
+        undefMask: pendingFlags.undefMask,
+        inputs: inputRefs
+      },
       {
         emitValue: (value) => {
           switch (value.kind) {
@@ -259,12 +270,6 @@ export function createJitFlagState(
 
     return source;
   }
-}
-
-function producerFlagMask(producer: FlagProducerName): number {
-  const effect = flagProducerEffect(producer);
-
-  return effect.writes | effect.undefines;
 }
 
 function requiredLocal(localsByVarId: ReadonlyMap<number, number>, id: number): number {

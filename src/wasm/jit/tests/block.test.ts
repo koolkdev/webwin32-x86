@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { ok, decodeBytes } from "../../../arch/x86/isa/decoder/tests/helpers.js";
 import { SIR_ALU_FLAG_MASK, SIR_ALU_FLAG_MASKS } from "../../../arch/x86/sir/flag-analysis.js";
+import { createSirFlagSetOp } from "../../../arch/x86/sir/flags.js";
 import type { SirOp, StorageRef } from "../../../arch/x86/sir/types.js";
 import { createCpuState } from "../../../core/state/cpu-state.js";
 import { stateOffset } from "../../abi.js";
@@ -39,15 +40,14 @@ test("buildJitSirBlock prunes flag producers overwritten inside the block", () =
   const flagSets = block.sir.filter((op) => op.op === "flags.set");
 
   strictEqual(flagSets.length, 1);
-  deepStrictEqual(flagSets[0], {
-    op: "flags.set",
-    producer: "add32",
-    inputs: {
+  deepStrictEqual(
+    flagSets[0],
+    createSirFlagSetOp("add32", {
       left: { kind: "var", id: 3 },
       right: { kind: "var", id: 4 },
       result: { kind: "var", id: 5 }
-    }
-  });
+    })
+  );
 });
 
 test("buildJitSirBlock inserts explicit flag materialization before consumers and boundaries", () => {
