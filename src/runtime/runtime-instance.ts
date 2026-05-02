@@ -1,6 +1,6 @@
 import type { RunResult } from "../x86/execution/run-result.js";
 import { u32, type CpuState } from "../x86/state/cpu-state.js";
-import { WasmInterpreterRuntime } from "../wasm/interpreter/runtime.js";
+import { WasmInterpreterRuntime } from "../backends/wasm/interpreter/runtime.js";
 import {
   WasmCompiledBlockCache,
   type RuntimeCompiledBlockCache

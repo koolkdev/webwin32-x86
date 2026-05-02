@@ -1,0 +1,91 @@
+import { deepStrictEqual, strictEqual } from "node:assert";
+import { test } from "node:test";
+
+import { createCpuState } from "../../../../x86/state/cpu-state.js";
+import {
+  assertInterpreterStateEquals,
+  readInterpreterState,
+  writeInterpreterState
+} from "./interpreter-helpers.js";
+import { startAddress } from "../../tests/helpers.js";
+import { ExitReason } from "../../exit.js";
+import {
+  assertCompletedInstruction,
+  assertSingleInstructionExit,
+  instantiateWasmInterpreter,
+  writeGuestBytes
+} from "./support.js";
+
+test("executes MOV r32, r/m32 with register ModRM", async () => {
+  const interpreter = await instantiateWasmInterpreter();
+  const initialState = createCpuState({
+    ebx: 0x1234_5678,
+    eip: startAddress,
+    instructionCount: 7
+  });
+  writeInterpreterState(interpreter.stateView, initialState);
+  writeGuestBytes(interpreter.guestView, startAddress, [0x8b, 0xc3]);
+
+  const exit = interpreter.run(1);
+  const state = readInterpreterState(interpreter.stateView);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0x1234_5678);
+  strictEqual(state.ebx, initialState.ebx);
+  assertCompletedInstruction(state, startAddress + 2, 8);
+});
+
+test("executes MOV r/m32, r32 with register ModRM", async () => {
+  const interpreter = await instantiateWasmInterpreter();
+  const initialState = createCpuState({
+    eax: 0xaaaa_aaaa,
+    ebx: 0x1234_5678,
+    eip: startAddress,
+    instructionCount: 7
+  });
+  writeInterpreterState(interpreter.stateView, initialState);
+  writeGuestBytes(interpreter.guestView, startAddress, [0x89, 0xd8]);
+
+  const exit = interpreter.run(1);
+  const state = readInterpreterState(interpreter.stateView);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0x1234_5678);
+  strictEqual(state.ebx, initialState.ebx);
+  assertCompletedInstruction(state, startAddress + 2, 8);
+});
+
+test("memory ModRM with out-of-range address returns read fault without changing architectural state", async () => {
+  const interpreter = await instantiateWasmInterpreter();
+  const initialState = createCpuState({
+    eax: 0xaaaa_aaaa,
+    ebx: 0x1234_5678,
+    eip: startAddress,
+    instructionCount: 7
+  });
+  writeInterpreterState(interpreter.stateView, initialState);
+  writeGuestBytes(interpreter.guestView, startAddress, [0x8b, 0x03]);
+
+  const exit = interpreter.run(1);
+
+  deepStrictEqual(exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: initialState.ebx });
+  assertInterpreterStateEquals(interpreter.stateView, initialState);
+});
+
+test("truncated ModRM returns decode fault without changing architectural state", async () => {
+  const interpreter = await instantiateWasmInterpreter();
+  const eip = interpreter.guestView.byteLength - 1;
+  const initialState = createCpuState({
+    eax: 0xaaaa_aaaa,
+    ebx: 0x1234_5678,
+    eip,
+    instructionCount: 7
+  });
+  writeInterpreterState(interpreter.stateView, initialState);
+  interpreter.guestView.setUint8(eip, 0x8b);
+
+  const exit = interpreter.run(1);
+
+  deepStrictEqual(exit, { exitReason: ExitReason.DECODE_FAULT, payload: eip + 1 });
+  assertInterpreterStateEquals(interpreter.stateView, initialState);
+});

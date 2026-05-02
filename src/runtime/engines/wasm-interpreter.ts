@@ -1,4 +1,4 @@
-import type { DecodedExit } from "../../wasm/exit.js";
+import type { DecodedExit } from "../../backends/wasm/exit.js";
 import type { InstructionBudget } from "../execution/budget.js";
 import { engineDone, type RuntimeEngineResult } from "../execution/engine-result.js";
 import type { RuntimeEngine, RuntimeEngineContext } from "../execution/runner.js";

@@ -15,9 +15,9 @@ import {
   createGuestMemory,
   readViewBytes,
   startAddress,
-} from "../../../wasm/tests/helpers.js";
-import { decodeExit, ExitReason } from "../../../wasm/exit.js";
-import { readWasmCpuState, writeWasmCpuState } from "../../../wasm/state-layout.js";
+} from "../../../backends/wasm/tests/helpers.js";
+import { decodeExit, ExitReason } from "../../../backends/wasm/exit.js";
+import { readWasmCpuState, writeWasmCpuState } from "../../../backends/wasm/state-layout.js";
 
 const movAddJumpFixture = [
   0xb8, 0x01, 0x00, 0x00, 0x00,

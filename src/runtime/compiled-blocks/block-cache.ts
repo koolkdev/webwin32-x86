@@ -1,4 +1,4 @@
-import type { DecodedExit } from "../../wasm/exit.js";
+import type { DecodedExit } from "../../backends/wasm/exit.js";
 import type { RuntimeCodeMap } from "../program/code-map.js";
 import type { RuntimeWasmMemories } from "../wasm/memories.js";
 

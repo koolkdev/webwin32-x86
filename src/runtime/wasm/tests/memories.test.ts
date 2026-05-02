@@ -2,7 +2,7 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { createCpuState } from "../../../x86/state/cpu-state.js";
-import { stateByteLength, stateOffset } from "../../../wasm/abi.js";
+import { stateByteLength, stateOffset } from "../../../backends/wasm/abi.js";
 import { createRuntimeWasmMemories, wasmPagesForByteLength } from "../memories.js";
 
 test("wasmPagesForByteLength rounds up to WebAssembly pages", () => {
