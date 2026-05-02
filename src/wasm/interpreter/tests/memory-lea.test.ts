@@ -76,6 +76,24 @@ test("executes MOV [base + disp8], r32", async () => {
   assertCompletedInstruction(state, startAddress + 3, 8);
 });
 
+test("executes MOV [base + disp8], imm32 through C7 group", async () => {
+  const initialState = createCpuState({
+    ebx: 0x20,
+    eip: startAddress,
+    instructionCount: 7
+  });
+
+  const { interpreter, exit, state } = await executeMemoryInstruction(
+    [0xc7, 0x43, 0x04, 0x78, 0x56, 0x34, 0x12],
+    initialState
+  );
+
+  assertSingleInstructionExit(exit);
+  strictEqual(interpreter.guestView.getUint32(0x24, true), 0x1234_5678);
+  strictEqual(state.ebx, initialState.ebx);
+  assertCompletedInstruction(state, startAddress + 7, 8);
+});
+
 test("executes LEA r32, [base + index*scale + disp8] without reading memory", async () => {
   const initialState = createCpuState({
     ebx: 0x100,

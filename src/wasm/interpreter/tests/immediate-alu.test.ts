@@ -73,6 +73,38 @@ test("executes XOR EAX, imm32", async () => {
   strictEqual(state.eflags, preservedEflags | zeroResultEflags);
 });
 
+test("executes OR EAX, imm32", async () => {
+  const initialState = createCpuState({
+    eax: 0x8000_0000,
+    eip: startAddress,
+    eflags: preservedEflags | allModeledEflags,
+    instructionCount: 7
+  });
+
+  const { exit, state } = await executeInstruction([0x0d, 0x00, 0x01, 0x00, 0x00], initialState);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0x8000_0100);
+  assertCompletedInstruction(state, startAddress + 5, 8);
+  strictEqual(state.eflags, preservedEflags | signParityEflags);
+});
+
+test("executes AND EAX, imm32", async () => {
+  const initialState = createCpuState({
+    eax: 0xffff_ffff,
+    eip: startAddress,
+    eflags: preservedEflags | allModeledEflags,
+    instructionCount: 7
+  });
+
+  const { exit, state } = await executeInstruction([0x25, 0x00, 0x00, 0x00, 0x00], initialState);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0);
+  assertCompletedInstruction(state, startAddress + 5, 8);
+  strictEqual(state.eflags, preservedEflags | zeroResultEflags);
+});
+
 test("executes CMP EAX, imm32 without writing EAX", async () => {
   const initialState = createCpuState({
     eax: 5,
@@ -153,7 +185,23 @@ test("executes 83 /6 XOR r/m32, sign-extended imm8 for register operands", async
   strictEqual(state.eflags, preservedEflags | signParityEflags);
 });
 
-test("unsupported 81 /1 group returns unsupported before immediate decode", async () => {
+test("executes 83 /4 AND r/m32, sign-extended imm8 for register operands", async () => {
+  const initialState = createCpuState({
+    eax: 0xffff_ffff,
+    eip: startAddress,
+    eflags: preservedEflags | allModeledEflags,
+    instructionCount: 7
+  });
+
+  const { exit, state } = await executeInstruction([0x83, 0xe0, 0x00], initialState);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0);
+  assertCompletedInstruction(state, startAddress + 3, 8);
+  strictEqual(state.eflags, preservedEflags | zeroResultEflags);
+});
+
+test("unsupported 81 /2 group returns unsupported before immediate decode", async () => {
   const interpreter = await instantiateWasmInterpreter();
   const eip = interpreter.guestView.byteLength - 2;
   const initialState = createCpuState({
@@ -163,7 +211,7 @@ test("unsupported 81 /1 group returns unsupported before immediate decode", asyn
     instructionCount: 7
   });
   writeInterpreterState(interpreter.stateView, initialState);
-  writeGuestBytes(interpreter.guestView, eip, [0x81, 0xc8]);
+  writeGuestBytes(interpreter.guestView, eip, [0x81, 0xd0]);
 
   const exit = interpreter.run(1);
 

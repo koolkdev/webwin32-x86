@@ -56,6 +56,7 @@ function validateOpUses(
     case "i32.add":
     case "i32.sub":
     case "i32.xor":
+    case "i32.or":
     case "i32.and":
       validateValueRef(op.a, definedVars);
       validateValueRef(op.b, definedVars);
@@ -109,6 +110,7 @@ function opDst(op: SirOp): VarRef | undefined {
     case "i32.add":
     case "i32.sub":
     case "i32.xor":
+    case "i32.or":
     case "i32.and":
     case "aluFlags.condition":
     case "flagProducer.condition":

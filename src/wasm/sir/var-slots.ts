@@ -150,6 +150,7 @@ function collectValueVarUses(value: SirValueExpr, visit: (id: number) => void): 
     case "i32.add":
     case "i32.sub":
     case "i32.xor":
+    case "i32.or":
     case "i32.and":
       collectValueVarUses(value.a, visit);
       collectValueVarUses(value.b, visit);

@@ -100,6 +100,9 @@ function executeOp(context: ExecutionContext, op: SirOp): RunResult | undefined 
     case "i32.xor":
       setVar(context, op.dst, u32(evalValueRef(context, op.a) ^ evalValueRef(context, op.b)));
       return undefined;
+    case "i32.or":
+      setVar(context, op.dst, u32(evalValueRef(context, op.a) | evalValueRef(context, op.b)));
+      return undefined;
     case "i32.and":
       setVar(context, op.dst, u32(evalValueRef(context, op.a) & evalValueRef(context, op.b)));
       return undefined;

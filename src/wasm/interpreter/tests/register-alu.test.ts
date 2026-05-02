@@ -64,6 +64,42 @@ test("executes XOR r/m32, r32 and materializes logic32 flags", async () => {
   strictEqual(state.eflags, preservedEflags | zeroLogicEflags);
 });
 
+test("executes OR r32, r/m32 and materializes logic32 flags", async () => {
+  const initialState = createCpuState({
+    eax: 0x8000_0000,
+    ebx: 0x100,
+    eip: startAddress,
+    eflags: preservedEflags | allModeledEflags,
+    instructionCount: 7
+  });
+
+  const { exit, state } = await executeInstruction([0x0b, 0xc3], initialState);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0x8000_0100);
+  strictEqual(state.ebx, initialState.ebx);
+  assertCompletedInstruction(state, startAddress + 2, 8);
+  strictEqual(state.eflags, preservedEflags | signLogicEflags);
+});
+
+test("executes AND r/m32, r32 and materializes logic32 flags", async () => {
+  const initialState = createCpuState({
+    eax: 0xffff_ffff,
+    ebx: 0,
+    eip: startAddress,
+    eflags: preservedEflags | allModeledEflags,
+    instructionCount: 7
+  });
+
+  const { exit, state } = await executeInstruction([0x21, 0xd8], initialState);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0);
+  strictEqual(state.ebx, initialState.ebx);
+  assertCompletedInstruction(state, startAddress + 2, 8);
+  strictEqual(state.eflags, preservedEflags | zeroLogicEflags);
+});
+
 test("executes CMP r/m32, r32 without writing operands", async () => {
   const initialState = createCpuState({
     eax: 5,

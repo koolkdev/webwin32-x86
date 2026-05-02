@@ -9,7 +9,7 @@ import type { InstructionSpec } from "../../schema/types.js";
 
 test("x86-32 core registers the initial instruction surface", () => {
   strictEqual(X86_32_CORE.name, "x86-32-core");
-  strictEqual(X86_32_CORE.instructions.length, 77);
+  strictEqual(X86_32_CORE.instructions.length, 88);
 
   const ids = X86_32_CORE.instructions.map((spec) => spec.id);
 
@@ -18,8 +18,11 @@ test("x86-32 core registers the initial instruction surface", () => {
     "nop.near",
     "mov.rm32_r32",
     "mov.r32_imm32",
+    "mov.rm32_imm32",
     "lea.r32_m32",
     "add.rm32_imm8",
+    "or.rm32_imm8",
+    "and.rm32_imm8",
     "sub.rm32_imm8",
     "xor.eax_imm32",
     "inc.r32",
@@ -55,8 +58,24 @@ test("slash-r forms use ModRM operands without an explicit ModRM match", () => {
 });
 
 test("group opcode forms use modrm.match.reg for Intel slash-digit notation", () => {
+  const or = instruction("or.rm32_imm8");
+  const and = instruction("and.rm32_imm32");
   const sub = instruction("sub.rm32_imm8");
   const call = instruction("call.rm32");
+
+  deepStrictEqual(or.opcode, [0x83]);
+  deepStrictEqual(or.modrm, { match: { reg: 1 } });
+  deepStrictEqual(or.operands, [
+    { kind: "modrm.rm", type: "rm32" },
+    { kind: "imm", width: 8, extension: "sign" }
+  ]);
+
+  deepStrictEqual(and.opcode, [0x81]);
+  deepStrictEqual(and.modrm, { match: { reg: 4 } });
+  deepStrictEqual(and.operands, [
+    { kind: "modrm.rm", type: "rm32" },
+    { kind: "imm", width: 32 }
+  ]);
 
   deepStrictEqual(sub.opcode, [0x83]);
   deepStrictEqual(sub.modrm, { match: { reg: 5 } });
@@ -68,6 +87,17 @@ test("group opcode forms use modrm.match.reg for Intel slash-digit notation", ()
   deepStrictEqual(call.opcode, [0xff]);
   deepStrictEqual(call.modrm, { match: { reg: 2 } });
   deepStrictEqual(call.operands, [{ kind: "modrm.rm", type: "rm32" }]);
+});
+
+test("mov r/m32, imm32 uses C7 slash-zero form", () => {
+  const spec = instruction("mov.rm32_imm32");
+
+  deepStrictEqual(spec.opcode, [0xc7]);
+  deepStrictEqual(spec.modrm, { match: { reg: 0 } });
+  deepStrictEqual(spec.operands, [
+    { kind: "modrm.rm", type: "rm32" },
+    { kind: "imm", width: 32 }
+  ]);
 });
 
 test("opcode-encoded register forms expand through opcode low bits", () => {

@@ -140,6 +140,13 @@ export class SirEmitter implements SirBuilder {
     return dst;
   }
 
+  i32Or(a: ValueInput, b: ValueInput): VarRef {
+    const dst = this.#allocVar();
+
+    this.#push({ op: "i32.or", dst, a: toValueRef(a), b: toValueRef(b) });
+    return dst;
+  }
+
   i32And(a: ValueInput, b: ValueInput): VarRef {
     const dst = this.#allocVar();
 

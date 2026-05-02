@@ -1,6 +1,6 @@
 import type { SemanticTemplate } from "../../sir/types.js";
 
-export type AluOp = "add" | "sub" | "xor";
+export type AluOp = "add" | "sub" | "xor" | "and" | "or";
 export type IncDecOp = "inc" | "dec";
 
 export function aluSemantic(op: AluOp, width: 32): SemanticTemplate {
@@ -24,6 +24,14 @@ export function aluSemantic(op: AluOp, width: 32): SemanticTemplate {
         break;
       case "xor":
         result = s.i32Xor(left, right);
+        s.setFlags("logic32", { result });
+        break;
+      case "and":
+        result = s.i32And(left, right);
+        s.setFlags("logic32", { result });
+        break;
+      case "or":
+        result = s.i32Or(left, right);
         s.setFlags("logic32", { result });
         break;
     }

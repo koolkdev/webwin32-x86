@@ -18,6 +18,14 @@ export const MOV = mnemonic("mov", [
     format: { syntax: "mov {0}, {1}" },
     semantics: movSemantic()
   }),
+  // C7 /0 id: MOV r/m32, imm32
+  form("rm32_imm32", {
+    opcode: [0xc7],
+    modrm: { match: { reg: 0 } },
+    operands: [modrmRm("rm32"), imm(32)],
+    format: { syntax: "mov {0}, {1}" },
+    semantics: movSemantic()
+  }),
   // B8+rd id: MOV r32, imm32
   form("r32_imm32", {
     opcode: [opcodePlusReg(0xb8)],

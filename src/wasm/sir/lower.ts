@@ -155,6 +155,11 @@ class SirExprWasmLowerer {
         this.#emitValue(value.b);
         this.#context.body.i32Xor();
         return;
+      case "i32.or":
+        this.#emitValue(value.a);
+        this.#emitValue(value.b);
+        this.#context.body.i32Or();
+        return;
       case "i32.and":
         this.#emitValue(value.a);
         this.#emitValue(value.b);

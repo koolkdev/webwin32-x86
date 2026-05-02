@@ -20,12 +20,12 @@ test("lowerSirToWasm lowers arithmetic through storage callbacks", async () => {
       const right = s.get32(s.operand(1));
       const adjusted = s.i32Add(left, 9);
 
-      s.set32(s.reg32("eax"), s.i32Xor(adjusted, right));
+      s.set32(s.reg32("eax"), s.i32Or(s.i32Xor(adjusted, right), 0x80));
     })
   );
 
-  strictEqual(run(0x10, 0x20), 0x39);
-  strictEqual(run(0, 0), 9);
+  strictEqual(run(0x10, 0x20), 0xb9);
+  strictEqual(run(0, 0), 0x89);
 });
 
 test("lowerSirToWasm lowers conditional control values with nested emitValue", async () => {

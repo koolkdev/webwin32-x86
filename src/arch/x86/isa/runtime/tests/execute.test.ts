@@ -28,6 +28,16 @@ test("executes register mov in both ModRM directions", () => {
   strictEqual(state.instructionCount, 2);
 });
 
+test("executes mov r/m32, imm32", () => {
+  const state = createCpuState({ eax: 0, eip: startAddress });
+  const result = execute(state, [0xc7, 0xc0, 0x78, 0x56, 0x34, 0x12]);
+
+  strictEqual(result.stopReason, StopReason.NONE);
+  strictEqual(state.eax, 0x1234_5678);
+  strictEqual(state.eip, startAddress + 6);
+  strictEqual(state.instructionCount, 1);
+});
+
 test("executes add r/m32, r32 and materializes add flags", () => {
   const state = createCpuState({ eax: 0xffff_ffff, ebx: 1, eip: startAddress });
 
@@ -48,6 +58,30 @@ test("executes add eax, imm32", () => {
   strictEqual(state.eax, 0x8000_0000);
   strictEqual(getFlag(state, "OF"), true);
   strictEqual(getFlag(state, "SF"), true);
+});
+
+test("executes or eax, imm32 and materializes logic flags", () => {
+  const state = createCpuState({ eax: 0x8000_0000, eflags: 0xffff_ffff, eip: startAddress });
+
+  execute(state, [0x0d, 0x01, 0x00, 0x00, 0x00]);
+
+  strictEqual(state.eax, 0x8000_0001);
+  strictEqual(getFlag(state, "SF"), true);
+  strictEqual(getFlag(state, "ZF"), false);
+  strictEqual(getFlag(state, "CF"), false);
+  strictEqual(getFlag(state, "OF"), false);
+  strictEqual(getFlag(state, "AF"), false);
+});
+
+test("executes and r/m32, sign-extended imm8 and materializes logic flags", () => {
+  const state = createCpuState({ eax: 0xffff_ffff, eip: startAddress });
+
+  execute(state, [0x83, 0xe0, 0x00]);
+
+  strictEqual(state.eax, 0);
+  strictEqual(getFlag(state, "ZF"), true);
+  strictEqual(getFlag(state, "CF"), false);
+  strictEqual(getFlag(state, "OF"), false);
 });
 
 test("executes sub r/m32, sign-extended imm8", () => {

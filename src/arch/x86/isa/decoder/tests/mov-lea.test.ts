@@ -23,6 +23,13 @@ const fixtures: readonly DecoderFixture[] = [
     id: "mov.r32_imm32"
   },
   {
+    name: "mov eax, imm32 through C7 group",
+    bytes: [0xc7, 0xc0, 0x78, 0x56, 0x34, 0x12],
+    mnemonic: "mov",
+    operands: [reg32("eax"), imm32(0x1234_5678)],
+    id: "mov.rm32_imm32"
+  },
+  {
     name: "register mov eax, ebx",
     bytes: [0x89, 0xd8],
     mnemonic: "mov",
@@ -77,6 +84,13 @@ const fixtures: readonly DecoderFixture[] = [
     mnemonic: "mov",
     operands: [mem32({ base: "ebp", scale: 1, disp: -4 }), reg32("eax")],
     id: "mov.rm32_r32"
+  },
+  {
+    name: "mov [ebp-4], imm32 through C7 group",
+    bytes: [0xc7, 0x45, 0xfc, 0x78, 0x56, 0x34, 0x12],
+    mnemonic: "mov",
+    operands: [mem32({ base: "ebp", scale: 1, disp: -4 }), imm32(0x1234_5678)],
+    id: "mov.rm32_imm32"
   },
   {
     name: "mov eax, [eax + ecx*4]",

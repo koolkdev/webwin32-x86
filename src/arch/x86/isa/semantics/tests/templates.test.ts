@@ -71,6 +71,25 @@ test("inc semantic sets partial inc32 flags before destination writeback", () =>
   ]);
 });
 
+test("logical alu semantics set logic32 flags before destination writeback", () => {
+  deepStrictEqual(buildSir(aluSemantic("and", 32)), [
+    { op: "get32", dst: v(0), source: op(0) },
+    { op: "get32", dst: v(1), source: op(1) },
+    { op: "i32.and", dst: v(2), a: v(0), b: v(1) },
+    createSirFlagSetOp("logic32", { result: v(2) }),
+    { op: "set32", target: op(0), value: v(2) },
+    { op: "next" }
+  ]);
+  deepStrictEqual(buildSir(aluSemantic("or", 32)), [
+    { op: "get32", dst: v(0), source: op(0) },
+    { op: "get32", dst: v(1), source: op(1) },
+    { op: "i32.or", dst: v(2), a: v(0), b: v(1) },
+    createSirFlagSetOp("logic32", { result: v(2) }),
+    { op: "set32", target: op(0), value: v(2) },
+    { op: "next" }
+  ]);
+});
+
 test("cmp semantic subtracts for flags only", () => {
   const program = buildSir(cmpSemantic());
 

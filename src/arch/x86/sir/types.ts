@@ -67,6 +67,7 @@ export type SirOp =
   | Readonly<{ op: "i32.add"; dst: VarRef; a: ValueRef; b: ValueRef }>
   | Readonly<{ op: "i32.sub"; dst: VarRef; a: ValueRef; b: ValueRef }>
   | Readonly<{ op: "i32.xor"; dst: VarRef; a: ValueRef; b: ValueRef }>
+  | Readonly<{ op: "i32.or"; dst: VarRef; a: ValueRef; b: ValueRef }>
   | Readonly<{ op: "i32.and"; dst: VarRef; a: ValueRef; b: ValueRef }>
   | SirFlagSetOp
   | SirFlagProducerConditionOp
@@ -96,6 +97,7 @@ export interface SirBuilder {
   i32Add(a: ValueInput, b: ValueInput): VarRef;
   i32Sub(a: ValueInput, b: ValueInput): VarRef;
   i32Xor(a: ValueInput, b: ValueInput): VarRef;
+  i32Or(a: ValueInput, b: ValueInput): VarRef;
   i32And(a: ValueInput, b: ValueInput): VarRef;
 
   setFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueInput>>): void;

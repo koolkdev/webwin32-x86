@@ -36,6 +36,7 @@ export type SirValueExpr =
   | Readonly<{ kind: "i32.add"; a: SirValueExpr; b: SirValueExpr }>
   | Readonly<{ kind: "i32.sub"; a: SirValueExpr; b: SirValueExpr }>
   | Readonly<{ kind: "i32.xor"; a: SirValueExpr; b: SirValueExpr }>
+  | Readonly<{ kind: "i32.or"; a: SirValueExpr; b: SirValueExpr }>
   | Readonly<{ kind: "i32.and"; a: SirValueExpr; b: SirValueExpr }>;
 
 export type SirExprOp =
@@ -94,6 +95,7 @@ class ExpressionBuilder {
         case "i32.add":
         case "i32.sub":
         case "i32.xor":
+        case "i32.or":
         case "i32.and":
           this.#defineValue(op.dst, { kind: op.op, a: this.#valueExpr(op.a), b: this.#valueExpr(op.b) }, true);
           break;
@@ -240,6 +242,7 @@ function countVarUses(program: SirProgram): Map<number, number> {
       case "i32.add":
       case "i32.sub":
       case "i32.xor":
+      case "i32.or":
       case "i32.and":
         countValueUse(counts, op.a);
         countValueUse(counts, op.b);

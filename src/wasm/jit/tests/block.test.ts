@@ -208,6 +208,13 @@ test("jit SIR block lowers memory mov with static effective addresses", async ()
   );
 
   strictEqual(store.guestView.getUint32(0x2008, true), 0xaabb_ccdd);
+
+  const storeImmediate = await runJitSirBlock(
+    [0xc7, 0x43, 0x0c, 0x78, 0x56, 0x34, 0x12],
+    createCpuState({ ebx: 0x2000, eip: startAddress })
+  );
+
+  strictEqual(storeImmediate.guestView.getUint32(0x200c, true), 0x1234_5678);
 });
 
 test("jit SIR block keeps deferred flags live after memory-store fault branch emission", async () => {
@@ -235,6 +242,19 @@ test("jit SIR block lowers add and materializes flags", async () => {
   strictEqual(result.state.eax, 0);
   strictEqual(result.state.eflags, (preservedEflags | addWraparoundEflags) >>> 0);
   strictEqual(result.state.eip, startAddress + 3);
+  strictEqual(result.state.instructionCount, 1);
+});
+
+test("jit SIR block lowers or and materializes logic flags", async () => {
+  const result = await runJitSirBlock([0x0d, 0x00, 0x01, 0x00, 0x00], createCpuState({
+    eax: 0x8000_0000,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0x8000_0100);
+  strictEqual(result.state.eflags, (preservedEflags | 0x84) >>> 0);
+  strictEqual(result.state.eip, startAddress + 5);
   strictEqual(result.state.instructionCount, 1);
 });
 
@@ -427,6 +447,7 @@ function sirOpDstId(op: SirOp): readonly number[] {
     case "i32.add":
     case "i32.sub":
     case "i32.xor":
+    case "i32.or":
     case "i32.and":
     case "aluFlags.condition":
     case "flagProducer.condition":

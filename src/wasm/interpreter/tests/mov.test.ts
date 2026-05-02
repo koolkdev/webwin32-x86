@@ -53,6 +53,23 @@ test("executes MOV edi, imm32 through opcode register low bits", async () => {
   assertCompletedInstruction(state, startAddress + 5, 8);
 });
 
+test("executes MOV r/m32, imm32 through C7 group", async () => {
+  const interpreter = await instantiateWasmInterpreter();
+  const initialState = createCpuState({
+    eip: startAddress,
+    instructionCount: 7
+  });
+  writeInterpreterState(interpreter.stateView, initialState);
+  writeGuestBytes(interpreter.guestView, startAddress, [0xc7, 0xc0, 0x78, 0x56, 0x34, 0x12]);
+
+  const exit = interpreter.run(1);
+  const state = readInterpreterState(interpreter.stateView);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0x1234_5678);
+  assertCompletedInstruction(state, startAddress + 6, 8);
+});
+
 test("truncated MOV r32, imm32 returns decode fault without changing architectural state", async () => {
   const interpreter = await instantiateWasmInterpreter();
   const eip = interpreter.guestView.byteLength - 3;

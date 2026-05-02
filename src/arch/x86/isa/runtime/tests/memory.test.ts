@@ -40,6 +40,14 @@ test("stores memory using ebp negative displacement", () => {
   deepStrictEqual(readGuestBytes(memory, 0x2c, 4), [0x78, 0x56, 0x34, 0x12]);
 });
 
+test("stores imm32 memory using C7 group", () => {
+  const memory = new ArrayBufferGuestMemory(0x40);
+  const state = createCpuState({ eip: startAddress });
+
+  strictEqual(run(state, [0xc7, 0x05, 0x20, 0x00, 0x00, 0x00, 0x78, 0x56, 0x34, 0x12], memory).stopReason, StopReason.NONE);
+  deepStrictEqual(readGuestBytes(memory, 0x20, 4), [0x78, 0x56, 0x34, 0x12]);
+});
+
 test("memory load fault is atomic", () => {
   const memory = new ArrayBufferGuestMemory(0x40);
   const state = createCpuState({ eax: 0x1234_5678, eip: startAddress, instructionCount: 7 });
@@ -110,6 +118,21 @@ test("add stores memory destination", () => {
 
   strictEqual(run(state, [0x01, 0x18], memory).stopReason, StopReason.NONE);
   deepStrictEqual(readGuestBytes(memory, 0x20, 4), [0x03, 0x00, 0x00, 0x00]);
+});
+
+test("or and and support memory operands", () => {
+  const memory = new ArrayBufferGuestMemory(0x40);
+  const state = createCpuState({ eax: 0x20, ebx: 0xf0, eip: startAddress });
+
+  writeGuestU32(memory, 0x20, 0x0f);
+
+  strictEqual(run(state, [0x09, 0x18], memory).stopReason, StopReason.NONE);
+  deepStrictEqual(readGuestBytes(memory, 0x20, 4), [0xff, 0x00, 0x00, 0x00]);
+
+  state.eip = startAddress;
+  strictEqual(run(state, [0x23, 0x18], memory).stopReason, StopReason.NONE);
+  strictEqual(state.ebx, 0xf0);
+  strictEqual(getFlag(state, "ZF"), false);
 });
 
 test("cmp memory does not write memory", () => {
