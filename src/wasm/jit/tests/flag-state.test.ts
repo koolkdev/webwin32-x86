@@ -1,10 +1,10 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import type { SirValueExpr } from "../../../arch/x86/sir/expressions.js";
-import { SIR_ALU_FLAG_MASKS } from "../../../arch/x86/sir/flag-analysis.js";
-import { createSirFlagSetOp } from "../../../arch/x86/sir/flags.js";
-import type { ValueRef } from "../../../arch/x86/sir/types.js";
+import type { IrValueExpr } from "../../../arch/x86/ir/expressions.js";
+import { IR_ALU_FLAG_MASKS } from "../../../arch/x86/ir/flag-analysis.js";
+import { createIrFlagSetOp } from "../../../arch/x86/ir/flags.js";
+import type { ValueRef } from "../../../arch/x86/ir/types.js";
 import { i32 } from "../../../core/state/cpu-state.js";
 import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
 import { wasmOpcode, wasmValueType } from "../../encoder/types.js";
@@ -27,10 +27,10 @@ test("JIT flag state materializes only requested pending flags", () => {
     }
   });
 
-  flags.emitSet(createSirFlagSetOp("add32", { left: v(0), right: v(1), result: v(2) }), {
+  flags.emitSet(createIrFlagSetOp("add32", { left: v(0), right: v(1), result: v(2) }), {
     emitValue: (value) => emitValueExpr(body, value)
   });
-  flags.emitMaterialize(SIR_ALU_FLAG_MASKS.ZF);
+  flags.emitMaterialize(IR_ALU_FLAG_MASKS.ZF);
   flags.emitAluFlagsCondition("E");
   body.localSet(conditionLocal).end();
 
@@ -41,7 +41,7 @@ test("JIT flag state materializes only requested pending flags", () => {
   strictEqual(opcodes.includes(wasmOpcode.i32ShrU), false);
 });
 
-function emitValueExpr(body: WasmFunctionBodyEncoder, value: SirValueExpr): void {
+function emitValueExpr(body: WasmFunctionBodyEncoder, value: IrValueExpr): void {
   switch (value.kind) {
     case "var":
       body.localGet(value.id);

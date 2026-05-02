@@ -2,7 +2,7 @@ import type { ExpandedInstructionSpec, OperandSpec } from "../../arch/x86/isa/sc
 import type {
   InterpreterInstructionLength,
   InterpreterOperandBinding
-} from "./sir-context.js";
+} from "./ir-context.js";
 import { wasmValueType } from "../encoder/types.js";
 import { decodeModRmRmOperand } from "./address-decode.js";
 import {

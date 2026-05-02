@@ -1,4 +1,4 @@
-import type { SemanticTemplate } from "../../sir/types.js";
+import type { SemanticTemplate } from "../../ir/types.js";
 
 export function testSemantic(): SemanticTemplate {
   return (s) => {

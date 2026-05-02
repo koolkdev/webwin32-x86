@@ -1,5 +1,5 @@
 import { u32 } from "../../../../core/state/cpu-state.js";
-import { buildSir, sirProgramTerminator } from "../../sir/builder.js";
+import { buildIr, irProgramTerminator } from "../../ir/builder.js";
 import { decodeIsaInstructionFromReader } from "./decode.js";
 import {
   decodeFault,
@@ -100,5 +100,5 @@ function decodeInstruction(
 }
 
 function isBlockTerminator(instruction: IsaDecodedInstruction): boolean {
-  return sirProgramTerminator(buildSir(instruction.spec.semantics)) !== "next";
+  return irProgramTerminator(buildIr(instruction.spec.semantics)) !== "next";
 }

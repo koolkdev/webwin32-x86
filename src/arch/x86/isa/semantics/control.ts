@@ -1,4 +1,4 @@
-import type { ConditionCode, SemanticTemplate } from "../../sir/types.js";
+import type { ConditionCode, SemanticTemplate } from "../../ir/types.js";
 import { pop32, push32 } from "./stack.js";
 
 export function jmpSemantic(): SemanticTemplate {

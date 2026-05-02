@@ -3,7 +3,7 @@ import { u32 } from "../../core/state/cpu-state.js";
 import { wasmBlockExportName, wasmImport } from "../../wasm/abi.js";
 import { UnsupportedWasmCodegenError } from "../../wasm/errors.js";
 import { decodeExit, type DecodedExit } from "../../wasm/exit.js";
-import { buildJitSirBlock, encodeJitSirBlock } from "../../wasm/jit/block.js";
+import { buildJitIrBlock, encodeJitIrBlock } from "../../wasm/jit/block.js";
 
 export const wasmBlockExitEncoding = {
   resultType: "i64",
@@ -53,7 +53,7 @@ export function compileWasmBlockHandle(
     throw new UnsupportedWasmCodegenError(unsupportedBlockMessage(block));
   }
 
-  const bytes = encodeJitSirBlock(buildJitSirBlock(block.instructions));
+  const bytes = encodeJitIrBlock(buildJitIrBlock(block.instructions));
   const compileStart = performance.now();
   const module = new WebAssembly.Module(bytes);
   const compileMs = performance.now() - compileStart;

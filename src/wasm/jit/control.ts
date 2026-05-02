@@ -1,12 +1,12 @@
-import type { SirValueExpr } from "../../arch/x86/sir/expressions.js";
+import type { IrValueExpr } from "../../arch/x86/ir/expressions.js";
 import { i32 } from "../../core/state/cpu-state.js";
 import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
-import { emitWasmSirExitFromI32Stack } from "../sir/exit.js";
-import type { WasmSirEmitHelpers } from "../sir/lower.js";
-import type { JitSirContext } from "./sir-context.js";
+import { emitWasmIrExitFromI32Stack } from "../lowering/exit.js";
+import type { WasmIrEmitHelpers } from "../lowering/lower.js";
+import type { JitIrContext } from "./ir-context.js";
 
-export function emitJitNext(context: JitSirContext): void {
+export function emitJitNext(context: JitIrContext): void {
   const instruction = context.currentInstruction();
 
   if (instruction.nextMode === "exit") {
@@ -14,7 +14,7 @@ export function emitJitNext(context: JitSirContext): void {
       context.body.i32Const(i32(instruction.nextEip));
     });
     context.body.i32Const(i32(instruction.nextEip));
-    emitWasmSirExitFromI32Stack(context.body, context.exit, ExitReason.FALLTHROUGH);
+    emitWasmIrExitFromI32Stack(context.body, context.exit, ExitReason.FALLTHROUGH);
     return;
   }
 
@@ -22,15 +22,15 @@ export function emitJitNext(context: JitSirContext): void {
   context.advanceInstruction();
 }
 
-export function emitJitNextEip(context: JitSirContext): void {
+export function emitJitNextEip(context: JitIrContext): void {
   context.body.i32Const(i32(context.currentInstruction().nextEip));
 }
 
 export function emitJitControlExit(
-  context: JitSirContext,
-  target: SirValueExpr,
+  context: JitIrContext,
+  target: IrValueExpr,
   exitReason: ExitReason,
-  helpers: WasmSirEmitHelpers,
+  helpers: WasmIrEmitHelpers,
   extraDepth = 0
 ): void {
   const targetLocal = context.scratch.allocLocal(wasmValueType.i32);
@@ -42,18 +42,18 @@ export function emitJitControlExit(
       context.body.localGet(targetLocal);
     });
     context.body.localGet(targetLocal);
-    emitWasmSirExitFromI32Stack(context.body, context.exit, exitReason, extraDepth);
+    emitWasmIrExitFromI32Stack(context.body, context.exit, exitReason, extraDepth);
   } finally {
     context.scratch.freeLocal(targetLocal);
   }
 }
 
 export function emitJitConditionalJump(
-  context: JitSirContext,
-  condition: SirValueExpr,
-  taken: SirValueExpr,
-  notTaken: SirValueExpr,
-  helpers: WasmSirEmitHelpers
+  context: JitIrContext,
+  condition: IrValueExpr,
+  taken: IrValueExpr,
+  notTaken: IrValueExpr,
+  helpers: WasmIrEmitHelpers
 ): void {
   helpers.emitValue(condition);
   context.body.ifBlock();
@@ -62,7 +62,7 @@ export function emitJitConditionalJump(
   emitJitControlExit(context, notTaken, ExitReason.BRANCH_NOT_TAKEN, helpers);
 }
 
-export function emitJitHostTrap(context: JitSirContext, vector: SirValueExpr, helpers: WasmSirEmitHelpers): void {
+export function emitJitHostTrap(context: JitIrContext, vector: IrValueExpr, helpers: WasmIrEmitHelpers): void {
   const vectorLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
@@ -72,7 +72,7 @@ export function emitJitHostTrap(context: JitSirContext, vector: SirValueExpr, he
       context.body.i32Const(i32(context.currentInstruction().nextEip));
     });
     context.body.localGet(vectorLocal);
-    emitWasmSirExitFromI32Stack(context.body, context.exit, ExitReason.HOST_TRAP);
+    emitWasmIrExitFromI32Stack(context.body, context.exit, ExitReason.HOST_TRAP);
   } finally {
     context.scratch.freeLocal(vectorLocal);
   }

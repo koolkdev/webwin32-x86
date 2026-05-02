@@ -5,7 +5,7 @@ import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
 import { encodeExit } from "../exit.js";
-import { emitWasmSirExitConstPayload, type WasmSirExitTarget } from "../sir/exit.js";
+import { emitWasmIrExitConstPayload, type WasmIrExitTarget } from "../lowering/exit.js";
 import { emitLoadGuestByte } from "./guest-bytes.js";
 import { emitOpcodeDispatch } from "./opcode-dispatch.js";
 import {
@@ -36,7 +36,7 @@ export function encodeInterpreterModule(): Uint8Array<ArrayBuffer> {
   const opcodeLocal = body.addLocal(wasmValueType.i32);
   const exitLocal = body.addLocal(wasmValueType.i64);
   const state = createInterpreterStateCache(body, eipLocal);
-  const exit: WasmSirExitTarget = { exitLocal, exitLabelDepth: 2 };
+  const exit: WasmIrExitTarget = { exitLocal, exitLabelDepth: 2 };
   const scratch = new WasmLocalScratchAllocator(body);
 
   emitLoadInterpreterStateCache(body, state);
@@ -45,7 +45,7 @@ export function encodeInterpreterModule(): Uint8Array<ArrayBuffer> {
   body.block();
   body.loop();
   body.localGet(fuelParam).i32Eqz().ifBlock();
-  emitWasmSirExitConstPayload(body, { ...exit, exitLabelDepth: 2 }, ExitReason.INSTRUCTION_LIMIT, 0);
+  emitWasmIrExitConstPayload(body, { ...exit, exitLabelDepth: 2 }, ExitReason.INSTRUCTION_LIMIT, 0);
   body.endBlock();
 
   body.block();

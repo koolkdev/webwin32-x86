@@ -1,22 +1,22 @@
 import {
   conditionFlagReadMask,
-  SIR_ALU_FLAG_MASK,
-  SIR_ALU_FLAG_MASKS
-} from "../../arch/x86/sir/flag-analysis.js";
-import { FLAG_PRODUCERS } from "../../arch/x86/sir/flags.js";
-import type { ConditionCode, SirFlagSetOp, ValueRef } from "../../arch/x86/sir/types.js";
+  IR_ALU_FLAG_MASK,
+  IR_ALU_FLAG_MASKS
+} from "../../arch/x86/ir/flag-analysis.js";
+import { FLAG_PRODUCERS } from "../../arch/x86/ir/flags.js";
+import type { ConditionCode, IrFlagSetOp, ValueRef } from "../../arch/x86/ir/types.js";
 import { i32 } from "../../core/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
-import { emitAluFlagsCondition } from "../sir/conditions.js";
-import { wasmSirLocalAluFlagsStorage } from "../sir/alu-flags.js";
-import { emitSetFlags } from "../sir/flags.js";
-import type { WasmSirEmitHelpers } from "../sir/lower.js";
+import { emitAluFlagsCondition } from "../lowering/conditions.js";
+import { wasmIrLocalAluFlagsStorage } from "../lowering/alu-flags.js";
+import { emitSetFlags } from "../lowering/flags.js";
+import type { WasmIrEmitHelpers } from "../lowering/lower.js";
 
 type PendingFlags = Readonly<{
-  producer: SirFlagSetOp["producer"];
-  writtenMask: SirFlagSetOp["writtenMask"];
-  undefMask: SirFlagSetOp["undefMask"];
+  producer: IrFlagSetOp["producer"];
+  writtenMask: IrFlagSetOp["writtenMask"];
+  undefMask: IrFlagSetOp["undefMask"];
   inputs: ReadonlyMap<string, number>;
 }>;
 
@@ -34,7 +34,7 @@ type JitFlagStateOptions = Readonly<{
 }>;
 
 export type JitFlagState = Readonly<{
-  emitSet(descriptor: SirFlagSetOp, helpers: WasmSirEmitHelpers): void;
+  emitSet(descriptor: IrFlagSetOp, helpers: WasmIrEmitHelpers): void;
   emitMaterialize(mask: number): void;
   emitBoundary(mask: number): void;
   emitAluFlagsCondition(cc: ConditionCode): void;
@@ -46,8 +46,8 @@ export function createJitFlagState(
   aluFlagsLocal: number,
   options: JitFlagStateOptions
 ): JitFlagState {
-  const aluFlags = wasmSirLocalAluFlagsStorage(body, aluFlagsLocal);
-  // Keyed by one-bit SIR_ALU_FLAG_MASKS values, not by x86 EFLAGS bit positions.
+  const aluFlags = wasmIrLocalAluFlagsStorage(body, aluFlagsLocal);
+  // Keyed by one-bit IR_ALU_FLAG_MASKS values, not by x86 EFLAGS bit positions.
   const flagSources = new Map<number, FlagSource>(
     aluFlagMasks.map((mask) => [mask, incomingFlagSource])
   );
@@ -103,7 +103,7 @@ export function createJitFlagState(
 
       // If local producer bits will be stored, merge any untouched incoming bits
       // first so the store publishes a complete compact aluFlags word.
-      materializeFlags(SIR_ALU_FLAG_MASK & ~materializedMask);
+      materializeFlags(IR_ALU_FLAG_MASK & ~materializedMask);
       options.emitStoreAluFlags(() => {
         body.localGet(aluFlagsLocal);
       });
@@ -151,7 +151,7 @@ export function createJitFlagState(
       // incoming bits from state. This is what lets INC publish new ZF/SF/etc.
       // without clobbering incoming CF.
       body.localGet(aluFlagsLocal);
-      body.i32Const(i32(SIR_ALU_FLAG_MASK & ~mask)).i32And();
+      body.i32Const(i32(IR_ALU_FLAG_MASK & ~mask)).i32And();
       options.emitLoadAluFlagsValue();
       body.i32Const(mask).i32And();
       body.i32Or();
@@ -282,6 +282,6 @@ function requiredLocal(localsByVarId: ReadonlyMap<number, number>, id: number): 
   return local;
 }
 
-const aluFlagMasks = Object.values(SIR_ALU_FLAG_MASKS);
+const aluFlagMasks = Object.values(IR_ALU_FLAG_MASKS);
 const incomingFlagSource = { kind: "incoming" } as const satisfies FlagSource;
 const localFlagSource = { kind: "local" } as const satisfies FlagSource;

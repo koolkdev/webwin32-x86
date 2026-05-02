@@ -3,7 +3,7 @@ import { i32 } from "../../core/state/cpu-state.js";
 import { stateOffset } from "../abi.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
-import { emitLoadStateU32, emitStoreStateU32 } from "../sir/state.js";
+import { emitLoadStateU32, emitStoreStateU32 } from "../lowering/state.js";
 import { createJitFlagState, type JitFlagState } from "./flag-state.js";
 import { createJitReg32State, type JitReg32State } from "./register-state.js";
 
@@ -17,7 +17,7 @@ type ExitGenerationSnapshot = Readonly<{
   dirtyRegs: ReadonlySet<Reg32>;
 }>;
 
-export type JitSirState = Readonly<{
+export type JitIrState = Readonly<{
   regs: JitReg32State;
   flags: JitFlagState;
   eipLocal: number;
@@ -31,10 +31,10 @@ export type JitSirState = Readonly<{
   emitExitStoresForGeneration(generation: number): void;
 }>;
 
-export function createJitSirState(
+export function createJitIrState(
   body: WasmFunctionBodyEncoder,
   maxExitGeneration: number
-): JitSirState {
+): JitIrState {
   const regs = createJitReg32State(body);
   const eipLocal = body.addLocal(wasmValueType.i32);
   const aluFlagsLocal = body.addLocal(wasmValueType.i32);

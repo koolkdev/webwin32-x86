@@ -1,15 +1,15 @@
-import type { SirProgram } from "../../arch/x86/sir/types.js";
+import type { IrProgram } from "../../arch/x86/ir/types.js";
 import type { JitOperandBinding } from "./operand-bindings.js";
 
-export type JitSirBlockInstruction = Readonly<{
+export type JitIrBlockInstruction = Readonly<{
   instructionId: string;
   eip: number;
   nextEip: number;
   nextMode: "continue" | "exit";
 }>;
 
-export type JitSirBlock = Readonly<{
-  sir: SirProgram;
+export type JitIrBlock = Readonly<{
+  ir: IrProgram;
   operands: readonly JitOperandBinding[];
-  instructions: readonly JitSirBlockInstruction[];
+  instructions: readonly JitIrBlockInstruction[];
 }>;

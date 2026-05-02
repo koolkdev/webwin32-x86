@@ -1,15 +1,15 @@
 import type { Mem32Operand } from "../../arch/x86/isa/types.js";
-import type { SirStorageExpr, SirValueExpr } from "../../arch/x86/sir/expressions.js";
-import type { StorageRef } from "../../arch/x86/sir/types.js";
+import type { IrStorageExpr, IrValueExpr } from "../../arch/x86/ir/expressions.js";
+import type { StorageRef } from "../../arch/x86/ir/types.js";
 import { i32 } from "../../core/state/cpu-state.js";
 import { wasmValueType } from "../encoder/types.js";
-import { emitWasmSirLoadGuestU32FromStack, emitWasmSirStoreGuestU32 } from "../sir/memory.js";
-import type { WasmSirReg32Storage } from "../sir/registers.js";
-import type { WasmSirEmitHelpers } from "../sir/lower.js";
+import { emitWasmIrLoadGuestU32FromStack, emitWasmIrStoreGuestU32 } from "../lowering/memory.js";
+import type { WasmIrReg32Storage } from "../lowering/registers.js";
+import type { WasmIrEmitHelpers } from "../lowering/lower.js";
 import type { JitOperandBinding } from "./operand-bindings.js";
-import type { JitSirContext } from "./sir-context.js";
+import type { JitIrContext } from "./ir-context.js";
 
-export function canInlineJitGet32(context: JitSirContext, source: StorageRef): boolean {
+export function canInlineJitGet32(context: JitIrContext, source: StorageRef): boolean {
   switch (source.kind) {
     case "reg":
       return true;
@@ -24,9 +24,9 @@ export function canInlineJitGet32(context: JitSirContext, source: StorageRef): b
 }
 
 export function emitJitGet32(
-  context: JitSirContext,
-  source: SirStorageExpr,
-  helpers: WasmSirEmitHelpers
+  context: JitIrContext,
+  source: IrStorageExpr,
+  helpers: WasmIrEmitHelpers
 ): void {
   const regs = context.state.regs;
 
@@ -45,10 +45,10 @@ export function emitJitGet32(
 }
 
 export function emitJitSet32(
-  context: JitSirContext,
-  target: SirStorageExpr,
-  value: SirValueExpr,
-  helpers: WasmSirEmitHelpers
+  context: JitIrContext,
+  target: IrStorageExpr,
+  value: IrValueExpr,
+  helpers: WasmIrEmitHelpers
 ): void {
   const regs = context.state.regs;
 
@@ -65,9 +65,9 @@ export function emitJitSet32(
   }
 }
 
-export function emitJitAddress32(context: JitSirContext, source: SirStorageExpr): void {
+export function emitJitAddress32(context: JitIrContext, source: IrStorageExpr): void {
   if (source.kind !== "operand") {
-    throw new Error(`unsupported address32 source for JIT SIR: ${source.kind}`);
+    throw new Error(`unsupported address32 source for JIT IR: ${source.kind}`);
   }
 
   const binding = operandBinding(context, source.index);
@@ -79,7 +79,7 @@ export function emitJitAddress32(context: JitSirContext, source: SirStorageExpr)
   emitEffectiveAddress32(context.body, context.state.regs, binding.ea);
 }
 
-function emitGetBinding32(context: JitSirContext, regs: WasmSirReg32Storage, binding: JitOperandBinding): void {
+function emitGetBinding32(context: JitIrContext, regs: WasmIrReg32Storage, binding: JitOperandBinding): void {
   switch (binding.kind) {
     case "static.reg32":
       regs.emitGet(binding.reg);
@@ -98,11 +98,11 @@ function emitGetBinding32(context: JitSirContext, regs: WasmSirReg32Storage, bin
 }
 
 function emitSetBinding32(
-  context: JitSirContext,
-  regs: WasmSirReg32Storage,
+  context: JitIrContext,
+  regs: WasmIrReg32Storage,
   binding: JitOperandBinding,
-  value: SirValueExpr,
-  helpers: WasmSirEmitHelpers
+  value: IrValueExpr,
+  helpers: WasmIrEmitHelpers
 ): void {
   switch (binding.kind) {
     case "static.reg32":
@@ -121,7 +121,7 @@ function emitSetBinding32(
   }
 }
 
-function emitEffectiveAddress32(body: JitSirContext["body"], regs: WasmSirReg32Storage, ea: Mem32Operand): void {
+function emitEffectiveAddress32(body: JitIrContext["body"], regs: WasmIrReg32Storage, ea: Mem32Operand): void {
   let hasTerm = false;
 
   if (ea.base !== undefined) {
@@ -149,7 +149,7 @@ function emitEffectiveAddress32(body: JitSirContext["body"], regs: WasmSirReg32S
   }
 }
 
-function emitScale(body: JitSirContext["body"], scale: Mem32Operand["scale"]): void {
+function emitScale(body: JitIrContext["body"], scale: Mem32Operand["scale"]): void {
   const shift = scale === 1 ? 0 : scale === 2 ? 1 : scale === 4 ? 2 : 3;
 
   if (shift !== 0) {
@@ -157,18 +157,18 @@ function emitScale(body: JitSirContext["body"], scale: Mem32Operand["scale"]): v
   }
 }
 
-function emitLoadGuestU32FromStack(context: JitSirContext): void {
+function emitLoadGuestU32FromStack(context: JitIrContext): void {
   const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
-    emitWasmSirLoadGuestU32FromStack(context, addressLocal);
+    emitWasmIrLoadGuestU32FromStack(context, addressLocal);
   } finally {
     context.scratch.freeLocal(addressLocal);
   }
 }
 
 function emitStoreMem32(
-  context: JitSirContext,
+  context: JitIrContext,
   emitAddress: () => void,
   emitValue: () => void,
   faultExtraDepth = 1
@@ -181,14 +181,14 @@ function emitStoreMem32(
     context.body.localSet(addressLocal);
     emitValue();
     context.body.localSet(valueLocal);
-    emitWasmSirStoreGuestU32(context, addressLocal, valueLocal, faultExtraDepth);
+    emitWasmIrStoreGuestU32(context, addressLocal, valueLocal, faultExtraDepth);
   } finally {
     context.scratch.freeLocal(valueLocal);
     context.scratch.freeLocal(addressLocal);
   }
 }
 
-function operandBinding(context: JitSirContext, index: number): JitOperandBinding {
+function operandBinding(context: JitIrContext, index: number): JitOperandBinding {
   const binding = context.operands[index];
 
   if (binding === undefined) {

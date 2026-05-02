@@ -10,14 +10,14 @@ import {
   u32,
   type CpuState
 } from "../../../../core/state/cpu-state.js";
-import { buildSir } from "../../sir/builder.js";
-import { CONDITIONS, type FlagBoolExpr } from "../../sir/conditions.js";
+import { buildIr } from "../../ir/builder.js";
+import { CONDITIONS, type FlagBoolExpr } from "../../ir/conditions.js";
 import {
   flagProducerConditionKind,
   requiredFlagProducerConditionInput
-} from "../../sir/flag-conditions.js";
-import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "../../sir/flags.js";
-import type { MemRef, SirFlagProducerConditionOp, SirFlagSetOp, SirOp, StorageRef, ValueRef, VarRef } from "../../sir/types.js";
+} from "../../ir/flag-conditions.js";
+import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "../../ir/flags.js";
+import type { MemRef, IrFlagProducerConditionOp, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "../../ir/types.js";
 import type { IsaDecodedInstruction, IsaOperandBinding } from "../decoder/types.js";
 
 export type IsaExecutionOptions = Readonly<{
@@ -47,7 +47,7 @@ export function executeIsaInstruction(
   options: IsaExecutionOptions = {}
 ): RunResult {
   const context: ExecutionContext = { state, instruction, memory: options.memory, vars: new Map() };
-  const program = buildSir(instruction.spec.semantics);
+  const program = buildIr(instruction.spec.semantics);
 
   for (const op of program) {
     const result = executeOp(context, op);
@@ -60,7 +60,7 @@ export function executeIsaInstruction(
   return stop(state, StopReason.UNSUPPORTED);
 }
 
-function executeOp(context: ExecutionContext, op: SirOp): RunResult | undefined {
+function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
   switch (op.op) {
     case "get32": {
       const read = readStorage(context, op.source);
@@ -217,7 +217,7 @@ function writeGuestU32(context: ExecutionContext, address: number, value: number
 
 function setFlags(
   context: ExecutionContext,
-  descriptor: SirFlagSetOp
+  descriptor: IrFlagSetOp
 ): void {
   const producer = FLAG_PRODUCERS[descriptor.producer] as Readonly<{
     inputs: readonly string[];
@@ -239,7 +239,7 @@ function evalCondition(context: ExecutionContext, cc: keyof typeof CONDITIONS): 
   return evalFlagBoolExpr(context, CONDITIONS[cc].expr);
 }
 
-function evalFlagProducerCondition(context: ExecutionContext, condition: SirFlagProducerConditionOp): boolean {
+function evalFlagProducerCondition(context: ExecutionContext, condition: IrFlagProducerConditionOp): boolean {
   const left = evalValueRef(context, requiredFlagProducerConditionInput(condition, "left"));
   const right = evalValueRef(context, requiredFlagProducerConditionInput(condition, "right"));
 
@@ -320,7 +320,7 @@ function evalValueRef(context: ExecutionContext, value: ValueRef): number {
       const varValue = context.vars.get(value.id);
 
       if (varValue === undefined) {
-        throw new Error(`SIR var ${value.id} read before definition`);
+        throw new Error(`IR var ${value.id} read before definition`);
       }
 
       return varValue;

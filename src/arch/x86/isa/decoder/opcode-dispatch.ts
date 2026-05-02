@@ -1,4 +1,4 @@
-import type { SemanticTemplate } from "../../sir/types.js";
+import type { SemanticTemplate } from "../../ir/types.js";
 import { instructionReadsModRm } from "../schema/builders.js";
 import type { ExpandedInstructionSpec, Reg3 } from "../schema/types.js";
 import type { IsaDecodeReader } from "./reader.js";

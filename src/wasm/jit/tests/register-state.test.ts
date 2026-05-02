@@ -3,12 +3,12 @@ import { test } from "node:test";
 
 import { createCpuState } from "../../../core/state/cpu-state.js";
 import { ExitReason } from "../../exit.js";
-import { runJitSirBlock } from "./helpers.js";
+import { runJitIrBlock } from "./helpers.js";
 
 const startAddress = 0x1000;
 
 test("jit register state feeds later instructions from committed register locals", async () => {
-  const result = await runJitSirBlock(
+  const result = await runJitIrBlock(
     [
       0xb8, 0x23, 0x01, 0x00, 0x00, // mov eax, 0x123
       0x89, 0xc3, // mov ebx, eax
@@ -31,7 +31,7 @@ test("jit register state feeds later instructions from committed register locals
 });
 
 test("jit register generations store committed registers on a later memory fault", async () => {
-  const result = await runJitSirBlock(
+  const result = await runJitIrBlock(
     [
       0xb8, 0x11, 0x11, 0x11, 0x11, // mov eax, 0x11111111
       0xbb, 0x22, 0x22, 0x22, 0x22, // mov ebx, 0x22222222

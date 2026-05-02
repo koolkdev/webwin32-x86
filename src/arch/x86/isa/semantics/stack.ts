@@ -1,6 +1,6 @@
-import type { SemanticTemplate, SirBuilder, ValueInput, VarRef } from "../../sir/types.js";
+import type { SemanticTemplate, IrBuilder, ValueInput, VarRef } from "../../ir/types.js";
 
-export function push32(s: SirBuilder, value: ValueInput): void {
+export function push32(s: IrBuilder, value: ValueInput): void {
   const esp = s.get32(s.reg32("esp"));
   const nextEsp = s.i32Sub(esp, 4);
 
@@ -8,7 +8,7 @@ export function push32(s: SirBuilder, value: ValueInput): void {
   s.set32(s.reg32("esp"), nextEsp);
 }
 
-export function pop32(s: SirBuilder): VarRef {
+export function pop32(s: IrBuilder): VarRef {
   const esp = s.get32(s.reg32("esp"));
   const value = s.get32(s.mem32(esp));
   const nextEsp = s.i32Add(esp, 4);

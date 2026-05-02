@@ -1,8 +1,8 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { buildSir } from "../../../sir/builder.js";
-import type { SemanticTemplate } from "../../../sir/types.js";
+import { buildIr } from "../../../ir/builder.js";
+import type { SemanticTemplate } from "../../../ir/types.js";
 import { X86_32_CORE } from "../../index.js";
 import { expandInstructionSpec } from "../../schema/builders.js";
 import type { InstructionSpec } from "../../schema/types.js";
@@ -153,7 +153,7 @@ test("ret imm16 records zero-extension and generic control semantics", () => {
   deepStrictEqual(spec.operands, [{ kind: "imm", width: 16, extension: "zero" }]);
   deepStrictEqual(spec.format, { syntax: "ret {0}" });
 
-  const program = buildSir(spec.semantics as SemanticTemplate);
+  const program = buildIr(spec.semantics as SemanticTemplate);
   strictEqual(program.at(-1)?.op, "jump");
 });
 
@@ -169,7 +169,7 @@ test("jcc forms are concrete specs with condition-specific semantics", () => {
   deepStrictEqual(near.operands, [{ kind: "rel", width: 32 }]);
   deepStrictEqual(near.format, { syntax: "jne {0}" });
 
-  const program = buildSir(short.semantics as SemanticTemplate);
+  const program = buildIr(short.semantics as SemanticTemplate);
   deepStrictEqual(program[0], { op: "aluFlags.condition", dst: { kind: "var", id: 0 }, cc: "NE" });
   strictEqual(program.at(-1)?.op, "conditionalJump");
 });

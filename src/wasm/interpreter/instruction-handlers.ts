@@ -1,9 +1,9 @@
-import { buildSir } from "../../arch/x86/sir/builder.js";
+import { buildIr } from "../../arch/x86/ir/builder.js";
 import type { ExpandedInstructionSpec, ModRmMatch, Reg3 } from "../../arch/x86/isa/schema/types.js";
 import type { OpcodeDispatchLeaf } from "../../arch/x86/isa/decoder/opcode-dispatch.js";
-import type { SemanticTemplate } from "../../arch/x86/sir/types.js";
+import type { SemanticTemplate } from "../../arch/x86/ir/types.js";
 import { wasmValueType } from "../encoder/types.js";
-import { lowerSirWithInterpreterContext } from "./sir-context.js";
+import { lowerIrWithInterpreterContext } from "./ir-context.js";
 import { emitLoadGuestByte } from "./guest-bytes.js";
 import type { InterpreterHandlerContext } from "./handler-context.js";
 import { emitModRmDispatch, type ModRmDispatchCase } from "./modrm-dispatch.js";
@@ -56,10 +56,10 @@ function emitInstructionHandler(
   modRmLocal: number | undefined
 ): void {
   const decoded = decodeInstructionOperands(instruction, context, modRmLocal);
-  const program = buildSir(instruction.spec.semantics);
+  const program = buildIr(instruction.spec.semantics);
 
   try {
-    lowerSirWithInterpreterContext(program, {
+    lowerIrWithInterpreterContext(program, {
       body: context.body,
       scratch: context.scratch,
       state: context.state,

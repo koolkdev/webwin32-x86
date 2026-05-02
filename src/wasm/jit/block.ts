@@ -1,23 +1,23 @@
 import type { IsaDecodedInstruction } from "../../arch/x86/isa/decoder/types.js";
-import { validateSirProgram } from "../../arch/x86/sir/validator.js";
+import { validateIrProgram } from "../../arch/x86/ir/validator.js";
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "../abi.js";
 import { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
-import { JitSirProgramBuilder } from "./program-builder.js";
-import { lowerSirWithJitContext } from "./sir-context.js";
-import { createJitSirState, type JitExitTarget, type JitSirState } from "./state.js";
-import type { JitSirBlock } from "./types.js";
+import { JitIrProgramBuilder } from "./program-builder.js";
+import { lowerIrWithJitContext } from "./ir-context.js";
+import { createJitIrState, type JitExitTarget, type JitIrState } from "./state.js";
+import type { JitIrBlock } from "./types.js";
 
-export type { JitSirBlock, JitSirBlockInstruction } from "./types.js";
+export type { JitIrBlock, JitIrBlockInstruction } from "./types.js";
 
-export function buildJitSirBlock(instructions: readonly IsaDecodedInstruction[]): JitSirBlock {
+export function buildJitIrBlock(instructions: readonly IsaDecodedInstruction[]): JitIrBlock {
   if (instructions.length === 0) {
-    throw new Error("cannot build empty JIT SIR block");
+    throw new Error("cannot build empty JIT IR block");
   }
 
-  const builder = new JitSirProgramBuilder();
+  const builder = new JitIrProgramBuilder();
 
   for (let index = 0; index < instructions.length; index += 1) {
     const instruction = instructions[index]!;
@@ -31,12 +31,12 @@ export function buildJitSirBlock(instructions: readonly IsaDecodedInstruction[])
   return builder.build();
 }
 
-export function encodeJitSirBlock(block: JitSirBlock): Uint8Array<ArrayBuffer> {
+export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
   if (block.instructions.length === 0) {
-    throw new Error("cannot encode empty JIT SIR block");
+    throw new Error("cannot encode empty JIT IR block");
   }
 
-  validateSirProgram(block.sir, {
+  validateIrProgram(block.ir, {
     operandCount: block.operands.length,
     terminatorMode: "multi"
   });
@@ -56,13 +56,13 @@ export function encodeJitSirBlock(block: JitSirBlock): Uint8Array<ArrayBuffer> {
   const body = new WasmFunctionBodyEncoder();
   const scratch = new WasmLocalScratchAllocator(body);
   const exitLocal = body.addLocal(wasmValueType.i64);
-  const state = createJitSirState(body, block.instructions.length);
+  const state = createJitIrState(body, block.instructions.length);
   const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitGeneration };
 
   state.emitLoadInstructionCount();
 
   emitExitGenerationBlocks(body, state.maxExitGeneration);
-  lowerSirWithJitContext(block.sir, {
+  lowerIrWithJitContext(block.ir, {
     body,
     scratch,
     state,
@@ -89,7 +89,7 @@ function emitExitGenerationBlocks(body: WasmFunctionBodyEncoder, maxExitGenerati
 
 function emitExitGenerationStores(
   body: WasmFunctionBodyEncoder,
-  state: JitSirState,
+  state: JitIrState,
   exitLocal: number
 ): void {
   for (let generation = state.maxExitGeneration; generation >= 0; generation -= 1) {

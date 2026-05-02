@@ -1,4 +1,4 @@
-import type { InterpreterInstructionLength } from "./sir-context.js";
+import type { InterpreterInstructionLength } from "./ir-context.js";
 import { wasmValueType } from "../encoder/types.js";
 import {
   emitLoadGuestByte,
