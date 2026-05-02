@@ -6,7 +6,7 @@ import {
   type RunResultDetails
 } from "../../x86/execution/run-result.js";
 import { ExitReason, type DecodedExit } from "../../backends/wasm/exit.js";
-import type { WasmCpuState } from "../wasm/state-memory.js";
+import type { WasmCpuState } from "../../backends/wasm/host/state-memory.js";
 
 export function runResultFromWasmExit(state: WasmCpuState, exit: DecodedExit): RunResult {
   switch (exit.exitReason) {

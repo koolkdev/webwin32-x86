@@ -5,7 +5,7 @@ import { decodeIsaInstructionFromReader } from "../../../x86/isa/decoder/decode.
 import { RuntimeCodeMap } from "../code-map.js";
 import { loadProgramRegions } from "../loader.js";
 import { codeRegionsFromProgram, normalizeProgramRegions, requiredProgramByteLength } from "../regions.js";
-import { createRuntimeWasmMemories } from "../../wasm/memories.js";
+import { createWasmHostMemories } from "../../../backends/wasm/host/memories.js";
 
 const startAddress = 0x1000;
 
@@ -28,7 +28,7 @@ test("code map creates guest-memory decode readers for executable regions", () =
     bytes: [0xb8, 0x78, 0x56, 0x34, 0x12]
   });
   const codeMap = new RuntimeCodeMap(codeRegionsFromProgram(program));
-  const memories = createRuntimeWasmMemories({ guestMemoryByteLength: startAddress + 5 });
+  const memories = createWasmHostMemories({ guestMemoryByteLength: startAddress + 5 });
 
   strictEqual(loadProgramRegions(memories.guest, program), undefined);
   strictEqual(codeMap.contains(startAddress), true);

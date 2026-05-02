@@ -7,7 +7,7 @@ import { wasmBlockExportName, wasmImport } from "../../../backends/wasm/abi.js";
 import { UnsupportedWasmCodegenError } from "../../../backends/wasm/errors.js";
 import { decodeExit } from "../../../backends/wasm/exit.js";
 import { readInterpreterWasmArtifact } from "../../../backends/wasm/interpreter/artifact.js";
-import type { CompiledBlockCache } from "../../compiled-blocks/block-cache.js";
+import type { CompiledBlockCache } from "../../../backends/wasm/jit/compiled-blocks/block-cache.js";
 import { WasmBlocksEngine } from "../../engines/wasm-blocks.js";
 import { WasmInterpreterEngine, type WasmInterpreter } from "../../engines/wasm-interpreter.js";
 import { engineUnavailable, type RuntimeEngineResult } from "../../execution/engine-result.js";
@@ -15,21 +15,21 @@ import type { RuntimeEngines } from "../../execution/runner.js";
 import { RuntimeCodeMap } from "../../program/code-map.js";
 import { loadProgramRegions } from "../../program/loader.js";
 import { codeRegionsFromProgram, type RuntimeProgramRegion } from "../../program/regions.js";
-import { compileWasmBlockHandle } from "../../wasm-block/wasm-block.js";
-import type { RuntimeWasmMemories } from "../../wasm/memories.js";
-import { createRuntimeWasmMemories } from "../../wasm/memories.js";
+import { compileWasmBlockHandle } from "../../../backends/wasm/jit/block-handle.js";
+import type { WasmHostMemories } from "../../../backends/wasm/host/memories.js";
+import { createWasmHostMemories } from "../../../backends/wasm/host/memories.js";
 import { engineFixtureStartAddress } from "./programs.js";
 import type { EngineFixture, MemoryPatch } from "./types.js";
 
 export type PreparedEngineFixture = Readonly<{
   codeMap: RuntimeCodeMap;
-  memories: RuntimeWasmMemories;
+  memories: WasmHostMemories;
 }>;
 
 let interpreterModule: WebAssembly.Module | undefined;
 
 export function prepareEngineFixture(fixture: EngineFixture): PreparedEngineFixture {
-  const memories = createRuntimeWasmMemories();
+  const memories = createWasmHostMemories();
   const programRegion: RuntimeProgramRegion = {
     baseAddress: engineFixtureStartAddress,
     bytes: fixture.bytes
@@ -51,7 +51,7 @@ export function prepareEngineFixture(fixture: EngineFixture): PreparedEngineFixt
   };
 }
 
-export function instantiateFixtureWasmInterpreter(memories: RuntimeWasmMemories): WasmInterpreter {
+export function instantiateFixtureWasmInterpreter(memories: WasmHostMemories): WasmInterpreter {
   interpreterModule ??= new WebAssembly.Module(readInterpreterWasmArtifact());
 
   const instance = new WebAssembly.Instance(interpreterModule, {
@@ -101,14 +101,14 @@ export function createFixtureCompiledBlockCache(): CompiledBlockCache {
   };
 }
 
-export function createFixtureRuntimeEngines(memories: RuntimeWasmMemories): RuntimeEngines {
+export function createFixtureRuntimeEngines(memories: WasmHostMemories): RuntimeEngines {
   return {
     interpreter: new WasmInterpreterEngine(instantiateFixtureWasmInterpreter(memories)),
     compiledBlocks: new WasmBlocksEngine(createFixtureCompiledBlockCache())
   };
 }
 
-export function createFixtureInterpreterOnlyEngines(memories: RuntimeWasmMemories): RuntimeEngines {
+export function createFixtureInterpreterOnlyEngines(memories: WasmHostMemories): RuntimeEngines {
   return {
     interpreter: new WasmInterpreterEngine(instantiateFixtureWasmInterpreter(memories)),
     compiledBlocks: {
@@ -119,7 +119,7 @@ export function createFixtureInterpreterOnlyEngines(memories: RuntimeWasmMemorie
   };
 }
 
-export function createFixtureFallbackEngines(memories: RuntimeWasmMemories): RuntimeEngines {
+export function createFixtureFallbackEngines(memories: WasmHostMemories): RuntimeEngines {
   return {
     interpreter: new WasmInterpreterEngine(instantiateFixtureWasmInterpreter(memories)),
     compiledBlocks: {
@@ -133,7 +133,7 @@ export function createFixtureFallbackEngines(memories: RuntimeWasmMemories): Run
 export function assertEngineFixtureResult(
   fixture: EngineFixture,
   result: RuntimeEngineResult,
-  memories: RuntimeWasmMemories
+  memories: WasmHostMemories
 ): void {
   strictEqual(result.kind, "done");
 
@@ -156,7 +156,7 @@ function assertResultFields(fixture: EngineFixture, actual: RunResult): void {
   }
 }
 
-function assertStateFields(fixture: EngineFixture, memories: RuntimeWasmMemories): void {
+function assertStateFields(fixture: EngineFixture, memories: WasmHostMemories): void {
   const actual = memories.state.snapshot();
 
   for (const [field, expected] of Object.entries(fixture.expected.state)) {
@@ -168,7 +168,7 @@ function assertStateFields(fixture: EngineFixture, memories: RuntimeWasmMemories
   }
 }
 
-function assertMemoryPatches(memories: RuntimeWasmMemories, patches: readonly MemoryPatch[]): void {
+function assertMemoryPatches(memories: WasmHostMemories, patches: readonly MemoryPatch[]): void {
   for (const patch of patches) {
     for (let index = 0; index < patch.bytes.length; index += 1) {
       const address = patch.address + index;
@@ -183,7 +183,7 @@ function assertMemoryPatches(memories: RuntimeWasmMemories, patches: readonly Me
   }
 }
 
-function writeMemoryPatches(memories: RuntimeWasmMemories, patches: readonly MemoryPatch[]): void {
+function writeMemoryPatches(memories: WasmHostMemories, patches: readonly MemoryPatch[]): void {
   for (const patch of patches) {
     for (let index = 0; index < patch.bytes.length; index += 1) {
       const address = patch.address + index;

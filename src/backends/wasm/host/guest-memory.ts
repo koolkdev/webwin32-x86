@@ -1,10 +1,10 @@
-import type { FaultOperation } from "../../x86/execution/run-result.js";
+import type { FaultOperation } from "../../../x86/execution/run-result.js";
 import type {
   GuestMemory,
   MemoryFault,
   MemoryReadResult,
   MemoryWriteResult
-} from "../../x86/memory/guest-memory.js";
+} from "../../../x86/memory/guest-memory.js";
 
 const maxU32Address = 0xffff_ffff;
 

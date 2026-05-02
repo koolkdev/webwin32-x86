@@ -1,4 +1,4 @@
-import { type CpuState } from "../../x86/state/cpu-state.js";
+import { type CpuState } from "../../../x86/state/cpu-state.js";
 import {
   mergeWasmEflags,
   readWasmCpuState,
@@ -8,7 +8,7 @@ import {
   writeWasmStateField,
   WASM_STATE_BYTE_LENGTH,
   type WasmStateField
-} from "../../backends/wasm/state-layout.js";
+} from "../state-layout.js";
 
 export class WasmCpuState {
   constructor(readonly memory: WebAssembly.Memory) {

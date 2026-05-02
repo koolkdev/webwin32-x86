@@ -12,7 +12,7 @@ import {
   prepareEngineFixture
 } from "../../tests/fixtures/helpers.js";
 import { ENGINE_PROGRAM_FIXTURES, MOV_ADD_TRAP } from "../../tests/fixtures/programs.js";
-import { createRuntimeWasmMemories } from "../../wasm/memories.js";
+import { createWasmHostMemories } from "../../../backends/wasm/host/memories.js";
 import { createInstructionBudget } from "../budget.js";
 import { engineDone, engineUnavailable, type RuntimeEngineResult } from "../engine-result.js";
 import { RuntimeMode } from "../mode.js";
@@ -102,7 +102,7 @@ test("compiled-blocks executor can fall back to interpreter and still evaluate t
 function context(): RuntimeEngineContext {
   return {
     codeMap: new RuntimeCodeMap([]),
-    memories: createRuntimeWasmMemories()
+    memories: createWasmHostMemories()
   };
 }
 

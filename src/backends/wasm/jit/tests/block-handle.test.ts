@@ -1,23 +1,23 @@
 import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { decodeIsaBlock } from "../../../x86/isa/decoder/decode-block.js";
-import { GuestMemoryDecodeReader } from "../../../x86/isa/runtime/decode-reader.js";
-import { ArrayBufferGuestMemory } from "../../../x86/memory/guest-memory.js";
-import { createCpuState, type CpuState } from "../../../x86/state/cpu-state.js";
+import { decodeIsaBlock } from "../../../../x86/isa/decoder/decode-block.js";
+import { GuestMemoryDecodeReader } from "../../../../x86/isa/runtime/decode-reader.js";
+import { ArrayBufferGuestMemory } from "../../../../x86/memory/guest-memory.js";
+import { createCpuState, type CpuState } from "../../../../x86/state/cpu-state.js";
 import {
   compileWasmBlockHandle,
   type WasmBlockHandle,
   wasmBlockExitEncoding
-} from "../wasm-block.js";
+} from "../block-handle.js";
 import {
   assertMemoryImports,
   createGuestMemory,
   readViewBytes,
   startAddress,
-} from "../../../backends/wasm/tests/helpers.js";
-import { decodeExit, ExitReason } from "../../../backends/wasm/exit.js";
-import { readWasmCpuState, writeWasmCpuState } from "../../../backends/wasm/state-layout.js";
+} from "../../tests/helpers.js";
+import { decodeExit, ExitReason } from "../../exit.js";
+import { readWasmCpuState, writeWasmCpuState } from "../../state-layout.js";
 
 const movAddJumpFixture = [
   0xb8, 0x01, 0x00, 0x00, 0x00,

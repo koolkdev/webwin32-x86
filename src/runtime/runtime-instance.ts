@@ -3,8 +3,8 @@ import { u32, type CpuState } from "../x86/state/cpu-state.js";
 import { WasmInterpreterRuntime } from "../backends/wasm/interpreter/runtime.js";
 import {
   WasmCompiledBlockCache,
-  type RuntimeCompiledBlockCache
-} from "./compiled-blocks/wasm-cache.js";
+  type WasmCompiledBlockCacheLike
+} from "../backends/wasm/jit/compiled-blocks/wasm-cache.js";
 import { WasmBlocksEngine } from "./engines/wasm-blocks.js";
 import { WasmInterpreterEngine } from "./engines/wasm-interpreter.js";
 import { createInstructionBudget } from "./execution/budget.js";
@@ -19,14 +19,14 @@ import {
   type RuntimeProgramInput,
   type RuntimeProgramRegion
 } from "./program/regions.js";
-import { createRuntimeWasmMemories, type RuntimeWasmMemories } from "./wasm/memories.js";
+import { createWasmHostMemories, type WasmHostMemories } from "../backends/wasm/host/memories.js";
 
 export type RuntimeInstanceOptions = Readonly<{
   program?: RuntimeProgramInput;
   state?: Partial<CpuState>;
   memory?: RuntimeInstanceMemoryOptions;
   mode?: RuntimeModeValue;
-  compiledBlocks?: RuntimeCompiledBlockCache;
+  compiledBlocks?: WasmCompiledBlockCacheLike;
 }>;
 
 export type RuntimeInstanceMemoryOptions = Readonly<{
@@ -45,16 +45,16 @@ const defaultGuestBytes = 1024 * 1024;
 
 export class RuntimeInstance {
   readonly mode: RuntimeModeValue;
-  readonly memories: RuntimeWasmMemories;
+  readonly memories: WasmHostMemories;
   readonly codeMap: RuntimeCodeMap;
-  readonly compiledBlocks: RuntimeCompiledBlockCache;
+  readonly compiledBlocks: WasmCompiledBlockCacheLike;
   readonly engines: RuntimeEngines;
 
   constructor(options: RuntimeInstanceOptions = {}) {
     const program = normalizeProgramRegions(options.program);
 
     this.mode = options.mode ?? RuntimeMode.INTERPRETER;
-    this.memories = createRuntimeWasmMemories({
+    this.memories = createWasmHostMemories({
       guestMemoryByteLength: requiredGuestBytes(options.memory, program),
       ...(options.memory?.guest === undefined ? {} : { guestMemory: options.memory.guest }),
       ...(options.memory?.state === undefined ? {} : { stateMemory: options.memory.state })
@@ -111,7 +111,7 @@ function requiredGuestBytes(
 
 function loadProgramBytes(
   program: readonly RuntimeProgramRegion[],
-  memories: RuntimeWasmMemories
+  memories: WasmHostMemories
 ): void {
   const fault = loadProgramRegions(memories.guest, program);
 

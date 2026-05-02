@@ -1,9 +1,9 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { createCpuState } from "../../../x86/state/cpu-state.js";
-import { stateByteLength, stateOffset } from "../../../backends/wasm/abi.js";
-import { createRuntimeWasmMemories, wasmPagesForByteLength } from "../memories.js";
+import { createCpuState } from "../../../../x86/state/cpu-state.js";
+import { stateByteLength, stateOffset } from "../../abi.js";
+import { createWasmHostMemories, wasmPagesForByteLength } from "../memories.js";
 
 test("wasmPagesForByteLength rounds up to WebAssembly pages", () => {
   strictEqual(wasmPagesForByteLength(0), 1);
@@ -13,7 +13,7 @@ test("wasmPagesForByteLength rounds up to WebAssembly pages", () => {
 });
 
 test("runtime Wasm memories expose canonical state memory", () => {
-  const memories = createRuntimeWasmMemories();
+  const memories = createWasmHostMemories();
 
   memories.state.load({ eax: 0x1234_5678, eip: 0x401000, instructionCount: 7 });
   memories.state.write("ebx", 0xaabb_ccdd);
@@ -52,7 +52,7 @@ test("runtime Wasm state layout exposes raw execution fields", () => {
 });
 
 test("runtime Wasm guest memory reads writes and reports faults", () => {
-  const memories = createRuntimeWasmMemories({ guestMemoryByteLength: 0x20 });
+  const memories = createWasmHostMemories({ guestMemoryByteLength: 0x20 });
 
   strictEqual(memories.guest.writeU32(0x10, 0x1234_5678).ok, true);
   deepStrictEqual(memories.guest.readU32(0x10), { ok: true, value: 0x1234_5678 });

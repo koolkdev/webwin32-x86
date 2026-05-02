@@ -9,7 +9,7 @@ import {
   createFixtureCompiledBlockCache,
   prepareEngineFixture
 } from "../../tests/fixtures/helpers.js";
-import { createRuntimeWasmMemories } from "../../wasm/memories.js";
+import { createWasmHostMemories } from "../../../backends/wasm/host/memories.js";
 import { WasmBlocksEngine } from "../wasm-blocks.js";
 
 test("wasm blocks engine reports unavailable when no compiled block exists", () => {
@@ -19,7 +19,7 @@ test("wasm blocks engine reports unavailable when no compiled block exists", () 
     }
   });
   const result = engine.run(
-    { codeMap: new RuntimeCodeMap([]), memories: createRuntimeWasmMemories() },
+    { codeMap: new RuntimeCodeMap([]), memories: createWasmHostMemories() },
     createInstructionBudget(0, 10)
   );
 

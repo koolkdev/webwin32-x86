@@ -1,13 +1,12 @@
-import { decodeIsaBlock, type IsaDecodedBlock } from "../../x86/isa/decoder/decode-block.js";
-import type { IsaDecodeFault } from "../../x86/isa/decoder/reader.js";
-import { u32 } from "../../x86/state/cpu-state.js";
-import { UnsupportedWasmCodegenError } from "../../backends/wasm/errors.js";
-import type { RuntimeCodeMap } from "../program/code-map.js";
-import { compileWasmBlockHandle } from "../wasm-block/wasm-block.js";
-import type { RuntimeWasmMemories } from "../wasm/memories.js";
-import type { CompiledBlockCache, CompiledBlockHandle } from "./block-cache.js";
+import { decodeIsaBlock, type IsaDecodedBlock } from "../../../../x86/isa/decoder/decode-block.js";
+import type { IsaDecodeFault } from "../../../../x86/isa/decoder/reader.js";
+import { u32 } from "../../../../x86/state/cpu-state.js";
+import { UnsupportedWasmCodegenError } from "../../errors.js";
+import { compileWasmBlockHandle } from "../block-handle.js";
+import type { WasmHostMemories } from "../../host/memories.js";
+import type { CompiledBlockCache, CompiledBlockHandle, WasmCompiledBlockCodeMap } from "./block-cache.js";
 
-export type RuntimeCompiledBlockCache = CompiledBlockCache & Partial<Readonly<{
+export type WasmCompiledBlockCacheLike = CompiledBlockCache & Partial<Readonly<{
   clear(): void;
 }>>;
 
@@ -18,14 +17,14 @@ export class CompiledBlockDecodeError extends Error {
   }
 }
 
-export class WasmCompiledBlockCache implements RuntimeCompiledBlockCache {
+export class WasmCompiledBlockCache implements WasmCompiledBlockCacheLike {
   readonly #blocksByEip = new Map<number, CompiledBlockHandle>();
 
   clear(): void {
     this.#blocksByEip.clear();
   }
 
-  getOrCompile(startEip: number, codeMap: RuntimeCodeMap, memories: RuntimeWasmMemories): CompiledBlockHandle | undefined {
+  getOrCompile(startEip: number, codeMap: WasmCompiledBlockCodeMap, memories: WasmHostMemories): CompiledBlockHandle | undefined {
     const blockKey = u32(startEip);
     const cached = this.#blocksByEip.get(blockKey);
 
