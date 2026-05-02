@@ -101,6 +101,7 @@ function collectOpVarUses(op: SirExprOp, visit: (id: number) => void): void {
       }
       return;
     case "flags.materialize":
+    case "flags.boundary":
       return;
     case "next":
       return;

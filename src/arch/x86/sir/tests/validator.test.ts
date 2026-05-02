@@ -8,7 +8,7 @@ import { leaSemantic } from "../../isa/semantics/lea.js";
 import { intSemantic } from "../../isa/semantics/misc.js";
 import { movSemantic } from "../../isa/semantics/mov.js";
 import { buildSir, const32, operand, sirVar } from "../builder.js";
-import { validateSirProgram } from "./validator.js";
+import { validateSirProgram } from "../validator.js";
 
 test("validator accepts representative generated semantic templates", () => {
   doesNotThrow(() => validateSirProgram(buildSir(movSemantic()), { operandCount: 2 }));
@@ -55,5 +55,39 @@ test("validator rejects duplicate vars, use before definition, and missing opera
   throws(
     () => validateSirProgram([{ op: "get32", dst: sirVar(0), source: operand(1) }, { op: "next" }], { operandCount: 1 }),
     /operand 1 does not exist/
+  );
+});
+
+test("validator rejects invalid aluFlags operation masks", () => {
+  throws(
+    () => validateSirProgram([{ op: "flags.materialize", mask: 0 }, { op: "next" }]),
+    /flags\.materialize requires a nonzero aluFlags mask/
+  );
+
+  throws(
+    () => validateSirProgram([{ op: "flags.boundary", mask: 1 << 6 }, { op: "next" }]),
+    /flags\.boundary mask must contain only SIR aluFlags bits/
+  );
+});
+
+test("validator rejects malformed flag producer inputs", () => {
+  throws(
+    () =>
+      validateSirProgram([
+        { op: "const32", dst: sirVar(0), value: 1 },
+        { op: "flags.set", producer: "logic32", inputs: {} },
+        { op: "next" }
+      ]),
+    /flags\.set logic32 is missing input 'result'/
+  );
+
+  throws(
+    () =>
+      validateSirProgram([
+        { op: "const32", dst: sirVar(0), value: 1 },
+        { op: "flags.set", producer: "logic32", inputs: { result: sirVar(0), extra: sirVar(0) } },
+        { op: "next" }
+      ]),
+    /flags\.set logic32 has unexpected input 'extra'/
   );
 });

@@ -1,4 +1,5 @@
 import type { IsaDecodedInstruction } from "../../arch/x86/isa/decoder/types.js";
+import { validateSirProgram } from "../../arch/x86/sir/validator.js";
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "../abi.js";
 import { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
@@ -35,6 +36,11 @@ export function encodeJitSirBlock(block: JitSirBlock): Uint8Array<ArrayBuffer> {
     throw new Error("cannot encode empty JIT SIR block");
   }
 
+  validateSirProgram(block.sir, {
+    operandCount: block.operands.length,
+    terminatorMode: "multi"
+  });
+
   const module = new WasmModuleEncoder();
   const stateMemoryIndex = module.importMemory(wasmImport.moduleName, wasmImport.stateMemoryName, { minPages: 1 });
   const guestMemoryIndex = module.importMemory(wasmImport.moduleName, wasmImport.guestMemoryName, { minPages: 1 });
@@ -53,7 +59,8 @@ export function encodeJitSirBlock(block: JitSirBlock): Uint8Array<ArrayBuffer> {
   const state = createJitSirState(body, block.instructions.length);
   const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitGeneration };
 
-  state.emitEntryLoads();
+  state.emitLoadInstructionCount();
+
   emitExitGenerationBlocks(body, state.maxExitGeneration);
   lowerSirWithJitContext(block.sir, {
     body,

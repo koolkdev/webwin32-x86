@@ -6,28 +6,28 @@ import {
   analyzeSirFlagLiveness,
   conditionFlagReadMask,
   flagProducerEffect,
-  maskSirFlags,
-  SIR_ARITHMETIC_FLAG_MASK,
+  maskSirAluFlags,
+  SIR_ALU_FLAG_MASK,
   SIR_FLAG_MASK_NONE,
-  SIR_FLAG_MASKS
+  SIR_ALU_FLAG_MASKS
 } from "../flag-analysis.js";
 
 test("flag analysis records condition read masks", () => {
-  strictEqual(conditionFlagReadMask("E"), SIR_FLAG_MASKS.ZF);
-  strictEqual(conditionFlagReadMask("BE"), maskSirFlags(["CF", "ZF"]));
-  strictEqual(conditionFlagReadMask("G"), maskSirFlags(["ZF", "SF", "OF"]));
+  strictEqual(conditionFlagReadMask("E"), SIR_ALU_FLAG_MASKS.ZF);
+  strictEqual(conditionFlagReadMask("BE"), maskSirAluFlags(["CF", "ZF"]));
+  strictEqual(conditionFlagReadMask("G"), maskSirAluFlags(["ZF", "SF", "OF"]));
 });
 
 test("flag analysis records producer writes and undefined flags", () => {
   deepStrictEqual(flagProducerEffect("add32"), {
     reads: SIR_FLAG_MASK_NONE,
-    writes: SIR_ARITHMETIC_FLAG_MASK,
+    writes: SIR_ALU_FLAG_MASK,
     undefines: SIR_FLAG_MASK_NONE
   });
   deepStrictEqual(flagProducerEffect("logic32"), {
     reads: SIR_FLAG_MASK_NONE,
-    writes: SIR_ARITHMETIC_FLAG_MASK,
-    undefines: SIR_FLAG_MASKS.AF
+    writes: SIR_ALU_FLAG_MASK,
+    undefines: SIR_ALU_FLAG_MASKS.AF
   });
 });
 
@@ -45,12 +45,12 @@ test("flag liveness marks unused flag producer writes dead", () => {
 
   deepStrictEqual(liveness[flagsSetIndex], {
     reads: SIR_FLAG_MASK_NONE,
-    writes: SIR_ARITHMETIC_FLAG_MASK,
+    writes: SIR_ALU_FLAG_MASK,
     undefines: SIR_FLAG_MASK_NONE,
     liveIn: SIR_FLAG_MASK_NONE,
     liveOut: SIR_FLAG_MASK_NONE,
     neededWrites: SIR_FLAG_MASK_NONE,
-    deadWrites: SIR_ARITHMETIC_FLAG_MASK
+    deadWrites: SIR_ALU_FLAG_MASK
   });
 });
 
@@ -69,18 +69,18 @@ test("flag liveness keeps only flags read by a later condition", () => {
 
   deepStrictEqual(liveness[flagsSetIndex], {
     reads: SIR_FLAG_MASK_NONE,
-    writes: SIR_ARITHMETIC_FLAG_MASK,
+    writes: SIR_ALU_FLAG_MASK,
     undefines: SIR_FLAG_MASK_NONE,
     liveIn: SIR_FLAG_MASK_NONE,
-    liveOut: SIR_FLAG_MASKS.ZF,
-    neededWrites: SIR_FLAG_MASKS.ZF,
-    deadWrites: SIR_ARITHMETIC_FLAG_MASK & ~SIR_FLAG_MASKS.ZF
+    liveOut: SIR_ALU_FLAG_MASKS.ZF,
+    neededWrites: SIR_ALU_FLAG_MASKS.ZF,
+    deadWrites: SIR_ALU_FLAG_MASK & ~SIR_ALU_FLAG_MASKS.ZF
   });
   deepStrictEqual(liveness[conditionIndex], {
-    reads: SIR_FLAG_MASKS.ZF,
+    reads: SIR_ALU_FLAG_MASKS.ZF,
     writes: SIR_FLAG_MASK_NONE,
     undefines: SIR_FLAG_MASK_NONE,
-    liveIn: SIR_FLAG_MASKS.ZF,
+    liveIn: SIR_ALU_FLAG_MASKS.ZF,
     liveOut: SIR_FLAG_MASK_NONE,
     neededWrites: SIR_FLAG_MASK_NONE,
     deadWrites: SIR_FLAG_MASK_NONE
@@ -93,17 +93,17 @@ test("flag liveness treats undefined writes as kills", () => {
 
     s.setFlags("logic32", { result });
   });
-  const liveness = analyzeSirFlagLiveness(program, { liveOut: SIR_FLAG_MASKS.AF });
+  const liveness = analyzeSirFlagLiveness(program, { liveOut: SIR_ALU_FLAG_MASKS.AF });
   const flagsSetIndex = program.findIndex((op) => op.op === "flags.set");
 
   deepStrictEqual(liveness[flagsSetIndex], {
     reads: SIR_FLAG_MASK_NONE,
-    writes: SIR_ARITHMETIC_FLAG_MASK,
-    undefines: SIR_FLAG_MASKS.AF,
+    writes: SIR_ALU_FLAG_MASK,
+    undefines: SIR_ALU_FLAG_MASKS.AF,
     liveIn: SIR_FLAG_MASK_NONE,
-    liveOut: SIR_FLAG_MASKS.AF,
-    neededWrites: SIR_FLAG_MASKS.AF,
-    deadWrites: SIR_ARITHMETIC_FLAG_MASK & ~SIR_FLAG_MASKS.AF
+    liveOut: SIR_ALU_FLAG_MASKS.AF,
+    neededWrites: SIR_ALU_FLAG_MASKS.AF,
+    deadWrites: SIR_ALU_FLAG_MASK & ~SIR_ALU_FLAG_MASKS.AF
   });
 });
 
@@ -118,17 +118,83 @@ test("flag liveness barriers keep flags live before observable exits", () => {
     s.setFlags("logic32", { result });
   });
   const liveness = analyzeSirFlagLiveness(program, {
-    liveOut: SIR_ARITHMETIC_FLAG_MASK,
-    barriers: [{ index: 4, placement: "before", mask: SIR_ARITHMETIC_FLAG_MASK }]
+    liveOut: SIR_ALU_FLAG_MASK,
+    barriers: [{ index: 4, placement: "before", mask: SIR_ALU_FLAG_MASK }]
   });
 
   deepStrictEqual(liveness[3], {
     reads: SIR_FLAG_MASK_NONE,
-    writes: SIR_ARITHMETIC_FLAG_MASK,
+    writes: SIR_ALU_FLAG_MASK,
     undefines: SIR_FLAG_MASK_NONE,
     liveIn: SIR_FLAG_MASK_NONE,
-    liveOut: SIR_ARITHMETIC_FLAG_MASK,
-    neededWrites: SIR_ARITHMETIC_FLAG_MASK,
+    liveOut: SIR_ALU_FLAG_MASK,
+    neededWrites: SIR_ALU_FLAG_MASK,
+    deadWrites: SIR_FLAG_MASK_NONE
+  });
+});
+
+test("flag liveness treats explicit boundaries as flag reads", () => {
+  const program = buildSir((s) => {
+    const left = s.get32(s.reg32("eax"));
+    const right = s.get32(s.reg32("ebx"));
+    const result = s.i32Add(left, right);
+
+    s.setFlags("add32", { left, right, result });
+    s.boundaryFlags(SIR_ALU_FLAG_MASKS.ZF);
+  });
+  const liveness = analyzeSirFlagLiveness(program);
+  const flagsSetIndex = program.findIndex((op) => op.op === "flags.set");
+  const boundaryIndex = program.findIndex((op) => op.op === "flags.boundary");
+
+  deepStrictEqual(liveness[flagsSetIndex], {
+    reads: SIR_FLAG_MASK_NONE,
+    writes: SIR_ALU_FLAG_MASK,
+    undefines: SIR_FLAG_MASK_NONE,
+    liveIn: SIR_FLAG_MASK_NONE,
+    liveOut: SIR_ALU_FLAG_MASKS.ZF,
+    neededWrites: SIR_ALU_FLAG_MASKS.ZF,
+    deadWrites: SIR_ALU_FLAG_MASK & ~SIR_ALU_FLAG_MASKS.ZF
+  });
+  deepStrictEqual(liveness[boundaryIndex], {
+    reads: SIR_ALU_FLAG_MASKS.ZF,
+    writes: SIR_FLAG_MASK_NONE,
+    undefines: SIR_FLAG_MASK_NONE,
+    liveIn: SIR_ALU_FLAG_MASKS.ZF,
+    liveOut: SIR_FLAG_MASK_NONE,
+    neededWrites: SIR_FLAG_MASK_NONE,
+    deadWrites: SIR_FLAG_MASK_NONE
+  });
+});
+
+test("flag liveness treats explicit materialization as a flag read", () => {
+  const program = buildSir((s) => {
+    const left = s.get32(s.reg32("eax"));
+    const right = s.get32(s.reg32("ebx"));
+    const result = s.i32Add(left, right);
+
+    s.setFlags("add32", { left, right, result });
+    s.materializeFlags(SIR_ALU_FLAG_MASKS.ZF);
+  });
+  const liveness = analyzeSirFlagLiveness(program);
+  const flagsSetIndex = program.findIndex((op) => op.op === "flags.set");
+  const materializeIndex = program.findIndex((op) => op.op === "flags.materialize");
+
+  deepStrictEqual(liveness[flagsSetIndex], {
+    reads: SIR_FLAG_MASK_NONE,
+    writes: SIR_ALU_FLAG_MASK,
+    undefines: SIR_FLAG_MASK_NONE,
+    liveIn: SIR_FLAG_MASK_NONE,
+    liveOut: SIR_ALU_FLAG_MASKS.ZF,
+    neededWrites: SIR_ALU_FLAG_MASKS.ZF,
+    deadWrites: SIR_ALU_FLAG_MASK & ~SIR_ALU_FLAG_MASKS.ZF
+  });
+  deepStrictEqual(liveness[materializeIndex], {
+    reads: SIR_ALU_FLAG_MASKS.ZF,
+    writes: SIR_FLAG_MASK_NONE,
+    undefines: SIR_FLAG_MASK_NONE,
+    liveIn: SIR_ALU_FLAG_MASKS.ZF,
+    liveOut: SIR_FLAG_MASK_NONE,
+    neededWrites: SIR_FLAG_MASK_NONE,
     deadWrites: SIR_FLAG_MASK_NONE
   });
 });

@@ -1,11 +1,11 @@
 import {
-  SIR_ARITHMETIC_FLAG_MASK,
-  type SirFlagLivenessBarrier
+  SIR_ALU_FLAG_MASK
 } from "../../arch/x86/sir/flag-analysis.js";
 import {
+  createFlagBoundaryInsertionPass,
   createDeadFlagSetPruningPass,
   createFlagMaterializationPass,
-  type SirFlagMaterializationPoint
+  type SirFlagBoundaryPoint
 } from "../../arch/x86/sir/flag-optimization.js";
 import { optimizeSirProgram } from "../../arch/x86/sir/optimization.js";
 import type { SirOp, SirProgram, StorageRef } from "../../arch/x86/sir/types.js";
@@ -14,15 +14,11 @@ import type { JitSirBlock } from "./types.js";
 
 export function optimizeJitSirBlock(block: JitSirBlock): JitSirBlock {
   const optimized = optimizeSirProgram(block.sir, [
-    (program) =>
-      createDeadFlagSetPruningPass({
-        liveOut: SIR_ARITHMETIC_FLAG_MASK,
-        barriers: jitFlagLivenessBarriers(program, block.operands)
-      })(program),
-    (program) =>
-      createFlagMaterializationPass({
-        points: jitFlagMaterializationPoints(program, block.operands)
-      })(program)
+    createFlagBoundaryInsertionPass({
+      points: (program) => jitFlagBoundaryPoints(program, block.operands)
+    }),
+    createDeadFlagSetPruningPass(),
+    createFlagMaterializationPass()
   ]);
 
   return {
@@ -32,46 +28,33 @@ export function optimizeJitSirBlock(block: JitSirBlock): JitSirBlock {
   };
 }
 
-function jitFlagMaterializationPoints(
+function jitFlagBoundaryPoints(
   program: SirProgram,
   operands: readonly JitOperandBinding[]
-): readonly SirFlagMaterializationPoint[] {
-  const points: SirFlagMaterializationPoint[] = [];
+): readonly SirFlagBoundaryPoint[] {
+  const points: SirFlagBoundaryPoint[] = [];
 
-  for (const barrier of jitFlagLivenessBarriers(program, operands)) {
-    points.push({ index: barrier.index, placement: "before", mask: barrier.mask });
+  for (let index = 0; index < program.length; index += 1) {
+    const op = program[index];
+
+    if (op === undefined) {
+      throw new Error(`missing SIR op while planning JIT flag boundaries: ${index}`);
+    }
+
+    if (opMayFaultBeforeCompletion(op, operands)) {
+      points.push({ index, placement: "before", mask: SIR_ALU_FLAG_MASK });
+    }
   }
 
   if (program.length !== 0) {
     points.push({
       index: program.length - 1,
       placement: "before",
-      mask: SIR_ARITHMETIC_FLAG_MASK
+      mask: SIR_ALU_FLAG_MASK
     });
   }
 
   return points;
-}
-
-function jitFlagLivenessBarriers(
-  program: SirProgram,
-  operands: readonly JitOperandBinding[]
-): readonly SirFlagLivenessBarrier[] {
-  const barriers: SirFlagLivenessBarrier[] = [];
-
-  for (let index = 0; index < program.length; index += 1) {
-    const op = program[index];
-
-    if (op === undefined) {
-      throw new Error(`missing SIR op while planning JIT flag barriers: ${index}`);
-    }
-
-    if (opMayFaultBeforeCompletion(op, operands)) {
-      barriers.push({ index, placement: "before", mask: SIR_ARITHMETIC_FLAG_MASK });
-    }
-  }
-
-  return barriers;
 }
 
 function opMayFaultBeforeCompletion(op: SirOp, operands: readonly JitOperandBinding[]): boolean {

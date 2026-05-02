@@ -103,6 +103,7 @@ function executeOp(context: ExecutionContext, op: SirOp): RunResult | undefined 
       setFlags(context, op.producer, op.inputs);
       return undefined;
     case "flags.materialize":
+    case "flags.boundary":
       return undefined;
     case "condition":
       setVar(context, op.dst, evalCondition(context, op.cc) ? 1 : 0);

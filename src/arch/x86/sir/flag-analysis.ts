@@ -33,15 +33,22 @@ export type SirFlagLivenessOptions = Readonly<{
   barriers?: readonly SirFlagLivenessBarrier[];
 }>;
 
-export type SirFlagLivenessBarrier = Readonly<{
+export type SirIndexedFlagPoint = Readonly<{
   index: number;
   placement: "before" | "after";
   mask: SirFlagMask;
 }>;
 
+export type SirFlagLivenessBarrier = SirIndexedFlagPoint;
+
+export type SirIndexedFlagPointMasks = Readonly<{
+  before: readonly SirFlagMask[];
+  after: readonly SirFlagMask[];
+}>;
+
 export const SIR_FLAG_MASK_NONE = 0;
-export const SIR_ARITHMETIC_FLAGS = x86ArithmeticFlags satisfies readonly FlagName[];
-export const SIR_FLAG_MASKS = {
+export const SIR_ALU_FLAGS = x86ArithmeticFlags satisfies readonly FlagName[];
+export const SIR_ALU_FLAG_MASKS = {
   CF: 1 << 0,
   PF: 1 << 1,
   AF: 1 << 2,
@@ -49,7 +56,7 @@ export const SIR_FLAG_MASKS = {
   SF: 1 << 4,
   OF: 1 << 5
 } as const satisfies Readonly<Record<FlagName, SirFlagMask>>;
-export const SIR_ARITHMETIC_FLAG_MASK = maskSirFlags(SIR_ARITHMETIC_FLAGS);
+export const SIR_ALU_FLAG_MASK = maskSirAluFlags(SIR_ALU_FLAGS);
 
 const noFlagEffect = {
   reads: SIR_FLAG_MASK_NONE,
@@ -57,18 +64,24 @@ const noFlagEffect = {
   undefines: SIR_FLAG_MASK_NONE
 } as const satisfies SirFlagOpEffect;
 
-export function maskSirFlags(flags: Iterable<FlagName>): SirFlagMask {
+export function maskSirAluFlags(flags: Iterable<FlagName>): SirFlagMask {
   let mask = SIR_FLAG_MASK_NONE;
 
   for (const flag of flags) {
-    mask |= SIR_FLAG_MASKS[flag];
+    mask |= SIR_ALU_FLAG_MASKS[flag];
   }
 
   return mask;
 }
 
+export function assertSirAluFlagMask(mask: SirFlagMask, context = "SIR aluFlags mask"): void {
+  if (!Number.isInteger(mask) || mask < 0 || (mask & ~SIR_ALU_FLAG_MASK) !== 0) {
+    throw new Error(`${context} must contain only SIR aluFlags bits`);
+  }
+}
+
 export function conditionFlagReadMask(cc: ConditionCode): SirFlagMask {
-  return maskSirFlags(CONDITIONS[cc].reads);
+  return maskSirAluFlags(CONDITIONS[cc].reads);
 }
 
 export function flagProducerEffect(producer: FlagProducerName): SirFlagOpEffect {
@@ -76,17 +89,17 @@ export function flagProducerEffect(producer: FlagProducerName): SirFlagOpEffect 
   let writes = SIR_FLAG_MASK_NONE;
   let undefines = SIR_FLAG_MASK_NONE;
 
-  for (const flag of SIR_ARITHMETIC_FLAGS) {
+  for (const flag of SIR_ALU_FLAGS) {
     const expr = defs[flag];
 
     if (expr === undefined) {
       continue;
     }
 
-    writes |= SIR_FLAG_MASKS[flag];
+    writes |= SIR_ALU_FLAG_MASKS[flag];
 
     if (expr.kind === "undefFlag") {
-      undefines |= SIR_FLAG_MASKS[flag];
+      undefines |= SIR_ALU_FLAG_MASKS[flag];
     }
   }
 
@@ -104,7 +117,17 @@ export function sirOpFlagEffect(op: SirOp): SirFlagOpEffect {
         undefines: SIR_FLAG_MASK_NONE
       };
     case "flags.materialize":
-      return noFlagEffect;
+      return {
+        reads: op.mask,
+        writes: SIR_FLAG_MASK_NONE,
+        undefines: SIR_FLAG_MASK_NONE
+      };
+    case "flags.boundary":
+      return {
+        reads: op.mask,
+        writes: SIR_FLAG_MASK_NONE,
+        undefines: SIR_FLAG_MASK_NONE
+      };
     default:
       return noFlagEffect;
   }
@@ -121,7 +144,11 @@ export function analyzeSirFlagLiveness(
   const effects = analyzeSirFlagEffects(program);
   const barriers = flagBarriersByIndex(program, options.barriers ?? []);
   const liveness: SirFlagOpLiveness[] = new Array(program.length);
-  let live = maskArithmeticFlags(options.liveOut ?? SIR_FLAG_MASK_NONE);
+  const liveOutOption = options.liveOut ?? SIR_FLAG_MASK_NONE;
+
+  assertSirAluFlagMask(liveOutOption, "SIR flag liveness liveOut");
+
+  let live = liveOutOption;
 
   for (let index = program.length - 1; index >= 0; index -= 1) {
     const effect = effects[index];
@@ -130,11 +157,11 @@ export function analyzeSirFlagLiveness(
       throw new Error(`missing SIR flag effect for op: ${index}`);
     }
 
-    const liveOut = maskArithmeticFlags(live | barriers.after[index]!);
+    const liveOut = live | barriers.after[index]!;
     const killed = effect.writes | effect.undefines;
-    const liveIn = maskArithmeticFlags(barriers.before[index]! | effect.reads | (liveOut & ~killed));
-    const neededWrites = maskArithmeticFlags(effect.writes & liveOut);
-    const deadWrites = maskArithmeticFlags(effect.writes & ~liveOut);
+    const liveIn = barriers.before[index]! | effect.reads | (liveOut & ~killed);
+    const neededWrites = effect.writes & liveOut;
+    const deadWrites = effect.writes & ~liveOut;
 
     liveness[index] = { ...effect, liveIn, liveOut, neededWrites, deadWrites };
     live = liveIn;
@@ -146,18 +173,27 @@ export function analyzeSirFlagLiveness(
 function flagBarriersByIndex(
   program: SirProgram,
   barriers: readonly SirFlagLivenessBarrier[]
-): Readonly<{ before: readonly SirFlagMask[]; after: readonly SirFlagMask[] }> {
+): SirIndexedFlagPointMasks {
+  return sirIndexedFlagPointMasks(program, barriers, "SIR flag liveness barrier");
+}
+
+export function sirIndexedFlagPointMasks(
+  program: SirProgram,
+  points: readonly SirIndexedFlagPoint[],
+  label: string
+): SirIndexedFlagPointMasks {
   const before = Array.from({ length: program.length }, () => SIR_FLAG_MASK_NONE);
   const after = Array.from({ length: program.length }, () => SIR_FLAG_MASK_NONE);
 
-  for (const barrier of barriers) {
-    if (!Number.isInteger(barrier.index) || barrier.index < 0 || barrier.index >= program.length) {
-      throw new Error(`SIR flag liveness barrier index out of range: ${barrier.index}`);
+  for (const point of points) {
+    if (!Number.isInteger(point.index) || point.index < 0 || point.index >= program.length) {
+      throw new Error(`${label} index out of range: ${point.index}`);
     }
 
-    const target = barrier.placement === "before" ? before : after;
+    const target = point.placement === "before" ? before : after;
 
-    target[barrier.index] = maskArithmeticFlags(target[barrier.index]! | barrier.mask);
+    assertSirAluFlagMask(point.mask, `${label} mask`);
+    target[point.index] = target[point.index]! | point.mask;
   }
 
   return { before, after };
@@ -171,8 +207,4 @@ function dummyFlagInputs(producer: FlagProducerName): Readonly<Record<string, Va
   }
 
   return inputs;
-}
-
-function maskArithmeticFlags(mask: SirFlagMask): SirFlagMask {
-  return mask & SIR_ARITHMETIC_FLAG_MASK;
 }

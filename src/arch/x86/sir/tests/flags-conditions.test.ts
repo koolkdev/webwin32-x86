@@ -9,7 +9,7 @@ const left = sirVar(0);
 const right = sirVar(1);
 const result = sirVar(2);
 
-test("add32 producer defines arithmetic flags symbolically", () => {
+test("add32 producer defines aluFlags symbolically", () => {
   deepStrictEqual(FLAG_PRODUCERS.add32.inputs, ["left", "right", "result"]);
   deepStrictEqual(FLAG_PRODUCERS.add32.define({ left, right, result }), {
     ZF: { kind: "eqz", value: result },

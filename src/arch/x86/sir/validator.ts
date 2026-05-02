@@ -1,16 +1,20 @@
-import type { SirOp, SirProgram, StorageRef, ValueRef, VarRef } from "../types.js";
+import { assertSirAluFlagMask, SIR_FLAG_MASK_NONE } from "./flag-analysis.js";
+import { FLAG_PRODUCERS } from "./flags.js";
+import type { FlagMask, SirOp, SirProgram, StorageRef, ValueRef, VarRef } from "./types.js";
 
 export type ValidateSirOptions = Readonly<{
   operandCount?: number;
+  terminatorMode?: "single" | "multi";
 }>;
 
 export function validateSirProgram(program: SirProgram, options: ValidateSirOptions = {}): void {
   const definedVars = new Set<number>();
+  const terminatorMode = options.terminatorMode ?? "single";
   let terminatorCount = 0;
   let sawTerminator = false;
 
   for (const op of program) {
-    if (sawTerminator) {
+    if (sawTerminator && terminatorMode === "single") {
       throw new Error(`SIR op ${op.op} appears after terminator`);
     }
 
@@ -23,8 +27,12 @@ export function validateSirProgram(program: SirProgram, options: ValidateSirOpti
     }
   }
 
-  if (terminatorCount !== 1) {
+  if (terminatorMode === "single" && terminatorCount !== 1) {
     throw new Error(`SIR program must contain exactly one terminator, got ${terminatorCount}`);
+  }
+
+  if (terminatorMode === "multi" && terminatorCount === 0) {
+    throw new Error("SIR program must contain at least one terminator");
   }
 }
 
@@ -52,11 +60,11 @@ function validateOpUses(
       validateValueRef(op.b, definedVars);
       break;
     case "flags.set":
-      for (const value of Object.values(op.inputs)) {
-        validateValueRef(value, definedVars);
-      }
+      validateFlagSet(op, definedVars);
       break;
     case "flags.materialize":
+    case "flags.boundary":
+      validateAluFlagOpMask(op.mask, op.op);
       break;
     case "jump":
       validateValueRef(op.target, definedVars);
@@ -120,6 +128,38 @@ function validateStorageRef(
 function validateValueRef(value: ValueRef, definedVars: ReadonlySet<number>): void {
   if (value.kind === "var" && !definedVars.has(value.id)) {
     throw new Error(`SIR var ${value.id} is used before definition`);
+  }
+}
+
+function validateAluFlagOpMask(mask: FlagMask, op: "flags.materialize" | "flags.boundary"): void {
+  assertSirAluFlagMask(mask, `${op} mask`);
+
+  if (mask === SIR_FLAG_MASK_NONE) {
+    throw new Error(`${op} requires a nonzero aluFlags mask`);
+  }
+}
+
+function validateFlagSet(
+  op: Extract<SirOp, { op: "flags.set" }>,
+  definedVars: ReadonlySet<number>
+): void {
+  const producer = FLAG_PRODUCERS[op.producer];
+  const expectedInputs: ReadonlySet<string> = new Set(producer.inputs);
+
+  for (const inputName of producer.inputs) {
+    const value = op.inputs[inputName];
+
+    if (value === undefined) {
+      throw new Error(`flags.set ${op.producer} is missing input '${inputName}'`);
+    }
+
+    validateValueRef(value, definedVars);
+  }
+
+  for (const inputName of Object.keys(op.inputs)) {
+    if (!expectedInputs.has(inputName)) {
+      throw new Error(`flags.set ${op.producer} has unexpected input '${inputName}'`);
+    }
   }
 }
 

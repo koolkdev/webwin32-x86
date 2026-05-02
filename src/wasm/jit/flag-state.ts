@@ -1,3 +1,8 @@
+import {
+  conditionFlagReadMask,
+  flagProducerEffect,
+  SIR_ALU_FLAG_MASK
+} from "../../arch/x86/sir/flag-analysis.js";
 import { FLAG_PRODUCERS } from "../../arch/x86/sir/flags.js";
 import type { ConditionCode, FlagProducerName, ValueRef } from "../../arch/x86/sir/types.js";
 import { i32 } from "../../core/state/cpu-state.js";
@@ -13,20 +18,30 @@ type PendingFlags = Readonly<{
   inputs: ReadonlyMap<string, number>;
 }>;
 
+type JitFlagStateOptions = Readonly<{
+  emitLoadAluFlags(): void;
+  emitStoreAluFlags(emitValue: () => void): void;
+}>;
+
 export type JitFlagState = Readonly<{
   emitSet(producer: FlagProducerName, inputs: Readonly<Record<string, ValueRef>>, helpers: WasmSirEmitHelpers): void;
   emitMaterialize(mask: number): void;
+  emitBoundary(mask: number): void;
   emitCondition(cc: ConditionCode): void;
   assertNoPending(): void;
 }>;
 
 export function createJitFlagState(
   body: WasmFunctionBodyEncoder,
-  aluFlagsLocal: number
+  aluFlagsLocal: number,
+  options: JitFlagStateOptions
 ): JitFlagState {
   const aluFlags = wasmSirLocalAluFlagsStorage(body, aluFlagsLocal);
   const inputLocals = new Map<string, number>();
   let pending: PendingFlags | undefined;
+  let aluFlagsLocalValid = false;
+  let aluFlagsLocalDirty = false;
+  let materializedMask = 0;
 
   return {
     emitSet: (producer, inputs, helpers) => {
@@ -47,14 +62,32 @@ export function createJitFlagState(
       }
 
       pending = { producer, inputs: pendingInputs };
+      materializedMask = 0;
     },
     emitMaterialize: (mask) => {
-      if (mask !== 0) {
-        materializePending();
+      if (pending === undefined) {
+        ensureAluFlagsLoaded();
+        materializedMask |= mask;
+        return;
       }
+
+      materializePending();
+    },
+    emitBoundary: (mask) => {
+      materializePending();
+
+      if (!aluFlagsLocalDirty) {
+        return;
+      }
+
+      options.emitStoreAluFlags(() => {
+        body.localGet(aluFlagsLocal);
+      });
+      aluFlagsLocalDirty = false;
     },
     emitCondition: (cc) => {
       assertNoPending();
+      assertMaterialized(conditionFlagReadMask(cc), `JIT condition ${cc}`);
       emitCondition(body, aluFlags, cc);
     },
     assertNoPending
@@ -88,10 +121,20 @@ export function createJitFlagState(
     }
   }
 
+  function assertMaterialized(mask: number, context: string): void {
+    if ((materializedMask & mask) !== mask) {
+      throw new Error(`${context} must be preceded by flags.materialize`);
+    }
+  }
+
   function emitPendingFlags(pendingFlags: PendingFlags): void {
     const inputRefs: Record<string, ValueRef> = {};
     const localsByVarId = new Map<number, number>();
     let nextVarId = 0;
+
+    if (!producerWritesAllAluFlags(pendingFlags.producer)) {
+      ensureAluFlagsLoaded();
+    }
 
     for (const inputName of FLAG_PRODUCERS[pendingFlags.producer].inputs) {
       const local = pendingFlags.inputs.get(inputName);
@@ -121,7 +164,29 @@ export function createJitFlagState(
         }
       }
     });
+    aluFlagsLocalValid = true;
+    aluFlagsLocalDirty = true;
+    materializedMask = producerFlagMask(pendingFlags.producer);
   }
+
+  function ensureAluFlagsLoaded(): void {
+    if (aluFlagsLocalValid) {
+      return;
+    }
+
+    options.emitLoadAluFlags();
+    aluFlagsLocalValid = true;
+  }
+}
+
+function producerWritesAllAluFlags(producer: FlagProducerName): boolean {
+  return producerFlagMask(producer) === SIR_ALU_FLAG_MASK;
+}
+
+function producerFlagMask(producer: FlagProducerName): number {
+  const effect = flagProducerEffect(producer);
+
+  return effect.writes | effect.undefines;
 }
 
 function requiredLocal(localsByVarId: ReadonlyMap<number, number>, id: number): number {

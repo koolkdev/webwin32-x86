@@ -158,6 +158,10 @@ export class SirEmitter implements SirBuilder {
     this.#push({ op: "flags.materialize", mask });
   }
 
+  boundaryFlags(mask: FlagMask): void {
+    this.#push({ op: "flags.boundary", mask });
+  }
+
   condition(cc: ConditionCode): VarRef {
     const dst = this.#allocVar();
 

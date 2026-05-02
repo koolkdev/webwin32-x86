@@ -50,6 +50,7 @@ export type SirOp =
       inputs: Readonly<Record<string, ValueRef>>;
     }>
   | Readonly<{ op: "flags.materialize"; mask: FlagMask }>
+  | Readonly<{ op: "flags.boundary"; mask: FlagMask }>
   | Readonly<{ op: "condition"; dst: VarRef; cc: ConditionCode }>
   | Readonly<{ op: "next" }>
   | Readonly<{ op: "jump"; target: TargetRef }>
@@ -78,6 +79,7 @@ export interface SirBuilder {
 
   setFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueInput>>): void;
   materializeFlags(mask: FlagMask): void;
+  boundaryFlags(mask: FlagMask): void;
   condition(cc: ConditionCode): VarRef;
 
   next(): void;

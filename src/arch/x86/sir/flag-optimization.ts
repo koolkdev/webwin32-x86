@@ -1,6 +1,7 @@
 import {
   analyzeSirFlagLiveness,
   SIR_FLAG_MASK_NONE,
+  sirIndexedFlagPointMasks,
   sirOpFlagEffect,
   type SirFlagLivenessOptions
 } from "./flag-analysis.js";
@@ -19,11 +20,29 @@ export type SirFlagMaterializationPoint = Readonly<{
   mask: FlagMask;
 }>;
 
+export type SirFlagBoundaryPoint = Readonly<{
+  index: number;
+  placement: "before";
+  mask: FlagMask;
+}>;
+
+export type SirFlagPointSource<Point> =
+  | readonly Point[]
+  | ((program: SirProgram) => readonly Point[]);
+
 export type SirFlagMaterializationOptions = Readonly<{
-  points?: readonly SirFlagMaterializationPoint[];
+  points?: SirFlagPointSource<SirFlagMaterializationPoint>;
+}>;
+
+export type SirFlagBoundaryInsertionOptions = Readonly<{
+  points?: SirFlagPointSource<SirFlagBoundaryPoint>;
 }>;
 
 export type SirFlagMaterializationResult = SirOptimizationResult & Readonly<{
+  insertedCount: number;
+}>;
+
+export type SirFlagBoundaryInsertionResult = SirOptimizationResult & Readonly<{
   insertedCount: number;
 }>;
 
@@ -37,6 +56,12 @@ export function createFlagMaterializationPass(
   options: SirFlagMaterializationOptions = {}
 ): SirOptimizationPass {
   return (program) => insertFlagMaterializations(program, options);
+}
+
+export function createFlagBoundaryInsertionPass(
+  options: SirFlagBoundaryInsertionOptions = {}
+): SirOptimizationPass {
+  return (program) => insertFlagBoundaries(program, options);
 }
 
 export function pruneDeadFlagSets(
@@ -70,9 +95,10 @@ export function insertFlagMaterializations(
   program: SirProgram,
   options: SirFlagMaterializationOptions = {}
 ): SirFlagMaterializationResult {
-  const pointMasks = flagMaterializationPointMasks(program, options.points ?? []);
+  const pointMasks = flagMaterializationPointMasks(program, resolveFlagPoints(program, options.points));
   const optimized: SirOp[] = [];
   let pendingFlags = false;
+  let availableFlags = SIR_FLAG_MASK_NONE;
   let insertedCount = 0;
 
   for (let index = 0; index < program.length; index += 1) {
@@ -82,11 +108,13 @@ export function insertFlagMaterializations(
       throw new Error(`missing SIR op while inserting flag materializations: ${index}`);
     }
 
-    const materializeMask = pointMasks[index]! | sirOpFlagEffect(op).reads;
+    const materializeMask = pointMasks[index]! | implicitMaterializationReadMask(op);
+    const missingMaterializeMask = materializeMask & ~availableFlags;
 
-    if (pendingFlags && materializeMask !== SIR_FLAG_MASK_NONE) {
-      optimized.push({ op: "flags.materialize", mask: materializeMask });
+    if (missingMaterializeMask !== SIR_FLAG_MASK_NONE) {
+      optimized.push({ op: "flags.materialize", mask: missingMaterializeMask });
       pendingFlags = false;
+      availableFlags |= missingMaterializeMask;
       insertedCount += 1;
     }
 
@@ -94,9 +122,42 @@ export function insertFlagMaterializations(
 
     if (op.op === "flags.set") {
       pendingFlags = true;
+      availableFlags = SIR_FLAG_MASK_NONE;
     } else if (op.op === "flags.materialize") {
       pendingFlags = false;
+      availableFlags |= op.mask;
+    } else if (op.op === "flags.boundary" && pendingFlags) {
+      pendingFlags = false;
+      availableFlags |= op.mask;
     }
+  }
+
+  return { program: optimized, insertedCount };
+}
+
+export function insertFlagBoundaries(
+  program: SirProgram,
+  options: SirFlagBoundaryInsertionOptions = {}
+): SirFlagBoundaryInsertionResult {
+  const pointMasks = flagBoundaryPointMasks(program, resolveFlagPoints(program, options.points));
+  const optimized: SirOp[] = [];
+  let insertedCount = 0;
+
+  for (let index = 0; index < program.length; index += 1) {
+    const boundaryMask = pointMasks[index]!;
+
+    if (boundaryMask !== SIR_FLAG_MASK_NONE) {
+      optimized.push({ op: "flags.boundary", mask: boundaryMask });
+      insertedCount += 1;
+    }
+
+    const op = program[index];
+
+    if (op === undefined) {
+      throw new Error(`missing SIR op while inserting flag boundaries: ${index}`);
+    }
+
+    optimized.push(op);
   }
 
   return { program: optimized, insertedCount };
@@ -106,15 +167,25 @@ function flagMaterializationPointMasks(
   program: SirProgram,
   points: readonly SirFlagMaterializationPoint[]
 ): readonly FlagMask[] {
-  const masks = Array.from({ length: program.length }, () => SIR_FLAG_MASK_NONE);
+  return sirIndexedFlagPointMasks(program, points, "SIR flag materialization point").before;
+}
 
-  for (const point of points) {
-    if (!Number.isInteger(point.index) || point.index < 0 || point.index >= program.length) {
-      throw new Error(`SIR flag materialization point index out of range: ${point.index}`);
-    }
+function flagBoundaryPointMasks(
+  program: SirProgram,
+  points: readonly SirFlagBoundaryPoint[]
+): readonly FlagMask[] {
+  return sirIndexedFlagPointMasks(program, points, "SIR flag boundary point").before;
+}
 
-    masks[point.index] = masks[point.index]! | point.mask;
-  }
+function implicitMaterializationReadMask(op: SirOp): FlagMask {
+  return op.op === "flags.boundary" || op.op === "flags.materialize"
+    ? SIR_FLAG_MASK_NONE
+    : sirOpFlagEffect(op).reads;
+}
 
-  return masks;
+function resolveFlagPoints<Point>(
+  program: SirProgram,
+  points: SirFlagPointSource<Point> | undefined
+): readonly Point[] {
+  return typeof points === "function" ? points(program) : points ?? [];
 }

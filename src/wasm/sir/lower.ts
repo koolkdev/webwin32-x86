@@ -27,6 +27,7 @@ export type WasmSirLoweringContext = Readonly<{
   emitAddress32(source: SirStorageExpr, helpers: WasmSirEmitHelpers): void;
   emitSetFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueRef>>, helpers: WasmSirEmitHelpers): void;
   emitMaterializeFlags(mask: number, helpers: WasmSirEmitHelpers): void;
+  emitBoundaryFlags(mask: number, helpers: WasmSirEmitHelpers): void;
   emitCondition(cc: ConditionCode): void;
   emitNext(helpers: WasmSirEmitHelpers): void;
   emitNextEip(helpers: WasmSirEmitHelpers): void;
@@ -97,6 +98,9 @@ class SirExprWasmLowerer {
         return;
       case "flags.materialize":
         this.#context.emitMaterializeFlags(op.mask, this.#helpers);
+        return;
+      case "flags.boundary":
+        this.#context.emitBoundaryFlags(op.mask, this.#helpers);
         return;
       case "next":
         this.#context.emitNext(this.#helpers);

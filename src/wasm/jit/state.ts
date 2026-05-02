@@ -24,7 +24,7 @@ export type JitSirState = Readonly<{
   aluFlagsLocal: number;
   instructionCountLocal: number;
   maxExitGeneration: number;
-  emitEntryLoads(): void;
+  emitLoadInstructionCount(): void;
   beginInstruction(exit: JitExitTarget, instructionEip: number): void;
   commitInstruction(): void;
   commitInstructionExit(emitEip: () => void): void;
@@ -38,7 +38,7 @@ export function createJitSirState(
   const regs = createJitReg32State(body);
   const eipLocal = body.addLocal(wasmValueType.i32);
   const aluFlagsLocal = body.addLocal(wasmValueType.i32);
-  const flags = createJitFlagState(body, aluFlagsLocal);
+  const flags = createJitFlagState(body, aluFlagsLocal, { emitLoadAluFlags, emitStoreAluFlags });
   const instructionCountLocal = body.addLocal(wasmValueType.i32);
   const generationState = createExitGenerationState(maxExitGeneration);
   let activeExit: JitExitTarget | undefined;
@@ -51,9 +51,7 @@ export function createJitSirState(
     aluFlagsLocal,
     instructionCountLocal,
     maxExitGeneration,
-    emitEntryLoads: () => {
-      emitLoadStateU32(body, stateOffset.aluFlags);
-      body.localSet(aluFlagsLocal);
+    emitLoadInstructionCount: () => {
       emitLoadStateU32(body, stateOffset.instructionCount);
       body.localSet(instructionCountLocal);
     },
@@ -106,6 +104,15 @@ export function createJitSirState(
     });
   }
 
+  function emitLoadAluFlags(): void {
+    emitLoadStateU32(body, stateOffset.aluFlags);
+    body.localSet(aluFlagsLocal);
+  }
+
+  function emitStoreAluFlags(emitValue: () => void): void {
+    emitStoreStateU32(body, stateOffset.aluFlags, emitValue);
+  }
+
   function useExitStateStores(exit: JitExitTarget, emitEip: () => void, instructionDelta: number): void {
     exit.emitBeforeExit = () => {
       emitStoreStateU32(body, stateOffset.eip, emitEip);
@@ -117,9 +124,6 @@ export function createJitSirState(
         }
       });
       flags.assertNoPending();
-      emitStoreStateU32(body, stateOffset.aluFlags, () => {
-        body.localGet(aluFlagsLocal);
-      });
     };
   }
 

@@ -2,11 +2,13 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { ok, decodeBytes } from "../../../arch/x86/isa/decoder/tests/helpers.js";
-import { SIR_ARITHMETIC_FLAG_MASK, SIR_FLAG_MASKS } from "../../../arch/x86/sir/flag-analysis.js";
+import { SIR_ALU_FLAG_MASK, SIR_ALU_FLAG_MASKS } from "../../../arch/x86/sir/flag-analysis.js";
 import type { SirOp, StorageRef } from "../../../arch/x86/sir/types.js";
 import { createCpuState } from "../../../core/state/cpu-state.js";
+import { stateOffset } from "../../abi.js";
+import { wasmOpcode, wasmSectionId } from "../../encoder/types.js";
 import { ExitReason } from "../../exit.js";
-import { buildJitSirBlock } from "../block.js";
+import { buildJitSirBlock, encodeJitSirBlock } from "../block.js";
 import { runJitSirBlock } from "./helpers.js";
 
 const startAddress = 0x1000;
@@ -48,15 +50,20 @@ test("buildJitSirBlock prunes flag producers overwritten inside the block", () =
   });
 });
 
-test("buildJitSirBlock inserts explicit flag materialization before consumers and exits", () => {
+test("buildJitSirBlock inserts explicit flag materialization before consumers and boundaries", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const jz = ok(decodeBytes([0x74, 0x05], add.nextEip));
   const branchBlock = buildJitSirBlock([add, jz]);
   const conditionIndex = branchBlock.sir.findIndex((op) => op.op === "condition");
+  const conditionalJumpIndex = branchBlock.sir.findIndex((op) => op.op === "conditionalJump");
 
   deepStrictEqual(branchBlock.sir[conditionIndex - 1], {
     op: "flags.materialize",
-    mask: SIR_FLAG_MASKS.ZF
+    mask: SIR_ALU_FLAG_MASKS.ZF
+  });
+  deepStrictEqual(branchBlock.sir[conditionalJumpIndex - 1], {
+    op: "flags.boundary",
+    mask: SIR_ALU_FLAG_MASK
   });
 
   const trap = ok(decodeBytes([0xcd, 0x2e], add.nextEip));
@@ -64,9 +71,55 @@ test("buildJitSirBlock inserts explicit flag materialization before consumers an
   const hostTrapIndex = exitBlock.sir.findIndex((op) => op.op === "hostTrap");
 
   deepStrictEqual(exitBlock.sir[hostTrapIndex - 1], {
-    op: "flags.materialize",
-    mask: SIR_ARITHMETIC_FLAG_MASK
+    op: "flags.boundary",
+    mask: SIR_ALU_FLAG_MASK
   });
+});
+
+test("buildJitSirBlock represents JIT flag exits as explicit SIR boundaries", () => {
+  const flagFreeBlock = buildJitSirBlock([
+    ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress)),
+    ok(decodeBytes([0xbb, 0x02, 0x00, 0x00, 0x00], startAddress + 5)),
+    ok(decodeBytes([0xcd, 0x2e], startAddress + 10))
+  ]);
+  const flagFreeTrapIndex = flagFreeBlock.sir.findIndex((op) => op.op === "hostTrap");
+
+  deepStrictEqual(flagFreeBlock.sir[flagFreeTrapIndex - 1], {
+    op: "flags.boundary",
+    mask: SIR_ALU_FLAG_MASK
+  });
+
+  const jzBlock = buildJitSirBlock([ok(decodeBytes([0x74, 0x05], startAddress))]);
+  const jzConditionIndex = jzBlock.sir.findIndex((op) => op.op === "condition");
+  const jzJumpIndex = jzBlock.sir.findIndex((op) => op.op === "conditionalJump");
+
+  deepStrictEqual(jzBlock.sir[jzConditionIndex - 1], {
+    op: "flags.materialize",
+    mask: SIR_ALU_FLAG_MASKS.ZF
+  });
+  deepStrictEqual(jzBlock.sir[jzJumpIndex - 1], {
+    op: "flags.boundary",
+    mask: SIR_ALU_FLAG_MASK
+  });
+});
+
+test("jit SIR block lowering uses explicit flag boundaries for aluFlags memory traffic", () => {
+  const flagFreeBlock = buildJitSirBlock([
+    ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress)),
+    ok(decodeBytes([0xbb, 0x02, 0x00, 0x00, 0x00], startAddress + 5)),
+    ok(decodeBytes([0xcd, 0x2e], startAddress + 10))
+  ]);
+  const branchBlock = buildJitSirBlock([ok(decodeBytes([0x74, 0x05], startAddress))]);
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
+  const addTrapBlock = buildJitSirBlock([add, ok(decodeBytes([0xcd, 0x2e], add.nextEip))]);
+
+  deepStrictEqual(aluFlagMemoryAccessCounts(flagFreeBlock), { loads: 0, stores: 0 });
+  deepStrictEqual(aluFlagMemoryAccessCounts(branchBlock), { loads: 1, stores: 0 });
+  deepStrictEqual(stateMemoryLoads(branchBlock).slice(0, 2), [
+    stateOffset.instructionCount,
+    stateOffset.aluFlags
+  ]);
+  deepStrictEqual(aluFlagMemoryAccessCounts(addTrapBlock), { loads: 0, stores: 1 });
 });
 
 test("jit SIR block lowers mov r32, imm32 with static operands", async () => {
@@ -282,4 +335,210 @@ function storageOperandIndexes(storage: StorageRef): readonly number[] {
     case "reg":
       return [];
   }
+}
+
+function aluFlagMemoryAccessCounts(block: ReturnType<typeof buildJitSirBlock>): Readonly<{ loads: number; stores: number }> {
+  let loads = 0;
+  let stores = 0;
+
+  for (const access of memoryAccesses(extractOnlyFunctionBody(encodeJitSirBlock(block)))) {
+    if (access.memoryIndex !== 0 || access.offset !== stateOffset.aluFlags) {
+      continue;
+    }
+
+    if (access.opcode === wasmOpcode.i32Load) {
+      loads += 1;
+    } else if (access.opcode === wasmOpcode.i32Store) {
+      stores += 1;
+    }
+  }
+
+  return { loads, stores };
+}
+
+function stateMemoryLoads(block: ReturnType<typeof buildJitSirBlock>): readonly number[] {
+  return memoryAccesses(extractOnlyFunctionBody(encodeJitSirBlock(block)))
+    .filter((access) => access.memoryIndex === 0 && access.opcode === wasmOpcode.i32Load)
+    .map((access) => access.offset);
+}
+
+type WasmMemoryAccess = Readonly<{
+  opcode: number;
+  memoryIndex: number;
+  offset: number;
+}>;
+
+function memoryAccesses(functionBody: Uint8Array<ArrayBuffer>): readonly WasmMemoryAccess[] {
+  const accesses: WasmMemoryAccess[] = [];
+  let offset = skipLocalDeclarations(functionBody);
+
+  while (offset < functionBody.length) {
+    const opcode = requiredByte(functionBody, offset);
+
+    offset += 1;
+
+    switch (opcode) {
+      case wasmOpcode.localGet:
+      case wasmOpcode.localSet:
+      case wasmOpcode.localTee:
+      case wasmOpcode.br:
+      case wasmOpcode.call:
+      case wasmOpcode.returnCall:
+      case wasmOpcode.memorySize:
+        offset = readU32Leb128(functionBody, offset).nextOffset;
+        break;
+      case wasmOpcode.brTable: {
+        const tableLength = readU32Leb128(functionBody, offset);
+
+        offset = tableLength.nextOffset;
+
+        for (let index = 0; index < tableLength.value; index += 1) {
+          offset = readU32Leb128(functionBody, offset).nextOffset;
+        }
+
+        offset = readU32Leb128(functionBody, offset).nextOffset;
+        break;
+      }
+      case wasmOpcode.block:
+      case wasmOpcode.loop:
+      case wasmOpcode.if:
+        offset += 1;
+        break;
+      case wasmOpcode.i32Const:
+      case wasmOpcode.i64Const:
+        offset = skipLeb128(functionBody, offset);
+        break;
+      case wasmOpcode.i32Load:
+      case wasmOpcode.i32Load8U:
+      case wasmOpcode.i32Store: {
+        const memory = readMemoryImmediate(functionBody, offset);
+
+        offset = memory.nextOffset;
+        accesses.push({
+          opcode,
+          memoryIndex: memory.memoryIndex,
+          offset: memory.offset
+        });
+        break;
+      }
+      case wasmOpcode.else:
+      case wasmOpcode.return:
+      case wasmOpcode.i32Eqz:
+      case wasmOpcode.i32LtU:
+      case wasmOpcode.i32GtU:
+      case wasmOpcode.i32Popcnt:
+      case wasmOpcode.i32Add:
+      case wasmOpcode.i32Sub:
+      case wasmOpcode.i32And:
+      case wasmOpcode.i32Or:
+      case wasmOpcode.i32Xor:
+      case wasmOpcode.i32Shl:
+      case wasmOpcode.i32ShrU:
+      case wasmOpcode.i64Or:
+      case wasmOpcode.i64ExtendI32U:
+      case wasmOpcode.end:
+        break;
+      default:
+        throw new Error(`unsupported Wasm opcode in JIT block test: 0x${opcode.toString(16)}`);
+    }
+  }
+
+  return accesses;
+}
+
+function extractOnlyFunctionBody(moduleBytes: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
+  let offset = 8;
+
+  while (offset < moduleBytes.length) {
+    const sectionId = requiredByte(moduleBytes, offset);
+    const sectionSize = readU32Leb128(moduleBytes, offset + 1);
+    const sectionStart = sectionSize.nextOffset;
+    const sectionEnd = sectionStart + sectionSize.value;
+
+    if (sectionId === wasmSectionId.code) {
+      const functionCount = readU32Leb128(moduleBytes, sectionStart);
+
+      strictEqual(functionCount.value, 1);
+
+      const bodySize = readU32Leb128(moduleBytes, functionCount.nextOffset);
+      const bodyStart = bodySize.nextOffset;
+
+      return moduleBytes.slice(bodyStart, bodyStart + bodySize.value);
+    }
+
+    offset = sectionEnd;
+  }
+
+  throw new Error("missing Wasm code section");
+}
+
+function skipLocalDeclarations(bytes: Uint8Array<ArrayBuffer>): number {
+  const groupCount = readU32Leb128(bytes, 0);
+  let offset = groupCount.nextOffset;
+
+  for (let index = 0; index < groupCount.value; index += 1) {
+    const groupSize = readU32Leb128(bytes, offset);
+
+    offset = groupSize.nextOffset + 1;
+  }
+
+  return offset;
+}
+
+function readMemoryImmediate(
+  bytes: Uint8Array<ArrayBuffer>,
+  offset: number
+): Readonly<{ memoryIndex: number; offset: number; nextOffset: number }> {
+  const align = readU32Leb128(bytes, offset);
+  const hasMemoryIndex = (align.value & 0x40) !== 0;
+
+  if (!hasMemoryIndex) {
+    const memoryOffset = readU32Leb128(bytes, align.nextOffset);
+
+    return { memoryIndex: 0, offset: memoryOffset.value, nextOffset: memoryOffset.nextOffset };
+  }
+
+  const memoryIndex = readU32Leb128(bytes, align.nextOffset);
+  const memoryOffset = readU32Leb128(bytes, memoryIndex.nextOffset);
+
+  return { memoryIndex: memoryIndex.value, offset: memoryOffset.value, nextOffset: memoryOffset.nextOffset };
+}
+
+function skipLeb128(bytes: Uint8Array<ArrayBuffer>, offset: number): number {
+  while ((requiredByte(bytes, offset) & 0x80) !== 0) {
+    offset += 1;
+  }
+
+  return offset + 1;
+}
+
+function readU32Leb128(
+  bytes: Uint8Array<ArrayBuffer>,
+  offset: number
+): Readonly<{ value: number; nextOffset: number }> {
+  let value = 0;
+  let shift = 0;
+
+  while (true) {
+    const byte = requiredByte(bytes, offset);
+
+    value |= (byte & 0x7f) << shift;
+    offset += 1;
+
+    if ((byte & 0x80) === 0) {
+      return { value: value >>> 0, nextOffset: offset };
+    }
+
+    shift += 7;
+  }
+}
+
+function requiredByte(bytes: Uint8Array<ArrayBuffer>, offset: number): number {
+  const byte = bytes[offset];
+
+  if (byte === undefined) {
+    throw new Error(`unexpected end of Wasm bytes at offset ${offset}`);
+  }
+
+  return byte;
 }

@@ -58,6 +58,7 @@ export function lowerSirWithJitContext(program: SirProgram, context: JitSirBlock
     emitSetFlags: (producer, inputs, helpers) =>
       jitContext.state.flags.emitSet(producer, inputs, helpers),
     emitMaterializeFlags: (mask) => jitContext.state.flags.emitMaterialize(mask),
+    emitBoundaryFlags: (mask) => jitContext.state.flags.emitBoundary(mask),
     emitCondition: (cc) => jitContext.state.flags.emitCondition(cc),
     emitNext: () => emitJitNext(jitContext),
     emitNextEip: () => emitJitNextEip(jitContext),

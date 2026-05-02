@@ -115,6 +115,7 @@ function encodeLoweredBinaryModule(program: SirProgram): Uint8Array<ArrayBuffer>
     },
     emitSetFlags: () => unsupported("flags.set"),
     emitMaterializeFlags: () => unsupported("flags.materialize"),
+    emitBoundaryFlags: () => unsupported("flags.boundary"),
     emitCondition: () => unsupported("condition"),
     emitNext: () => {
       body.localGet(requireRegLocal(regLocals, "eax"));
@@ -167,6 +168,7 @@ function lowerWithTrackingScratch(
     emitAddress32: () => unsupported("address32"),
     emitSetFlags: () => unsupported("flags.set"),
     emitMaterializeFlags: () => unsupported("flags.materialize"),
+    emitBoundaryFlags: () => unsupported("flags.boundary"),
     emitCondition: () => unsupported("condition"),
     emitNext: () => {},
     emitNextEip: () => {
