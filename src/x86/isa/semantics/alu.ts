@@ -1,4 +1,4 @@
-import type { SemanticTemplate } from "../../ir/types.js";
+import type { SemanticTemplate } from "../../ir/model/types.js";
 
 export type AluOp = "add" | "sub" | "xor" | "and" | "or";
 export type IncDecOp = "inc" | "dec";

@@ -1,4 +1,4 @@
-import type { SemanticTemplate } from "../../ir/types.js";
+import type { SemanticTemplate } from "../../ir/model/types.js";
 import { u32 } from "../../state/cpu-state.js";
 import { X86_32_CORE } from "../index.js";
 import {

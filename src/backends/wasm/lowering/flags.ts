@@ -7,9 +7,9 @@ import type {
   FlagExpr,
   FlagName,
   ValueExpr
-} from "../../../x86/ir/flags.js";
-import { FLAG_PRODUCERS } from "../../../x86/ir/flags.js";
-import type { IrFlagSetOp } from "../../../x86/ir/types.js";
+} from "../../../x86/ir/model/flags.js";
+import { FLAG_PRODUCERS } from "../../../x86/ir/model/flags.js";
+import type { IrFlagSetOp } from "../../../x86/ir/model/types.js";
 import { i32 } from "../../../x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import type { WasmIrAluFlagsStorage } from "./alu-flags.js";

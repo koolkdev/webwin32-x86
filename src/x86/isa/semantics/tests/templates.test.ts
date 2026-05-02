@@ -1,8 +1,8 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { buildIr } from "../../../ir/builder.js";
-import { createIrFlagSetOp } from "../../../ir/flags.js";
+import { buildIr } from "../../../ir/build/builder.js";
+import { createIrFlagSetOp } from "../../../ir/model/flags.js";
 import { aluSemantic, incDecSemantic } from "../alu.js";
 import { callSemantic, jccSemantic, jmpSemantic, retImmSemantic } from "../control.js";
 import { cmpSemantic } from "../cmp.js";

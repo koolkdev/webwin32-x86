@@ -1,5 +1,5 @@
 import type { Mem32Operand, Reg32 } from "../types.js";
-import type { SemanticTemplate } from "../../ir/types.js";
+import type { SemanticTemplate } from "../../ir/model/types.js";
 import type { InstructionSpec, ImmediateExtension } from "../schema/types.js";
 
 export type IsaOperandBinding =

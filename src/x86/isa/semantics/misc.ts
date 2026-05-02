@@ -1,4 +1,4 @@
-import type { SemanticTemplate } from "../../ir/types.js";
+import type { SemanticTemplate } from "../../ir/model/types.js";
 
 export function nopSemantic(): SemanticTemplate {
   return (s) => {

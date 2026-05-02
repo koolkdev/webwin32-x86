@@ -7,10 +7,10 @@ import {
   irOpFlagEffect,
   type IrFlagLivenessOptions
 } from "./flag-analysis.js";
-import { canUseFlagProducerCondition } from "./flag-conditions.js";
-import { createIrFlagProducerConditionOp } from "./flags.js";
+import { canUseFlagProducerCondition } from "../model/flag-conditions.js";
+import { createIrFlagProducerConditionOp } from "../model/flags.js";
 import type { IrOptimizationPass, IrOptimizationResult } from "./optimization.js";
-import type { FlagMask, IrFlagSetOp, IrOp, IrProgram } from "./types.js";
+import type { FlagMask, IrFlagSetOp, IrOp, IrProgram } from "../model/types.js";
 
 export type DeadFlagSetPruningOptions = IrFlagLivenessOptions;
 

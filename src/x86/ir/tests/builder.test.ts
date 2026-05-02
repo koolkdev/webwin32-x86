@@ -1,7 +1,7 @@
 import { deepStrictEqual, throws } from "node:assert";
 import { test } from "node:test";
 
-import { buildIr } from "../builder.js";
+import { buildIr } from "../build/builder.js";
 
 test("builder appends implicit next for fallthrough templates", () => {
   deepStrictEqual(buildIr(() => {}), [{ op: "next" }]);

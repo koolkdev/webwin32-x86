@@ -1,4 +1,4 @@
-import type { ConditionCode, SemanticTemplate } from "../../ir/types.js";
+import type { ConditionCode, SemanticTemplate } from "../../ir/model/types.js";
 import { form, mnemonic, type InstructionForm, type InstructionMnemonic } from "../schema/builders.js";
 import { imm, modrmRm, rel } from "../schema/operands.js";
 import { callSemantic, jccSemantic, jmpSemantic, retImmSemantic, retSemantic } from "../semantics/control.js";

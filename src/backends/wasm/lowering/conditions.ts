@@ -1,10 +1,10 @@
-import { CONDITIONS, type FlagBoolExpr } from "../../../x86/ir/conditions.js";
-import type { IrValueExpr } from "../../../x86/ir/expressions.js";
+import { CONDITIONS, type FlagBoolExpr } from "../../../x86/ir/model/conditions.js";
+import type { IrValueExpr } from "../../../x86/ir/model/expressions.js";
 import {
   flagProducerConditionKind,
   requiredFlagProducerConditionInput
-} from "../../../x86/ir/flag-conditions.js";
-import type { ConditionCode } from "../../../x86/ir/types.js";
+} from "../../../x86/ir/model/flag-conditions.js";
+import type { ConditionCode } from "../../../x86/ir/model/types.js";
 import { x86ArithmeticFlagMask } from "../../../x86/isa/flags.js";
 import { i32 } from "../../../x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";

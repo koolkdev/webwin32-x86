@@ -1,5 +1,5 @@
 import { u32 } from "../../state/cpu-state.js";
-import { buildIr, irProgramTerminator } from "../../ir/builder.js";
+import { buildIr, irProgramTerminator } from "../../ir/build/builder.js";
 import { decodeIsaInstructionFromReader } from "./decode.js";
 import {
   decodeFault,

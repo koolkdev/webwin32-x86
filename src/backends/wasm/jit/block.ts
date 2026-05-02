@@ -1,5 +1,5 @@
 import type { IsaDecodedInstruction } from "../../../x86/isa/decoder/types.js";
-import { validateIrProgram } from "../../../x86/ir/validator.js";
+import { validateIrProgram } from "../../../x86/ir/passes/validator.js";
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "../abi.js";
 import { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";

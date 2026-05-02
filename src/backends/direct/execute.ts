@@ -10,14 +10,14 @@ import {
   u32,
   type CpuState
 } from "../../x86/state/cpu-state.js";
-import { buildIr } from "../../x86/ir/builder.js";
-import { CONDITIONS, type FlagBoolExpr } from "../../x86/ir/conditions.js";
+import { buildIr } from "../../x86/ir/build/builder.js";
+import { CONDITIONS, type FlagBoolExpr } from "../../x86/ir/model/conditions.js";
 import {
   flagProducerConditionKind,
   requiredFlagProducerConditionInput
-} from "../../x86/ir/flag-conditions.js";
-import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "../../x86/ir/flags.js";
-import type { MemRef, IrFlagProducerConditionOp, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "../../x86/ir/types.js";
+} from "../../x86/ir/model/flag-conditions.js";
+import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "../../x86/ir/model/flags.js";
+import type { MemRef, IrFlagProducerConditionOp, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "../../x86/ir/model/types.js";
 import type { IsaDecodedInstruction, IsaOperandBinding } from "../../x86/isa/decoder/types.js";
 
 export type DirectExecutionOptions = Readonly<{

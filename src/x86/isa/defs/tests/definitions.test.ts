@@ -1,8 +1,8 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { buildIr } from "../../../ir/builder.js";
-import type { SemanticTemplate } from "../../../ir/types.js";
+import { buildIr } from "../../../ir/build/builder.js";
+import type { SemanticTemplate } from "../../../ir/model/types.js";
 import { X86_32_CORE } from "../../index.js";
 import { expandInstructionSpec } from "../../schema/builders.js";
 import type { InstructionSpec } from "../../schema/types.js";

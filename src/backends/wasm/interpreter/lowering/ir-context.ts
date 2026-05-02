@@ -1,9 +1,9 @@
 import type { Reg32 } from "../../../../x86/isa/types.js";
-import type { IrStorageExpr, IrValueExpr } from "../../../../x86/ir/expressions.js";
+import type { IrStorageExpr, IrValueExpr } from "../../../../x86/ir/model/expressions.js";
 import type {
   IrProgram,
   StorageRef
-} from "../../../../x86/ir/types.js";
+} from "../../../../x86/ir/model/types.js";
 import type { WasmLocalScratchAllocator } from "../../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
 import { wasmValueType } from "../../encoder/types.js";

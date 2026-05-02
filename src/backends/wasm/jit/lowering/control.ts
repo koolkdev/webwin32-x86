@@ -1,4 +1,4 @@
-import type { IrValueExpr } from "../../../../x86/ir/expressions.js";
+import type { IrValueExpr } from "../../../../x86/ir/model/expressions.js";
 import { i32 } from "../../../../x86/state/cpu-state.js";
 import { wasmValueType } from "../../encoder/types.js";
 import { ExitReason } from "../../exit.js";

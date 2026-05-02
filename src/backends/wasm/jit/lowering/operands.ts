@@ -1,6 +1,6 @@
 import type { Mem32Operand } from "../../../../x86/isa/types.js";
-import type { IrStorageExpr, IrValueExpr } from "../../../../x86/ir/expressions.js";
-import type { StorageRef } from "../../../../x86/ir/types.js";
+import type { IrStorageExpr, IrValueExpr } from "../../../../x86/ir/model/expressions.js";
+import type { StorageRef } from "../../../../x86/ir/model/types.js";
 import { i32 } from "../../../../x86/state/cpu-state.js";
 import { wasmValueType } from "../../encoder/types.js";
 import { emitWasmIrLoadGuestU32FromStack, emitWasmIrStoreGuestU32 } from "../../lowering/memory.js";

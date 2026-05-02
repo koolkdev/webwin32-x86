@@ -1,9 +1,9 @@
 import { deepStrictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { buildIrExpressionProgram } from "../expressions.js";
-import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "../flag-analysis.js";
-import { createIrFlagSetOp } from "../flags.js";
+import { buildIrExpressionProgram } from "../model/expressions.js";
+import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "../passes/flag-analysis.js";
+import { createIrFlagSetOp } from "../model/flags.js";
 
 const v = (id: number) => ({ kind: "var" as const, id });
 const op = (index: number) => ({ kind: "operand" as const, index });

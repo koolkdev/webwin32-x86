@@ -7,9 +7,9 @@ import { cmpSemantic } from "../../isa/semantics/cmp.js";
 import { leaSemantic } from "../../isa/semantics/lea.js";
 import { intSemantic } from "../../isa/semantics/misc.js";
 import { movSemantic } from "../../isa/semantics/mov.js";
-import { buildIr, const32, operand, irVar } from "../builder.js";
-import { createIrFlagProducerConditionOp, createIrFlagSetOp } from "../flags.js";
-import { validateIrProgram } from "../validator.js";
+import { buildIr, const32, operand, irVar } from "../build/builder.js";
+import { createIrFlagProducerConditionOp, createIrFlagSetOp } from "../model/flags.js";
+import { validateIrProgram } from "../passes/validator.js";
 
 test("validator accepts representative generated semantic templates", () => {
   doesNotThrow(() => validateIrProgram(buildIr(movSemantic()), { operandCount: 2 }));

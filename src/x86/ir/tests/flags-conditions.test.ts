@@ -1,10 +1,10 @@
 import { deepStrictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { irVar } from "../builder.js";
-import { CONDITIONS } from "../conditions.js";
-import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS, maskIrAluFlags } from "../flag-analysis.js";
-import { FLAG_PRODUCERS } from "../flags.js";
+import { irVar } from "../build/builder.js";
+import { CONDITIONS } from "../model/conditions.js";
+import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS, maskIrAluFlags } from "../passes/flag-analysis.js";
+import { FLAG_PRODUCERS } from "../model/flags.js";
 
 const left = irVar(0);
 const right = irVar(1);

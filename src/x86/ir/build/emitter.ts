@@ -1,5 +1,5 @@
-import type { Reg32 } from "../isa/types.js";
-import { createIrFlagSetOp } from "./flags.js";
+import type { Reg32 } from "../../isa/types.js";
+import { createIrFlagSetOp } from "../model/flags.js";
 import {
   const32,
   mem32,
@@ -10,7 +10,7 @@ import {
   toStorageRef,
   toTargetRef,
   toValueRef
-} from "./refs.js";
+} from "../model/refs.js";
 import type {
   ConditionCode,
   Const32Ref,
@@ -28,7 +28,7 @@ import type {
   TargetInput,
   VarRef,
   ValueInput
-} from "./types.js";
+} from "../model/types.js";
 
 export type IrProgramTerminator = "next" | "jump" | "conditionalJump" | "hostTrap";
 
