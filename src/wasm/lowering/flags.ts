@@ -2,15 +2,15 @@ import {
   x86ArithmeticFlagMask,
   x86ArithmeticFlags,
   x86ArithmeticFlagsMask
-} from "../../arch/x86/isa/flags.js";
+} from "../../x86/isa/flags.js";
 import type {
   FlagExpr,
   FlagName,
   ValueExpr
-} from "../../arch/x86/ir/flags.js";
-import { FLAG_PRODUCERS } from "../../arch/x86/ir/flags.js";
-import type { IrFlagSetOp } from "../../arch/x86/ir/types.js";
-import { i32 } from "../../core/state/cpu-state.js";
+} from "../../x86/ir/flags.js";
+import { FLAG_PRODUCERS } from "../../x86/ir/flags.js";
+import type { IrFlagSetOp } from "../../x86/ir/types.js";
+import { i32 } from "../../x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import type { WasmIrAluFlagsStorage } from "./alu-flags.js";
 import type { WasmIrEmitHelpers } from "./lower.js";

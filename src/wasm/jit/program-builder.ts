@@ -1,6 +1,6 @@
-import type { IsaDecodedInstruction } from "../../arch/x86/isa/decoder/types.js";
-import { operand } from "../../arch/x86/ir/builder.js";
-import { IrProgramBuilder } from "../../arch/x86/ir/program.js";
+import type { IsaDecodedInstruction } from "../../x86/isa/decoder/types.js";
+import { operand } from "../../x86/ir/builder.js";
+import { IrProgramBuilder } from "../../x86/ir/program.js";
 import { jitBindingsFromIsaInstruction, type JitOperandBinding } from "./operand-bindings.js";
 import { optimizeJitIrBlock } from "./ir-optimization.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "./types.js";

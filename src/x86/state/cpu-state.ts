@@ -9,8 +9,8 @@ import {
   type X86ArithmeticFlag,
   type X86ControlFlag,
   type X86EflagsFlag
-} from "../../arch/x86/isa/flags.js";
-import { reg32, type Reg32 } from "../../arch/x86/isa/types.js";
+} from "../isa/flags.js";
+import { reg32, type Reg32 } from "../isa/types.js";
 
 export type CpuArithmeticFlag = X86ArithmeticFlag;
 export type CpuControlFlag = X86ControlFlag;

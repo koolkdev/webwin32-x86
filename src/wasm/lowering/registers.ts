@@ -1,4 +1,4 @@
-import type { Reg32 } from "../../arch/x86/isa/types.js";
+import type { Reg32 } from "../../x86/isa/types.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 
 export type WasmIrReg32Storage = Readonly<{

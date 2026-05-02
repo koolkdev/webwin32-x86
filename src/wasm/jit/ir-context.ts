@@ -1,4 +1,4 @@
-import type { IrProgram } from "../../arch/x86/ir/types.js";
+import type { IrProgram } from "../../x86/ir/types.js";
 import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { ExitReason } from "../exit.js";

@@ -1,6 +1,6 @@
 import { strictEqual } from "node:assert";
 
-import { type CpuState } from "../../../core/state/cpu-state.js";
+import { type CpuState } from "../../../x86/state/cpu-state.js";
 import { wasmBlockExportName, wasmImport } from "../../abi.js";
 import { decodeExit, type DecodedExit } from "../../exit.js";
 import { readWasmCpuState, readWasmStateField, WASM_STATE_FIELDS, writeWasmCpuState } from "../../state-layout.js";

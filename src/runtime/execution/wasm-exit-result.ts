@@ -4,7 +4,7 @@ import {
   type FaultOperation,
   type RunResult,
   type RunResultDetails
-} from "../../core/execution/run-result.js";
+} from "../../x86/execution/run-result.js";
 import { ExitReason, type DecodedExit } from "../../wasm/exit.js";
 import type { WasmCpuState } from "../wasm/state-memory.js";
 

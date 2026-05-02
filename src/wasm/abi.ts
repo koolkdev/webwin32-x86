@@ -1,4 +1,4 @@
-import type { Reg32 } from "../arch/x86/isa/types.js";
+import type { Reg32 } from "../x86/isa/types.js";
 import { WASM_STATE_BYTE_LENGTH, WASM_STATE_OFFSETS } from "./state-layout.js";
 
 export const wasmImport = {

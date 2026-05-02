@@ -1,11 +1,11 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { ok, decodeBytes } from "../../../arch/x86/isa/decoder/tests/helpers.js";
-import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "../../../arch/x86/ir/flag-analysis.js";
-import { createIrFlagSetOp } from "../../../arch/x86/ir/flags.js";
-import type { IrOp, StorageRef } from "../../../arch/x86/ir/types.js";
-import { createCpuState } from "../../../core/state/cpu-state.js";
+import { ok, decodeBytes } from "../../../x86/isa/decoder/tests/helpers.js";
+import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "../../../x86/ir/flag-analysis.js";
+import { createIrFlagSetOp } from "../../../x86/ir/flags.js";
+import type { IrOp, StorageRef } from "../../../x86/ir/types.js";
+import { createCpuState } from "../../../x86/state/cpu-state.js";
 import { stateOffset } from "../../abi.js";
 import { wasmOpcode, wasmSectionId } from "../../encoder/types.js";
 import { ExitReason } from "../../exit.js";

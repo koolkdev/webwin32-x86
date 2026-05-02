@@ -1,9 +1,9 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { StopReason } from "../../../../../core/execution/run-result.js";
-import { ArrayBufferGuestMemory } from "../../../../../core/memory/guest-memory.js";
-import { createCpuState, getFlag, setFlag } from "../../../../../core/state/cpu-state.js";
+import { StopReason } from "../../../execution/run-result.js";
+import { ArrayBufferGuestMemory } from "../../../memory/guest-memory.js";
+import { createCpuState, getFlag, setFlag } from "../../../state/cpu-state.js";
 import { executeIsaInstruction } from "../execute.js";
 import { decodeBytes, ok, startAddress } from "./helpers.js";
 

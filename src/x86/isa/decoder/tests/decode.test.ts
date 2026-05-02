@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { ArrayBufferGuestMemory } from "../../../../../core/memory/guest-memory.js";
+import { ArrayBufferGuestMemory } from "../../../memory/guest-memory.js";
 import { GuestMemoryDecodeReader } from "../../runtime/decode-reader.js";
 import { decodeIsaInstructionFromReader } from "../decode.js";
 import { decodeBytes, ok, startAddress } from "./helpers.js";

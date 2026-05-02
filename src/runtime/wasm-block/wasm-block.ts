@@ -1,5 +1,5 @@
-import type { IsaDecodedBlock } from "../../arch/x86/isa/decoder/decode-block.js";
-import { u32 } from "../../core/state/cpu-state.js";
+import type { IsaDecodedBlock } from "../../x86/isa/decoder/decode-block.js";
+import { u32 } from "../../x86/state/cpu-state.js";
 import { wasmBlockExportName, wasmImport } from "../../wasm/abi.js";
 import { UnsupportedWasmCodegenError } from "../../wasm/errors.js";
 import { decodeExit, type DecodedExit } from "../../wasm/exit.js";

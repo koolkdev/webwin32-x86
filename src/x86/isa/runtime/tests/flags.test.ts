@@ -7,7 +7,7 @@ import {
   getFlag,
   supportedEflagsMask,
   u32
-} from "../../../../../core/state/cpu-state.js";
+} from "../../../state/cpu-state.js";
 import { executeIsaInstruction } from "../execute.js";
 import { decodeBytes, ok, startAddress } from "./helpers.js";
 

@@ -1,11 +1,11 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import type { IrValueExpr } from "../../../arch/x86/ir/expressions.js";
-import { createIrFlagSetOp } from "../../../arch/x86/ir/flags.js";
-import type { ConditionCode, FlagProducerName, ValueRef } from "../../../arch/x86/ir/types.js";
-import { x86ArithmeticFlagMask } from "../../../arch/x86/isa/flags.js";
-import { i32 } from "../../../core/state/cpu-state.js";
+import type { IrValueExpr } from "../../../x86/ir/expressions.js";
+import { createIrFlagSetOp } from "../../../x86/ir/flags.js";
+import type { ConditionCode, FlagProducerName, ValueRef } from "../../../x86/ir/types.js";
+import { x86ArithmeticFlagMask } from "../../../x86/isa/flags.js";
+import { i32 } from "../../../x86/state/cpu-state.js";
 import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
 import { WasmModuleEncoder } from "../../encoder/module.js";
 import { wasmOpcode, wasmValueType } from "../../encoder/types.js";

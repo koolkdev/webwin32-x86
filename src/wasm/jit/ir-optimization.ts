@@ -1,15 +1,15 @@
 import {
   IR_ALU_FLAG_MASK
-} from "../../arch/x86/ir/flag-analysis.js";
+} from "../../x86/ir/flag-analysis.js";
 import {
   createFlagBoundaryInsertionPass,
   createAluFlagsConditionSpecializationPass,
   createDeadFlagSetPruningPass,
   createFlagMaterializationPass,
   type IrFlagBoundaryPoint
-} from "../../arch/x86/ir/flag-optimization.js";
-import { optimizeIrProgram } from "../../arch/x86/ir/optimization.js";
-import type { IrOp, IrProgram, StorageRef } from "../../arch/x86/ir/types.js";
+} from "../../x86/ir/flag-optimization.js";
+import { optimizeIrProgram } from "../../x86/ir/optimization.js";
+import type { IrOp, IrProgram, StorageRef } from "../../x86/ir/types.js";
 import type { JitOperandBinding } from "./operand-bindings.js";
 import type { JitIrBlock } from "./types.js";
 

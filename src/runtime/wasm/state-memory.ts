@@ -1,4 +1,4 @@
-import { type CpuState } from "../../core/state/cpu-state.js";
+import { type CpuState } from "../../x86/state/cpu-state.js";
 import {
   mergeWasmEflags,
   readWasmCpuState,

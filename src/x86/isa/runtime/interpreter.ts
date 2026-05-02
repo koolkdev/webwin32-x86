@@ -1,6 +1,6 @@
-import { runResultFromState, StopReason, type RunResult } from "../../../../core/execution/run-result.js";
-import type { GuestMemory } from "../../../../core/memory/guest-memory.js";
-import type { CpuState } from "../../../../core/state/cpu-state.js";
+import { runResultFromState, StopReason, type RunResult } from "../../execution/run-result.js";
+import type { GuestMemory } from "../../memory/guest-memory.js";
+import type { CpuState } from "../../state/cpu-state.js";
 import { decodeIsaInstructionFromReader } from "../decoder/decode.js";
 import {
   IsaDecodeError,

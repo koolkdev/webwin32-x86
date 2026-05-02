@@ -1,10 +1,10 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { StopReason } from "../../../../../core/execution/run-result.js";
-import { ArrayBufferGuestMemory } from "../../../../../core/memory/guest-memory.js";
-import { cloneCpuState, createCpuState } from "../../../../../core/state/cpu-state.js";
-import { fillGuestMemory, readGuestBytes, writeGuestU32 } from "../../../../../core/memory/tests/helpers.js";
+import { StopReason } from "../../../execution/run-result.js";
+import { ArrayBufferGuestMemory } from "../../../memory/guest-memory.js";
+import { cloneCpuState, createCpuState } from "../../../state/cpu-state.js";
+import { fillGuestMemory, readGuestBytes, writeGuestU32 } from "../../../memory/tests/helpers.js";
 import { bytes, runIsaBytes, startAddress } from "./helpers.js";
 
 test("push pop roundtrips register", () => {

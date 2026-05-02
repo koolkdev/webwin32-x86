@@ -1,6 +1,6 @@
-import { X86_32_CORE } from "../../arch/x86/isa/index.js";
-import { buildOpcodeDispatch, type OpcodeDispatchNode } from "../../arch/x86/isa/decoder/opcode-dispatch.js";
-import { expandInstructionSpec } from "../../arch/x86/isa/schema/builders.js";
+import { X86_32_CORE } from "../../x86/isa/index.js";
+import { buildOpcodeDispatch, type OpcodeDispatchNode } from "../../x86/isa/decoder/opcode-dispatch.js";
+import { expandInstructionSpec } from "../../x86/isa/schema/builders.js";
 
 export const interpreterOpcodeDispatchRoot: OpcodeDispatchNode = buildOpcodeDispatch(
   X86_32_CORE.instructions.flatMap((spec) => expandInstructionSpec(spec))

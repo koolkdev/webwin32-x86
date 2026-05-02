@@ -3,8 +3,8 @@ import {
   type GuestMemory,
   type MemoryReadResult,
   type MemoryWriteResult
-} from "../../../../../core/memory/guest-memory.js";
-import type { CpuState } from "../../../../../core/state/cpu-state.js";
+} from "../../../memory/guest-memory.js";
+import type { CpuState } from "../../../state/cpu-state.js";
 import { runIsaInterpreter } from "../interpreter.js";
 import { startAddress } from "../../decoder/tests/helpers.js";
 

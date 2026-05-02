@@ -1,8 +1,8 @@
 import { strictEqual } from "node:assert";
 
-import { decodeIsaBlock } from "../../../arch/x86/isa/decoder/decode-block.js";
-import type { RunResult } from "../../../core/execution/run-result.js";
-import type { CpuStateField } from "../../../core/state/cpu-state.js";
+import { decodeIsaBlock } from "../../../x86/isa/decoder/decode-block.js";
+import type { RunResult } from "../../../x86/execution/run-result.js";
+import type { CpuStateField } from "../../../x86/state/cpu-state.js";
 import { wasmBlockExportName, wasmImport } from "../../../wasm/abi.js";
 import { UnsupportedWasmCodegenError } from "../../../wasm/errors.js";
 import { decodeExit } from "../../../wasm/exit.js";

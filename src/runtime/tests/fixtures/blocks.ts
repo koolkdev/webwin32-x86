@@ -1,4 +1,4 @@
-import { StopReason } from "../../../core/execution/run-result.js";
+import { StopReason } from "../../../x86/execution/run-result.js";
 import type { EngineFixture } from "./types.js";
 import { engineFixtureStartAddress } from "./programs.js";
 

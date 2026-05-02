@@ -1,4 +1,4 @@
-import { u32 } from "../../../../core/state/cpu-state.js";
+import { u32 } from "../../state/cpu-state.js";
 import { buildIr, irProgramTerminator } from "../../ir/builder.js";
 import { decodeIsaInstructionFromReader } from "./decode.js";
 import {

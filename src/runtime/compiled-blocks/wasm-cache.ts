@@ -1,6 +1,6 @@
-import { decodeIsaBlock, type IsaDecodedBlock } from "../../arch/x86/isa/decoder/decode-block.js";
-import type { IsaDecodeFault } from "../../arch/x86/isa/decoder/reader.js";
-import { u32 } from "../../core/state/cpu-state.js";
+import { decodeIsaBlock, type IsaDecodedBlock } from "../../x86/isa/decoder/decode-block.js";
+import type { IsaDecodeFault } from "../../x86/isa/decoder/reader.js";
+import { u32 } from "../../x86/state/cpu-state.js";
 import { UnsupportedWasmCodegenError } from "../../wasm/errors.js";
 import type { RuntimeCodeMap } from "../program/code-map.js";
 import { compileWasmBlockHandle } from "../wasm-block/wasm-block.js";

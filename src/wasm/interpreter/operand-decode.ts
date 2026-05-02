@@ -1,4 +1,4 @@
-import type { ExpandedInstructionSpec, OperandSpec } from "../../arch/x86/isa/schema/types.js";
+import type { ExpandedInstructionSpec, OperandSpec } from "../../x86/isa/schema/types.js";
 import type {
   InterpreterInstructionLength,
   InterpreterOperandBinding

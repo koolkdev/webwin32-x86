@@ -1,12 +1,12 @@
-import { CONDITIONS, type FlagBoolExpr } from "../../arch/x86/ir/conditions.js";
-import type { IrValueExpr } from "../../arch/x86/ir/expressions.js";
+import { CONDITIONS, type FlagBoolExpr } from "../../x86/ir/conditions.js";
+import type { IrValueExpr } from "../../x86/ir/expressions.js";
 import {
   flagProducerConditionKind,
   requiredFlagProducerConditionInput
-} from "../../arch/x86/ir/flag-conditions.js";
-import type { ConditionCode } from "../../arch/x86/ir/types.js";
-import { x86ArithmeticFlagMask } from "../../arch/x86/isa/flags.js";
-import { i32 } from "../../core/state/cpu-state.js";
+} from "../../x86/ir/flag-conditions.js";
+import type { ConditionCode } from "../../x86/ir/types.js";
+import { x86ArithmeticFlagMask } from "../../x86/isa/flags.js";
+import { i32 } from "../../x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import type { WasmIrAluFlagsStorage } from "./alu-flags.js";
 import type { WasmIrEmitHelpers } from "./lower.js";

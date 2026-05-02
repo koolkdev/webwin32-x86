@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { decodeIsaInstructionFromReader } from "../../../arch/x86/isa/decoder/decode.js";
+import { decodeIsaInstructionFromReader } from "../../../x86/isa/decoder/decode.js";
 import { RuntimeCodeMap } from "../code-map.js";
 import { loadProgramRegions } from "../loader.js";
 import { codeRegionsFromProgram, normalizeProgramRegions, requiredProgramByteLength } from "../regions.js";

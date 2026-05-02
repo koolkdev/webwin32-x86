@@ -1,8 +1,8 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { runResultMatchesState, StopReason } from "../../../../../core/execution/run-result.js";
-import { createCpuState } from "../../../../../core/state/cpu-state.js";
+import { runResultMatchesState, StopReason } from "../../../execution/run-result.js";
+import { createCpuState } from "../../../state/cpu-state.js";
 import { bytes, runIsaBytes, startAddress } from "./helpers.js";
 
 test("executes mov immediate then int host trap", () => {

@@ -1,8 +1,8 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { StopReason } from "../../../../../core/execution/run-result.js";
-import { createCpuState, getFlag } from "../../../../../core/state/cpu-state.js";
+import { StopReason } from "../../../execution/run-result.js";
+import { createCpuState, getFlag } from "../../../state/cpu-state.js";
 import { bytes, runIsaBytes, startAddress } from "./helpers.js";
 
 test("executes register control flow loop", () => {

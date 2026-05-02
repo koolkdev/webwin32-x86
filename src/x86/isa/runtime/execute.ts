@@ -1,6 +1,6 @@
-import type { RunResult, RunResultDetails } from "../../../../core/execution/run-result.js";
-import { runResultFromState, StopReason } from "../../../../core/execution/run-result.js";
-import type { GuestMemory, MemoryFault } from "../../../../core/memory/guest-memory.js";
+import type { RunResult, RunResultDetails } from "../../execution/run-result.js";
+import { runResultFromState, StopReason } from "../../execution/run-result.js";
+import type { GuestMemory, MemoryFault } from "../../memory/guest-memory.js";
 import {
   getFlag,
   getReg32,
@@ -9,7 +9,7 @@ import {
   setReg32,
   u32,
   type CpuState
-} from "../../../../core/state/cpu-state.js";
+} from "../../state/cpu-state.js";
 import { buildIr } from "../../ir/builder.js";
 import { CONDITIONS, type FlagBoolExpr } from "../../ir/conditions.js";
 import {

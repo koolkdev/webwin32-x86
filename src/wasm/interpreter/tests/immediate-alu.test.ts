@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { createCpuState } from "../../../core/state/cpu-state.js";
+import { createCpuState } from "../../../x86/state/cpu-state.js";
 import {
   assertInterpreterStateEquals,
   writeInterpreterState

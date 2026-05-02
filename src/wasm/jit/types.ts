@@ -1,4 +1,4 @@
-import type { IrProgram } from "../../arch/x86/ir/types.js";
+import type { IrProgram } from "../../x86/ir/types.js";
 import type { JitOperandBinding } from "./operand-bindings.js";
 
 export type JitIrBlockInstruction = Readonly<{

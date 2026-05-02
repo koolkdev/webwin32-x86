@@ -1,4 +1,4 @@
-import { u32 } from "../core/state/cpu-state.js";
+import { u32 } from "../x86/state/cpu-state.js";
 
 export const ExitReason = {
   FALLTHROUGH: 0,

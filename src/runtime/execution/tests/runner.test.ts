@@ -1,8 +1,8 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { runResultFromState, StopReason } from "../../../core/execution/run-result.js";
-import { createCpuState } from "../../../core/state/cpu-state.js";
+import { runResultFromState, StopReason } from "../../../x86/execution/run-result.js";
+import { createCpuState } from "../../../x86/state/cpu-state.js";
 import { RuntimeCodeMap } from "../../program/code-map.js";
 import {
   assertEngineFixtureResult,

@@ -1,10 +1,10 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import type { Reg32 } from "../../../arch/x86/isa/types.js";
-import { buildIr } from "../../../arch/x86/ir/builder.js";
-import type { IrExpressionOptions, IrStorageExpr, IrValueExpr } from "../../../arch/x86/ir/expressions.js";
-import type { IrProgram } from "../../../arch/x86/ir/types.js";
+import type { Reg32 } from "../../../x86/isa/types.js";
+import { buildIr } from "../../../x86/ir/builder.js";
+import type { IrExpressionOptions, IrStorageExpr, IrValueExpr } from "../../../x86/ir/expressions.js";
+import type { IrProgram } from "../../../x86/ir/types.js";
 import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
 import { WasmLocalScratchAllocator } from "../../encoder/local-scratch.js";
 import { WasmModuleEncoder } from "../../encoder/module.js";

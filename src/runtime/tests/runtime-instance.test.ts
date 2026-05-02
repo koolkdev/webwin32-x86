@@ -1,8 +1,8 @@
 import { strictEqual, throws } from "node:assert";
 import { test } from "node:test";
 
-import { StopReason } from "../../core/execution/run-result.js";
-import type { CpuStateField } from "../../core/state/cpu-state.js";
+import { StopReason } from "../../x86/execution/run-result.js";
+import type { CpuStateField } from "../../x86/state/cpu-state.js";
 import { CompiledBlockDecodeError } from "../compiled-blocks/wasm-cache.js";
 import { RuntimeMode } from "../execution/mode.js";
 import { RuntimeInstance } from "../runtime-instance.js";

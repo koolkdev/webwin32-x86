@@ -1,4 +1,4 @@
-import type { OperandSpec } from "../../arch/x86/isa/schema/types.js";
+import type { OperandSpec } from "../../x86/isa/schema/types.js";
 import type { InterpreterOperandBinding } from "./ir-context.js";
 import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";

@@ -1,7 +1,7 @@
-import { decodeIsaInstructionFromReader } from "../../../arch/x86/isa/decoder/decode.js";
-import { ByteArrayDecodeReader } from "../../../arch/x86/isa/decoder/tests/helpers.js";
-import type { IsaDecodedInstruction } from "../../../arch/x86/isa/decoder/types.js";
-import type { CpuState } from "../../../core/state/cpu-state.js";
+import { decodeIsaInstructionFromReader } from "../../../x86/isa/decoder/decode.js";
+import { ByteArrayDecodeReader } from "../../../x86/isa/decoder/tests/helpers.js";
+import type { IsaDecodedInstruction } from "../../../x86/isa/decoder/types.js";
+import type { CpuState } from "../../../x86/state/cpu-state.js";
 import { wasmBlockExportName, wasmImport } from "../../abi.js";
 import { decodeExit, type DecodedExit } from "../../exit.js";
 import { readWasmCpuState, writeWasmCpuState } from "../../state-layout.js";

@@ -5,13 +5,13 @@ import {
   type IrExprProgram,
   type IrStorageExpr,
   type IrValueExpr
-} from "../../arch/x86/ir/expressions.js";
+} from "../../x86/ir/expressions.js";
 import type {
   ConditionCode,
   IrFlagSetOp,
   IrProgram,
-} from "../../arch/x86/ir/types.js";
-import { i32 } from "../../core/state/cpu-state.js";
+} from "../../x86/ir/types.js";
+import { i32 } from "../../x86/state/cpu-state.js";
 import type { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { wasmValueType } from "../encoder/types.js";
