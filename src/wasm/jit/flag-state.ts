@@ -65,16 +65,22 @@ export function createJitFlagState(
       materializedMask = 0;
     },
     emitMaterialize: (mask) => {
-      if (pending === undefined) {
-        ensureAluFlagsLoaded();
-        materializedMask |= mask;
+      const missingMask = mask & ~materializedMask;
+
+      if (missingMask === 0) {
         return;
       }
 
-      materializePending();
+      if (pending === undefined) {
+        ensureAluFlagsLoaded();
+        materializedMask |= missingMask;
+        return;
+      }
+
+      materializePending(missingMask);
     },
     emitBoundary: (mask) => {
-      materializePending();
+      materializePending(mask & ~materializedMask);
 
       if (!aluFlagsLocalDirty) {
         return;
@@ -86,7 +92,6 @@ export function createJitFlagState(
       aluFlagsLocalDirty = false;
     },
     emitCondition: (cc) => {
-      assertNoPending();
       assertMaterialized(conditionFlagReadMask(cc), `JIT condition ${cc}`);
       emitCondition(body, aluFlags, cc);
     },
@@ -104,15 +109,25 @@ export function createJitFlagState(
     return local;
   }
 
-  function materializePending(): void {
+  function materializePending(mask: number): void {
     if (pending === undefined) {
       return;
     }
 
     const pendingFlags = pending;
+    const pendingMask = producerFlagMask(pendingFlags.producer);
+    const materializeMask = mask & pendingMask & ~materializedMask;
 
-    pending = undefined;
-    emitPendingFlags(pendingFlags);
+    if (materializeMask === 0) {
+      return;
+    }
+
+    emitPendingFlags(pendingFlags, materializeMask);
+    materializedMask |= materializeMask;
+
+    if ((materializedMask & pendingMask) === pendingMask) {
+      pending = undefined;
+    }
   }
 
   function assertNoPending(): void {
@@ -127,7 +142,7 @@ export function createJitFlagState(
     }
   }
 
-  function emitPendingFlags(pendingFlags: PendingFlags): void {
+  function emitPendingFlags(pendingFlags: PendingFlags, mask: number): void {
     const inputRefs: Record<string, ValueRef> = {};
     const localsByVarId = new Map<number, number>();
     let nextVarId = 0;
@@ -150,23 +165,29 @@ export function createJitFlagState(
       localsByVarId.set(id, local);
     }
 
-    emitSetFlags(body, aluFlags, pendingFlags.producer, inputRefs, {
-      emitValue: (value) => {
-        switch (value.kind) {
-          case "var":
-            body.localGet(requiredLocal(localsByVarId, value.id));
-            return;
-          case "const32":
-            body.i32Const(i32(value.value));
-            return;
-          case "nextEip":
-            throw new Error("nextEip is not a valid pending flag input");
+    emitSetFlags(
+      body,
+      aluFlags,
+      pendingFlags.producer,
+      inputRefs,
+      {
+        emitValue: (value) => {
+          switch (value.kind) {
+            case "var":
+              body.localGet(requiredLocal(localsByVarId, value.id));
+              return;
+            case "const32":
+              body.i32Const(i32(value.value));
+              return;
+            case "nextEip":
+              throw new Error("nextEip is not a valid pending flag input");
+          }
         }
-      }
-    });
+      },
+      { mask }
+    );
     aluFlagsLocalValid = true;
     aluFlagsLocalDirty = true;
-    materializedMask = producerFlagMask(pendingFlags.producer);
   }
 
   function ensureAluFlagsLoaded(): void {

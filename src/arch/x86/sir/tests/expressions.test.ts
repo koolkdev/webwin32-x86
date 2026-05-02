@@ -2,6 +2,7 @@ import { deepStrictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { buildSirExpressionProgram } from "../expressions.js";
+import { SIR_ALU_FLAG_MASK, SIR_ALU_FLAG_MASKS } from "../flag-analysis.js";
 
 const v = (id: number) => ({ kind: "var" as const, id });
 const op = (index: number) => ({ kind: "operand" as const, index });
@@ -110,6 +111,23 @@ test("expression selector materializes flag inputs that still need value refs", 
       { op: "let32", dst: v(2), value: { kind: "i32.sub", a: v(0), b: v(1) } },
       { op: "flags.set", producer: "sub32", inputs: { left: v(0), right: v(1), result: v(2) } },
       { op: "next" }
+    ]
+  );
+});
+
+test("expression selector keeps condition reads before later flag boundaries", () => {
+  deepStrictEqual(
+    buildSirExpressionProgram([
+      { op: "flags.materialize", mask: SIR_ALU_FLAG_MASKS.ZF },
+      { op: "condition", dst: v(0), cc: "E" },
+      { op: "flags.boundary", mask: SIR_ALU_FLAG_MASK },
+      { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
+    ]),
+    [
+      { op: "flags.materialize", mask: SIR_ALU_FLAG_MASKS.ZF },
+      { op: "let32", dst: v(0), value: { kind: "condition", cc: "E" } },
+      { op: "flags.boundary", mask: SIR_ALU_FLAG_MASK },
+      { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
     ]
   );
 });

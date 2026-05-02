@@ -7,7 +7,8 @@ import { x86ArithmeticFlagMask } from "../../../arch/x86/isa/flags.js";
 import { i32 } from "../../../core/state/cpu-state.js";
 import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
 import { WasmModuleEncoder } from "../../encoder/module.js";
-import { wasmValueType } from "../../encoder/types.js";
+import { wasmOpcode, wasmValueType } from "../../encoder/types.js";
+import { wasmBodyOpcodes } from "../../tests/body-opcodes.js";
 import { emitCondition } from "../conditions.js";
 import { wasmSirLocalAluFlagsStorage } from "../alu-flags.js";
 import { emitSetFlags } from "../flags.js";
@@ -29,6 +30,19 @@ test("emitSetFlags writes generated flags and normalizes arithmetic flag storage
     logic32(0, 0, 0, unmodeledStorageBit | x86ArithmeticFlagMask.CF | x86ArithmeticFlagMask.AF | x86ArithmeticFlagMask.OF),
     x86ArithmeticFlagMask.PF | x86ArithmeticFlagMask.ZF
   );
+});
+
+test("emitSetFlags computes and writes only requested materialization bits", async () => {
+  const add32 = await instantiateSetFlags("add32", x86ArithmeticFlagMask.ZF);
+  const opcodes = wasmBodyOpcodes(encodeSetFlagsFunctionBody("add32", x86ArithmeticFlagMask.ZF).encode());
+
+  strictEqual(
+    add32(0xffff_ffff, 1, 0, x86ArithmeticFlagMask.SF),
+    x86ArithmeticFlagMask.SF | x86ArithmeticFlagMask.ZF
+  );
+  strictEqual(opcodes.includes(wasmOpcode.i32LtU), false);
+  strictEqual(opcodes.includes(wasmOpcode.i32Popcnt), false);
+  strictEqual(opcodes.includes(wasmOpcode.i32ShrU), false);
 });
 
 test("emitSetFlags does not allocate an accumulator local", () => {
@@ -58,9 +72,10 @@ test("emitCondition evaluates compound condition formulas from arithmetic flags"
 });
 
 async function instantiateSetFlags(
-  producer: FlagProducerName
+  producer: FlagProducerName,
+  mask?: number
 ): Promise<(left: number, right: number, result: number, aluFlags: number) => number> {
-  const module = await WebAssembly.compile(encodeSetFlagsModule(producer));
+  const module = await WebAssembly.compile(encodeSetFlagsModule(producer, mask));
   const instance = await WebAssembly.instantiate(module);
   const run = instance.exports.run;
 
@@ -71,12 +86,21 @@ async function instantiateSetFlags(
   return run as (left: number, right: number, result: number, aluFlags: number) => number;
 }
 
-function encodeSetFlagsModule(producer: FlagProducerName): Uint8Array<ArrayBuffer> {
+function encodeSetFlagsModule(producer: FlagProducerName, mask?: number): Uint8Array<ArrayBuffer> {
   const module = new WasmModuleEncoder();
   const typeIndex = module.addFunctionType({
     params: [wasmValueType.i32, wasmValueType.i32, wasmValueType.i32, wasmValueType.i32],
     results: [wasmValueType.i32]
   });
+  const body = encodeSetFlagsFunctionBody(producer, mask);
+
+  const functionIndex = module.addFunction(typeIndex, body);
+  module.exportFunction("run", functionIndex);
+
+  return module.encode();
+}
+
+function encodeSetFlagsFunctionBody(producer: FlagProducerName, mask?: number): WasmFunctionBodyEncoder {
   const body = new WasmFunctionBodyEncoder(4);
   const aluFlags = wasmSirLocalAluFlagsStorage(body, 3);
   const inputs: Readonly<Record<string, ValueRef>> = producer === "logic32"
@@ -85,13 +109,10 @@ function encodeSetFlagsModule(producer: FlagProducerName): Uint8Array<ArrayBuffe
 
   emitSetFlags(body, aluFlags, producer, inputs, {
     emitValue: (value) => emitValueExpr(body, value)
-  });
+  }, mask === undefined ? undefined : { mask });
   body.localGet(3).end();
 
-  const functionIndex = module.addFunction(typeIndex, body);
-  module.exportFunction("run", functionIndex);
-
-  return module.encode();
+  return body;
 }
 
 async function instantiateCondition(cc: ConditionCode): Promise<(aluFlags: number) => number> {

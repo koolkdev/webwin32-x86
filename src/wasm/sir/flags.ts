@@ -17,20 +17,30 @@ import type { WasmSirEmitHelpers } from "./lower.js";
 
 const flagOrder = x86ArithmeticFlags satisfies readonly FlagName[];
 
+export type EmitSetFlagsOptions = Readonly<{
+  mask?: number;
+}>;
+
 export function emitSetFlags(
   body: WasmFunctionBodyEncoder,
   aluFlags: WasmSirAluFlagsStorage,
   producer: FlagProducerName,
   inputs: Readonly<Record<string, ValueRef>>,
-  helpers: WasmSirEmitHelpers
+  helpers: WasmSirEmitHelpers,
+  options: EmitSetFlagsOptions = {}
 ): void {
   const flagProducer = FLAG_PRODUCERS[producer];
   const defs = flagProducer.define(inputs);
+  const writeMask = writtenFlagsMask(defs) & (options.mask ?? x86ArithmeticFlagsMask);
+
+  if (writeMask === 0) {
+    return;
+  }
 
   aluFlags.emitStore(() => {
     aluFlags.emitLoad();
-    body.i32Const(i32(x86ArithmeticFlagsMask & ~writtenFlagsMask(defs))).i32And();
-    emitWrittenFlags(body, defs, helpers);
+    body.i32Const(i32(x86ArithmeticFlagsMask & ~writeMask)).i32And();
+    emitWrittenFlags(body, defs, helpers, writeMask);
     body.i32Or();
   });
 }
@@ -38,14 +48,15 @@ export function emitSetFlags(
 function emitWrittenFlags(
   body: WasmFunctionBodyEncoder,
   defs: Readonly<Partial<Record<FlagName, FlagExpr>>>,
-  helpers: WasmSirEmitHelpers
+  helpers: WasmSirEmitHelpers,
+  mask: number
 ): void {
   let hasWrittenFlag = false;
 
   for (const flag of flagOrder) {
     const expr = defs[flag];
 
-    if (expr === undefined) {
+    if (expr === undefined || (mask & x86ArithmeticFlagMask[flag]) === 0) {
       continue;
     }
 

@@ -84,7 +84,7 @@ class ExpressionBuilder {
           this.#defineValue(op.dst, { kind: op.op, a: this.#valueExpr(op.a), b: this.#valueExpr(op.b) }, true);
           break;
         case "condition":
-          this.#defineValue(op.dst, { kind: "condition", cc: op.cc }, true);
+          this.#defineValue(op.dst, { kind: "condition", cc: op.cc }, false);
           break;
         case "flags.set":
           this.#ops.push({
