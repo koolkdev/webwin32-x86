@@ -9,7 +9,7 @@ import { i32 } from "../../../../x86/state/cpu-state.js";
 import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
 import { wasmOpcode, wasmValueType } from "../../encoder/types.js";
 import { wasmBodyOpcodes } from "../../tests/body-opcodes.js";
-import { createJitFlagState } from "../flag-state.js";
+import { createJitFlagState } from "../state/flag-state.js";
 
 test("JIT flag state materializes only requested pending flags", () => {
   const body = new WasmFunctionBodyEncoder(3);

@@ -1,9 +1,9 @@
-import { reg32, type Reg32 } from "../../../x86/isa/types.js";
-import { i32 } from "../../../x86/state/cpu-state.js";
-import { stateOffset } from "../abi.js";
-import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import { wasmValueType } from "../encoder/types.js";
-import { emitLoadStateU32, emitStoreStateU32 } from "../lowering/state.js";
+import { reg32, type Reg32 } from "../../../../x86/isa/types.js";
+import { i32 } from "../../../../x86/state/cpu-state.js";
+import { stateOffset } from "../../abi.js";
+import type { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
+import { wasmValueType } from "../../encoder/types.js";
+import { emitLoadStateU32, emitStoreStateU32 } from "../../lowering/state.js";
 import { createJitFlagState, type JitFlagState } from "./flag-state.js";
 import { createJitReg32State, type JitReg32State } from "./register-state.js";
 

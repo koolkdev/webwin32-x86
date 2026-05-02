@@ -5,9 +5,9 @@ import { WasmLocalScratchAllocator } from "../encoder/local-scratch.js";
 import { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
 import { WasmModuleEncoder } from "../encoder/module.js";
 import { wasmValueType } from "../encoder/types.js";
-import { JitIrProgramBuilder } from "./program-builder.js";
-import { lowerIrWithJitContext } from "./ir-context.js";
-import { createJitIrState, type JitExitTarget, type JitIrState } from "./state.js";
+import { JitIrProgramBuilder } from "./lowering/program-builder.js";
+import { lowerIrWithJitContext } from "./lowering/ir-context.js";
+import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
 import type { JitIrBlock } from "./types.js";
 
 export type { JitIrBlock, JitIrBlockInstruction } from "./types.js";
