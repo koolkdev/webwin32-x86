@@ -1,7 +1,7 @@
-import { wasmMemoryIndex } from "../abi.js";
-import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import { ExitReason } from "../exit.js";
-import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "../lowering/exit.js";
+import { wasmMemoryIndex } from "../../abi.js";
+import type { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
+import { ExitReason } from "../../exit.js";
+import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "../../lowering/exit.js";
 
 const wasmPageByteShift = 16;
 const u32ByteLength = 4;

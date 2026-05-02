@@ -1,8 +1,8 @@
-import type { OperandSpec } from "../../../x86/isa/schema/types.js";
-import type { InterpreterOperandBinding } from "./ir-context.js";
-import { wasmValueType } from "../encoder/types.js";
-import { ExitReason } from "../exit.js";
-import { emitWasmIrExitFromI32Stack } from "../lowering/exit.js";
+import type { OperandSpec } from "../../../../x86/isa/schema/types.js";
+import type { InterpreterOperandBinding } from "../lowering/ir-context.js";
+import { wasmValueType } from "../../encoder/types.js";
+import { ExitReason } from "../../exit.js";
+import { emitWasmIrExitFromI32Stack } from "../../lowering/exit.js";
 import {
   advanceDecodeReader,
   emitReadGuestByte,
@@ -11,9 +11,9 @@ import {
   materializeDecodeReader,
   type DecodeReader
 } from "./decode-reader.js";
-import type { InterpreterHandlerContext } from "./handler-context.js";
+import type { InterpreterHandlerContext } from "../lowering/handler-context.js";
 import { emitIfModRmMemory, emitIfModRmRegister } from "./modrm-bits.js";
-import { emitCopyReg32FromIndexLocal } from "./register-dispatch.js";
+import { emitCopyReg32FromIndexLocal } from "../dispatch/register-dispatch.js";
 
 export function decodeModRmRmOperand(
   operand: Extract<OperandSpec, { kind: "modrm.rm" }>,

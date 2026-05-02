@@ -1,4 +1,4 @@
-import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
+import type { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
 
 const modRmModMask = 0b1100_0000;
 const modRmRegShift = 3;

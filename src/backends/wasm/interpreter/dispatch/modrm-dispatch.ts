@@ -1,8 +1,8 @@
-import type { Reg3 } from "../../../x86/isa/schema/types.js";
-import type { WasmFunctionBodyEncoder } from "../encoder/function-body.js";
-import { ExitReason } from "../exit.js";
-import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "../lowering/exit.js";
-import { emitModRmRegIndex } from "./modrm-bits.js";
+import type { Reg3 } from "../../../../x86/isa/schema/types.js";
+import type { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
+import { ExitReason } from "../../exit.js";
+import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "../../lowering/exit.js";
+import { emitModRmRegIndex } from "../decode/modrm-bits.js";
 
 export type ModRmDispatchCase = Readonly<{
   regs: readonly Reg3[];

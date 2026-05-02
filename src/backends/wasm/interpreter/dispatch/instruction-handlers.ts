@@ -1,13 +1,13 @@
-import { buildIr } from "../../../x86/ir/builder.js";
-import type { ExpandedInstructionSpec, ModRmMatch, Reg3 } from "../../../x86/isa/schema/types.js";
-import type { OpcodeDispatchLeaf } from "../../../x86/isa/decoder/opcode-dispatch.js";
-import type { SemanticTemplate } from "../../../x86/ir/types.js";
-import { wasmValueType } from "../encoder/types.js";
-import { lowerIrWithInterpreterContext } from "./ir-context.js";
-import { emitLoadGuestByte } from "./guest-bytes.js";
-import type { InterpreterHandlerContext } from "./handler-context.js";
+import { buildIr } from "../../../../x86/ir/builder.js";
+import type { ExpandedInstructionSpec, ModRmMatch, Reg3 } from "../../../../x86/isa/schema/types.js";
+import type { OpcodeDispatchLeaf } from "../../../../x86/isa/decoder/opcode-dispatch.js";
+import type { SemanticTemplate } from "../../../../x86/ir/types.js";
+import { wasmValueType } from "../../encoder/types.js";
+import { lowerIrWithInterpreterContext } from "../lowering/ir-context.js";
+import { emitLoadGuestByte } from "../decode/guest-bytes.js";
+import type { InterpreterHandlerContext } from "../lowering/handler-context.js";
 import { emitModRmDispatch, type ModRmDispatchCase } from "./modrm-dispatch.js";
-import { decodeInstructionOperands } from "./operand-decode.js";
+import { decodeInstructionOperands } from "../decode/operand-decode.js";
 
 export function emitInstructionHandlerForLeaf(
   leaf: OpcodeDispatchLeaf,

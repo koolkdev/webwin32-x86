@@ -1,12 +1,12 @@
-import type { InterpreterInstructionLength } from "./ir-context.js";
-import { wasmValueType } from "../encoder/types.js";
+import type { InterpreterInstructionLength } from "../lowering/ir-context.js";
+import { wasmValueType } from "../../encoder/types.js";
 import {
   emitLoadGuestByte,
   emitLoadGuestByteForDecodeAtDynamicOffset,
   emitLoadGuestU32ForDecode,
   emitLoadGuestU32ForDecodeAtDynamicOffset
 } from "./guest-bytes.js";
-import type { InterpreterHandlerContext } from "./handler-context.js";
+import type { InterpreterHandlerContext } from "../lowering/handler-context.js";
 
 export type DecodeReader =
   | Readonly<{ kind: "static"; value: number }>

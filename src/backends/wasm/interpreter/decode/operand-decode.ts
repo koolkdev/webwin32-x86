@@ -1,9 +1,9 @@
-import type { ExpandedInstructionSpec, OperandSpec } from "../../../x86/isa/schema/types.js";
+import type { ExpandedInstructionSpec, OperandSpec } from "../../../../x86/isa/schema/types.js";
 import type {
   InterpreterInstructionLength,
   InterpreterOperandBinding
-} from "./ir-context.js";
-import { wasmValueType } from "../encoder/types.js";
+} from "../lowering/ir-context.js";
+import { wasmValueType } from "../../encoder/types.js";
 import { decodeModRmRmOperand } from "./address-decode.js";
 import {
   advanceDecodeReader,
@@ -14,7 +14,7 @@ import {
   staticDecodeReader,
   type DecodeReader
 } from "./decode-reader.js";
-import type { InterpreterHandlerContext } from "./handler-context.js";
+import type { InterpreterHandlerContext } from "../lowering/handler-context.js";
 
 export type DecodedInterpreterOperands = Readonly<{
   instructionLength: InterpreterInstructionLength;

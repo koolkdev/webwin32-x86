@@ -6,13 +6,13 @@ import { wasmValueType } from "../encoder/types.js";
 import { ExitReason } from "../exit.js";
 import { encodeExit } from "../exit.js";
 import { emitWasmIrExitConstPayload, type WasmIrExitTarget } from "../lowering/exit.js";
-import { emitLoadGuestByte } from "./guest-bytes.js";
-import { emitOpcodeDispatch } from "./opcode-dispatch.js";
+import { emitLoadGuestByte } from "./decode/guest-bytes.js";
+import { emitOpcodeDispatch } from "./dispatch/opcode-dispatch.js";
 import {
   createInterpreterStateCache,
   emitFlushInterpreterStateCache,
   emitLoadInterpreterStateCache
-} from "./state-cache.js";
+} from "./lowering/state-cache.js";
 
 const fuelParam = 0;
 

@@ -5,7 +5,7 @@ import { reg32, type Reg32 } from "../../../../x86/isa/types.js";
 import { WasmFunctionBodyEncoder } from "../../encoder/function-body.js";
 import { WasmModuleEncoder } from "../../encoder/module.js";
 import { wasmValueType } from "../../encoder/types.js";
-import { emitLoadReg32ByIndex } from "../register-dispatch.js";
+import { emitLoadReg32ByIndex } from "../dispatch/register-dispatch.js";
 
 test("register dispatch can leave the selected register value on the stack", async () => {
   const module = await WebAssembly.compile(encodeRegisterDispatchTestModule());
