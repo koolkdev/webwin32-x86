@@ -1,9 +1,11 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
+import type { Reg32 } from "#x86/isa/types.js";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import { foldJitVirtualRegisters } from "#backends/wasm/jit/optimization/virtual-registers.js";
+import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { set32TargetRegs, startAddress } from "./helpers.js";
 
 test("foldJitVirtualRegisters keeps transient register calculations virtual until exit", () => {
@@ -122,6 +124,42 @@ test("foldJitVirtualRegisters materializes virtual registers for scaled effectiv
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx", "eax"]);
 });
 
+test("foldJitVirtualRegisters materializes address registers before faultable memory reads", () => {
+  const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
+  const movEbxFromEax = ok(decodeBytes([0x8b, 0x18], movEaxEcx.nextEip));
+  const trap = ok(decodeBytes([0xcd, 0x2e], movEbxFromEax.nextEip));
+  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+    movEaxEcx,
+    movEbxFromEax,
+    trap
+  ]));
+  const loadInstruction = folded.block.instructions[1]!;
+
+  strictEqual(folded.folding.removedSetCount, 1);
+  strictEqual(folded.folding.materializedSetCount, 1);
+  strictEqual(hasSet32Reg(folded.block.instructions[0]!, "eax"), true);
+  deepStrictEqual(loadInstruction.ir.map((op) => op.op), ["get32", "set32", "next"]);
+  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
+});
+
+test("foldJitVirtualRegisters materializes address registers before faultable memory writes", () => {
+  const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
+  const movEaxPtrEbx = ok(decodeBytes([0x89, 0x18], movEaxEcx.nextEip));
+  const trap = ok(decodeBytes([0xcd, 0x2e], movEaxPtrEbx.nextEip));
+  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+    movEaxEcx,
+    movEaxPtrEbx,
+    trap
+  ]));
+  const storeInstruction = folded.block.instructions[1]!;
+
+  strictEqual(folded.folding.removedSetCount, 1);
+  strictEqual(folded.folding.materializedSetCount, 1);
+  strictEqual(hasSet32Reg(folded.block.instructions[0]!, "eax"), true);
+  strictEqual(storeInstruction.ir.some((op) => op.op === "set32" && op.target.kind === "operand"), true);
+  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
+});
+
 test("foldJitVirtualRegisters resumes after the last pre-instruction exit in an instruction", () => {
   const pushEax = ok(decodeBytes([0x50], startAddress));
   const trap = ok(decodeBytes([0xcd, 0x2e], pushEax.nextEip));
@@ -135,3 +173,10 @@ test("foldJitVirtualRegisters resumes after the last pre-instruction exit in an 
   );
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["esp"]);
 });
+
+function hasSet32Reg(
+  instruction: JitIrBlockInstruction,
+  reg: Reg32
+): boolean {
+  return instruction.ir.some((op) => op.op === "set32" && op.target.kind === "reg" && op.target.reg === reg);
+}
