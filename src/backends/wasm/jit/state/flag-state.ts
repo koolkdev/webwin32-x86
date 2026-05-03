@@ -4,11 +4,19 @@ import {
   IR_ALU_FLAG_MASKS
 } from "#x86/ir/passes/flag-analysis.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
+import {
+  flagProducerConditionInputNames,
+  flagProducerConditionKind
+} from "#x86/ir/model/flag-conditions.js";
+import type { IrValueExpr } from "#x86/ir/model/expressions.js";
 import type { ConditionCode, IrFlagSetOp, ValueRef } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
-import { emitAluFlagsCondition } from "#backends/wasm/lowering/conditions.js";
+import {
+  emitAluFlagsCondition,
+  emitFlagProducerCondition
+} from "#backends/wasm/lowering/conditions.js";
 import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/lowering/alu-flags.js";
 import { emitSetFlags } from "#backends/wasm/lowering/flags.js";
 import type { WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
@@ -18,6 +26,11 @@ type PendingFlags = Readonly<{
   writtenMask: IrFlagSetOp["writtenMask"];
   undefMask: IrFlagSetOp["undefMask"];
   inputs: ReadonlyMap<string, number>;
+}>;
+
+type PendingInputRefs = Readonly<{
+  inputRefs: Readonly<Record<string, ValueRef>>;
+  localsByVarId: ReadonlyMap<number, number>;
 }>;
 
 // Each compact aluFlags bit can come from a different place after partial writes:
@@ -110,7 +123,14 @@ export function createJitFlagState(
       aluFlagsLocalDirty = false;
     },
     emitAluFlagsCondition: (cc) => {
-      assertMaterialized(conditionFlagReadMask(cc), `JIT condition ${cc}`);
+      const pendingFlags = pendingFlagConditionSource(cc);
+
+      if (pendingFlags !== undefined) {
+        emitPendingFlagCondition(pendingFlags, cc);
+        return;
+      }
+
+      materializeFlags(conditionFlagReadMask(cc) & ~materializedMask);
       emitAluFlagsCondition(body, aluFlags, cc);
     },
     assertNoPending
@@ -168,30 +188,8 @@ export function createJitFlagState(
     }
   }
 
-  function assertMaterialized(mask: number, context: string): void {
-    if ((materializedMask & mask) !== mask) {
-      throw new Error(`${context} must be preceded by flags.materialize`);
-    }
-  }
-
   function emitPendingFlags(pendingFlags: PendingFlags, mask: number): void {
-    const inputRefs: Record<string, ValueRef> = {};
-    const localsByVarId = new Map<number, number>();
-    let nextVarId = 0;
-
-    for (const inputName of FLAG_PRODUCERS[pendingFlags.producer].inputs) {
-      const local = pendingFlags.inputs.get(inputName);
-
-      if (local === undefined) {
-        throw new Error(`missing pending flag input '${inputName}' for ${pendingFlags.producer}`);
-      }
-
-      const id = nextVarId;
-
-      nextVarId += 1;
-      inputRefs[inputName] = { kind: "var", id };
-      localsByVarId.set(id, local);
-    }
+    const inputs = pendingInputRefs(pendingFlags, FLAG_PRODUCERS[pendingFlags.producer].inputs);
 
     emitSetFlags(
       body,
@@ -201,24 +199,101 @@ export function createJitFlagState(
         producer: pendingFlags.producer,
         writtenMask: pendingFlags.writtenMask,
         undefMask: pendingFlags.undefMask,
-        inputs: inputRefs
+        inputs: inputs.inputRefs
       },
       {
-        emitValue: (value) => {
-          switch (value.kind) {
-            case "var":
-              body.localGet(requiredLocal(localsByVarId, value.id));
-              return;
-            case "const32":
-              body.i32Const(i32(value.value));
-              return;
-            case "nextEip":
-              throw new Error("nextEip is not a valid pending flag input");
-          }
-        }
+        emitValue: (value) => emitPendingInputValue(inputs.localsByVarId, value, "pending flag input")
       },
       { mask }
     );
+  }
+
+  function emitPendingFlagCondition(pendingFlags: PendingFlags, cc: ConditionCode): void {
+    const inputs = pendingInputRefs(
+      pendingFlags,
+      flagProducerConditionInputNames({ producer: pendingFlags.producer, cc })
+    );
+
+    emitFlagProducerCondition(
+      body,
+      {
+        kind: "flagProducer.condition",
+        cc,
+        producer: pendingFlags.producer,
+        writtenMask: pendingFlags.writtenMask,
+        undefMask: pendingFlags.undefMask,
+        inputs: inputs.inputRefs
+      },
+      {
+        emitValue: (value) => emitPendingInputValue(inputs.localsByVarId, value, "pending flag condition input")
+      }
+    );
+  }
+
+  function pendingInputRefs(pendingFlags: PendingFlags, inputNames: readonly string[]): PendingInputRefs {
+    const inputRefs: Record<string, ValueRef> = {};
+    const localsByVarId = new Map<number, number>();
+
+    for (let index = 0; index < inputNames.length; index += 1) {
+      const inputName = inputNames[index]!;
+      const local = pendingFlags.inputs.get(inputName);
+
+      if (local === undefined) {
+        throw new Error(`missing pending flag input '${inputName}' for ${pendingFlags.producer}`);
+      }
+
+      inputRefs[inputName] = { kind: "var", id: index };
+      localsByVarId.set(index, local);
+    }
+
+    return { inputRefs, localsByVarId };
+  }
+
+  function emitPendingInputValue(
+    localsByVarId: ReadonlyMap<number, number>,
+    value: IrValueExpr,
+    context: string
+  ): void {
+    switch (value.kind) {
+      case "var":
+        body.localGet(requiredLocal(localsByVarId, value.id));
+        return;
+      case "const32":
+        body.i32Const(i32(value.value));
+        return;
+      case "nextEip":
+        throw new Error(`nextEip is not a valid ${context}`);
+      default:
+        throw new Error(`unsupported ${context}: ${value.kind}`);
+    }
+  }
+
+  function pendingFlagConditionSource(cc: ConditionCode): PendingFlags | undefined {
+    let pendingFlags: PendingFlags | undefined;
+
+    for (const flagMask of aluFlagMasks) {
+      if ((conditionFlagReadMask(cc) & flagMask) === 0) {
+        continue;
+      }
+
+      const source = requiredSource(flagMask);
+
+      if (source.kind !== "pending") {
+        return undefined;
+      }
+
+      if (pendingFlags === undefined) {
+        pendingFlags = source.pending;
+      } else if (pendingFlags !== source.pending) {
+        return undefined;
+      }
+    }
+
+    if (pendingFlags === undefined || flagProducerConditionKind({ producer: pendingFlags.producer, cc }) === undefined) {
+      return undefined;
+    }
+
+    return pendingFlags;
   }
 
   function sourceMask(kind: FlagSource["kind"]): number {

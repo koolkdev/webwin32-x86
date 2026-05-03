@@ -2,7 +2,7 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
-import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
+import { IR_ALU_FLAG_MASK } from "#x86/ir/passes/flag-analysis.js";
 import { isIrTerminatorOp } from "#x86/ir/model/ops.js";
 import type { IrOp, StorageRef } from "#x86/ir/model/types.js";
 import { createCpuState } from "#x86/state/cpu-state.js";
@@ -67,17 +67,14 @@ test("buildJitIrBlock keeps flag producers instruction-local before JIT flag fol
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["sub32", "add32"]);
 });
 
-test("buildJitIrBlock inserts explicit flag materialization before consumers and boundaries", () => {
+test("buildJitIrBlock leaves condition materialization to JIT flag state", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const jz = ok(decodeBytes([0x74, 0x05], add.nextEip));
   const branchIr = loweringIr(buildJitIrBlock([add, jz]));
   const conditionIndex = branchIr.findIndex((op) => op.op === "aluFlags.condition");
   const conditionalJumpIndex = branchIr.findIndex((op) => op.op === "conditionalJump");
 
-  deepStrictEqual(branchIr[conditionIndex - 1], {
-    op: "flags.materialize",
-    mask: IR_ALU_FLAG_MASKS.ZF
-  });
+  strictEqual(branchIr.some((op) => op.op === "flags.materialize"), false);
   deepStrictEqual(branchIr[conditionalJumpIndex - 1], {
     op: "flags.boundary",
     mask: IR_ALU_FLAG_MASK
@@ -99,26 +96,18 @@ test("buildJitIrBlock keeps earlier CF producer live across INC", () => {
   const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
   const ir = loweringIr(buildJitIrBlock([add, inc, jc]));
   const flagSets = ir.filter((op) => op.op === "flags.set");
-  const conditionIndex = ir.findIndex((op) => op.op === "aluFlags.condition");
 
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
-  deepStrictEqual(ir[conditionIndex - 1], {
-    op: "flags.materialize",
-    mask: IR_ALU_FLAG_MASKS.CF
-  });
+  strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
 });
 
-test("buildJitIrBlock materializes cmp and jcc conditions without flat lowering specialization", () => {
+test("buildJitIrBlock keeps cmp and jcc condition IR instruction-local", () => {
   const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
   const je = ok(decodeBytes([0x74, 0x05], cmp.nextEip));
   const ir = loweringIr(buildJitIrBlock([cmp, je]));
-  const conditionIndex = ir.findIndex((op) => op.op === "aluFlags.condition");
 
   strictEqual(ir.some((op) => op.op === "flagProducer.condition"), false);
-  deepStrictEqual(ir[conditionIndex - 1], {
-    op: "flags.materialize",
-    mask: IR_ALU_FLAG_MASKS.ZF
-  });
+  strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
 });
 
 test("buildJitIrBlock does not specialize incoming CF after INC", () => {
@@ -126,13 +115,9 @@ test("buildJitIrBlock does not specialize incoming CF after INC", () => {
   const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
   const block = buildJitIrBlock([inc, jc]);
   const ir = loweringIr(block);
-  const conditionIndex = ir.findIndex((op) => op.op === "aluFlags.condition");
 
   strictEqual(ir.some((op) => op.op === "flagProducer.condition"), false);
-  deepStrictEqual(ir[conditionIndex - 1], {
-    op: "flags.materialize",
-    mask: IR_ALU_FLAG_MASKS.CF
-  });
+  strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
   deepStrictEqual(aluFlagMemoryAccessCounts(block), { loads: 1, stores: 1 });
 });
 
@@ -150,13 +135,9 @@ test("buildJitIrBlock represents JIT flag exits as explicit IR boundaries", () =
   });
 
   const jzIr = loweringIr(buildJitIrBlock([ok(decodeBytes([0x74, 0x05], startAddress))]));
-  const jzConditionIndex = jzIr.findIndex((op) => op.op === "aluFlags.condition");
   const jzJumpIndex = jzIr.findIndex((op) => op.op === "conditionalJump");
 
-  deepStrictEqual(jzIr[jzConditionIndex - 1], {
-    op: "flags.materialize",
-    mask: IR_ALU_FLAG_MASKS.ZF
-  });
+  strictEqual(jzIr.some((op) => op.op === "flags.materialize"), false);
   deepStrictEqual(jzIr[jzJumpIndex - 1], {
     op: "flags.boundary",
     mask: IR_ALU_FLAG_MASK

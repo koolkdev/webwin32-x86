@@ -1,6 +1,4 @@
 import { IR_ALU_FLAG_MASK } from "#x86/ir/passes/flag-analysis.js";
-import { createFlagMaterializationPass } from "#x86/ir/passes/flag-optimization.js";
-import { optimizeIrBlock } from "#x86/ir/passes/optimization.js";
 import type { IrBlock, IrOp } from "#x86/ir/model/types.js";
 import { optimizeJitIrBlock, type JitBlockOptimization } from "#backends/wasm/jit/optimization/optimize.js";
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
@@ -11,18 +9,7 @@ export function prepareJitIrBlockForLowering(
   block: JitIrBlock,
   optimization: JitBlockOptimization = optimizeJitIrBlock(block)
 ): JitIrBlock {
-  return insertInstructionFlagMaterializations(insertExitFlagBoundaries(block, optimization));
-}
-
-function insertInstructionFlagMaterializations(block: JitIrBlock): JitIrBlock {
-  return {
-    instructions: block.instructions.map((instruction) => ({
-      ...instruction,
-      ir: optimizeIrBlock(instruction.ir, [
-        createFlagMaterializationPass()
-      ]).block
-    }))
-  };
+  return insertExitFlagBoundaries(block, optimization);
 }
 
 function insertExitFlagBoundaries(block: JitIrBlock, optimization: JitBlockOptimization): JitIrBlock {

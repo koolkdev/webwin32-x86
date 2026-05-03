@@ -41,6 +41,31 @@ test("JIT flag state materializes only requested pending flags", () => {
   strictEqual(opcodes.includes(wasmOpcode.i32ShrU), false);
 });
 
+test("JIT flag state emits supported pending flag conditions directly", () => {
+  const body = new WasmFunctionBodyEncoder(3);
+  const aluFlagsLocal = body.addLocal(wasmValueType.i32);
+  const conditionLocal = body.addLocal(wasmValueType.i32);
+  const flags = createJitFlagState(body, aluFlagsLocal, {
+    emitLoadAluFlags: () => {
+      throw new Error("direct sub32 condition should not load incoming aluFlags");
+    },
+    emitLoadAluFlagsValue: () => {
+      throw new Error("direct sub32 condition should not merge incoming aluFlags");
+    },
+    emitStoreAluFlags: () => {
+      throw new Error("direct sub32 condition should not store aluFlags");
+    }
+  });
+
+  flags.emitSet(createIrFlagSetOp("sub32", { left: v(0), right: v(1), result: v(2) }), {
+    emitValue: (value) => emitValueExpr(body, value)
+  });
+  flags.emitAluFlagsCondition("E");
+  body.localSet(conditionLocal).end();
+
+  strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.localSet), 4);
+});
+
 function emitValueExpr(body: WasmFunctionBodyEncoder, value: IrValueExpr): void {
   switch (value.kind) {
     case "var":
@@ -58,4 +83,8 @@ function emitValueExpr(body: WasmFunctionBodyEncoder, value: IrValueExpr): void 
 
 function v(id: number): ValueRef {
   return { kind: "var", id };
+}
+
+function countOpcode(opcodes: readonly number[], opcode: number): number {
+  return opcodes.filter((entry) => entry === opcode).length;
 }
