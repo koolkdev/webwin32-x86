@@ -11,7 +11,7 @@ import {
   type JitVirtualFlagOwnerMask,
   type JitVirtualFlagSource
 } from "./virtual-flag-analysis.js";
-import { jitVirtualValueReadRegs } from "./virtual-values.js";
+import { jitValueReadRegs } from "./values.js";
 import {
   emitJitValueRef,
   type JitInstructionRewrite
@@ -226,7 +226,7 @@ function plannedInputsSafe(
       return false;
     }
 
-    for (const reg of jitVirtualValueReadRegs(input.value)) {
+    for (const reg of jitValueReadRegs(input.value)) {
       if (jitRegClobberedBetween(block, reg, validAfter, readLocation(read))) {
         return false;
       }

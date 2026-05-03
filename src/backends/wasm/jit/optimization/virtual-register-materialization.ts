@@ -5,13 +5,13 @@ import {
   jitInstructionHasPreInstructionExit,
   jitOpHasPostInstructionExit
 } from "./effects.js";
-import { jitVirtualValueReadsReg, type JitVirtualValue } from "./virtual-values.js";
+import { jitValueReadsReg, type JitValue } from "./values.js";
 
 export function materializeVirtualRegsForPreInstructionExits(
   rewrite: JitInstructionRewrite,
   effects: JitEffectIndex,
   instructionIndex: number,
-  virtualRegs: Map<Reg32, JitVirtualValue>,
+  virtualRegs: Map<Reg32, JitValue>,
   virtualRegReadCounts: Map<Reg32, number>
 ): number {
   if (!jitInstructionHasPreInstructionExit(effects, instructionIndex)) {
@@ -29,7 +29,7 @@ export function materializeVirtualRegsForPostInstructionExit(
   effects: JitEffectIndex,
   instructionIndex: number,
   opIndex: number,
-  virtualRegs: Map<Reg32, JitVirtualValue>,
+  virtualRegs: Map<Reg32, JitValue>,
   virtualRegReadCounts: Map<Reg32, number>
 ): number {
   if (!jitOpHasPostInstructionExit(effects, instructionIndex, opIndex)) {
@@ -47,13 +47,13 @@ export function materializeVirtualRegsForPostInstructionExit(
 
 export function materializeVirtualRegsReadingReg(
   rewrite: JitInstructionRewrite,
-  virtualRegs: Map<Reg32, JitVirtualValue>,
+  virtualRegs: Map<Reg32, JitValue>,
   readReg: Reg32
 ): number {
   let materializedSetCount = 0;
 
   for (const [reg, value] of [...virtualRegs]) {
-    if (reg !== readReg && jitVirtualValueReadsReg(value, readReg)) {
+    if (reg !== readReg && jitValueReadsReg(value, readReg)) {
       materializeJitVirtualReg(rewrite, reg, value);
       virtualRegs.delete(reg);
       materializedSetCount += 1;
@@ -65,7 +65,7 @@ export function materializeVirtualRegsReadingReg(
 
 export function materializeAllVirtualRegs(
   rewrite: JitInstructionRewrite,
-  virtualRegs: Map<Reg32, JitVirtualValue>
+  virtualRegs: Map<Reg32, JitValue>
 ): number {
   const materializedSetCount = virtualRegs.size;
 
@@ -79,7 +79,7 @@ export function materializeAllVirtualRegs(
 
 export function materializeVirtualRegsForRead(
   rewrite: JitInstructionRewrite,
-  virtualRegs: Map<Reg32, JitVirtualValue>,
+  virtualRegs: Map<Reg32, JitValue>,
   readRegs: readonly Reg32[]
 ): number {
   let materializedSetCount = 0;

@@ -4,37 +4,37 @@ import type { OperandRef, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
 import { requiredJitOperandBinding } from "./op-effects.js";
 
-export type JitVirtualValue =
+export type JitValue =
   | Readonly<{ kind: "const32"; value: number }>
   | Readonly<{ kind: "reg"; reg: Reg32 }>
   | Readonly<{
       kind: "i32.add" | "i32.sub" | "i32.xor" | "i32.or" | "i32.and";
-      a: JitVirtualValue;
-      b: JitVirtualValue;
+      a: JitValue;
+      b: JitValue;
     }>;
 
-export function jitVirtualValueForStorage(
+export function jitValueForStorage(
   storage: StorageRef,
   operands: readonly JitOperandBinding[],
-  virtualRegs: ReadonlyMap<Reg32, JitVirtualValue> = new Map()
-): JitVirtualValue | undefined {
+  virtualRegs: ReadonlyMap<Reg32, JitValue> = new Map()
+): JitValue | undefined {
   switch (storage.kind) {
     case "reg":
       return virtualRegs.get(storage.reg) ?? { kind: "reg", reg: storage.reg };
     case "operand": {
       const binding = requiredJitOperandBinding(operands, storage.index);
 
-      return jitVirtualValueForOperandBinding(binding, virtualRegs);
+      return jitValueForOperandBinding(binding, virtualRegs);
     }
     case "mem":
       return undefined;
   }
 }
 
-export function jitVirtualValueForValue(
+export function jitValueForValue(
   value: ValueRef,
-  localValues: ReadonlyMap<number, JitVirtualValue>
-): JitVirtualValue | undefined {
+  localValues: ReadonlyMap<number, JitValue>
+): JitValue | undefined {
   switch (value.kind) {
     case "var":
       return localValues.get(value.id);
@@ -45,21 +45,21 @@ export function jitVirtualValueForValue(
   }
 }
 
-export function jitVirtualValueForEffectiveAddress(
+export function jitValueForEffectiveAddress(
   operand: OperandRef,
   operands: readonly JitOperandBinding[],
-  virtualRegs: ReadonlyMap<Reg32, JitVirtualValue>
-): JitVirtualValue | undefined {
+  virtualRegs: ReadonlyMap<Reg32, JitValue>
+): JitValue | undefined {
   const binding = requiredJitOperandBinding(operands, operand.index);
 
   if (binding.kind !== "static.mem32") {
     return undefined;
   }
 
-  const terms: JitVirtualValue[] = [];
+  const terms: JitValue[] = [];
 
   if (binding.ea.base !== undefined) {
-    terms.push(jitVirtualValueForReg(binding.ea.base, virtualRegs));
+    terms.push(jitValueForReg(binding.ea.base, virtualRegs));
   }
 
   if (binding.ea.index !== undefined) {
@@ -67,7 +67,7 @@ export function jitVirtualValueForEffectiveAddress(
       return undefined;
     }
 
-    terms.push(jitVirtualValueForReg(binding.ea.index, virtualRegs));
+    terms.push(jitValueForReg(binding.ea.index, virtualRegs));
   }
 
   if (binding.ea.disp !== 0 || terms.length === 0) {
@@ -80,7 +80,7 @@ export function jitVirtualValueForEffectiveAddress(
 export function jitVirtualRegsReadByEffectiveAddress(
   operand: OperandRef,
   operands: readonly JitOperandBinding[],
-  virtualRegs: ReadonlyMap<Reg32, JitVirtualValue>
+  virtualRegs: ReadonlyMap<Reg32, JitValue>
 ): readonly Reg32[] {
   const binding = requiredJitOperandBinding(operands, operand.index);
 
@@ -118,14 +118,14 @@ export function jitStorageReg(storage: StorageRef, operands: readonly JitOperand
 export function jitStorageHasVirtualRegister(
   storage: StorageRef,
   operands: readonly JitOperandBinding[],
-  virtualRegs: ReadonlyMap<Reg32, JitVirtualValue>
+  virtualRegs: ReadonlyMap<Reg32, JitValue>
 ): boolean {
   const reg = jitStorageReg(storage, operands);
 
   return reg !== undefined && virtualRegs.has(reg);
 }
 
-export function jitVirtualValueReadsReg(value: JitVirtualValue, reg: Reg32): boolean {
+export function jitValueReadsReg(value: JitValue, reg: Reg32): boolean {
   switch (value.kind) {
     case "const32":
       return false;
@@ -136,15 +136,15 @@ export function jitVirtualValueReadsReg(value: JitVirtualValue, reg: Reg32): boo
     case "i32.xor":
     case "i32.or":
     case "i32.and":
-      return jitVirtualValueReadsReg(value.a, reg) || jitVirtualValueReadsReg(value.b, reg);
+      return jitValueReadsReg(value.a, reg) || jitValueReadsReg(value.b, reg);
   }
 }
 
-export function jitVirtualValueReadRegs(value: JitVirtualValue): readonly Reg32[] {
-  return reg32.filter((reg) => jitVirtualValueReadsReg(value, reg));
+export function jitValueReadRegs(value: JitValue): readonly Reg32[] {
+  return reg32.filter((reg) => jitValueReadsReg(value, reg));
 }
 
-export function jitVirtualValueCost(value: JitVirtualValue): number {
+export function jitValueCost(value: JitValue): number {
   switch (value.kind) {
     case "const32":
     case "reg":
@@ -154,21 +154,21 @@ export function jitVirtualValueCost(value: JitVirtualValue): number {
     case "i32.xor":
     case "i32.or":
     case "i32.and":
-      return 1 + jitVirtualValueCost(value.a) + jitVirtualValueCost(value.b);
+      return 1 + jitValueCost(value.a) + jitValueCost(value.b);
   }
 }
 
-function jitVirtualValueForReg(
+function jitValueForReg(
   reg: Reg32,
-  virtualRegs: ReadonlyMap<Reg32, JitVirtualValue>
-): JitVirtualValue {
+  virtualRegs: ReadonlyMap<Reg32, JitValue>
+): JitValue {
   return virtualRegs.get(reg) ?? { kind: "reg", reg };
 }
 
-function jitVirtualValueForOperandBinding(
+function jitValueForOperandBinding(
   binding: JitOperandBinding,
-  virtualRegs: ReadonlyMap<Reg32, JitVirtualValue>
-): JitVirtualValue | undefined {
+  virtualRegs: ReadonlyMap<Reg32, JitValue>
+): JitValue | undefined {
   switch (binding.kind) {
     case "static.reg32":
       return virtualRegs.get(binding.reg) ?? { kind: "reg", reg: binding.reg };

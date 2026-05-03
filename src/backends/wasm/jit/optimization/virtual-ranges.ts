@@ -5,7 +5,7 @@ import {
   walkJitIrOpsBetween,
   type JitIrLocation
 } from "./ir-walk.js";
-import { jitStorageReg } from "./virtual-values.js";
+import { jitStorageReg } from "./values.js";
 
 export function jitRegClobberedBetween(
   block: JitIrBlock,

@@ -25,14 +25,13 @@ import {
 import type { JitConditionUse } from "./condition-uses.js";
 import {
   jitStorageReg,
-  jitVirtualValueForValue,
-  jitVirtualValueReadRegs,
-  type JitVirtualValue
-} from "./virtual-values.js";
-import { recordJitVirtualLocalValue } from "./virtual-local-values.js";
+  jitValueReadRegs,
+  type JitValue
+} from "./values.js";
+import { JitValueTracker } from "./value-tracker.js";
 
 export type JitVirtualFlagInput =
-  | Readonly<{ kind: "value"; value: JitVirtualValue }>
+  | Readonly<{ kind: "value"; value: JitValue }>
   | Readonly<{ kind: "unmodeled" }>;
 
 export type JitVirtualFlagSource = Readonly<{
@@ -104,7 +103,7 @@ export function analyzeJitVirtualFlags(
       throw new Error(`missing JIT instruction while analyzing virtual flags: ${instructionIndex}`);
     }
 
-    const localValues = new Map<number, JitVirtualValue>();
+    const values = new JitValueTracker();
     const instructionEntryOwners = new Map(ownersByFlag);
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
@@ -114,7 +113,7 @@ export function analyzeJitVirtualFlags(
         throw new Error(`missing JIT IR op while analyzing virtual flags: ${instructionIndex}:${opIndex}`);
       }
 
-      analyzeOp(instructionIndex, opIndex, instruction, op, localValues, instructionEntryOwners);
+      analyzeOp(instructionIndex, opIndex, instruction, op, values, instructionEntryOwners);
     }
   }
 
@@ -130,7 +129,7 @@ export function analyzeJitVirtualFlags(
     opIndex: number,
     instruction: JitIrBlockInstruction,
     op: JitIrOp,
-    localValues: Map<number, JitVirtualValue>,
+    values: JitValueTracker,
     instructionEntryOwners: ReadonlyMap<number, JitVirtualFlagOwner>
   ): void {
     const preInstructionExitReason = jitPreInstructionExitReasonAt(analysis.context.effects, instructionIndex, opIndex);
@@ -149,7 +148,7 @@ export function analyzeJitVirtualFlags(
       recordRead({ instructionIndex, opIndex, reason: "exit", requiredMask: IR_ALU_FLAG_MASK });
     }
 
-    if (recordJitVirtualLocalValue(op, instruction, localValues)) {
+    if (values.recordOp(op, instruction)) {
       return;
     }
 
@@ -159,7 +158,7 @@ export function analyzeJitVirtualFlags(
         recordSourceClobber(instructionIndex, opIndex, op.target, instruction);
         return;
       case "flags.set":
-        recordFlagSource(instructionIndex, opIndex, op, localValues);
+        recordFlagSource(instructionIndex, opIndex, op, values);
         return;
       case "aluFlags.condition": {
         const conditionUse = jitConditionUseAt(analysis.context.effects, instructionIndex, opIndex);
@@ -200,9 +199,9 @@ export function analyzeJitVirtualFlags(
     instructionIndex: number,
     opIndex: number,
     op: IrFlagSetOp,
-    localValues: ReadonlyMap<number, JitVirtualValue>
+    values: JitValueTracker
   ): void {
-    const inputs = flagInputs(op, localValues);
+    const inputs = flagInputs(op, values);
     const source: JitVirtualFlagSource = {
       id: nextSourceId,
       instructionIndex,
@@ -265,29 +264,29 @@ export function analyzeJitVirtualFlags(
 
 function flagInputs(
   op: IrFlagSetOp,
-  localValues: ReadonlyMap<number, JitVirtualValue>
+  values: JitValueTracker
 ): Readonly<Record<string, JitVirtualFlagInput>> {
   return Object.fromEntries(
     FLAG_PRODUCERS[op.producer].inputs.map((inputName) => [
       inputName,
-      flagInput(op.inputs[inputName], localValues)
+      flagInput(op.inputs[inputName], values)
     ])
   );
 }
 
 function flagInput(
   value: ValueRef | undefined,
-  localValues: ReadonlyMap<number, JitVirtualValue>
+  values: JitValueTracker
 ): JitVirtualFlagInput {
   if (value === undefined) {
     return { kind: "unmodeled" };
   }
 
-  const virtualValue = jitVirtualValueForValue(value, localValues);
+  const jitValue = values.valueFor(value);
 
-  return virtualValue === undefined
+  return jitValue === undefined
     ? { kind: "unmodeled" }
-    : { kind: "value", value: virtualValue };
+    : { kind: "value", value: jitValue };
 }
 
 function flagInputReadRegs(inputs: Readonly<Record<string, JitVirtualFlagInput>>): readonly Reg32[] {
@@ -295,7 +294,7 @@ function flagInputReadRegs(inputs: Readonly<Record<string, JitVirtualFlagInput>>
 
   for (const input of Object.values(inputs)) {
     if (input.kind === "value") {
-      for (const reg of jitVirtualValueReadRegs(input.value)) {
+      for (const reg of jitValueReadRegs(input.value)) {
         regs.add(reg);
       }
     }

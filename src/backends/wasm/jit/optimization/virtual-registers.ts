@@ -15,7 +15,6 @@ import {
   materializeVirtualRegsForPostInstructionExit,
   materializeVirtualRegsForPreInstructionExits
 } from "./virtual-register-materialization.js";
-import { recordJitVirtualLocalValue } from "./virtual-local-values.js";
 import {
   createJitInstructionRewrite,
   createJitPreludeRewrite,
@@ -34,7 +33,7 @@ import {
   firstVirtualRegisterFoldableOpIndex,
   recordCopiedVirtualRegisterOp
 } from "./virtual-register-prefix.js";
-import type { JitVirtualValue } from "./virtual-values.js";
+import type { JitValue } from "./values.js";
 
 export type JitVirtualRegisterFolding = Readonly<{
   removedSetCount: number;
@@ -45,7 +44,7 @@ export function foldJitVirtualRegisters(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): Readonly<{ block: JitOptimizedIrBlock; folding: JitVirtualRegisterFolding }> {
-  const virtualRegs = new Map<Reg32, JitVirtualValue>();
+  const virtualRegs = new Map<Reg32, JitValue>();
   const virtualRegReadCounts = new Map<Reg32, number>();
   const instructions: JitOptimizedIrBlockInstruction[] = [];
   let removedSetCount = 0;
@@ -126,14 +125,14 @@ function rewriteOp(
   opIndex: number,
   analysis: JitOptimizationAnalysis,
   rewrite: JitInstructionRewrite,
-  virtualRegs: Map<Reg32, JitVirtualValue>,
+  virtualRegs: Map<Reg32, JitValue>,
   virtualRegReadCounts: Map<Reg32, number>
 ): JitVirtualRegisterRewriteResult {
   switch (op.op) {
     case "get32":
       return rewriteVirtualRegisterGet32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "const32":
-      recordJitVirtualLocalValue(op, instruction, rewrite.localValues, virtualRegs);
+      rewrite.values.recordOp(op, instruction, virtualRegs);
       rewrite.ops.push(op);
       return unchangedJitVirtualRegisterRewriteResult;
     case "i32.add":
@@ -141,7 +140,7 @@ function rewriteOp(
     case "i32.xor":
     case "i32.or":
     case "i32.and":
-      recordJitVirtualLocalValue(op, instruction, rewrite.localValues, virtualRegs);
+      rewrite.values.recordOp(op, instruction, virtualRegs);
       rewrite.ops.push(op);
       return unchangedJitVirtualRegisterRewriteResult;
     case "address32":

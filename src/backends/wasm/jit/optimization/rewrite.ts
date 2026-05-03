@@ -2,11 +2,12 @@ import type { Reg32 } from "#x86/isa/types.js";
 import type { ValueRef, VarRef } from "#x86/ir/model/types.js";
 import { jitIrOpDst } from "#backends/wasm/jit/ir-semantics.js";
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
-import type { JitVirtualValue } from "./virtual-values.js";
+import type { JitValue } from "./values.js";
+import { JitValueTracker } from "./value-tracker.js";
 
 export type JitInstructionRewrite = {
   ops: JitIrOp[];
-  localValues: Map<number, JitVirtualValue>;
+  values: JitValueTracker;
   nextVarId: number;
 };
 
@@ -54,7 +55,7 @@ export function rewriteJitIrInstructionInto(
 export function createJitInstructionRewrite(instruction: JitIrBlockInstruction): JitInstructionRewrite {
   return {
     ops: [],
-    localValues: new Map(),
+    values: new JitValueTracker(),
     nextVarId: nextInstructionVarId(instruction)
   };
 }
@@ -62,7 +63,7 @@ export function createJitInstructionRewrite(instruction: JitIrBlockInstruction):
 export function createJitPreludeRewrite(): JitInstructionRewrite {
   return {
     ops: [],
-    localValues: new Map(),
+    values: new JitValueTracker(),
     nextVarId: 0
   };
 }
@@ -70,7 +71,7 @@ export function createJitPreludeRewrite(): JitInstructionRewrite {
 export function materializeJitVirtualReg(
   rewrite: JitInstructionRewrite,
   reg: Reg32,
-  value: JitVirtualValue
+  value: JitValue
 ): void {
   rewrite.ops.push({
     op: "set32",
@@ -79,8 +80,8 @@ export function materializeJitVirtualReg(
   });
 }
 
-export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitVirtualValue): ValueRef {
-  const existingValue = existingJitValueRef(rewrite, value);
+export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitValue): ValueRef {
+  const existingValue = rewrite.values.refFor(value);
 
   if (existingValue !== undefined) {
     return existingValue;
@@ -93,7 +94,7 @@ export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitVirtua
       const dst = allocVar(rewrite);
 
       rewrite.ops.push({ op: "get32", dst, source: { kind: "reg", reg: value.reg } });
-      rewrite.localValues.set(dst.id, value);
+      rewrite.values.record(dst.id, value);
       return dst;
     }
     case "i32.add":
@@ -109,7 +110,7 @@ export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitVirtua
         a: emitJitValueRef(rewrite, value.a),
         b: emitJitValueRef(rewrite, value.b)
       });
-      rewrite.localValues.set(dst.id, value);
+      rewrite.values.record(dst.id, value);
       return dst;
     }
   }
@@ -118,7 +119,7 @@ export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitVirtua
 export function assignJitValue(
   rewrite: JitInstructionRewrite,
   dst: VarRef,
-  value: JitVirtualValue
+  value: JitValue
 ): void {
   switch (value.kind) {
     case "const32":
@@ -140,23 +141,6 @@ export function assignJitValue(
       });
       return;
   }
-}
-
-function existingJitValueRef(
-  rewrite: JitInstructionRewrite,
-  value: JitVirtualValue
-): ValueRef | undefined {
-  if (value.kind === "const32") {
-    return { kind: "const32", value: value.value };
-  }
-
-  for (const [id, localValue] of rewrite.localValues) {
-    if (localValue === value) {
-      return { kind: "var", id };
-    }
-  }
-
-  return undefined;
 }
 
 function allocVar(rewrite: JitInstructionRewrite): VarRef {

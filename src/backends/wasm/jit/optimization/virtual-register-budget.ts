@@ -4,25 +4,25 @@ import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { materializeJitVirtualReg, type JitInstructionRewrite } from "./rewrite.js";
 import {
   jitVirtualRegsReadByEffectiveAddress,
-  jitVirtualValueCost,
-  type JitVirtualValue
-} from "./virtual-values.js";
+  jitValueCost,
+  type JitValue
+} from "./values.js";
 
 const maxRepeatedInlineVirtualValueCost = 2;
 const maxRetainedVirtualValueCost = 8;
 
-export function shouldRetainVirtualRegisterValue(value: JitVirtualValue): boolean {
-  return jitVirtualValueCost(value) <= maxRetainedVirtualValueCost;
+export function shouldRetainVirtualRegisterValue(value: JitValue): boolean {
+  return jitValueCost(value) <= maxRetainedVirtualValueCost;
 }
 
 export function shouldMaterializeRepeatedVirtualRegisterRead(
   reg: Reg32,
-  value: JitVirtualValue,
+  value: JitValue,
   virtualRegReadCounts: ReadonlyMap<Reg32, number>
 ): boolean {
   return (
     (virtualRegReadCounts.get(reg) ?? 0) > 0 &&
-    jitVirtualValueCost(value) > maxRepeatedInlineVirtualValueCost
+    jitValueCost(value) > maxRepeatedInlineVirtualValueCost
   );
 }
 
@@ -30,7 +30,7 @@ export function materializeRepeatedEffectiveAddressReads(
   op: Extract<IrOp, { op: "address32" }>,
   instruction: JitIrBlockInstruction,
   rewrite: JitInstructionRewrite,
-  virtualRegs: Map<Reg32, JitVirtualValue>,
+  virtualRegs: Map<Reg32, JitValue>,
   virtualRegReadCounts: Map<Reg32, number>
 ): number {
   let materializedSetCount = 0;
@@ -51,7 +51,7 @@ export function materializeRepeatedEffectiveAddressReads(
 
 export function syncVirtualRegReadCounts(
   virtualRegReadCounts: Map<Reg32, number>,
-  virtualRegs: ReadonlyMap<Reg32, JitVirtualValue>
+  virtualRegs: ReadonlyMap<Reg32, JitValue>
 ): void {
   for (const reg of virtualRegReadCounts.keys()) {
     if (!virtualRegs.has(reg)) {
