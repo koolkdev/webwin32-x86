@@ -1,6 +1,7 @@
 import {
   buildIrExpressionBlock,
   type IrExpressionOptions,
+  type IrExpressionInputBlock,
   type IrExprOp,
   type IrExprBlock,
   type IrStorageExpr,
@@ -9,7 +10,6 @@ import {
 import type {
   ConditionCode,
   IrFlagSetOp,
-  IrBlock,
 } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
@@ -41,7 +41,7 @@ export type WasmIrEmitHelpers = Readonly<{
   emitValue(value: IrValueExpr): void;
 }>;
 
-export function lowerIrToWasm(block: IrBlock, context: WasmIrLoweringContext): void {
+export function lowerIrToWasm(block: IrExpressionInputBlock, context: WasmIrLoweringContext): void {
   lowerIrExpressionBlockToWasm(buildIrExpressionBlock(block, context.expression), context);
 }
 

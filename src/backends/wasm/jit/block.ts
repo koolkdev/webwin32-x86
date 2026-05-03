@@ -1,4 +1,5 @@
 import type { IsaDecodedInstruction } from "#x86/isa/decoder/types.js";
+import type { IrBlock, ValueRef } from "#x86/ir/model/types.js";
 import { validateIrBlock } from "#x86/ir/passes/validator.js";
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "#backends/wasm/abi.js";
 import { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
@@ -10,11 +11,12 @@ import { buildJitLoweringBlock } from "./lowering/lowering-block.js";
 import { lowerIrWithJitContext, type JitIrInstructionContext } from "./lowering/ir-context.js";
 import { optimizeJitIrBlock } from "./optimization/optimize.js";
 import type { JitBlockOptimization } from "./optimization/types.js";
-import { lowerableJitIrBlock } from "./ir-semantics.js";
+import { jitIrOpDst, visitJitIrOpValueRefs } from "./ir-semantics.js";
 import { assertJitOptimizedIrPreludeOp } from "./prelude.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
 import type {
   JitIrBlock,
+  JitIrBody,
   JitOptimizedIrBlock,
   JitOptimizedIrBlockInstruction
 } from "./types.js";
@@ -110,10 +112,7 @@ function validateLoweringBlock(block: JitOptimizedIrBlock): void {
     }
 
     validateJitPreludeBlock(instruction);
-    validateIrBlock(lowerableJitIrBlock(instruction.ir), {
-      operandCount: instruction.operands.length,
-      terminatorMode: "single"
-    });
+    validateJitInstructionBody(instruction);
   }
 }
 
@@ -125,6 +124,48 @@ function validateJitPreludeBlock(instruction: JitOptimizedIrBlockInstruction): v
 
   for (const op of instruction.prelude) {
     assertJitOptimizedIrPreludeOp(op);
+  }
+}
+
+function validateJitInstructionBody(instruction: JitOptimizedIrBlockInstruction): void {
+  validateIrBlock(jitValidationIrBlock(instruction.ir), {
+    operandCount: instruction.operands.length,
+    terminatorMode: "single"
+  });
+  validateJitFlagConditionInputUses(instruction.ir);
+}
+
+function jitValidationIrBlock(block: JitIrBody): IrBlock {
+  return block.map((op) => {
+    if (op.op === "jit.flagCondition") {
+      return { op: "aluFlags.condition", dst: op.dst, cc: op.cc };
+    }
+
+    return op;
+  });
+}
+
+function validateJitFlagConditionInputUses(block: JitIrBody): void {
+  const definedVars = new Set<number>();
+
+  for (const op of block) {
+    if (op.op === "jit.flagCondition") {
+      visitJitIrOpValueRefs(op, (value) => {
+        validateJitValueRef(value, definedVars);
+      });
+    }
+
+    const dst = jitIrOpDst(op);
+
+    if (dst !== undefined) {
+      definedVars.add(dst.id);
+    }
+  }
+}
+
+function validateJitValueRef(value: ValueRef, definedVars: ReadonlySet<number>): void {
+  if (value.kind === "var" && !definedVars.has(value.id)) {
+    throw new Error(`JIT IR var ${value.id} is used before definition`);
   }
 }
 

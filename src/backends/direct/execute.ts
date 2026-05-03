@@ -12,12 +12,8 @@ import {
 } from "#x86/state/cpu-state.js";
 import { buildIr } from "#x86/ir/build/builder.js";
 import { CONDITIONS, type FlagBoolExpr } from "#x86/ir/model/conditions.js";
-import {
-  flagProducerConditionKind,
-  requiredFlagProducerConditionInput
-} from "#x86/ir/model/flag-conditions.js";
 import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "#x86/ir/model/flags.js";
-import type { MemRef, IrFlagProducerConditionOp, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
+import type { MemRef, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import type { IsaDecodedInstruction, IsaOperandBinding } from "#x86/isa/decoder/types.js";
 
 export type DirectExecutionOptions = Readonly<{
@@ -124,9 +120,6 @@ function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
       return undefined;
     case "aluFlags.condition":
       setVar(context, op.dst, evalCondition(context, op.cc) ? 1 : 0);
-      return undefined;
-    case "flagProducer.condition":
-      setVar(context, op.dst, evalFlagProducerCondition(context, op) ? 1 : 0);
       return undefined;
     case "next":
       return completeInstruction(context, context.instruction.nextEip);
@@ -249,71 +242,6 @@ function evalCondition(context: ExecutionContext, cc: keyof typeof CONDITIONS): 
   return evalFlagBoolExpr(context, CONDITIONS[cc].expr);
 }
 
-function evalFlagProducerCondition(context: ExecutionContext, condition: IrFlagProducerConditionOp): boolean {
-  switch (flagProducerConditionKind(condition)) {
-    case "eq32":
-      return evalFlagProducerConditionLeft(context, condition) === evalFlagProducerConditionRight(context, condition);
-    case "ne32":
-      return evalFlagProducerConditionLeft(context, condition) !== evalFlagProducerConditionRight(context, condition);
-    case "uLt32":
-      return evalFlagProducerConditionLeft(context, condition) < evalFlagProducerConditionRight(context, condition);
-    case "uGe32":
-      return evalFlagProducerConditionLeft(context, condition) >= evalFlagProducerConditionRight(context, condition);
-    case "sLt32":
-      return i32Signed(evalFlagProducerConditionLeft(context, condition)) <
-        i32Signed(evalFlagProducerConditionRight(context, condition));
-    case "sGe32":
-      return i32Signed(evalFlagProducerConditionLeft(context, condition)) >=
-        i32Signed(evalFlagProducerConditionRight(context, condition));
-    case "sLe32":
-      return i32Signed(evalFlagProducerConditionLeft(context, condition)) <=
-        i32Signed(evalFlagProducerConditionRight(context, condition));
-    case "sGt32":
-      return i32Signed(evalFlagProducerConditionLeft(context, condition)) >
-        i32Signed(evalFlagProducerConditionRight(context, condition));
-    case "zero32":
-      return evalFlagProducerConditionResult(context, condition) === 0;
-    case "nonZero32":
-      return evalFlagProducerConditionResult(context, condition) !== 0;
-    case "sign32":
-      return (evalFlagProducerConditionResult(context, condition) & 0x8000_0000) !== 0;
-    case "notSign32":
-      return (evalFlagProducerConditionResult(context, condition) & 0x8000_0000) === 0;
-    case "parity8":
-      return hasEvenParityLowByte(evalFlagProducerConditionResult(context, condition));
-    case "notParity8":
-      return !hasEvenParityLowByte(evalFlagProducerConditionResult(context, condition));
-    case "constTrue":
-      return true;
-    case "constFalse":
-      return false;
-    case "zeroOrSign32": {
-      const result = evalFlagProducerConditionResult(context, condition);
-
-      return result === 0 || (result & 0x8000_0000) !== 0;
-    }
-    case "nonZeroAndNotSign32": {
-      const result = evalFlagProducerConditionResult(context, condition);
-
-      return result !== 0 && (result & 0x8000_0000) === 0;
-    }
-    case undefined:
-      throw new Error(`unsupported flag producer condition: ${condition.producer}/${condition.cc}`);
-  }
-}
-
-function evalFlagProducerConditionLeft(context: ExecutionContext, condition: IrFlagProducerConditionOp): number {
-  return evalValueRef(context, requiredFlagProducerConditionInput(condition, "left"));
-}
-
-function evalFlagProducerConditionRight(context: ExecutionContext, condition: IrFlagProducerConditionOp): number {
-  return evalValueRef(context, requiredFlagProducerConditionInput(condition, "right"));
-}
-
-function evalFlagProducerConditionResult(context: ExecutionContext, condition: IrFlagProducerConditionOp): number {
-  return evalValueRef(context, requiredFlagProducerConditionInput(condition, "result"));
-}
-
 function evalFlagBoolExpr(context: ExecutionContext, expr: FlagBoolExpr): boolean {
   switch (expr.kind) {
     case "flag":
@@ -394,10 +322,6 @@ function effectiveAddress(state: CpuState, binding: Extract<IsaOperandBinding, {
 
 function signMask(width: 8 | 16 | 32): number {
   return width === 32 ? 0x8000_0000 : width === 16 ? 0x8000 : 0x80;
-}
-
-function i32Signed(value: number): number {
-  return value | 0;
 }
 
 function completeInstruction(context: ExecutionContext, target: number): RunResult {

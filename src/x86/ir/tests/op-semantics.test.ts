@@ -9,7 +9,6 @@ import {
   irOpStorageWrites,
   irOpValueUses
 } from "#x86/ir/model/op-semantics.js";
-import { createIrFlagProducerConditionOp, createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import type { IrOp } from "#x86/ir/model/types.js";
 import { const32, irVar } from "#x86/ir/build/builder.js";
 
@@ -43,17 +42,4 @@ test("IR op semantics exposes value and storage uses with roles", () => {
   ]);
   deepStrictEqual(irOpStorageReads(op), []);
   deepStrictEqual(irOpStorageWrites(op), [target]);
-});
-
-test("IR op semantics visits only the inputs used by flag producer conditions", () => {
-  const source = createIrFlagSetOp("add32", {
-    left: irVar(0),
-    right: irVar(1),
-    result: irVar(2)
-  });
-  const condition = createIrFlagProducerConditionOp(irVar(3), "E", source);
-
-  deepStrictEqual(irOpValueUses(condition), [
-    { value: irVar(2), role: "value" }
-  ]);
 });

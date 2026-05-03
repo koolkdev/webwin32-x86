@@ -1,7 +1,3 @@
-import {
-  flagProducerConditionInputNames,
-  requiredFlagProducerConditionInput
-} from "./flag-conditions.js";
 import type { IrOp, StorageRef, ValueRef, VarRef } from "./types.js";
 
 export type IrValueUseRole = "condition" | "value";
@@ -36,7 +32,6 @@ export function irOpResult(op: IrOp): IrOpResult {
     case "i32.or":
     case "i32.and":
     case "aluFlags.condition":
-    case "flagProducer.condition":
       return { kind: "value", dst: op.dst, sideEffect: "none" };
     case "set32":
     case "set32.if":
@@ -77,7 +72,6 @@ export function irOpIsTerminator(op: IrOp): op is IrTerminatorOp {
     case "i32.or":
     case "i32.and":
     case "flags.set":
-    case "flagProducer.condition":
     case "flags.materialize":
     case "flags.boundary":
     case "aluFlags.condition":
@@ -127,11 +121,6 @@ export function visitIrOpValueRefs(
     case "flags.set":
       for (const value of Object.values(op.inputs)) {
         visit(value, "value");
-      }
-      return;
-    case "flagProducer.condition":
-      for (const name of flagProducerConditionInputNames(op)) {
-        visit(requiredFlagProducerConditionInput(op, name), "value");
       }
       return;
     case "flags.materialize":
@@ -196,7 +185,6 @@ export function visitIrOpStorageRefs(
     case "i32.or":
     case "i32.and":
     case "flags.set":
-    case "flagProducer.condition":
     case "flags.materialize":
     case "flags.boundary":
     case "aluFlags.condition":

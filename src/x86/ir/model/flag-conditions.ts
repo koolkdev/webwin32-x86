@@ -1,4 +1,4 @@
-import type { ConditionCode, IrFlagProducerConditionOp, IrFlagSetOp, ValueRef } from "./types.js";
+import type { ConditionCode, FlagMask, FlagProducerName, IrFlagSetOp, ValueRef } from "./types.js";
 
 export type IrFlagProducerConditionKind =
   | "eq32"
@@ -20,10 +20,13 @@ export type IrFlagProducerConditionKind =
   | "zeroOrSign32"
   | "nonZeroAndNotSign32";
 
-export type IrFlagProducerConditionDescriptor = Pick<
-  IrFlagProducerConditionOp,
-  "cc" | "producer" | "writtenMask" | "undefMask" | "inputs"
->;
+export type IrFlagProducerConditionDescriptor = Readonly<{
+  cc: ConditionCode;
+  producer: FlagProducerName;
+  writtenMask: FlagMask;
+  undefMask: FlagMask;
+  inputs: Readonly<Record<string, ValueRef>>;
+}>;
 
 export type IrFlagProducerDescriptor = Pick<
   IrFlagSetOp,
@@ -31,7 +34,7 @@ export type IrFlagProducerDescriptor = Pick<
 >;
 
 export function flagProducerConditionKind(
-  condition: Pick<IrFlagProducerConditionOp, "cc" | "producer"> & Partial<Pick<IrFlagProducerConditionOp, "inputs">>
+  condition: Pick<IrFlagProducerConditionDescriptor, "cc" | "producer"> & Partial<Pick<IrFlagProducerConditionDescriptor, "inputs">>
 ): IrFlagProducerConditionKind | undefined {
   if (condition.producer === "logic32") {
     switch (condition.cc) {
@@ -115,7 +118,7 @@ export function canUseFlagProducerCondition(
 }
 
 export function flagProducerConditionInputNames(
-  condition: Pick<IrFlagProducerConditionOp, "cc" | "producer"> & Partial<Pick<IrFlagProducerConditionOp, "inputs">>
+  condition: Pick<IrFlagProducerConditionDescriptor, "cc" | "producer"> & Partial<Pick<IrFlagProducerConditionDescriptor, "inputs">>
 ): readonly string[] {
   switch (flagProducerConditionKind(condition)) {
     case "eq32":
@@ -157,7 +160,7 @@ export function requiredFlagProducerConditionInput(
   return input;
 }
 
-function producerHasResultInput(producer: IrFlagProducerConditionOp["producer"]): boolean {
+function producerHasResultInput(producer: FlagProducerName): boolean {
   return producer === "add32" ||
     producer === "sub32" ||
     producer === "logic32" ||
@@ -165,9 +168,7 @@ function producerHasResultInput(producer: IrFlagProducerConditionOp["producer"])
     producer === "dec32";
 }
 
-function conditionUsesOnlyResultInput(
-  condition: Partial<Pick<IrFlagProducerConditionOp, "inputs">>
-): boolean {
+function conditionUsesOnlyResultInput(condition: Partial<Pick<IrFlagProducerConditionDescriptor, "inputs">>): boolean {
   if (condition.inputs === undefined) {
     return false;
   }

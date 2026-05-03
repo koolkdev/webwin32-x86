@@ -679,7 +679,6 @@ function irOpDstId(op: JitIrOp): readonly number[] {
     case "i32.or":
     case "i32.and":
     case "aluFlags.condition":
-    case "flagProducer.condition":
     case "jit.flagCondition":
       return [op.dst.id];
     default:

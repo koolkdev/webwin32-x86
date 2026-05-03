@@ -43,16 +43,6 @@ export type IrFlagSetOp = Readonly<{
   inputs: Readonly<Record<string, ValueRef>>;
 }>;
 
-export type IrFlagProducerConditionOp = Readonly<{
-  op: "flagProducer.condition";
-  dst: VarRef;
-  cc: ConditionCode;
-  producer: FlagProducerName;
-  writtenMask: FlagMask;
-  undefMask: FlagMask;
-  inputs: Readonly<Record<string, ValueRef>>;
-}>;
-
 export type IrAluFlagsConditionOp = Readonly<{
   op: "aluFlags.condition";
   dst: VarRef;
@@ -71,7 +61,6 @@ export type IrOp =
   | Readonly<{ op: "i32.or"; dst: VarRef; a: ValueRef; b: ValueRef }>
   | Readonly<{ op: "i32.and"; dst: VarRef; a: ValueRef; b: ValueRef }>
   | IrFlagSetOp
-  | IrFlagProducerConditionOp
   | Readonly<{ op: "flags.materialize"; mask: FlagMask }>
   | Readonly<{ op: "flags.boundary"; mask: FlagMask }>
   | IrAluFlagsConditionOp

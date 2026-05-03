@@ -15,7 +15,8 @@ import {
   type IrValueUse,
   type IrValueUseRole
 } from "#x86/ir/model/op-semantics.js";
-import type { IrBlock, IrOp, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
+import type { IrOp, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
+import type { IrExpressionInputBlock, IrExpressionInputOp } from "#x86/ir/model/expressions.js";
 import type { JitIrBody, JitIrOp } from "./types.js";
 
 export function jitIrOpResult(op: JitIrOp): IrOpResult {
@@ -94,11 +95,11 @@ export function jitIrOpStorageWrites(op: JitIrOp): readonly StorageRef[] {
   }
 }
 
-export function lowerableJitIrBlock(block: JitIrBody): IrBlock {
+export function lowerableJitIrBlock(block: JitIrBody): IrExpressionInputBlock {
   return block.map(lowerableJitIrOp);
 }
 
-function lowerableJitIrOp(op: JitIrOp): IrOp {
+function lowerableJitIrOp(op: JitIrOp): IrExpressionInputOp {
   switch (op.op) {
     case "jit.flagCondition":
       return {

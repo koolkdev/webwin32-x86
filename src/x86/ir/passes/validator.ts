@@ -1,9 +1,5 @@
 import { assertIrAluFlagMask, IR_FLAG_MASK_NONE } from "#x86/ir/model/flag-effects.js";
-import {
-  canUseFlagProducerCondition,
-  flagProducerConditionInputNames,
-  type IrFlagProducerDescriptor
-} from "#x86/ir/model/flag-conditions.js";
+import type { IrFlagProducerDescriptor } from "#x86/ir/model/flag-conditions.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import { irOpDst } from "#x86/ir/model/op-semantics.js";
 import type { FlagMask, IrOp, IrBlock, StorageRef, ValueRef } from "#x86/ir/model/types.js";
@@ -85,9 +81,6 @@ function validateOpUses(
     case "flags.set":
       validateFlagSetDescriptor(op, definedVars);
       break;
-    case "flagProducer.condition":
-      validateFlagProducerConditionDescriptor(op, definedVars);
-      break;
     case "aluFlags.condition":
       break;
     case "flags.materialize":
@@ -162,24 +155,9 @@ function validateFlagSetDescriptor(op: IrFlagProducerDescriptor, definedVars: Re
   });
 }
 
-function validateFlagProducerConditionDescriptor(
-  op: Extract<IrOp, { op: "flagProducer.condition" }>,
-  definedVars: ReadonlySet<number>
-): void {
-  const producer = FLAG_PRODUCERS[op.producer];
-
-  validateFlagDescriptorMasks(op, "flagProducer.condition");
-  validateFlagProducerCondition(op);
-  validateFlagInputs(op, definedVars, {
-    label: "flagProducer.condition",
-    requiredInputs: flagProducerConditionInputNames(op),
-    allowedInputs: producer.inputs
-  });
-}
-
 function validateFlagDescriptorMasks(
   op: IrFlagProducerDescriptor,
-  label: "flags.set" | "flagProducer.condition"
+  label: "flags.set"
 ): void {
   const producer = FLAG_PRODUCERS[op.producer];
 
@@ -203,7 +181,7 @@ function validateFlagInputs(
   op: IrFlagProducerDescriptor,
   definedVars: ReadonlySet<number>,
   options: Readonly<{
-    label: "flags.set" | "flagProducer.condition";
+    label: "flags.set";
     requiredInputs: readonly string[];
     allowedInputs: readonly string[];
   }>
@@ -230,12 +208,6 @@ function validateFlagInputs(
     if (value !== undefined) {
       validateValueRef(value, definedVars);
     }
-  }
-}
-
-function validateFlagProducerCondition(op: Extract<IrOp, { op: "flagProducer.condition" }>): void {
-  if (!canUseFlagProducerCondition(op, op.cc)) {
-    throw new Error(`flagProducer.condition ${op.producer}/${op.cc} is not supported`);
   }
 }
 

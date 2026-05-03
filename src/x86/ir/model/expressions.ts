@@ -5,11 +5,10 @@ import {
 } from "./flag-conditions.js";
 import type {
   ConditionCode,
-  IrFlagProducerConditionOp,
   IrFlagSetOp,
   OperandRef,
   RegRef,
-  IrBlock,
+  IrOp,
   StorageRef,
   ValueRef,
   VarRef
@@ -28,9 +27,9 @@ export type IrValueExpr =
   | Readonly<{
       kind: "flagProducer.condition";
       cc: ConditionCode;
-      producer: IrFlagProducerConditionOp["producer"];
-      writtenMask: IrFlagProducerConditionOp["writtenMask"];
-      undefMask: IrFlagProducerConditionOp["undefMask"];
+      producer: IrFlagProducerConditionDescriptor["producer"];
+      writtenMask: IrFlagProducerConditionDescriptor["writtenMask"];
+      undefMask: IrFlagProducerConditionDescriptor["undefMask"];
       inputs: Readonly<Record<string, ValueRef>>;
     }>
   | Readonly<{ kind: "i32.add"; a: IrValueExpr; b: IrValueExpr }>
@@ -53,12 +52,20 @@ export type IrExprOp =
 
 export type IrExprBlock = readonly IrExprOp[];
 
+export type IrExpressionFlagProducerConditionOp = IrFlagProducerConditionDescriptor & Readonly<{
+  op: "flagProducer.condition";
+  dst: VarRef;
+}>;
+
+export type IrExpressionInputOp = IrOp | IrExpressionFlagProducerConditionOp;
+export type IrExpressionInputBlock = readonly IrExpressionInputOp[];
+
 export type IrExpressionOptions = Readonly<{
   canInlineGet32?: (source: StorageRef) => boolean;
 }>;
 
 export function buildIrExpressionBlock(
-  block: IrBlock,
+  block: IrExpressionInputBlock,
   options: IrExpressionOptions = {}
 ): IrExprBlock {
   const builder = new ExpressionBuilder(block, options);
@@ -73,7 +80,7 @@ class ExpressionBuilder {
   readonly #conditionalWriteValueVars: ReadonlySet<number>;
 
   constructor(
-    readonly block: IrBlock,
+    readonly block: IrExpressionInputBlock,
     readonly options: IrExpressionOptions
   ) {
     this.#useCounts = countVarUses(block);
@@ -228,7 +235,7 @@ class ExpressionBuilder {
   }
 }
 
-function countVarUses(block: IrBlock): Map<number, number> {
+function countVarUses(block: IrExpressionInputBlock): Map<number, number> {
   const counts = new Map<number, number>();
 
   for (const op of block) {
@@ -300,7 +307,7 @@ function countValueUse(counts: Map<number, number>, value: ValueRef): void {
   }
 }
 
-function conditionalWriteValueVars(block: IrBlock): ReadonlySet<number> {
+function conditionalWriteValueVars(block: IrExpressionInputBlock): ReadonlySet<number> {
   const vars = new Set<number>();
 
   for (const op of block) {

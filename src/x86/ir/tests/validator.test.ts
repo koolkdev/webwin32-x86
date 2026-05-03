@@ -8,7 +8,7 @@ import { leaSemantic } from "#x86/isa/semantics/lea.js";
 import { intSemantic } from "#x86/isa/semantics/misc.js";
 import { cmovSemantic, movSemantic } from "#x86/isa/semantics/mov.js";
 import { buildIr, const32, operand, irVar } from "#x86/ir/build/builder.js";
-import { createIrFlagProducerConditionOp, createIrFlagSetOp } from "#x86/ir/model/flags.js";
+import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import { validateIrBlock } from "#x86/ir/passes/validator.js";
 
 test("validator accepts representative generated semantic templates", () => {
@@ -113,19 +113,5 @@ test("validator rejects flag descriptors that disagree with producer metadata", 
         { op: "next" }
       ]),
     /flags\.set add32 undefMask does not match producer metadata/
-  );
-});
-
-test("validator rejects unsupported flag producer conditions", () => {
-  const descriptor = createIrFlagSetOp("inc32", { left: irVar(0), result: irVar(0) });
-
-  throws(
-    () =>
-      validateIrBlock([
-        { op: "const32", dst: irVar(0), value: 1 },
-        createIrFlagProducerConditionOp(irVar(1), "B", descriptor),
-        { op: "next" }
-      ]),
-    /flagProducer\.condition inc32\/B is not supported/
   );
 });
