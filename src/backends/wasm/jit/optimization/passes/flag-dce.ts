@@ -10,7 +10,7 @@ export type JitFlagDce = Readonly<{
   retainedSetCount: number;
 }>;
 
-export const flagDcePass: JitOptimizationPass = {
+export const flagDcePass = {
   name: "flag-dce",
   run(block) {
     const result = pruneDeadJitFlagSets(block);
@@ -21,7 +21,7 @@ export const flagDcePass: JitOptimizationPass = {
       stats: result.flagDce
     };
   }
-};
+} satisfies JitOptimizationPass<"flag-dce">;
 
 export function pruneDeadJitFlagSets(block: JitIrBlock): Readonly<{
   block: JitIrBlock;

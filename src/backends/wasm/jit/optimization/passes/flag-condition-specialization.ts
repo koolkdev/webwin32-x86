@@ -15,7 +15,7 @@ export type JitFlagConditionSpecialization = Readonly<{
   directConditionCount: number;
 }>;
 
-export const flagConditionSpecializationPass: JitOptimizationPass = {
+export const flagConditionSpecializationPass = {
   name: "flag-condition-specialization",
   run(block) {
     const result = specializeJitFlagConditions(block);
@@ -26,7 +26,7 @@ export const flagConditionSpecializationPass: JitOptimizationPass = {
       stats: result.flagConditions
     };
   }
-};
+} satisfies JitOptimizationPass<"flag-condition-specialization">;
 
 export function specializeJitFlagConditions(block: JitIrBlock): Readonly<{
   block: JitIrBlock;

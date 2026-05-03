@@ -17,14 +17,21 @@ export const jitIrOptimizationPasses = [
   localDcePass
 ] as const satisfies readonly JitOptimizationPass[];
 
-export const jitIrOptimizationPassOrder = jitIrOptimizationPasses.map((pass) => pass.name);
+export type JitIrOptimizationPassName = typeof jitIrOptimizationPasses[number]["name"];
 
-export type JitIrOptimizationPassName = typeof jitIrOptimizationPassOrder[number];
+export const jitIrOptimizationPassOrder = [
+  "local-dce",
+  "flag-condition-specialization",
+  "flag-dce",
+  "local-dce",
+  "register-value-propagation",
+  "local-dce"
+] as const satisfies readonly JitIrOptimizationPassName[];
 
 export type JitIrOptimizationPipelineResult = Readonly<{
   block: JitIrBlock;
-  passResults: readonly JitOptimizationPassRun[];
-  stats: JitPassStatsByName;
+  passResults: readonly JitOptimizationPassRun<JitIrOptimizationPassName>[];
+  stats: JitPassStatsByName<JitIrOptimizationPassName>;
 }>;
 
 export function runJitIrOptimizationPipeline(

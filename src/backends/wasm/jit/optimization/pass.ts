@@ -12,29 +12,36 @@ export type JitPassResult = Readonly<{
   stats?: JitPassStats;
 }>;
 
-export type JitOptimizationPass = Readonly<{
-  name: string;
+export type JitOptimizationPass<TName extends string = string> = Readonly<{
+  name: TName;
   run(block: JitIrBlock, context: JitPassContext): JitPassResult;
 }>;
 
-export type JitOptimizationPassRun = JitNamedPassStats;
+export type JitOptimizationPassRun<TName extends string = string> = JitNamedPassStats<TName>;
 
-export type JitOptimizationPassPipelineResult = Readonly<{
+export type JitOptimizationPassPipelineResult<TName extends string = string> = Readonly<{
   block: JitIrBlock;
   changed: boolean;
-  passes: readonly JitOptimizationPassRun[];
+  passes: readonly JitOptimizationPassRun<TName>[];
 }>;
 
-export function runJitOptimizationPasses(
+export function runJitOptimizationPasses<const TPasses extends readonly JitOptimizationPass[]>(
   block: JitIrBlock,
-  passes: readonly JitOptimizationPass[],
+  passes: TPasses,
   context: JitPassContext = {}
-): JitOptimizationPassPipelineResult {
+): JitOptimizationPassPipelineResult<TPasses[number]["name"]> {
   let current = block;
   let changed = false;
-  const results: JitOptimizationPassRun[] = [];
+  const results: JitOptimizationPassRun<TPasses[number]["name"]>[] = [];
 
   for (const pass of passes) {
+    if (context.validate === true) {
+      verifyJitIrBlock(current, {
+        phase: "before-pass",
+        passName: pass.name
+      });
+    }
+
     const result = pass.run(current, context);
     const stats = result.stats ?? {};
 

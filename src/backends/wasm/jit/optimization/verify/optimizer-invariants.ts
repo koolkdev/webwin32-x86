@@ -4,7 +4,7 @@ import { validateIrBlock } from "#x86/ir/passes/validator.js";
 import { jitIrOpDst } from "#backends/wasm/jit/ir-semantics.js";
 import type { JitIrBlock, JitIrBody, JitIrOp } from "#backends/wasm/jit/types.js";
 
-export type JitOptimizerVerificationPhase = "after-pass" | "final";
+export type JitOptimizerVerificationPhase = "before-pass" | "after-pass" | "final";
 
 export type JitOptimizerVerificationOptions = Readonly<{
   phase: JitOptimizerVerificationPhase;
@@ -35,6 +35,8 @@ export function verifyJitIrBlock(block: JitIrBlock, options: JitOptimizerVerific
 
 function verificationPrefix(options: JitOptimizerVerificationOptions): string {
   switch (options.phase) {
+    case "before-pass":
+      return `before JIT optimization pass '${options.passName ?? "<unknown>"}'`;
     case "after-pass":
       return `after JIT optimization pass '${options.passName ?? "<unknown>"}'`;
     case "final":

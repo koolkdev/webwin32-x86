@@ -32,7 +32,7 @@ export type JitRegisterValuePropagation = Readonly<{
   materializedSetCount: number;
 }>;
 
-export const registerValuePropagationPass: JitOptimizationPass = {
+export const registerValuePropagationPass = {
   name: "register-value-propagation",
   run(block) {
     const result = propagateJitRegisterValues(block);
@@ -46,7 +46,7 @@ export const registerValuePropagationPass: JitOptimizationPass = {
       stats: result.registerValues
     };
   }
-};
+} satisfies JitOptimizationPass<"register-value-propagation">;
 
 export function propagateJitRegisterValues(block: JitIrBlock): Readonly<{
   block: JitIrBlock;

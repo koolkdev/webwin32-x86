@@ -17,7 +17,7 @@ export type JitLocalDce = Readonly<{
 
 export type JitDeadLocalValuePruning = JitLocalDce;
 
-export const localDcePass: JitOptimizationPass = {
+export const localDcePass = {
   name: "local-dce",
   run(block) {
     const result = pruneDeadJitLocalValues(block);
@@ -28,7 +28,7 @@ export const localDcePass: JitOptimizationPass = {
       stats: result.localDce
     };
   }
-};
+} satisfies JitOptimizationPass<"local-dce">;
 
 export function pruneDeadJitLocalValues(
   block: JitIrBlock,

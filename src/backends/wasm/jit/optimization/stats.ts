@@ -1,25 +1,27 @@
 export type JitPassStats = Readonly<Record<string, number>>;
 
-export type JitNamedPassStats = Readonly<{
-  name: string;
+export type JitNamedPassStats<TName extends string = string> = Readonly<{
+  name: TName;
   changed: boolean;
   stats: JitPassStats;
 }>;
 
-export type JitPassStatsByName = Readonly<Record<string, JitPassStats>>;
+export type JitPassStatsByName<TName extends string = string> = Readonly<Record<TName, JitPassStats>>;
 
 export function jitPassChangedFromStats(stats: JitPassStats): boolean {
   return Object.values(stats).some((value) => value !== 0);
 }
 
-export function collectJitPassStats(results: readonly JitNamedPassStats[]): JitPassStatsByName {
+export function collectJitPassStats<TName extends string>(
+  results: readonly JitNamedPassStats<TName>[]
+): JitPassStatsByName<TName> {
   const byName: Record<string, JitPassStats> = {};
 
   for (const result of results) {
     byName[result.name] = result.stats;
   }
 
-  return byName;
+  return byName as Record<TName, JitPassStats>;
 }
 
 export function sumJitPassStats(results: readonly JitNamedPassStats[]): JitPassStats {
