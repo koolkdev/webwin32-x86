@@ -33,8 +33,9 @@ order remains `["tracked-optimization"]`.
 - `planner/stats.ts`: public counters reported through the existing pass result
   shape.
 - `flags/sources.ts`, `flags/owners.ts`, `flags/conditions.ts`,
-  `flags/policy.ts`, and `flags/materialization.ts`: flag source ownership,
-  direct condition planning, and thin compatibility helpers.
+  `flags/planner.ts`, `flags/policy.ts`, and `flags/materialization.ts`: flag
+  source ownership, normalized flag fact discovery, direct condition planning,
+  and thin compatibility helpers.
 - `registers/values.ts`, `registers/planner.ts`, `registers/rewrite.ts`,
   `registers/policy.ts`, and `registers/materialization.ts`: register value
   tracking, normalized register fact discovery, rewrite support, policy, and
