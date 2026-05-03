@@ -12,6 +12,7 @@ import type {
   StorageRef,
   ValueRef
 } from "#x86/ir/model/types.js";
+import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import {
   analyzeJitOptimization,
@@ -60,8 +61,9 @@ export type JitVirtualFlagOwnerMask = Readonly<{
 export type JitVirtualFlagRead = Readonly<{
   instructionIndex: number;
   opIndex: number;
-  reason: "condition" | "materialize" | "boundary" | "memoryFault" | "exit";
+  reason: "condition" | "materialize" | "boundary" | "preInstructionExit" | "exit";
   requiredMask: number;
+  exitReason?: ExitReasonValue;
   cc?: ConditionCode;
   conditionUse?: JitConditionUse;
   owners: readonly JitVirtualFlagOwnerMask[];
@@ -133,11 +135,14 @@ export function analyzeJitVirtualFlags(
     localValues: Map<number, JitVirtualValue>,
     instructionEntryOwners: ReadonlyMap<number, JitVirtualFlagOwner>
   ): void {
-    if (jitPreInstructionExitReasonAt(analysis.boundaries, instructionIndex, opIndex) !== undefined) {
+    const preInstructionExitReason = jitPreInstructionExitReasonAt(analysis.boundaries, instructionIndex, opIndex);
+
+    if (preInstructionExitReason !== undefined) {
       recordRead({
         instructionIndex,
         opIndex,
-        reason: "memoryFault",
+        reason: "preInstructionExit",
+        exitReason: preInstructionExitReason,
         requiredMask: IR_ALU_FLAG_MASK
       }, instructionEntryOwners);
     }

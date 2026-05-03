@@ -378,15 +378,19 @@ test("analyzeJitVirtualFlags classifies local and exit-coupled condition uses", 
   strictEqual(unused.reads.find((read) => read.reason === "condition"), undefined);
 });
 
-test("analyzeJitVirtualFlags records memory-fault reads from instruction entry owners", () => {
+test("analyzeJitVirtualFlags records pre-instruction exit reads from instruction entry owners", () => {
   const addMem = ok(decodeBytes([0x01, 0x18], startAddress));
   const analysis = analyzeJitVirtualFlags(buildJitIrBlock([addMem]));
-  const memoryFaultReads = analysis.reads.filter((read) => read.reason === "memoryFault");
+  const preInstructionExitReads = analysis.reads.filter((read) => read.reason === "preInstructionExit");
   const exitRead = analysis.reads.find((read) => read.reason === "exit");
 
-  strictEqual(memoryFaultReads.length, 2);
+  strictEqual(preInstructionExitReads.length, 2);
+  deepStrictEqual(preInstructionExitReads.map((read) => read.exitReason), [
+    ExitReason.MEMORY_READ_FAULT,
+    ExitReason.MEMORY_WRITE_FAULT
+  ]);
 
-  for (const read of memoryFaultReads) {
+  for (const read of preInstructionExitReads) {
     deepStrictEqual(flagOwnerSummary(read.owners), [
       { mask: IR_ALU_FLAG_MASK, kind: "incoming" }
     ]);
