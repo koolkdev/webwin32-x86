@@ -2,7 +2,7 @@ import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import {
   indexJitOptimizationBoundaries,
-  jitBoundariesAt,
+  jitBoundaryAt,
   type JitOptimizationBoundaryIndex
 } from "./boundaries.js";
 import { walkJitIrBlockOps } from "./ir-walk.js";
@@ -53,11 +53,7 @@ export function jitPreInstructionExitReasonAt(
   instructionIndex: number,
   opIndex: number
 ): ExitReasonValue | undefined {
-  const boundary = jitBoundariesAt(analysis.boundaries, instructionIndex, opIndex).find((entry) =>
-    entry.kind === "preInstructionExit"
-  );
-
-  return boundary?.kind === "preInstructionExit" ? boundary.exitReason : undefined;
+  return jitBoundaryAt(analysis.boundaries, instructionIndex, opIndex, "preInstructionExit")?.exitReason;
 }
 
 export function jitPostInstructionExitReasonsAt(
@@ -65,11 +61,7 @@ export function jitPostInstructionExitReasonsAt(
   instructionIndex: number,
   opIndex: number
 ): readonly ExitReasonValue[] {
-  const boundary = jitBoundariesAt(analysis.boundaries, instructionIndex, opIndex).find((entry) =>
-    entry.kind === "postInstructionExit"
-  );
-
-  return boundary?.kind === "postInstructionExit" ? boundary.exitReasons : [];
+  return jitBoundaryAt(analysis.boundaries, instructionIndex, opIndex, "postInstructionExit")?.exitReasons ?? [];
 }
 
 export function jitOpHasPostInstructionExit(
@@ -85,11 +77,7 @@ export function jitConditionUseAt(
   instructionIndex: number,
   opIndex: number
 ): JitConditionUse | undefined {
-  const boundary = jitBoundariesAt(analysis.boundaries, instructionIndex, opIndex).find((entry) =>
-    entry.kind === "conditionRead"
-  );
-
-  return boundary?.kind === "conditionRead" ? boundary.conditionUse : undefined;
+  return jitBoundaryAt(analysis.boundaries, instructionIndex, opIndex, "conditionRead")?.conditionUse;
 }
 
 export function jitInstructionHasPreInstructionExit(

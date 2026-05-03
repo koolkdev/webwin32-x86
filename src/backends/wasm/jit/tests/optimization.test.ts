@@ -15,7 +15,10 @@ import {
   jitPreInstructionExitReasonAt,
   jitPostInstructionExitReasonsAt
 } from "#backends/wasm/jit/optimization/analysis.js";
-import { jitBoundariesAt } from "#backends/wasm/jit/optimization/boundaries.js";
+import {
+  jitBoundariesAt,
+  jitConditionValuesAt
+} from "#backends/wasm/jit/optimization/boundaries.js";
 import {
   jitIrLocation,
   walkJitIrOpsBetween
@@ -184,8 +187,8 @@ test("analyzeJitOptimization indexes shared op effects", () => {
     ExitReason.BRANCH_TAKEN,
     ExitReason.BRANCH_NOT_TAKEN
   ]);
-  deepStrictEqual(analysis.localConditionValues.get(0)?.get(1), [v(0)]);
-  deepStrictEqual(analysis.exitConditionValues.get(0)?.get(2), [v(0)]);
+  deepStrictEqual(jitConditionValuesAt(analysis.boundaries, 0, 1, "localCondition"), [v(0)]);
+  deepStrictEqual(jitConditionValuesAt(analysis.boundaries, 0, 2, "exitCondition"), [v(0)]);
   strictEqual(jitConditionUseAt(analysis, 0, 0), "exitCondition");
   strictEqual(jitPreInstructionExitReasonAt(analysis, 1, 0), ExitReason.MEMORY_READ_FAULT);
   strictEqual(jitInstructionHasPreInstructionExit(analysis, 1), true);

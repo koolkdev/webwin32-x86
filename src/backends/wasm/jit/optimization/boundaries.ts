@@ -43,6 +43,26 @@ export function jitBoundariesAt(
   return boundaries.get(instructionIndex)?.get(opIndex) ?? [];
 }
 
+export function jitBoundaryAt<K extends JitOptimizationBoundary["kind"]>(
+  boundaries: JitOptimizationBoundaryIndex,
+  instructionIndex: number,
+  opIndex: number,
+  kind: K
+): Extract<JitOptimizationBoundary, { kind: K }> | undefined {
+  return jitBoundariesAt(boundaries, instructionIndex, opIndex).find((entry): entry is Extract<JitOptimizationBoundary, { kind: K }> =>
+    entry.kind === kind
+  );
+}
+
+export function jitConditionValuesAt(
+  boundaries: JitOptimizationBoundaryIndex,
+  instructionIndex: number,
+  opIndex: number,
+  kind: "localCondition" | "exitCondition"
+): readonly ValueRef[] {
+  return jitBoundaryAt(boundaries, instructionIndex, opIndex, kind)?.values ?? [];
+}
+
 function addConditionValueBoundaries(
   valuesByLocation: JitOpIndex<readonly ValueRef[]>,
   boundaries: Map<number, Map<number, readonly JitOptimizationBoundary[]>>,
