@@ -22,6 +22,9 @@ order remains `["tracked-optimization"]`.
   and materialization state.
 - `planner/plan.ts`: immutable plan records for producers, reads, clobbers,
   folds, materializations, rewrites, drops, and stats.
+- `planner/domain.ts`: shared domain adapter contract for reporting normalized
+  producers, reads, clobbers, boundaries, foldable uses, droppable producers,
+  and emission needs before shared decisions are applied.
 - `planner/planner.ts`: one forward walk over `JitTrackedState` that records
   decisions without emitting IR.
 - `planner/emitter.ts`: emits optimized IR from the plan.
