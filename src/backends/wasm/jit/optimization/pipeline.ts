@@ -1,10 +1,12 @@
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import { analyzeJitOptimization } from "./analysis.js";
+import { pruneDeadJitLocalValues, type JitDeadLocalValuePruning } from "./dead-local-values.js";
 import { materializeJitVirtualFlags, type JitVirtualFlagMaterialization } from "./virtual-flags.js";
 import { foldJitVirtualRegisters, type JitVirtualRegisterFolding } from "./virtual-registers.js";
 
 export const jitIrOptimizationPassOrder = [
   "virtual-flags",
+  "dead-local-values",
   "virtual-registers"
 ] as const;
 
@@ -14,6 +16,7 @@ export type JitIrOptimizationPipelineResult = Readonly<{
   block: JitIrBlock;
   passes: Readonly<{
     virtualFlags: JitVirtualFlagMaterialization;
+    deadLocalValues: JitDeadLocalValuePruning;
     virtualRegisters: JitVirtualRegisterFolding;
   }>;
 }>;
@@ -21,9 +24,10 @@ export type JitIrOptimizationPipelineResult = Readonly<{
 export function runJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizationPipelineResult {
   const initialAnalysis = analyzeJitOptimization(block);
   const virtualFlags = materializeJitVirtualFlags(block, initialAnalysis);
-  const registerAnalysis = analyzeJitOptimization(virtualFlags.block);
+  const deadLocalValues = pruneDeadJitLocalValues(virtualFlags.block);
+  const registerAnalysis = analyzeJitOptimization(deadLocalValues.block);
   const virtualRegisters = foldJitVirtualRegisters(
-    virtualFlags.block,
+    deadLocalValues.block,
     registerAnalysis
   );
 
@@ -31,6 +35,7 @@ export function runJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizati
     block: virtualRegisters.block,
     passes: {
       virtualFlags: virtualFlags.flags,
+      deadLocalValues: deadLocalValues.deadLocalValues,
       virtualRegisters: virtualRegisters.folding
     }
   };
