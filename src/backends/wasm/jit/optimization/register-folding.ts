@@ -12,37 +12,36 @@ import {
 } from "./analysis.js";
 import { JitOptimizationState } from "./state.js";
 import {
-  materializeVirtualRegsForPostInstructionExit,
-  materializeVirtualRegsForPreInstructionExits
-} from "./virtual-register-materialization.js";
+  materializeRegisterValuesForPostInstructionExit,
+  materializeRegisterValuesForPreInstructionExits
+} from "./register-materialization.js";
 import {
-  createJitInstructionRewrite,
   createJitPreludeRewrite,
   rewriteJitIrInstructionInto,
   type JitInstructionRewrite
 } from "./rewrite.js";
 import {
-  rewriteVirtualRegisterAddress32,
-  rewriteVirtualRegisterGet32,
-  rewriteVirtualRegisterSet32,
-  rewriteVirtualRegisterSet32If,
-  unchangedJitVirtualRegisterRewriteResult,
-  type JitVirtualRegisterRewriteResult
-} from "./virtual-register-op-rewrites.js";
+  rewriteRegisterAddress32,
+  rewriteRegisterGet32,
+  rewriteRegisterSet32,
+  rewriteRegisterSet32If,
+  unchangedJitRegisterRewriteResult,
+  type JitRegisterRewriteResult
+} from "./register-rewrite.js";
 import {
-  firstVirtualRegisterFoldableOpIndex,
-  recordCopiedVirtualRegisterOp
-} from "./virtual-register-prefix.js";
+  firstRegisterFoldableOpIndex,
+  recordCopiedRegisterOp
+} from "./register-folding-prefix.js";
 
-export type JitVirtualRegisterFolding = Readonly<{
+export type JitRegisterFolding = Readonly<{
   removedSetCount: number;
   materializedSetCount: number;
 }>;
 
-export function foldJitVirtualRegisters(
+export function foldJitRegisters(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
-): Readonly<{ block: JitOptimizedIrBlock; folding: JitVirtualRegisterFolding }> {
+): Readonly<{ block: JitOptimizedIrBlock; folding: JitRegisterFolding }> {
   const state = new JitOptimizationState();
   const instructions: JitOptimizedIrBlockInstruction[] = [];
   let removedSetCount = 0;
@@ -52,12 +51,12 @@ export function foldJitVirtualRegisters(
     const instruction = block.instructions[instructionIndex];
 
     if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while folding virtual registers: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction while folding register values: ${instructionIndex}`);
     }
 
     const prelude = createJitPreludeRewrite();
 
-    materializedSetCount += materializeVirtualRegsForPreInstructionExits(
+    materializedSetCount += materializeRegisterValuesForPreInstructionExits(
       prelude,
       analysis.context.effects,
       instructionIndex,
@@ -65,16 +64,16 @@ export function foldJitVirtualRegisters(
     );
 
     const rewrite = state.beginInstructionRewrite(instruction);
-    const firstFoldableOpIndex = firstVirtualRegisterFoldableOpIndex(instructionIndex, analysis);
+    const firstFoldableOpIndex = firstRegisterFoldableOpIndex(instructionIndex, analysis);
 
     rewriteJitIrInstructionInto(
       instruction,
       instructionIndex,
-      "folding virtual registers",
+      "folding register values",
       rewrite,
       ({ op, opIndex }) => {
         if (opIndex < firstFoldableOpIndex) {
-          recordCopiedVirtualRegisterOp(op, instruction, rewrite);
+          recordCopiedRegisterOp(op, instruction, rewrite);
           rewrite.ops.push(op);
           return;
         }
@@ -105,7 +104,7 @@ export function foldJitVirtualRegisters(
   }
 
   if (state.registers.size !== 0) {
-    throw new Error("JIT virtual registers were not materialized before block end");
+    throw new Error("JIT register values were not materialized before block end");
   }
 
   return {
@@ -122,14 +121,14 @@ function rewriteOp(
   analysis: JitOptimizationAnalysis,
   rewrite: JitInstructionRewrite,
   state: JitOptimizationState
-): JitVirtualRegisterRewriteResult {
+): JitRegisterRewriteResult {
   switch (op.op) {
     case "get32":
-      return rewriteVirtualRegisterGet32(op, instruction, rewrite, state);
+      return rewriteRegisterGet32(op, instruction, rewrite, state);
     case "const32":
       state.recordOpValue(op, instruction);
       rewrite.ops.push(op);
-      return unchangedJitVirtualRegisterRewriteResult;
+      return unchangedJitRegisterRewriteResult;
     case "i32.add":
     case "i32.sub":
     case "i32.xor":
@@ -137,18 +136,18 @@ function rewriteOp(
     case "i32.and":
       state.recordOpValue(op, instruction);
       rewrite.ops.push(op);
-      return unchangedJitVirtualRegisterRewriteResult;
+      return unchangedJitRegisterRewriteResult;
     case "address32":
-      return rewriteVirtualRegisterAddress32(op, instruction, rewrite, state);
+      return rewriteRegisterAddress32(op, instruction, rewrite, state);
     case "set32":
-      return rewriteVirtualRegisterSet32(op, instruction, rewrite, state);
+      return rewriteRegisterSet32(op, instruction, rewrite, state);
     case "set32.if":
-      return rewriteVirtualRegisterSet32If(op, instruction, rewrite, state);
+      return rewriteRegisterSet32If(op, instruction, rewrite, state);
     case "next":
     case "jump":
     case "conditionalJump":
     case "hostTrap": {
-      const materializedSetCount = materializeVirtualRegsForPostInstructionExit(
+      const materializedSetCount = materializeRegisterValuesForPostInstructionExit(
         rewrite,
         analysis.context.effects,
         instructionIndex,
@@ -161,6 +160,6 @@ function rewriteOp(
     }
     default:
       rewrite.ops.push(op);
-      return unchangedJitVirtualRegisterRewriteResult;
+      return unchangedJitRegisterRewriteResult;
   }
 }

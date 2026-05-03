@@ -4,17 +4,17 @@ import { test } from "node:test";
 import type { Reg32 } from "#x86/isa/types.js";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
-import { foldJitVirtualRegisters } from "#backends/wasm/jit/optimization/virtual-registers.js";
+import { foldJitRegisters } from "#backends/wasm/jit/optimization/register-folding.js";
 import type { JitIrBlockInstruction, JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { set32TargetRegs, startAddress } from "./helpers.js";
 
-test("foldJitVirtualRegisters keeps transient register calculations virtual until exit", () => {
+test("foldJitRegisters keeps transient register calculations unmaterialized until exit", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const xorEax = ok(decodeBytes([0x83, 0xf0, 0x02], movEaxEcx.nextEip));
   const addEbxEax = ok(decodeBytes([0x01, 0xc3], xorEax.nextEip));
   const movEaxZero = ok(decodeBytes([0xb8, 0x00, 0x00, 0x00, 0x00], addEbxEax.nextEip));
   const trap = ok(decodeBytes([0xcd, 0x2e], movEaxZero.nextEip));
-  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+  const folded = foldJitRegisters(buildJitIrBlock([
     movEaxEcx,
     xorEax,
     addEbxEax,
@@ -27,13 +27,13 @@ test("foldJitVirtualRegisters keeps transient register calculations virtual unti
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
 
-test("foldJitVirtualRegisters materializes repeated expensive virtual reads", () => {
+test("foldJitRegisters materializes repeated expensive register-value reads", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const xorEax = ok(decodeBytes([0x83, 0xf0, 0x02], movEaxEcx.nextEip));
   const addEbxEax = ok(decodeBytes([0x01, 0xc3], xorEax.nextEip));
   const addEdxEax = ok(decodeBytes([0x01, 0xc2], addEbxEax.nextEip));
   const trap = ok(decodeBytes([0xcd, 0x2e], addEdxEax.nextEip));
-  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+  const folded = foldJitRegisters(buildJitIrBlock([
     movEaxEcx,
     xorEax,
     addEbxEax,
@@ -46,14 +46,14 @@ test("foldJitVirtualRegisters materializes repeated expensive virtual reads", ()
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx", "edx"]);
 });
 
-test("foldJitVirtualRegisters keeps oversized expressions concrete", () => {
+test("foldJitRegisters keeps oversized expressions concrete", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const xor1 = ok(decodeBytes([0x83, 0xf0, 0x01], movEaxEcx.nextEip));
   const xor2 = ok(decodeBytes([0x83, 0xf0, 0x02], xor1.nextEip));
   const xor3 = ok(decodeBytes([0x83, 0xf0, 0x03], xor2.nextEip));
   const xor4 = ok(decodeBytes([0x83, 0xf0, 0x04], xor3.nextEip));
   const trap = ok(decodeBytes([0xcd, 0x2e], xor4.nextEip));
-  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+  const folded = foldJitRegisters(buildJitIrBlock([
     movEaxEcx,
     xor1,
     xor2,
@@ -67,11 +67,11 @@ test("foldJitVirtualRegisters keeps oversized expressions concrete", () => {
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
 });
 
-test("foldJitVirtualRegisters folds virtual register values into indirect jump targets", () => {
+test("foldJitRegisters folds register values into indirect jump targets", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const xorEax = ok(decodeBytes([0x83, 0xf0, 0x02], movEaxEcx.nextEip));
   const jmpEax = ok(decodeBytes([0xff, 0xe0], xorEax.nextEip));
-  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+  const folded = foldJitRegisters(buildJitIrBlock([
     movEaxEcx,
     xorEax,
     jmpEax
@@ -88,12 +88,12 @@ test("foldJitVirtualRegisters folds virtual register values into indirect jump t
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
 });
 
-test("foldJitVirtualRegisters folds virtual register values into effective addresses", () => {
+test("foldJitRegisters folds register values into effective addresses", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const leaEbx = ok(decodeBytes([0x8d, 0x58, 0x04], movEaxEcx.nextEip));
   const movEaxZero = ok(decodeBytes([0xb8, 0x00, 0x00, 0x00, 0x00], leaEbx.nextEip));
   const trap = ok(decodeBytes([0xcd, 0x2e], movEaxZero.nextEip));
-  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+  const folded = foldJitRegisters(buildJitIrBlock([
     movEaxEcx,
     leaEbx,
     movEaxZero,
@@ -106,12 +106,12 @@ test("foldJitVirtualRegisters folds virtual register values into effective addre
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
 
-test("foldJitVirtualRegisters materializes virtual registers for scaled effective addresses", () => {
+test("foldJitRegisters materializes register values for scaled effective addresses", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const leaEbx = ok(decodeBytes([0x8d, 0x1c, 0x45, 0x04, 0x00, 0x00, 0x00], movEaxEcx.nextEip));
   const movEaxZero = ok(decodeBytes([0xb8, 0x00, 0x00, 0x00, 0x00], leaEbx.nextEip));
   const trap = ok(decodeBytes([0xcd, 0x2e], movEaxZero.nextEip));
-  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+  const folded = foldJitRegisters(buildJitIrBlock([
     movEaxEcx,
     leaEbx,
     movEaxZero,
@@ -124,11 +124,11 @@ test("foldJitVirtualRegisters materializes virtual registers for scaled effectiv
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx", "eax"]);
 });
 
-test("foldJitVirtualRegisters materializes address registers before faultable memory reads", () => {
+test("foldJitRegisters materializes address registers before faultable memory reads", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const movEbxFromEax = ok(decodeBytes([0x8b, 0x18], movEaxEcx.nextEip));
   const trap = ok(decodeBytes([0xcd, 0x2e], movEbxFromEax.nextEip));
-  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+  const folded = foldJitRegisters(buildJitIrBlock([
     movEaxEcx,
     movEbxFromEax,
     trap
@@ -143,11 +143,11 @@ test("foldJitVirtualRegisters materializes address registers before faultable me
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
 
-test("foldJitVirtualRegisters materializes address registers before faultable memory writes", () => {
+test("foldJitRegisters materializes address registers before faultable memory writes", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const movEaxPtrEbx = ok(decodeBytes([0x89, 0x18], movEaxEcx.nextEip));
   const trap = ok(decodeBytes([0xcd, 0x2e], movEaxPtrEbx.nextEip));
-  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+  const folded = foldJitRegisters(buildJitIrBlock([
     movEaxEcx,
     movEaxPtrEbx,
     trap
@@ -162,10 +162,10 @@ test("foldJitVirtualRegisters materializes address registers before faultable me
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
 });
 
-test("foldJitVirtualRegisters resumes after the last pre-instruction exit in an instruction", () => {
+test("foldJitRegisters resumes after the last pre-instruction exit in an instruction", () => {
   const pushEax = ok(decodeBytes([0x50], startAddress));
   const trap = ok(decodeBytes([0xcd, 0x2e], pushEax.nextEip));
-  const folded = foldJitVirtualRegisters(buildJitIrBlock([pushEax, trap]));
+  const folded = foldJitRegisters(buildJitIrBlock([pushEax, trap]));
 
   strictEqual(folded.folding.removedSetCount, 1);
   strictEqual(folded.folding.materializedSetCount, 1);

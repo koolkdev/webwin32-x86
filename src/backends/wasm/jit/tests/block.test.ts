@@ -352,7 +352,7 @@ test("jit IR block materializes the latest deferred flags on exit", async () => 
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
-test("jit IR block folds transient virtual register calculations", async () => {
+test("jit IR block folds transient register value calculations", async () => {
   const result = await runJitIrBlock([
     0x89, 0xc8, // mov eax, ecx
     0x83, 0xf0, 0x02, // xor eax, 2
@@ -374,7 +374,7 @@ test("jit IR block folds transient virtual register calculations", async () => {
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
-test("jit IR block materializes virtual registers before memory fault exits", async () => {
+test("jit IR block materializes register values before memory fault exits", async () => {
   const load = 0x10000;
   const result = await runJitIrBlock([
     0x89, 0xc8, // mov eax, ecx
@@ -394,7 +394,7 @@ test("jit IR block materializes virtual registers before memory fault exits", as
   deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: load });
 });
 
-test("jit IR block preserves virtual register values before source clobbers", async () => {
+test("jit IR block preserves register values before source clobbers", async () => {
   const result = await runJitIrBlock([
     0x89, 0xc8, // mov eax, ecx
     0xb9, 0x00, 0x00, 0x00, 0x00, // mov ecx, 0
@@ -415,7 +415,7 @@ test("jit IR block preserves virtual register values before source clobbers", as
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
-test("jit IR block materializes repeated virtual register reads without changing results", async () => {
+test("jit IR block materializes repeated register value reads without changing results", async () => {
   const result = await runJitIrBlock([
     0x89, 0xc8, // mov eax, ecx
     0x83, 0xf0, 0x02, // xor eax, 2
@@ -439,7 +439,7 @@ test("jit IR block materializes repeated virtual register reads without changing
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
-test("jit IR block folds virtual register values into indirect jump targets", async () => {
+test("jit IR block folds register values into indirect jump targets", async () => {
   const result = await runJitIrBlock([
     0x89, 0xc8, // mov eax, ecx
     0x83, 0xf0, 0x02, // xor eax, 2
@@ -457,7 +457,7 @@ test("jit IR block folds virtual register values into indirect jump targets", as
   deepStrictEqual(result.exit, { exitReason: ExitReason.JUMP, payload: 0x1234_567a });
 });
 
-test("jit IR block folds virtual register values into effective addresses", async () => {
+test("jit IR block folds register values into effective addresses", async () => {
   const result = await runJitIrBlock([
     0x89, 0xc8, // mov eax, ecx
     0x8d, 0x58, 0x04, // lea ebx, [eax+4]
@@ -478,7 +478,7 @@ test("jit IR block folds virtual register values into effective addresses", asyn
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
-test("jit IR block materializes virtual registers for scaled effective addresses", async () => {
+test("jit IR block materializes register values for scaled effective addresses", async () => {
   const result = await runJitIrBlock([
     0x89, 0xc8, // mov eax, ecx
     0x8d, 0x1c, 0x45, 0x04, 0x00, 0x00, 0x00, // lea ebx, [eax*2+4]

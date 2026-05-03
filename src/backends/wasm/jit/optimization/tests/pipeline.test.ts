@@ -21,13 +21,13 @@ test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
     trap
   ]));
 
-  deepStrictEqual(jitIrOptimizationPassOrder, ["virtual-flags", "dead-local-values", "virtual-registers"]);
+  deepStrictEqual(jitIrOptimizationPassOrder, ["virtual-flags", "dead-local-values", "register-folding"]);
   strictEqual(result.passes.virtualFlags.removedSetCount, 1);
   strictEqual(result.passes.deadLocalValues.removedOpCount, 0);
-  strictEqual(result.passes.virtualRegisters.removedSetCount, 3);
+  strictEqual(result.passes.registerFolding.removedSetCount, 3);
 });
 
-test("runJitIrOptimizationPipeline prunes dead flag producer inputs before virtual registers", () => {
+test("runJitIrOptimizationPipeline prunes dead flag producer inputs before register values", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const xorEax = ok(decodeBytes([0x83, 0xf0, 0x02], movEaxEcx.nextEip));
   const cmpEaxZero = ok(decodeBytes([0x83, 0xf8, 0x00], xorEax.nextEip));

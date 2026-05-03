@@ -1,5 +1,5 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import { materializeJitVirtualReg, type JitInstructionRewrite } from "./rewrite.js";
+import { materializeJitRegisterValue, type JitInstructionRewrite } from "./rewrite.js";
 import type { JitEffectIndex } from "./effects.js";
 import {
   jitInstructionHasPreInstructionExit,
@@ -8,7 +8,7 @@ import {
 import { JitRegisterValues } from "./register-values.js";
 import { jitValueReadsReg } from "./values.js";
 
-export function materializeVirtualRegsForPreInstructionExits(
+export function materializeRegisterValuesForPreInstructionExits(
   rewrite: JitInstructionRewrite,
   effects: JitEffectIndex,
   instructionIndex: number,
@@ -18,10 +18,10 @@ export function materializeVirtualRegsForPreInstructionExits(
     return 0;
   }
 
-  return materializeAllVirtualRegs(rewrite, registers);
+  return materializeAllRegisterValues(rewrite, registers);
 }
 
-export function materializeVirtualRegsForPostInstructionExit(
+export function materializeRegisterValuesForPostInstructionExit(
   rewrite: JitInstructionRewrite,
   effects: JitEffectIndex,
   instructionIndex: number,
@@ -32,10 +32,10 @@ export function materializeVirtualRegsForPostInstructionExit(
     return 0;
   }
 
-  return materializeAllVirtualRegs(rewrite, registers);
+  return materializeAllRegisterValues(rewrite, registers);
 }
 
-export function materializeVirtualRegsReadingReg(
+export function materializeRegisterValuesReadingReg(
   rewrite: JitInstructionRewrite,
   registers: JitRegisterValues,
   readReg: Reg32
@@ -44,7 +44,7 @@ export function materializeVirtualRegsReadingReg(
 
   for (const [reg, value] of [...registers.entries()]) {
     if (reg !== readReg && jitValueReadsReg(value, readReg)) {
-      materializeJitVirtualReg(rewrite, reg, value);
+      materializeJitRegisterValue(rewrite, reg, value);
       registers.delete(reg);
       materializedSetCount += 1;
     }
@@ -53,21 +53,21 @@ export function materializeVirtualRegsReadingReg(
   return materializedSetCount;
 }
 
-export function materializeAllVirtualRegs(
+export function materializeAllRegisterValues(
   rewrite: JitInstructionRewrite,
   registers: JitRegisterValues
 ): number {
   const materializedSetCount = registers.size;
 
   for (const [reg, value] of registers.entries()) {
-    materializeJitVirtualReg(rewrite, reg, value);
+    materializeJitRegisterValue(rewrite, reg, value);
   }
 
   registers.clear();
   return materializedSetCount;
 }
 
-export function materializeVirtualRegsForRead(
+export function materializeRegisterValuesForRead(
   rewrite: JitInstructionRewrite,
   registers: JitRegisterValues,
   readRegs: readonly Reg32[]
@@ -81,7 +81,7 @@ export function materializeVirtualRegsForRead(
       continue;
     }
 
-    materializeJitVirtualReg(rewrite, reg, value);
+    materializeJitRegisterValue(rewrite, reg, value);
     registers.delete(reg);
     materializedSetCount += 1;
   }

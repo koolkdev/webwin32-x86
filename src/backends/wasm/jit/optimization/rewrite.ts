@@ -71,7 +71,7 @@ export function createJitPreludeRewrite(): JitInstructionRewrite {
   };
 }
 
-export function materializeJitVirtualReg(
+export function materializeJitRegisterValue(
   rewrite: JitInstructionRewrite,
   reg: Reg32,
   value: JitValue

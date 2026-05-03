@@ -16,15 +16,15 @@ export type JitValue =
 export function jitValueForStorage(
   storage: StorageRef,
   operands: readonly JitOperandBinding[],
-  virtualRegs: ReadonlyMap<Reg32, JitValue> = new Map()
+  registerValues: ReadonlyMap<Reg32, JitValue> = new Map()
 ): JitValue | undefined {
   switch (storage.kind) {
     case "reg":
-      return virtualRegs.get(storage.reg) ?? { kind: "reg", reg: storage.reg };
+      return registerValues.get(storage.reg) ?? { kind: "reg", reg: storage.reg };
     case "operand": {
       const binding = requiredJitOperandBinding(operands, storage.index);
 
-      return jitValueForOperandBinding(binding, virtualRegs);
+      return jitValueForOperandBinding(binding, registerValues);
     }
     case "mem":
       return undefined;
@@ -48,7 +48,7 @@ export function jitValueForValue(
 export function jitValueForEffectiveAddress(
   operand: OperandRef,
   operands: readonly JitOperandBinding[],
-  virtualRegs: ReadonlyMap<Reg32, JitValue>
+  registerValues: ReadonlyMap<Reg32, JitValue>
 ): JitValue | undefined {
   const binding = requiredJitOperandBinding(operands, operand.index);
 
@@ -59,7 +59,7 @@ export function jitValueForEffectiveAddress(
   const terms: JitValue[] = [];
 
   if (binding.ea.base !== undefined) {
-    terms.push(jitValueForReg(binding.ea.base, virtualRegs));
+    terms.push(jitValueForReg(binding.ea.base, registerValues));
   }
 
   if (binding.ea.index !== undefined) {
@@ -67,7 +67,7 @@ export function jitValueForEffectiveAddress(
       return undefined;
     }
 
-    terms.push(jitValueForReg(binding.ea.index, virtualRegs));
+    terms.push(jitValueForReg(binding.ea.index, registerValues));
   }
 
   if (binding.ea.disp !== 0 || terms.length === 0) {
@@ -77,10 +77,10 @@ export function jitValueForEffectiveAddress(
   return terms.reduce((a, b) => ({ kind: "i32.add", a, b }));
 }
 
-export function jitVirtualRegsReadByEffectiveAddress(
+export function jitRegisterValuesReadByEffectiveAddress(
   operand: OperandRef,
   operands: readonly JitOperandBinding[],
-  virtualRegs: ReadonlyMap<Reg32, JitValue>
+  registerValues: ReadonlyMap<Reg32, JitValue>
 ): readonly Reg32[] {
   const binding = requiredJitOperandBinding(operands, operand.index);
 
@@ -90,11 +90,11 @@ export function jitVirtualRegsReadByEffectiveAddress(
 
   const regs = new Set<Reg32>();
 
-  if (binding.ea.base !== undefined && virtualRegs.has(binding.ea.base)) {
+  if (binding.ea.base !== undefined && registerValues.has(binding.ea.base)) {
     regs.add(binding.ea.base);
   }
 
-  if (binding.ea.index !== undefined && virtualRegs.has(binding.ea.index)) {
+  if (binding.ea.index !== undefined && registerValues.has(binding.ea.index)) {
     regs.add(binding.ea.index);
   }
 
@@ -115,14 +115,14 @@ export function jitStorageReg(storage: StorageRef, operands: readonly JitOperand
   }
 }
 
-export function jitStorageHasVirtualRegister(
+export function jitStorageHasRegisterValue(
   storage: StorageRef,
   operands: readonly JitOperandBinding[],
-  virtualRegs: ReadonlyMap<Reg32, JitValue>
+  registerValues: ReadonlyMap<Reg32, JitValue>
 ): boolean {
   const reg = jitStorageReg(storage, operands);
 
-  return reg !== undefined && virtualRegs.has(reg);
+  return reg !== undefined && registerValues.has(reg);
 }
 
 export function jitValueReadsReg(value: JitValue, reg: Reg32): boolean {
@@ -160,18 +160,18 @@ export function jitValueCost(value: JitValue): number {
 
 function jitValueForReg(
   reg: Reg32,
-  virtualRegs: ReadonlyMap<Reg32, JitValue>
+  registerValues: ReadonlyMap<Reg32, JitValue>
 ): JitValue {
-  return virtualRegs.get(reg) ?? { kind: "reg", reg };
+  return registerValues.get(reg) ?? { kind: "reg", reg };
 }
 
 function jitValueForOperandBinding(
   binding: JitOperandBinding,
-  virtualRegs: ReadonlyMap<Reg32, JitValue>
+  registerValues: ReadonlyMap<Reg32, JitValue>
 ): JitValue | undefined {
   switch (binding.kind) {
     case "static.reg32":
-      return virtualRegs.get(binding.reg) ?? { kind: "reg", reg: binding.reg };
+      return registerValues.get(binding.reg) ?? { kind: "reg", reg: binding.reg };
     case "static.imm32":
       return { kind: "const32", value: i32(binding.value) };
     case "static.relTarget":

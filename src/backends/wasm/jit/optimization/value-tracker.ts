@@ -30,19 +30,19 @@ export class JitValueTracker {
   recordOp(
     op: JitIrOp,
     instruction: JitIrBlockInstruction,
-    virtualRegs: ReadonlyMap<Reg32, JitValue> = new Map()
+    registerValues: ReadonlyMap<Reg32, JitValue> = new Map()
   ): boolean {
     switch (op.op) {
       case "get32":
         this.record(
           op.dst.id,
-          jitValueForStorage(op.source, instruction.operands, virtualRegs)
+          jitValueForStorage(op.source, instruction.operands, registerValues)
         );
         return true;
       case "address32":
         this.record(
           op.dst.id,
-          jitValueForEffectiveAddress(op.operand, instruction.operands, virtualRegs)
+          jitValueForEffectiveAddress(op.operand, instruction.operands, registerValues)
         );
         return true;
       case "const32":

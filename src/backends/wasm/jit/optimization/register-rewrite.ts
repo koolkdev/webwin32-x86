@@ -2,39 +2,39 @@ import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import type { JitOptimizationState } from "./state.js";
 import {
-  materializeVirtualRegsForRead,
-  materializeVirtualRegsReadingReg
-} from "./virtual-register-materialization.js";
+  materializeRegisterValuesForRead,
+  materializeRegisterValuesReadingReg
+} from "./register-materialization.js";
 import {
   assignJitValue,
   type JitInstructionRewrite
 } from "./rewrite.js";
 import {
   materializeRepeatedEffectiveAddressReads,
-  shouldMaterializeRepeatedVirtualRegisterRead,
-  shouldRetainVirtualRegisterValue,
-  syncVirtualRegReadCounts
-} from "./virtual-register-budget.js";
+  shouldMaterializeRepeatedRegisterRead,
+  shouldRetainRegisterValue,
+  syncRegisterReadCounts
+} from "./register-policy.js";
 import {
   jitStorageReg
 } from "./values.js";
 
-export type JitVirtualRegisterRewriteResult = Readonly<{
+export type JitRegisterRewriteResult = Readonly<{
   removedSet: boolean;
   materializedSetCount: number;
 }>;
 
-export const unchangedJitVirtualRegisterRewriteResult: JitVirtualRegisterRewriteResult = {
+export const unchangedJitRegisterRewriteResult: JitRegisterRewriteResult = {
   removedSet: false,
   materializedSetCount: 0
 };
 
-export function rewriteVirtualRegisterAddress32(
+export function rewriteRegisterAddress32(
   op: Extract<IrOp, { op: "address32" }>,
   instruction: JitIrBlockInstruction,
   rewrite: JitInstructionRewrite,
   state: JitOptimizationState
-): JitVirtualRegisterRewriteResult {
+): JitRegisterRewriteResult {
   const { registers } = state;
   let materializedSetCount = materializeRepeatedEffectiveAddressReads(
     op,
@@ -45,12 +45,12 @@ export function rewriteVirtualRegisterAddress32(
   const value = registers.valueForEffectiveAddress(op.operand, instruction.operands);
 
   if (value === undefined) {
-    materializedSetCount += materializeVirtualRegsForRead(
+    materializedSetCount += materializeRegisterValuesForRead(
       rewrite,
       registers,
       registers.regsReadByEffectiveAddress(op.operand, instruction.operands)
     );
-    syncVirtualRegReadCounts(registers);
+    syncRegisterReadCounts(registers);
     state.recordOpValue(op, instruction);
     rewrite.ops.push(op);
     return { removedSet: false, materializedSetCount };
@@ -64,12 +64,12 @@ export function rewriteVirtualRegisterAddress32(
   return { removedSet: false, materializedSetCount };
 }
 
-export function rewriteVirtualRegisterGet32(
+export function rewriteRegisterGet32(
   op: Extract<IrOp, { op: "get32" }>,
   instruction: JitIrBlockInstruction,
   rewrite: JitInstructionRewrite,
   state: JitOptimizationState
-): JitVirtualRegisterRewriteResult {
+): JitRegisterRewriteResult {
   const { registers } = state;
   const sourceReg = jitStorageReg(op.source, instruction.operands);
   const value = registers.valueForStorage(op.source, instruction.operands);
@@ -79,9 +79,9 @@ export function rewriteVirtualRegisterGet32(
   } else {
     if (
       sourceReg !== undefined &&
-      shouldMaterializeRepeatedVirtualRegisterRead(sourceReg, value, registers)
+      shouldMaterializeRepeatedRegisterRead(sourceReg, value, registers)
     ) {
-      const materializedSetCount = materializeVirtualRegsForRead(rewrite, registers, [sourceReg]);
+      const materializedSetCount = materializeRegisterValuesForRead(rewrite, registers, [sourceReg]);
 
       rewrite.ops.push(op);
       state.recordOpValue(op, instruction);
@@ -97,48 +97,48 @@ export function rewriteVirtualRegisterGet32(
 
   state.recordOpValue(op, instruction);
 
-  return unchangedJitVirtualRegisterRewriteResult;
+  return unchangedJitRegisterRewriteResult;
 }
 
-export function rewriteVirtualRegisterSet32If(
+export function rewriteRegisterSet32If(
   op: Extract<IrOp, { op: "set32.if" }>,
   instruction: JitIrBlockInstruction,
   rewrite: JitInstructionRewrite,
   state: JitOptimizationState
-): JitVirtualRegisterRewriteResult {
+): JitRegisterRewriteResult {
   const { registers } = state;
   const target = jitStorageReg(op.target, instruction.operands);
   let materializedSetCount = target === undefined
     ? 0
-    : materializeVirtualRegsForRead(rewrite, registers, [target]);
+    : materializeRegisterValuesForRead(rewrite, registers, [target]);
 
   if (target !== undefined) {
-    materializedSetCount += materializeVirtualRegsReadingReg(rewrite, registers, target);
+    materializedSetCount += materializeRegisterValuesReadingReg(rewrite, registers, target);
     registers.delete(target);
   }
 
-  syncVirtualRegReadCounts(registers);
+  syncRegisterReadCounts(registers);
   rewrite.ops.push(op);
   return { removedSet: false, materializedSetCount };
 }
 
-export function rewriteVirtualRegisterSet32(
+export function rewriteRegisterSet32(
   op: Extract<IrOp, { op: "set32" }>,
   instruction: JitIrBlockInstruction,
   rewrite: JitInstructionRewrite,
   state: JitOptimizationState
-): JitVirtualRegisterRewriteResult {
+): JitRegisterRewriteResult {
   const { registers } = state;
   const target = jitStorageReg(op.target, instruction.operands);
   const value = state.values.valueFor(op.value);
   const materializedSetCount = target === undefined
     ? 0
-    : materializeVirtualRegsReadingReg(rewrite, registers, target);
+    : materializeRegisterValuesReadingReg(rewrite, registers, target);
 
-  syncVirtualRegReadCounts(registers);
+  syncRegisterReadCounts(registers);
 
   if (target !== undefined && value !== undefined) {
-    if (!shouldRetainVirtualRegisterValue(value)) {
+    if (!shouldRetainRegisterValue(value)) {
       registers.delete(target);
       rewrite.ops.push(op);
       return { removedSet: false, materializedSetCount };

@@ -3,8 +3,8 @@ import type { OperandRef, StorageRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
 import type { JitValue } from "./values.js";
 import {
-  jitStorageHasVirtualRegister,
-  jitVirtualRegsReadByEffectiveAddress,
+  jitStorageHasRegisterValue,
+  jitRegisterValuesReadByEffectiveAddress,
   jitValueForEffectiveAddress,
   jitValueForStorage
 } from "./values.js";
@@ -37,7 +37,7 @@ export class JitRegisterValues {
     storage: StorageRef,
     operands: readonly JitOperandBinding[]
   ): boolean {
-    return jitStorageHasVirtualRegister(storage, operands, this.values);
+    return jitStorageHasRegisterValue(storage, operands, this.values);
   }
 
   valueForEffectiveAddress(
@@ -58,7 +58,7 @@ export class JitRegisterValues {
     operand: OperandRef,
     operands: readonly JitOperandBinding[]
   ): readonly Reg32[] {
-    return jitVirtualRegsReadByEffectiveAddress(operand, operands, this.values);
+    return jitRegisterValuesReadByEffectiveAddress(operand, operands, this.values);
   }
 
   set(reg: Reg32, value: JitValue): void {
