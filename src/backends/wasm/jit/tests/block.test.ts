@@ -273,6 +273,25 @@ test("jit IR block lowers leave", async () => {
   strictEqual(result.state.instructionCount, 1);
 });
 
+test("jit IR block folds stack updates after successful memory fault points", async () => {
+  const result = await runJitIrBlock([
+    0x50, // push eax
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eax: 0x1234_5678,
+    esp: 0x24,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.guestView.getUint32(0x20, true), 0x1234_5678);
+  strictEqual(result.state.esp, 0x20);
+  strictEqual(result.state.eflags, preservedEflags);
+  strictEqual(result.state.eip, startAddress + 3);
+  strictEqual(result.state.instructionCount, 2);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
 test("jit IR block keeps deferred flags live after memory-store fault branch emission", async () => {
   const result = await runJitIrBlock([
     0x01, 0x18, // add [eax], ebx

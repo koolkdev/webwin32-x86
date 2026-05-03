@@ -890,6 +890,20 @@ test("foldJitVirtualRegisters materializes virtual registers for scaled effectiv
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx", "eax"]);
 });
 
+test("foldJitVirtualRegisters resumes after the last pre-instruction exit in an instruction", () => {
+  const pushEax = ok(decodeBytes([0x50], startAddress));
+  const trap = ok(decodeBytes([0xcd, 0x2e], pushEax.nextEip));
+  const folded = foldJitVirtualRegisters(buildJitIrBlock([pushEax, trap]));
+
+  strictEqual(folded.folding.removedSetCount, 1);
+  strictEqual(folded.folding.materializedSetCount, 1);
+  strictEqual(
+    folded.block.instructions[0]!.ir.some((op) => op.op === "set32" && op.target.kind === "reg" && op.target.reg === "esp"),
+    false
+  );
+  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["esp"]);
+});
+
 function onlyExit(exits: readonly JitExitPoint[], reason: ExitReasonValue): JitExitPoint {
   const matches = exits.filter((entry) => entry.exitReason === reason);
 

@@ -22,6 +22,10 @@ import {
   type JitVirtualRewrite
 } from "./virtual-rewrite.js";
 import {
+  firstVirtualRegisterFoldableOpIndex,
+  recordCopiedVirtualRegisterOp
+} from "./virtual-register-prefix.js";
+import {
   jitStorageHasVirtualRegister,
   jitStorageReg,
   jitVirtualRegsReadByEffectiveAddress,
@@ -67,18 +71,23 @@ export function foldJitVirtualRegisters(
       materializedSetCount += materializeVirtualRegsIntoPreviousInstruction(instructions, virtualRegs);
       virtualRegs.clear();
       virtualRegReadCounts.clear();
-      instructions.push(instruction);
-      continue;
     }
 
     const rewrite = createJitVirtualRewrite(instruction);
     const nextInstruction = block.instructions[instructionIndex + 1];
+    const firstFoldableOpIndex = firstVirtualRegisterFoldableOpIndex(instruction, instructionIndex, analysis);
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
       const op = instruction.ir[opIndex];
 
       if (op === undefined) {
         throw new Error(`missing JIT IR op while folding virtual registers: ${instructionIndex}:${opIndex}`);
+      }
+
+      if (opIndex < firstFoldableOpIndex) {
+        recordCopiedVirtualRegisterOp(op, instruction, rewrite);
+        rewrite.ops.push(op);
+        continue;
       }
 
       const result = rewriteOp(
