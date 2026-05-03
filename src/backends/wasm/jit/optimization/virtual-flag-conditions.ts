@@ -97,11 +97,7 @@ function directVirtualFlagCondition(
   block: JitIrBlock,
   read: JitVirtualFlagRead
 ): JitDirectVirtualFlagCondition | undefined {
-  if (read.reason !== "condition" || read.cc === undefined) {
-    return undefined;
-  }
-
-  if (conditionReadFeedsConditionalJump(block, read)) {
+  if (read.reason !== "condition" || read.cc === undefined || read.conditionConsumer !== "ordinaryCondition") {
     return undefined;
   }
 
@@ -156,26 +152,6 @@ function directConditionInputs(
   return plannedInputsSafe(block, resultInputs, read)
     ? plannedInputValues(resultInputs)
     : undefined;
-}
-
-function conditionReadFeedsConditionalJump(block: JitIrBlock, read: JitVirtualFlagRead): boolean {
-  const instruction = block.instructions[read.instructionIndex];
-
-  if (instruction === undefined) {
-    throw new Error(`missing JIT instruction while checking virtual flag condition read: ${read.instructionIndex}`);
-  }
-
-  const op = instruction.ir[read.opIndex];
-
-  if (op?.op !== "aluFlags.condition") {
-    throw new Error(`missing aluFlags.condition for virtual flag condition read: ${read.instructionIndex}:${read.opIndex}`);
-  }
-
-  return instruction.ir.some((entry) =>
-    entry.op === "conditionalJump" &&
-    entry.condition.kind === "var" &&
-    entry.condition.id === op.dst.id
-  );
 }
 
 function singleConditionSource(owners: readonly JitVirtualFlagOwnerMask[]): JitVirtualFlagSource | undefined {

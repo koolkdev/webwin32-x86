@@ -171,6 +171,7 @@ test("analyzeJitVirtualFlags keeps partial flag ownership across INC", () => {
 
   deepStrictEqual(analysis.sources.map((source) => source.producer), ["add32", "inc32"]);
   strictEqual(conditionRead?.cc, "B");
+  strictEqual(conditionRead?.conditionConsumer, "branchCondition");
   strictEqual(conditionRead?.requiredMask, IR_ALU_FLAG_MASKS.CF);
   deepStrictEqual(flagOwnerSummary(conditionRead?.owners ?? []), [
     { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add32" }
@@ -183,6 +184,30 @@ test("analyzeJitVirtualFlags keeps partial flag ownership across INC", () => {
     { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add32" },
     { mask: IR_ALU_FLAG_MASK & ~IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 1, producer: "inc32" }
   ]);
+});
+
+test("analyzeJitVirtualFlags classifies ordinary and branch condition consumers", () => {
+  const ordinary = analyzeJitVirtualFlags({
+    instructions: [
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "next" }
+      ])
+    ]
+  });
+  const reusedBranch = analyzeJitVirtualFlags({
+    instructions: [
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
+      ])
+    ]
+  });
+
+  strictEqual(ordinary.reads.find((read) => read.reason === "condition")?.conditionConsumer, "ordinaryCondition");
+  strictEqual(reusedBranch.reads.find((read) => read.reason === "condition")?.conditionConsumer, "branchCondition");
 });
 
 test("analyzeJitVirtualFlags records memory-fault reads from instruction entry owners", () => {
