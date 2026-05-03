@@ -1,49 +1,32 @@
-import { reg32, type Reg32 } from "#x86/isa/types.js";
-import { conditionFlagReadMask, IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
+import type { Reg32 } from "#x86/isa/types.js";
+import { conditionFlagReadMask } from "#x86/ir/model/flag-effects.js";
 import { jitIrOpStorageWrites } from "#backends/wasm/jit/ir-semantics.js";
-import type { StorageRef } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
 import type { JitIrOp, JitOptimizedIrBlock, JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
 } from "./analysis.js";
+import { JitBlockStateTracker } from "./block-state-tracker.js";
 import {
   jitOpHasPostInstructionExit,
   jitPreInstructionExitReasonAt,
   jitPostInstructionExitReasonsAt
 } from "./effects.js";
-import { requiredJitOperandBinding } from "./operand-binding.js";
 import type {
   JitBlockOptimization,
   JitExitPoint,
-  JitExitSnapshotKind,
   JitExitState,
   JitFlagMaterializationRequirement,
   JitInstructionState,
   JitStateSnapshot
 } from "./types.js";
 
-type MutableJitStateTracker = {
-  committedRegs: Set<Reg32>;
-  speculativeRegs: Set<Reg32>;
-  committedFlagsMask: number;
-  speculativeFlagsMask: number;
-  instructionCountDelta: number;
-};
-
 export function analyzeJitBlockState(
   block: JitOptimizedIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): Omit<JitBlockOptimization, "block"> {
-  const state: MutableJitStateTracker = {
-    committedRegs: new Set(),
-    speculativeRegs: new Set(),
-    committedFlagsMask: IR_ALU_FLAG_MASK,
-    speculativeFlagsMask: 0,
-    instructionCountDelta: 0
-  };
+  const state = new JitBlockStateTracker();
   const instructionStates: JitInstructionState[] = [];
   const exitPoints: JitExitPoint[] = [];
   const flagMaterializationRequirements: JitFlagMaterializationRequirement[] = [];
@@ -69,7 +52,7 @@ export function analyzeJitBlockState(
       recordPreludeOpEffects(op, instruction);
     }
 
-    const entry = snapshotState(state, "preInstruction", instruction.eip);
+    const entry = state.snapshot("preInstruction", instruction.eip);
     const exitStart = exitPoints.length;
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
@@ -113,7 +96,7 @@ export function analyzeJitBlockState(
   };
 
   function instructionPostState(instruction: JitOptimizedIrBlockInstruction): JitStateSnapshot {
-    currentPostState ??= snapshotPostInstruction(state, instruction.nextEip);
+    currentPostState ??= state.snapshotPostInstruction(instruction.nextEip);
 
     return currentPostState;
   }
@@ -123,7 +106,7 @@ export function analyzeJitBlockState(
     instruction: JitOptimizedIrBlockInstruction
   ): void {
     for (const storage of jitIrOpStorageWrites(op)) {
-      recordCommittedStorageWriteEffects(storage, instruction.operands);
+      state.recordCommittedStorageWrite(storage, instruction.operands);
     }
   }
 
@@ -136,17 +119,17 @@ export function analyzeJitBlockState(
     switch (op.op) {
       case "set32":
       case "set32.if":
-        recordStorageWriteEffects(op.target, instruction.operands);
+        state.recordStorageWrite(op.target, instruction.operands);
         return;
       case "flags.set":
-        markSpeculativeFlags(op.writtenMask | op.undefMask);
+        state.markSpeculativeFlags(op.writtenMask | op.undefMask);
         return;
       case "flags.boundary":
-        commitFlags(op.mask);
+        state.commitFlags(op.mask);
         return;
       case "aluFlags.condition": {
         const requiredMask = conditionFlagReadMask(op.cc);
-        const pendingMask = requiredMask & state.speculativeFlagsMask;
+        const pendingMask = state.pendingFlags(requiredMask);
 
         if (requiredMask !== 0) {
           flagMaterializationRequirements.push({
@@ -163,7 +146,7 @@ export function analyzeJitBlockState(
         recordPostInstructionExits(instruction, instructionIndex, opIndex);
 
         if (!jitOpHasPostInstructionExit(analysis.context.effects, instructionIndex, opIndex)) {
-          commitInstruction();
+          state.commitInstruction();
         }
         return;
       case "jump":
@@ -218,63 +201,6 @@ export function analyzeJitBlockState(
     }
   }
 
-  function recordStorageWriteEffects(storage: StorageRef, operands: readonly JitOperandBinding[]): void {
-    switch (storage.kind) {
-      case "reg":
-        state.speculativeRegs.add(storage.reg);
-        return;
-      case "operand": {
-        const binding = requiredJitOperandBinding(operands, storage.index);
-
-        if (binding.kind === "static.reg32") {
-          state.speculativeRegs.add(binding.reg);
-        }
-        return;
-      }
-      case "mem":
-        return;
-    }
-  }
-
-  function recordCommittedStorageWriteEffects(storage: StorageRef, operands: readonly JitOperandBinding[]): void {
-    switch (storage.kind) {
-      case "reg":
-        state.committedRegs.add(storage.reg);
-        return;
-      case "operand": {
-        const binding = requiredJitOperandBinding(operands, storage.index);
-
-        if (binding.kind === "static.reg32") {
-          state.committedRegs.add(binding.reg);
-        }
-        return;
-      }
-      case "mem":
-        return;
-    }
-  }
-
-  function markSpeculativeFlags(mask: number): void {
-    state.speculativeFlagsMask |= mask;
-    state.committedFlagsMask &= ~mask;
-  }
-
-  function commitFlags(mask: number): void {
-    const committedMask = mask & state.speculativeFlagsMask;
-
-    state.speculativeFlagsMask &= ~mask;
-    state.committedFlagsMask |= committedMask;
-  }
-
-  function commitInstruction(): void {
-    for (const reg of state.speculativeRegs) {
-      state.committedRegs.add(reg);
-    }
-
-    state.speculativeRegs.clear();
-    state.instructionCountDelta += 1;
-  }
-
   function internExitState(regs: readonly Reg32[]): number {
     const key = exitStateKey(regs);
     const existingIndex = exitStateIndexByKey.get(key);
@@ -289,42 +215,6 @@ export function analyzeJitBlockState(
     exitStateIndexByKey.set(key, index);
     return index;
   }
-}
-
-function snapshotPostInstruction(state: MutableJitStateTracker, eip: number): JitStateSnapshot {
-  const committedRegs = sortedRegs(new Set([...state.committedRegs, ...state.speculativeRegs]));
-
-  return {
-    kind: "postInstruction",
-    eip,
-    instructionCountDelta: state.instructionCountDelta + 1,
-    committedRegs,
-    speculativeRegs: [],
-    committedFlags: { mask: state.committedFlagsMask },
-    speculativeFlags: { mask: state.speculativeFlagsMask }
-  };
-}
-
-function snapshotState(
-  state: MutableJitStateTracker,
-  kind: JitExitSnapshotKind,
-  eip: number
-): JitStateSnapshot {
-  const committedRegs = sortedRegs(state.committedRegs);
-
-  return {
-    kind,
-    eip,
-    instructionCountDelta: state.instructionCountDelta,
-    committedRegs,
-    speculativeRegs: sortedRegs(state.speculativeRegs),
-    committedFlags: { mask: state.committedFlagsMask },
-    speculativeFlags: { mask: state.speculativeFlagsMask }
-  };
-}
-
-function sortedRegs(regs: ReadonlySet<Reg32>): readonly Reg32[] {
-  return reg32.filter((reg) => regs.has(reg));
 }
 
 function preInstructionExitPointCount(exitPoints: readonly JitExitPoint[], exitStart: number): number {
