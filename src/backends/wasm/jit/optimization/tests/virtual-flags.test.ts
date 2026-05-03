@@ -62,6 +62,53 @@ test("materializeJitVirtualFlags keeps flag producers needed by memory fault exi
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32"]);
 });
 
+test("materializeJitVirtualFlags keeps flag producers needed by explicit flag reads", () => {
+  for (const op of [
+    { op: "flags.boundary" as const, mask: IR_ALU_FLAG_MASKS.ZF },
+    { op: "flags.materialize" as const, mask: IR_ALU_FLAG_MASKS.ZF }
+  ]) {
+    const materialized = materializeJitVirtualFlags({
+      instructions: [
+        syntheticInstruction([
+          { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+          { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+          createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+          op,
+          { op: "next" }
+        ])
+      ]
+    });
+    const flagSets = materialized.block.instructions.flatMap((instruction) =>
+      instruction.ir.filter((entry) => entry.op === "flags.set")
+    );
+
+    strictEqual(materialized.flags.removedSetCount, 0, op.op);
+    strictEqual(materialized.flags.retainedSetCount, 1, op.op);
+    deepStrictEqual(flagSets.map((entry) => entry.op === "flags.set" ? entry.producer : undefined), ["add32"]);
+  }
+});
+
+test("materializeJitVirtualFlags keeps undefined flag producers needed by explicit boundaries", () => {
+  const materialized = materializeJitVirtualFlags({
+    instructions: [
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "i32.and", dst: v(1), a: v(0), b: c32(0xff) },
+        createIrFlagSetOp("logic32", { result: v(1) }),
+        { op: "flags.boundary", mask: IR_ALU_FLAG_MASKS.AF },
+        { op: "next" }
+      ])
+    ]
+  });
+  const flagSets = materialized.block.instructions.flatMap((instruction) =>
+    instruction.ir.filter((op) => op.op === "flags.set")
+  );
+
+  strictEqual(materialized.flags.removedSetCount, 0);
+  strictEqual(materialized.flags.retainedSetCount, 1);
+  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["logic32"]);
+});
+
 test("analyzeJitVirtualFlags keeps partial flag ownership across INC", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const inc = ok(decodeBytes([0x40], add.nextEip));

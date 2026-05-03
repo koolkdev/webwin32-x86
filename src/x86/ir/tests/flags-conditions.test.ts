@@ -1,4 +1,4 @@
-import { deepStrictEqual } from "node:assert";
+import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { irVar } from "#x86/ir/build/builder.js";
@@ -8,7 +8,13 @@ import {
   flagProducerConditionInputNames,
   flagProducerConditionKind
 } from "#x86/ir/model/flag-conditions.js";
-import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS, maskIrAluFlags } from "#x86/ir/model/flag-effects.js";
+import {
+  conditionFlagReadMask,
+  flagProducerEffect,
+  IR_ALU_FLAG_MASK,
+  IR_ALU_FLAG_MASKS,
+  maskIrAluFlags
+} from "#x86/ir/model/flag-effects.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import type { ConditionCode, FlagProducerName, IrFlagSetOp } from "#x86/ir/model/types.js";
 
@@ -138,6 +144,27 @@ test("condition registry records flag reads and boolean formulas", () => {
         b: { kind: "flag", flag: "OF" }
       }
     }
+  });
+});
+
+test("flag effect helpers expose condition reads and producer effects", () => {
+  strictEqual(conditionFlagReadMask("E"), IR_ALU_FLAG_MASKS.ZF);
+  strictEqual(conditionFlagReadMask("BE"), maskIrAluFlags(["CF", "ZF"]));
+  strictEqual(conditionFlagReadMask("G"), maskIrAluFlags(["ZF", "SF", "OF"]));
+  deepStrictEqual(flagProducerEffect("add32"), {
+    reads: 0,
+    writes: IR_ALU_FLAG_MASK,
+    undefines: 0
+  });
+  deepStrictEqual(flagProducerEffect("logic32"), {
+    reads: 0,
+    writes: IR_ALU_FLAG_MASK,
+    undefines: IR_ALU_FLAG_MASKS.AF
+  });
+  deepStrictEqual(flagProducerEffect("inc32"), {
+    reads: 0,
+    writes: IR_ALU_FLAG_MASK & ~IR_ALU_FLAG_MASKS.CF,
+    undefines: 0
   });
 });
 
