@@ -13,6 +13,11 @@ import type {
   ValueRef
 } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import {
+  analyzeJitConditionUses,
+  type JitConditionUse,
+  type JitConditionUseIndex
+} from "./condition-uses.js";
 import { jitMemoryFaultReason } from "./op-effects.js";
 import {
   jitStorageReg,
@@ -48,15 +53,13 @@ export type JitVirtualFlagOwnerMask = Readonly<{
   owner: JitVirtualFlagOwner;
 }>;
 
-export type JitVirtualFlagConditionUse = "localCondition" | "exitCondition";
-
 export type JitVirtualFlagRead = Readonly<{
   instructionIndex: number;
   opIndex: number;
   reason: "condition" | "materialize" | "boundary" | "memoryFault" | "exit";
   requiredMask: number;
   cc?: ConditionCode;
-  conditionUse?: JitVirtualFlagConditionUse;
+  conditionUse?: JitConditionUse;
   owners: readonly JitVirtualFlagOwnerMask[];
 }>;
 
@@ -78,7 +81,10 @@ const incomingFlagOwner: JitVirtualFlagOwner = { kind: "incoming" };
 const materializedFlagOwner: JitVirtualFlagOwner = { kind: "materialized" };
 const flagBits = Object.values(IR_ALU_FLAG_MASKS);
 
-export function analyzeJitVirtualFlags(block: JitIrBlock): JitVirtualFlagAnalysis {
+export function analyzeJitVirtualFlags(
+  block: JitIrBlock,
+  conditionUses: JitConditionUseIndex = analyzeJitConditionUses(block)
+): JitVirtualFlagAnalysis {
   const ownersByFlag = new Map<number, JitVirtualFlagOwner>(
     flagBits.map((flagBit) => [flagBit, incomingFlagOwner])
   );
@@ -166,7 +172,7 @@ export function analyzeJitVirtualFlags(block: JitIrBlock): JitVirtualFlagAnalysi
           reason: "condition",
           requiredMask: conditionFlagReadMask(op.cc),
           cc: op.cc,
-          conditionUse: conditionUse(instruction, op)
+          conditionUse: conditionUse(conditionUses, instructionIndex, opIndex)
         });
         return;
       case "flags.materialize":
@@ -260,16 +266,11 @@ export function analyzeJitVirtualFlags(block: JitIrBlock): JitVirtualFlagAnalysi
 }
 
 function conditionUse(
-  instruction: JitIrBlockInstruction,
-  op: Extract<IrOp, { op: "aluFlags.condition" }>
-): JitVirtualFlagConditionUse {
-  return instruction.ir.some((entry) =>
-    entry.op === "conditionalJump" &&
-    entry.condition.kind === "var" &&
-    entry.condition.id === op.dst.id
-  )
-    ? "exitCondition"
-    : "localCondition";
+  conditionUses: JitConditionUseIndex,
+  instructionIndex: number,
+  opIndex: number
+): JitConditionUse {
+  return conditionUses.get(instructionIndex)?.get(opIndex) ?? "localCondition";
 }
 
 function recordGet32(

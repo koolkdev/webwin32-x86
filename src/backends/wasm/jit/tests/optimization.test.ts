@@ -15,6 +15,7 @@ import {
 } from "#backends/wasm/jit/optimization/pipeline.js";
 import type { JitExitPoint } from "#backends/wasm/jit/optimization/types.js";
 import {
+  analyzeJitConditionUses,
   analyzeJitVirtualFlags,
   materializeJitVirtualFlags,
   type JitVirtualFlagOwnerMask
@@ -184,6 +185,30 @@ test("analyzeJitVirtualFlags keeps partial flag ownership across INC", () => {
     { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add32" },
     { mask: IR_ALU_FLAG_MASK & ~IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 1, producer: "inc32" }
   ]);
+});
+
+test("analyzeJitConditionUses classifies exit-coupled condition values", () => {
+  const local = analyzeJitConditionUses({
+    instructions: [
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "next" }
+      ])
+    ]
+  });
+  const exit = analyzeJitConditionUses({
+    instructions: [
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
+      ])
+    ]
+  });
+
+  strictEqual(local.get(0)?.get(0), "localCondition");
+  strictEqual(exit.get(0)?.get(0), "exitCondition");
 });
 
 test("analyzeJitVirtualFlags classifies local and exit-coupled condition uses", () => {
