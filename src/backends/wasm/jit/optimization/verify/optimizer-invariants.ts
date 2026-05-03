@@ -1,4 +1,6 @@
 import { flagProducerConditionInputNames, requiredFlagProducerConditionInput } from "#x86/ir/model/flag-conditions.js";
+import { assertIrAluFlagMask } from "#x86/ir/model/flag-effects.js";
+import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import type { IrBlock, ValueRef } from "#x86/ir/model/types.js";
 import { validateIrBlock } from "#x86/ir/passes/validator.js";
 import { jitIrOpDst } from "#backends/wasm/jit/ir-semantics.js";
@@ -142,8 +144,40 @@ function validateJitFlagConditionInputs(
   op: Extract<JitIrOp, { op: "jit.flagCondition" }>,
   definedVars: ReadonlySet<number>
 ): void {
-  for (const inputName of flagProducerConditionInputNames(op)) {
+  validateJitFlagConditionMasks(op);
+
+  const inputNames = flagProducerConditionInputNames(op);
+  const allowedInputs: ReadonlySet<string> = new Set(inputNames);
+
+  for (const inputName of inputNames) {
     validateValueRef(requiredFlagProducerConditionInput(op, inputName), definedVars);
+  }
+
+  for (const [inputName, value] of Object.entries(op.inputs)) {
+    if (!allowedInputs.has(inputName)) {
+      throw new Error(`JIT flag condition ${op.producer}/${op.cc} has unexpected input '${inputName}'`);
+    }
+
+    validateValueRef(value, definedVars);
+  }
+}
+
+function validateJitFlagConditionMasks(op: Extract<JitIrOp, { op: "jit.flagCondition" }>): void {
+  const producer = FLAG_PRODUCERS[op.producer];
+
+  assertIrAluFlagMask(op.writtenMask, "jit.flagCondition writtenMask");
+  assertIrAluFlagMask(op.undefMask, "jit.flagCondition undefMask");
+
+  if (op.writtenMask !== producer.writtenMask) {
+    throw new Error(`JIT flag condition ${op.producer} writtenMask does not match producer metadata`);
+  }
+
+  if (op.undefMask !== producer.undefMask) {
+    throw new Error(`JIT flag condition ${op.producer} undefMask does not match producer metadata`);
+  }
+
+  if ((op.undefMask & ~op.writtenMask) !== 0) {
+    throw new Error(`JIT flag condition ${op.producer} undefMask must be contained in writtenMask`);
   }
 }
 
