@@ -125,9 +125,23 @@ export class WasmFunctionBodyEncoder {
     return this;
   }
 
+  callIndirect(typeIndex: number, tableIndex: number): this {
+    this.#writeInstruction(wasmOpcode.callIndirect);
+    this.#instructions.writeU32(typeIndex);
+    this.#instructions.writeU32(tableIndex);
+    return this;
+  }
+
   returnCallFunction(functionIndex: number): this {
     this.#writeInstruction(wasmOpcode.returnCall);
     this.#instructions.writeU32(functionIndex);
+    return this;
+  }
+
+  returnCallIndirect(typeIndex: number, tableIndex: number): this {
+    this.#writeInstruction(wasmOpcode.returnCallIndirect);
+    this.#instructions.writeU32(typeIndex);
+    this.#instructions.writeU32(tableIndex);
     return this;
   }
 

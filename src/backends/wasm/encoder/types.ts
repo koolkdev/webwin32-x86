@@ -1,5 +1,6 @@
 export const wasmExternalKind = {
   function: 0x00,
+  table: 0x01,
   memory: 0x02
 } as const;
 
@@ -19,7 +20,9 @@ export const wasmOpcode = {
   br: 0x0c,
   brTable: 0x0e,
   call: 0x10,
+  callIndirect: 0x11,
   returnCall: 0x12,
+  returnCallIndirect: 0x13,
   return: 0x0f,
   localGet: 0x20,
   localSet: 0x21,
@@ -56,6 +59,7 @@ export const wasmSectionId = {
 } as const;
 
 export const wasmValueType = {
+  funcref: 0x70,
   i32: 0x7f,
   i64: 0x7e
 } as const;
