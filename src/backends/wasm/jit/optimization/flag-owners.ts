@@ -15,8 +15,8 @@ export type JitVirtualFlagOwnerMask = Readonly<{
   owner: JitVirtualFlagOwner;
 }>;
 
-export const incomingJitFlagOwner: JitVirtualFlagOwner = { kind: "incoming" };
-export const materializedJitFlagOwner: JitVirtualFlagOwner = { kind: "materialized" };
+const incomingJitFlagOwner: JitVirtualFlagOwner = { kind: "incoming" };
+const materializedJitFlagOwner: JitVirtualFlagOwner = { kind: "materialized" };
 
 const flagBits = Object.values(IR_ALU_FLAG_MASKS);
 
@@ -33,12 +33,12 @@ export class JitFlagOwners {
     return new JitFlagOwners(new Map(this.byFlag));
   }
 
-  set(mask: number, owner: JitVirtualFlagOwner): void {
-    for (const flagBit of flagBits) {
-      if ((mask & flagBit) !== 0) {
-        this.byFlag.set(flagBit, owner);
-      }
-    }
+  recordMaterialized(mask: number): void {
+    this.set(mask, materializedJitFlagOwner);
+  }
+
+  recordSource(source: JitFlagSource): void {
+    this.set(source.writtenMask | source.undefMask, { kind: "producer", source });
   }
 
   forMask(mask: number): readonly JitVirtualFlagOwnerMask[] {
@@ -71,6 +71,14 @@ export class JitFlagOwners {
     return this.forMask(IR_ALU_FLAG_MASK).filter((entry) =>
       entry.owner.kind === "producer" && entry.owner.source.readRegs.includes(reg)
     );
+  }
+
+  private set(mask: number, owner: JitVirtualFlagOwner): void {
+    for (const flagBit of flagBits) {
+      if ((mask & flagBit) !== 0) {
+        this.byFlag.set(flagBit, owner);
+      }
+    }
   }
 }
 

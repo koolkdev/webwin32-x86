@@ -12,8 +12,13 @@ export class JitOptimizationState {
   readonly registers = new JitRegisterValues();
   readonly flags = JitFlagOwners.incoming();
 
-  beginInstructionRewrite(instruction: JitIrBlockInstruction): JitInstructionRewrite {
+  beginInstructionValues(): JitValueTracker {
     this.values.clear();
+    return this.values;
+  }
+
+  beginInstructionRewrite(instruction: JitIrBlockInstruction): JitInstructionRewrite {
+    this.beginInstructionValues();
     return createJitInstructionRewrite(instruction, this.values);
   }
 

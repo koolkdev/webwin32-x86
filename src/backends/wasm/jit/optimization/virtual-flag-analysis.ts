@@ -20,7 +20,6 @@ import {
 } from "./effects.js";
 import {
   JitFlagOwners,
-  materializedJitFlagOwner,
   type JitVirtualFlagOwnerMask
 } from "./flag-owners.js";
 import type { JitConditionUse } from "./condition-uses.js";
@@ -33,6 +32,7 @@ import {
   type JitFlagInput,
   type JitFlagSource
 } from "./flag-sources.js";
+import { JitOptimizationState } from "./state.js";
 
 export type {
   JitVirtualFlagOwner,
@@ -76,7 +76,7 @@ export function analyzeJitVirtualFlags(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): JitVirtualFlagAnalysis {
-  const owners = JitFlagOwners.incoming();
+  const state = new JitOptimizationState();
   const sources: JitFlagSource[] = [];
   const reads: JitVirtualFlagRead[] = [];
   const sourceClobbers: JitVirtualFlagSourceClobber[] = [];
@@ -89,8 +89,8 @@ export function analyzeJitVirtualFlags(
       throw new Error(`missing JIT instruction while analyzing virtual flags: ${instructionIndex}`);
     }
 
-    const values = new JitValueTracker();
-    const instructionEntryOwners = owners.clone();
+    const values = state.beginInstructionValues();
+    const instructionEntryOwners = state.flags.clone();
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
       const op = instruction.ir[opIndex];
@@ -107,7 +107,7 @@ export function analyzeJitVirtualFlags(
     sources,
     reads,
     sourceClobbers,
-    finalOwners: owners.forMask(IR_ALU_FLAG_MASK)
+    finalOwners: state.flags.forMask(IR_ALU_FLAG_MASK)
   };
 
   function analyzeOp(
@@ -165,11 +165,11 @@ export function analyzeJitVirtualFlags(
       }
       case "flags.materialize":
         recordRead({ instructionIndex, opIndex, reason: "materialize", requiredMask: op.mask });
-        owners.set(op.mask, materializedJitFlagOwner);
+        state.flags.recordMaterialized(op.mask);
         return;
       case "flags.boundary":
         recordRead({ instructionIndex, opIndex, reason: "boundary", requiredMask: op.mask });
-        owners.set(op.mask, materializedJitFlagOwner);
+        state.flags.recordMaterialized(op.mask);
         return;
       case "next":
       case "jump":
@@ -191,12 +191,12 @@ export function analyzeJitVirtualFlags(
 
     nextSourceId += 1;
     sources.push(source);
-    owners.set(op.writtenMask | op.undefMask, { kind: "producer", source });
+    state.flags.recordSource(source);
   }
 
   function recordRead(
     read: Omit<JitVirtualFlagRead, "owners">,
-    readOwners: JitFlagOwners = owners
+    readOwners: JitFlagOwners = state.flags
   ): void {
     if (read.requiredMask === 0) {
       return;
@@ -220,7 +220,7 @@ export function analyzeJitVirtualFlags(
       return;
     }
 
-    const clobberedOwners = owners.producerOwnersReadingReg(reg);
+    const clobberedOwners = state.flags.producerOwnersReadingReg(reg);
 
     if (clobberedOwners.length === 0) {
       return;
