@@ -124,27 +124,26 @@ test("buildJitIrBlock does not specialize incoming CF after INC", () => {
   deepStrictEqual(aluFlagMemoryAccessCounts(block), { loads: 1, stores: 1 });
 });
 
-test("buildJitIrBlock represents JIT flag exits as explicit IR boundaries", () => {
+test("buildJitIrBlock only emits exit flag boundaries for speculative flags", () => {
   const flagFreeIr = loweringIr(buildJitIrBlock([
     ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress)),
     ok(decodeBytes([0xbb, 0x02, 0x00, 0x00, 0x00], startAddress + 5)),
     ok(decodeBytes([0xcd, 0x2e], startAddress + 10))
   ]));
-  const flagFreeTrapIndex = flagFreeIr.findIndex((op) => op.op === "hostTrap");
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
+  const addTrapIr = loweringIr(buildJitIrBlock([
+    add,
+    ok(decodeBytes([0xcd, 0x2e], add.nextEip))
+  ]));
+  const addTrapIndex = addTrapIr.findIndex((op) => op.op === "hostTrap");
 
-  deepStrictEqual(flagFreeIr[flagFreeTrapIndex - 1], {
-    op: "flags.boundary",
-    mask: IR_ALU_FLAG_MASK
-  });
+  strictEqual(flagFreeIr.some((op) => op.op === "flags.boundary"), false);
+  deepStrictEqual(addTrapIr[addTrapIndex - 1], { op: "flags.boundary", mask: IR_ALU_FLAG_MASK });
 
   const jzIr = loweringIr(buildJitIrBlock([ok(decodeBytes([0x74, 0x05], startAddress))]));
-  const jzJumpIndex = jzIr.findIndex((op) => op.op === "conditionalJump");
 
   strictEqual(jzIr.some((op) => op.op === "flags.materialize"), false);
-  deepStrictEqual(jzIr[jzJumpIndex - 1], {
-    op: "flags.boundary",
-    mask: IR_ALU_FLAG_MASK
-  });
+  strictEqual(jzIr.some((op) => op.op === "flags.boundary"), false);
 });
 
 test("jit IR block lowering uses explicit flag boundaries for aluFlags memory traffic", () => {

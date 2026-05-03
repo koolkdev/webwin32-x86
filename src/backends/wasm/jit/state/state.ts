@@ -17,6 +17,10 @@ export type JitExitTarget = {
   emitBeforeExit?: () => void;
 };
 
+type ExitStateStoreOptions = Readonly<{
+  allowPendingFlags?: boolean;
+}>;
+
 export type JitIrState = Readonly<{
   regs: JitReg32State;
   flags: JitFlagState;
@@ -72,7 +76,9 @@ export function createJitIrState(
       const exit = requiredActiveExit();
 
       useExitState(exit, exitPoint.exitStateIndex);
-      useExitStateStores(exit, emitEip, exitPoint.snapshot.instructionCountDelta);
+      useExitStateStores(exit, emitEip, exitPoint.snapshot.instructionCountDelta, {
+        allowPendingFlags: exitPoint.snapshot.kind === "preInstruction"
+      });
     },
     finishPreInstructionExitPoints: () => {
       regs.commitPending();
@@ -119,7 +125,12 @@ export function createJitIrState(
     emitStoreStateU32(body, stateOffset.aluFlags, emitValue);
   }
 
-  function useExitStateStores(exit: JitExitTarget, emitEip: () => void, instructionDelta: number): void {
+  function useExitStateStores(
+    exit: JitExitTarget,
+    emitEip: () => void,
+    instructionDelta: number,
+    options: ExitStateStoreOptions = {}
+  ): void {
     exit.emitBeforeExit = () => {
       emitStoreStateU32(body, stateOffset.eip, emitEip);
       emitStoreStateU32(body, stateOffset.instructionCount, () => {
@@ -129,7 +140,10 @@ export function createJitIrState(
           body.i32Const(instructionDelta).i32Add();
         }
       });
-      flags.assertNoPending();
+
+      if (options.allowPendingFlags !== true) {
+        flags.assertNoPending();
+      }
     };
   }
 

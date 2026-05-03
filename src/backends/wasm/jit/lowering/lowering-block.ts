@@ -1,4 +1,3 @@
-import { IR_ALU_FLAG_MASK } from "#x86/ir/passes/flag-analysis.js";
 import type { IrBlock, IrOp } from "#x86/ir/model/types.js";
 import type { JitBlockOptimization } from "#backends/wasm/jit/optimization/types.js";
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
@@ -6,11 +5,11 @@ import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 const emptyBoundaryMaskByOpIndex = new Map<number, number>();
 
 export function buildJitLoweringBlock(optimization: JitBlockOptimization): JitIrBlock {
-  return insertExitFlagBoundaries(optimization.block, optimization);
+  return insertFlagBoundaries(optimization.block, optimization);
 }
 
-function insertExitFlagBoundaries(block: JitIrBlock, optimization: JitBlockOptimization): JitIrBlock {
-  const boundaryMasks = exitFlagBoundaryMasks(optimization);
+function insertFlagBoundaries(block: JitIrBlock, optimization: JitBlockOptimization): JitIrBlock {
+  const boundaryMasks = flagBoundaryMasks(optimization);
 
   if (boundaryMasks.size === 0) {
     return block;
@@ -27,21 +26,50 @@ function insertExitFlagBoundaries(block: JitIrBlock, optimization: JitBlockOptim
   };
 }
 
-function exitFlagBoundaryMasks(optimization: JitBlockOptimization): ReadonlyMap<number, ReadonlyMap<number, number>> {
+function flagBoundaryMasks(optimization: JitBlockOptimization): ReadonlyMap<number, ReadonlyMap<number, number>> {
   const masks = new Map<number, Map<number, number>>();
 
-  for (const exit of optimization.exitPoints) {
-    let instructionMasks = masks.get(exit.instructionIndex);
+  for (let instructionIndex = 0; instructionIndex < optimization.instructionStates.length; instructionIndex += 1) {
+    const state = optimization.instructionStates[instructionIndex];
 
-    if (instructionMasks === undefined) {
-      instructionMasks = new Map();
-      masks.set(exit.instructionIndex, instructionMasks);
+    if (state === undefined) {
+      throw new Error(`missing JIT instruction state while inserting flag boundaries: ${instructionIndex}`);
     }
 
-    instructionMasks.set(exit.opIndex, (instructionMasks.get(exit.opIndex) ?? 0) | IR_ALU_FLAG_MASK);
+    if (state.preInstructionExitPointCount !== 0) {
+      addBoundaryMask(masks, instructionIndex, 0, state.preInstructionState.speculativeFlags.mask);
+    }
+  }
+
+  for (const exit of optimization.exitPoints) {
+    if (exit.snapshot.kind === "preInstruction") {
+      continue;
+    }
+
+    addBoundaryMask(masks, exit.instructionIndex, exit.opIndex, exit.requiredFlagCommitMask);
   }
 
   return masks;
+}
+
+function addBoundaryMask(
+  masks: Map<number, Map<number, number>>,
+  instructionIndex: number,
+  opIndex: number,
+  mask: number
+): void {
+  if (mask === 0) {
+    return;
+  }
+
+  let instructionMasks = masks.get(instructionIndex);
+
+  if (instructionMasks === undefined) {
+    instructionMasks = new Map();
+    masks.set(instructionIndex, instructionMasks);
+  }
+
+  instructionMasks.set(opIndex, (instructionMasks.get(opIndex) ?? 0) | mask);
 }
 
 function insertInstructionFlagBoundaries(
