@@ -1,4 +1,3 @@
-import type { Reg32 } from "#x86/isa/types.js";
 import type {
   JitIrBlock,
   JitIrBlockInstruction,
@@ -11,6 +10,7 @@ import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
 } from "./analysis.js";
+import { JitRegisterValues } from "./register-values.js";
 import {
   materializeVirtualRegsForPostInstructionExit,
   materializeVirtualRegsForPreInstructionExits
@@ -33,7 +33,6 @@ import {
   firstVirtualRegisterFoldableOpIndex,
   recordCopiedVirtualRegisterOp
 } from "./virtual-register-prefix.js";
-import type { JitValue } from "./values.js";
 
 export type JitVirtualRegisterFolding = Readonly<{
   removedSetCount: number;
@@ -44,8 +43,7 @@ export function foldJitVirtualRegisters(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): Readonly<{ block: JitOptimizedIrBlock; folding: JitVirtualRegisterFolding }> {
-  const virtualRegs = new Map<Reg32, JitValue>();
-  const virtualRegReadCounts = new Map<Reg32, number>();
+  const registers = new JitRegisterValues();
   const instructions: JitOptimizedIrBlockInstruction[] = [];
   let removedSetCount = 0;
   let materializedSetCount = 0;
@@ -63,8 +61,7 @@ export function foldJitVirtualRegisters(
       prelude,
       analysis.context.effects,
       instructionIndex,
-      virtualRegs,
-      virtualRegReadCounts
+      registers
     );
 
     const rewrite = createJitInstructionRewrite(instruction);
@@ -89,8 +86,7 @@ export function foldJitVirtualRegisters(
           opIndex,
           analysis,
           rewrite,
-          virtualRegs,
-          virtualRegReadCounts
+          registers
         );
 
         if (result.removedSet) {
@@ -108,7 +104,7 @@ export function foldJitVirtualRegisters(
     });
   }
 
-  if (virtualRegs.size !== 0) {
+  if (registers.size !== 0) {
     throw new Error("JIT virtual registers were not materialized before block end");
   }
 
@@ -125,14 +121,13 @@ function rewriteOp(
   opIndex: number,
   analysis: JitOptimizationAnalysis,
   rewrite: JitInstructionRewrite,
-  virtualRegs: Map<Reg32, JitValue>,
-  virtualRegReadCounts: Map<Reg32, number>
+  registers: JitRegisterValues
 ): JitVirtualRegisterRewriteResult {
   switch (op.op) {
     case "get32":
-      return rewriteVirtualRegisterGet32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
+      return rewriteVirtualRegisterGet32(op, instruction, rewrite, registers);
     case "const32":
-      rewrite.values.recordOp(op, instruction, virtualRegs);
+      rewrite.values.recordOp(op, instruction, registers.values);
       rewrite.ops.push(op);
       return unchangedJitVirtualRegisterRewriteResult;
     case "i32.add":
@@ -140,15 +135,15 @@ function rewriteOp(
     case "i32.xor":
     case "i32.or":
     case "i32.and":
-      rewrite.values.recordOp(op, instruction, virtualRegs);
+      rewrite.values.recordOp(op, instruction, registers.values);
       rewrite.ops.push(op);
       return unchangedJitVirtualRegisterRewriteResult;
     case "address32":
-      return rewriteVirtualRegisterAddress32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
+      return rewriteVirtualRegisterAddress32(op, instruction, rewrite, registers);
     case "set32":
-      return rewriteVirtualRegisterSet32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
+      return rewriteVirtualRegisterSet32(op, instruction, rewrite, registers);
     case "set32.if":
-      return rewriteVirtualRegisterSet32If(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
+      return rewriteVirtualRegisterSet32If(op, instruction, rewrite, registers);
     case "next":
     case "jump":
     case "conditionalJump":
@@ -158,8 +153,7 @@ function rewriteOp(
         analysis.context.effects,
         instructionIndex,
         opIndex,
-        virtualRegs,
-        virtualRegReadCounts
+        registers
       );
 
       rewrite.ops.push(op);

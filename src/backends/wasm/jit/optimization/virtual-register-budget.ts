@@ -2,6 +2,7 @@ import type { Reg32 } from "#x86/isa/types.js";
 import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { materializeJitVirtualReg, type JitInstructionRewrite } from "./rewrite.js";
+import { JitRegisterValues } from "./register-values.js";
 import {
   jitVirtualRegsReadByEffectiveAddress,
   jitValueCost,
@@ -18,10 +19,10 @@ export function shouldRetainVirtualRegisterValue(value: JitValue): boolean {
 export function shouldMaterializeRepeatedVirtualRegisterRead(
   reg: Reg32,
   value: JitValue,
-  virtualRegReadCounts: ReadonlyMap<Reg32, number>
+  registers: JitRegisterValues
 ): boolean {
   return (
-    (virtualRegReadCounts.get(reg) ?? 0) > 0 &&
+    registers.readCount(reg) > 0 &&
     jitValueCost(value) > maxRepeatedInlineVirtualValueCost
   );
 }
@@ -30,18 +31,16 @@ export function materializeRepeatedEffectiveAddressReads(
   op: Extract<IrOp, { op: "address32" }>,
   instruction: JitIrBlockInstruction,
   rewrite: JitInstructionRewrite,
-  virtualRegs: Map<Reg32, JitValue>,
-  virtualRegReadCounts: Map<Reg32, number>
+  registers: JitRegisterValues
 ): number {
   let materializedSetCount = 0;
 
-  for (const reg of jitVirtualRegsReadByEffectiveAddress(op.operand, instruction.operands, virtualRegs)) {
-    const value = virtualRegs.get(reg);
+  for (const reg of jitVirtualRegsReadByEffectiveAddress(op.operand, instruction.operands, registers.values)) {
+    const value = registers.get(reg);
 
-    if (value !== undefined && shouldMaterializeRepeatedVirtualRegisterRead(reg, value, virtualRegReadCounts)) {
+    if (value !== undefined && shouldMaterializeRepeatedVirtualRegisterRead(reg, value, registers)) {
       materializeJitVirtualReg(rewrite, reg, value);
-      virtualRegs.delete(reg);
-      virtualRegReadCounts.delete(reg);
+      registers.delete(reg);
       materializedSetCount += 1;
     }
   }
@@ -49,13 +48,6 @@ export function materializeRepeatedEffectiveAddressReads(
   return materializedSetCount;
 }
 
-export function syncVirtualRegReadCounts(
-  virtualRegReadCounts: Map<Reg32, number>,
-  virtualRegs: ReadonlyMap<Reg32, JitValue>
-): void {
-  for (const reg of virtualRegReadCounts.keys()) {
-    if (!virtualRegs.has(reg)) {
-      virtualRegReadCounts.delete(reg);
-    }
-  }
+export function syncVirtualRegReadCounts(registers: JitRegisterValues): void {
+  registers.syncReadCounts();
 }
