@@ -18,13 +18,10 @@ import {
   emitJitGet32,
   emitJitSet32
 } from "./operands.js";
+import type { JitPlannedInstruction } from "#backends/wasm/jit/planning/plan.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
 
-export type JitIrInstructionContext = Readonly<{
-  eip: number;
-  nextEip: number;
-  nextMode: "continue" | "exit";
-}>;
+export type JitIrInstructionContext = Pick<JitPlannedInstruction, "eip" | "nextEip" | "nextMode">;
 
 export type JitIrBlockLoweringContext = Readonly<{
   body: WasmFunctionBodyEncoder;
