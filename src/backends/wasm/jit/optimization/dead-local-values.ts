@@ -4,18 +4,23 @@ import {
   visitJitIrOpValueRefs
 } from "#backends/wasm/jit/ir-semantics.js";
 import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
-import { jitMemoryFaultReason } from "./op-effects.js";
+import {
+  analyzeJitOptimization,
+  type JitOptimizationAnalysis
+} from "./analysis.js";
+import { jitPreInstructionExitReasonAt } from "./effects.js";
 
 export type JitDeadLocalValuePruning = Readonly<{
   removedOpCount: number;
 }>;
 
 export function pruneDeadJitLocalValues(
-  block: JitIrBlock
+  block: JitIrBlock,
+  analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): Readonly<{ block: JitIrBlock; deadLocalValues: JitDeadLocalValuePruning }> {
   let removedOpCount = 0;
   const instructions = block.instructions.map((instruction, instructionIndex) => {
-    const pruned = pruneInstructionDeadLocalValues(instruction, instructionIndex);
+    const pruned = pruneInstructionDeadLocalValues(instruction, instructionIndex, analysis);
 
     removedOpCount += pruned.removedOpCount;
     return pruned.instruction;
@@ -29,7 +34,8 @@ export function pruneDeadJitLocalValues(
 
 function pruneInstructionDeadLocalValues(
   instruction: JitIrBlockInstruction,
-  instructionIndex: number
+  instructionIndex: number,
+  analysis: JitOptimizationAnalysis
 ): Readonly<{ instruction: JitIrBlockInstruction; removedOpCount: number }> {
   const liveVars = new Set<number>();
   const ops: JitIrOp[] = [];
@@ -44,7 +50,7 @@ function pruneInstructionDeadLocalValues(
 
     const dst = jitIrOpDst(op);
 
-    if (dst !== undefined && !liveVars.has(dst.id) && canDropUnusedResult(op, instruction)) {
+    if (dst !== undefined && !liveVars.has(dst.id) && canDropUnusedResult(op, instructionIndex, opIndex, analysis)) {
       removedOpCount += 1;
       continue;
     }
@@ -71,7 +77,12 @@ function pruneInstructionDeadLocalValues(
   };
 }
 
-function canDropUnusedResult(op: JitIrOp, instruction: JitIrBlockInstruction): boolean {
+function canDropUnusedResult(
+  op: JitIrOp,
+  instructionIndex: number,
+  opIndex: number,
+  analysis: JitOptimizationAnalysis
+): boolean {
   const result = jitIrOpResult(op);
 
   if (result.kind === "none") {
@@ -82,6 +93,6 @@ function canDropUnusedResult(op: JitIrOp, instruction: JitIrBlockInstruction): b
     case "none":
       return true;
     case "storageRead":
-      return jitMemoryFaultReason(op, instruction.operands) === undefined;
+      return jitPreInstructionExitReasonAt(analysis.context.effects, instructionIndex, opIndex) === undefined;
   }
 }
