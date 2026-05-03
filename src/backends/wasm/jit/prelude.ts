@@ -1,7 +1,6 @@
-import type { IrOp } from "#x86/ir/model/types.js";
-import type { JitOptimizedIrPreludeOp } from "./types.js";
+import type { JitIrOp, JitOptimizedIrPreludeOp } from "./types.js";
 
-export function toJitOptimizedIrPreludeOp(op: IrOp): JitOptimizedIrPreludeOp {
+export function toJitOptimizedIrPreludeOp(op: JitIrOp): JitOptimizedIrPreludeOp {
   if (isJitOptimizedIrPreludeOp(op)) {
     return op;
   }
@@ -9,11 +8,11 @@ export function toJitOptimizedIrPreludeOp(op: IrOp): JitOptimizedIrPreludeOp {
   throw new Error(`JIT prelude op must be register materialization, got ${op.op}`);
 }
 
-export function assertJitOptimizedIrPreludeOp(op: IrOp): asserts op is JitOptimizedIrPreludeOp {
+export function assertJitOptimizedIrPreludeOp(op: JitIrOp): asserts op is JitOptimizedIrPreludeOp {
   void toJitOptimizedIrPreludeOp(op);
 }
 
-function isJitOptimizedIrPreludeOp(op: IrOp): op is JitOptimizedIrPreludeOp {
+function isJitOptimizedIrPreludeOp(op: JitIrOp): op is JitOptimizedIrPreludeOp {
   switch (op.op) {
     case "get32":
       return op.source.kind === "reg";

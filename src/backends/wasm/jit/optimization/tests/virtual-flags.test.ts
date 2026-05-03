@@ -285,7 +285,7 @@ test("materializeJitVirtualFlags emits direct non-exit condition reads", () => {
   strictEqual(materialized.flags.retainedSetCount, 0);
   strictEqual(ir.some((op) => op.op === "flags.set"), false);
   strictEqual(ir.some((op) => op.op === "aluFlags.condition"), false);
-  strictEqual(ir.some((op) => op.op === "flagProducer.condition"), true);
+  strictEqual(ir.some((op) => op.op === "jit.flagCondition"), true);
 });
 
 test("materializeJitVirtualFlags keeps clobbered producer inputs captured", () => {
@@ -314,7 +314,7 @@ test("materializeJitVirtualFlags keeps clobbered producer inputs captured", () =
   strictEqual(materialized.flags.retainedSetCount, 1);
   strictEqual(ir.some((op) => op.op === "flags.set"), true);
   strictEqual(ir.some((op) => op.op === "aluFlags.condition"), true);
-  strictEqual(ir.some((op) => op.op === "flagProducer.condition"), false);
+  strictEqual(ir.some((op) => op.op === "jit.flagCondition"), false);
 });
 
 test("materializeJitVirtualFlags emits result conditions from writeback registers", () => {
@@ -342,7 +342,7 @@ test("materializeJitVirtualFlags emits result conditions from writeback register
     ]
   });
   const conditionInstruction = materialized.block.instructions[2]!;
-  const condition = conditionInstruction.ir.find((op) => op.op === "flagProducer.condition");
+  const condition = conditionInstruction.ir.find((op) => op.op === "jit.flagCondition");
 
   strictEqual(materialized.flags.directConditionCount, 1);
   strictEqual(materialized.flags.removedSetCount, 2);
@@ -351,7 +351,7 @@ test("materializeJitVirtualFlags emits result conditions from writeback register
   deepStrictEqual(conditionInstruction.ir.slice(0, 2), [
     { op: "get32", dst: v(1), source: { kind: "reg", reg: "eax" } },
     {
-      op: "flagProducer.condition",
+      op: "jit.flagCondition",
       dst: v(0),
       cc: "E",
       producer: "inc32",
@@ -360,7 +360,7 @@ test("materializeJitVirtualFlags emits result conditions from writeback register
       inputs: { result: v(1) }
     }
   ]);
-  strictEqual(condition?.op, "flagProducer.condition");
+  strictEqual(condition?.op, "jit.flagCondition");
 });
 
 test("materializeJitVirtualFlags emits sub32 equality from writeback registers", () => {
@@ -388,7 +388,7 @@ test("materializeJitVirtualFlags emits sub32 equality from writeback registers",
   deepStrictEqual(conditionInstruction.ir.slice(0, 2), [
     { op: "get32", dst: v(1), source: { kind: "reg", reg: "eax" } },
     {
-      op: "flagProducer.condition",
+      op: "jit.flagCondition",
       dst: v(0),
       cc: "E",
       producer: "sub32",
@@ -413,7 +413,7 @@ test("materializeJitVirtualFlags emits direct conditions for real cmovcc instruc
   strictEqual(materialized.flags.removedSetCount, 1);
   strictEqual(materialized.flags.retainedSetCount, 1);
   strictEqual(cmovIr.some((op) => op.op === "aluFlags.condition"), false);
-  strictEqual(cmovIr.some((op) => op.op === "flagProducer.condition"), true);
+  strictEqual(cmovIr.some((op) => op.op === "jit.flagCondition"), true);
 });
 
 test("materializeJitVirtualFlags emits cmovcc conditions from inc writeback results", () => {
@@ -423,13 +423,13 @@ test("materializeJitVirtualFlags emits cmovcc conditions from inc writeback resu
   const xor = ok(decodeBytes([0x31, 0xf6], cmove.nextEip));
   const materialized = materializeJitVirtualFlags(buildJitIrBlock([add, inc, cmove, xor]));
   const cmovIr = materialized.block.instructions[2]!.ir;
-  const condition = cmovIr.find((op) => op.op === "flagProducer.condition");
+  const condition = cmovIr.find((op) => op.op === "jit.flagCondition");
 
   strictEqual(materialized.flags.directConditionCount, 1);
   strictEqual(materialized.flags.removedSetCount, 2);
   strictEqual(materialized.flags.retainedSetCount, 1);
   deepStrictEqual(condition, {
-    op: "flagProducer.condition",
+    op: "jit.flagCondition",
     dst: v(1),
     cc: "E",
     producer: "inc32",
@@ -464,7 +464,7 @@ test("materializeJitVirtualFlags emits logic32 compound conditions from writebac
   deepStrictEqual(conditionInstruction.ir.slice(0, 2), [
     { op: "get32", dst: v(1), source: { kind: "reg", reg: "eax" } },
     {
-      op: "flagProducer.condition",
+      op: "jit.flagCondition",
       dst: v(0),
       cc: "LE",
       producer: "logic32",
@@ -494,7 +494,7 @@ test("materializeJitVirtualFlags emits supported logic32 local direct conditions
   for (const { cc, resultInput } of cases) {
     const materialized = materializeJitVirtualFlags(logic32LocalConditionBlock(cc));
     const conditionInstruction = materialized.block.instructions[1]!;
-    const condition = conditionInstruction.ir.find((op) => op.op === "flagProducer.condition");
+    const condition = conditionInstruction.ir.find((op) => op.op === "jit.flagCondition");
     const getCount = conditionInstruction.ir.filter((op) => op.op === "get32").length;
 
     strictEqual(materialized.flags.directConditionCount, 1, cc);
@@ -503,7 +503,7 @@ test("materializeJitVirtualFlags emits supported logic32 local direct conditions
     strictEqual(conditionInstruction.ir.some((op) => op.op === "aluFlags.condition"), false, cc);
     strictEqual(getCount, resultInput ? 1 : 0, cc);
     deepStrictEqual(condition, {
-      op: "flagProducer.condition",
+      op: "jit.flagCondition",
       dst: v(0),
       cc,
       producer: "logic32",
@@ -536,7 +536,7 @@ test("materializeJitVirtualFlags emits direct logic32 exit conditions and retain
   strictEqual(materialized.flags.removedSetCount, 0);
   strictEqual(materialized.flags.retainedSetCount, 1);
   strictEqual(conditionInstruction.ir.some((op) => op.op === "aluFlags.condition"), false);
-  strictEqual(conditionInstruction.ir.some((op) => op.op === "flagProducer.condition"), true);
+  strictEqual(conditionInstruction.ir.some((op) => op.op === "jit.flagCondition"), true);
 });
 
 test("materializeJitVirtualFlags emits add-inc branch conditions from INC while retaining merged exit flags", () => {
@@ -545,7 +545,7 @@ test("materializeJitVirtualFlags emits add-inc branch conditions from INC while 
   const je = ok(decodeBytes([0x74, 0x05], inc.nextEip));
   const materialized = materializeJitVirtualFlags(buildJitIrBlock([add, inc, je]));
   const branchIr = materialized.block.instructions[2]!.ir;
-  const condition = branchIr.find((op) => op.op === "flagProducer.condition");
+  const condition = branchIr.find((op) => op.op === "jit.flagCondition");
   const flagSets = materialized.block.instructions.flatMap((instruction) =>
     instruction.ir.filter((op) => op.op === "flags.set")
   );
@@ -555,7 +555,7 @@ test("materializeJitVirtualFlags emits add-inc branch conditions from INC while 
   strictEqual(materialized.flags.retainedSetCount, 2);
   strictEqual(branchIr.some((op) => op.op === "aluFlags.condition"), false);
   deepStrictEqual(condition, {
-    op: "flagProducer.condition",
+    op: "jit.flagCondition",
     dst: v(0),
     cc: "E",
     producer: "inc32",
@@ -573,7 +573,7 @@ test("optimizeJitIrBlock keeps add-inc branch exit flag materialization out of t
   const optimization = optimizeJitIrBlock(buildJitIrBlock([add, inc, je]));
 
   strictEqual(optimization.block.instructions[2]!.ir.some((op) => op.op === "aluFlags.condition"), false);
-  strictEqual(optimization.block.instructions[2]!.ir.some((op) => op.op === "flagProducer.condition"), true);
+  strictEqual(optimization.block.instructions[2]!.ir.some((op) => op.op === "jit.flagCondition"), true);
   strictEqual(
     optimization.flagMaterializationRequirements.some((requirement) => requirement.reason === "condition"),
     false

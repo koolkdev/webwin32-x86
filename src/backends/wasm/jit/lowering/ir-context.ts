@@ -18,6 +18,7 @@ import {
   emitJitSet32If
 } from "./operands.js";
 import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/optimization/types.js";
+import { lowerableJitIrBlock } from "#backends/wasm/jit/ir-semantics.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
 import type { JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
 
@@ -132,7 +133,7 @@ function lowerCurrentInstruction(jitContext: JitIrContext): void {
 }
 
 function lowerJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["ir"]): void {
-  lowerIrToWasm(ir, {
+  lowerIrToWasm(lowerableJitIrBlock(ir), {
     body: jitContext.body,
     scratch: jitContext.scratch,
     expression: { canInlineGet32: (source) => canInlineJitGet32(jitContext, source) },

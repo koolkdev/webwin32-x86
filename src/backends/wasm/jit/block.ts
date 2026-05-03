@@ -10,6 +10,7 @@ import { buildJitLoweringBlock } from "./lowering/lowering-block.js";
 import { lowerIrWithJitContext, type JitIrInstructionContext } from "./lowering/ir-context.js";
 import { optimizeJitIrBlock } from "./optimization/optimize.js";
 import type { JitBlockOptimization } from "./optimization/types.js";
+import { lowerableJitIrBlock } from "./ir-semantics.js";
 import { assertJitOptimizedIrPreludeOp } from "./prelude.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
 import type {
@@ -109,7 +110,7 @@ function validateLoweringBlock(block: JitOptimizedIrBlock): void {
     }
 
     validateJitPreludeBlock(instruction);
-    validateIrBlock(instruction.ir, {
+    validateIrBlock(lowerableJitIrBlock(instruction.ir), {
       operandCount: instruction.operands.length,
       terminatorMode: "single"
     });

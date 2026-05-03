@@ -1,10 +1,10 @@
 import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { conditionFlagReadMask, IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
-import { irOpStorageWrites } from "#x86/ir/model/op-semantics.js";
-import type { IrOp, StorageRef } from "#x86/ir/model/types.js";
+import { jitIrOpStorageWrites } from "#backends/wasm/jit/ir-semantics.js";
+import type { StorageRef } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
-import type { JitOptimizedIrBlock, JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitIrOp, JitOptimizedIrBlock, JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
@@ -121,16 +121,16 @@ export function analyzeJitBlockState(
   }
 
   function recordPreludeOpEffects(
-    op: IrOp,
+    op: JitIrOp,
     instruction: JitOptimizedIrBlockInstruction
   ): void {
-    for (const storage of irOpStorageWrites(op)) {
+    for (const storage of jitIrOpStorageWrites(op)) {
       recordCommittedStorageWriteEffects(storage, instruction.operands);
     }
   }
 
   function recordOpEffects(
-    op: IrOp,
+    op: JitIrOp,
     instruction: JitOptimizedIrBlockInstruction,
     instructionIndex: number,
     opIndex: number

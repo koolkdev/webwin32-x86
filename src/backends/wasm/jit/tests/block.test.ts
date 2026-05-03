@@ -3,15 +3,16 @@ import { test } from "node:test";
 
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
-import { irOpIsTerminator } from "#x86/ir/model/op-semantics.js";
-import type { IrOp, StorageRef } from "#x86/ir/model/types.js";
+import type { StorageRef } from "#x86/ir/model/types.js";
 import { createCpuState } from "#x86/state/cpu-state.js";
 import { stateOffset } from "#backends/wasm/abi.js";
 import { wasmOpcode, wasmSectionId } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
+import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir-semantics.js";
 import { buildJitLoweringBlock } from "#backends/wasm/jit/lowering/lowering-block.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
+import type { JitIrOp } from "#backends/wasm/jit/types.js";
 import { runJitIrBlock } from "./helpers.js";
 
 const startAddress = 0x1000;
@@ -55,8 +56,8 @@ test("JIT lowering preparation keeps instruction-local operand namespaces", () =
   strictEqual("ir" in loweringBlock, false);
   strictEqual("operands" in loweringBlock, false);
   strictEqual(loweringBlock.instructions.length, 2);
-  strictEqual(firstIr.filter(irOpIsTerminator).length, 1);
-  strictEqual(secondIr.filter(irOpIsTerminator).length, 1);
+  strictEqual(firstIr.filter(jitIrOpIsTerminator).length, 1);
+  strictEqual(secondIr.filter(jitIrOpIsTerminator).length, 1);
   deepStrictEqual([...new Set(firstIr.flatMap(irOpOperandIndexes))].sort((a, b) => a - b), [0, 1]);
   deepStrictEqual([...new Set(secondIr.flatMap(irOpOperandIndexes))].sort((a, b) => a - b), [0, 1]);
 });
@@ -109,7 +110,7 @@ test("buildJitIrBlock emits direct cmp and jcc branch conditions", () => {
   const je = ok(decodeBytes([0x74, 0x05], cmp.nextEip));
   const ir = loweringIr(buildJitIrBlock([cmp, je]));
 
-  strictEqual(ir.some((op) => op.op === "flagProducer.condition"), true);
+  strictEqual(ir.some((op) => op.op === "jit.flagCondition"), true);
   strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
 });
 
@@ -119,7 +120,7 @@ test("buildJitIrBlock does not specialize incoming CF after INC", () => {
   const block = buildJitIrBlock([inc, jc]);
   const ir = loweringIr(block);
 
-  strictEqual(ir.some((op) => op.op === "flagProducer.condition"), false);
+  strictEqual(ir.some((op) => op.op === "jit.flagCondition"), false);
   strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
   deepStrictEqual(aluFlagMemoryAccessCounts(block), { loads: 1, stores: 1 });
 });
@@ -661,13 +662,13 @@ test("jit IR block keeps flags live across memory fault exits before later overw
   deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000 });
 });
 
-function loweringIr(block: ReturnType<typeof buildJitIrBlock>): readonly IrOp[] {
+function loweringIr(block: ReturnType<typeof buildJitIrBlock>): readonly JitIrOp[] {
   return buildJitLoweringBlock(optimizeJitIrBlock(block)).instructions.flatMap(
     (instruction) => [...instruction.prelude, ...instruction.ir]
   );
 }
 
-function irOpDstId(op: IrOp): readonly number[] {
+function irOpDstId(op: JitIrOp): readonly number[] {
   switch (op.op) {
     case "get32":
     case "address32":
@@ -679,13 +680,14 @@ function irOpDstId(op: IrOp): readonly number[] {
     case "i32.and":
     case "aluFlags.condition":
     case "flagProducer.condition":
+    case "jit.flagCondition":
       return [op.dst.id];
     default:
       return [];
   }
 }
 
-function irOpOperandIndexes(op: IrOp): readonly number[] {
+function irOpOperandIndexes(op: JitIrOp): readonly number[] {
   switch (op.op) {
     case "get32":
       return storageOperandIndexes(op.source);

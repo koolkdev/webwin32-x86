@@ -1,6 +1,5 @@
-import type { IrBlock, IrOp } from "#x86/ir/model/types.js";
 import type { JitBlockOptimization } from "#backends/wasm/jit/optimization/types.js";
-import type { JitOptimizedIrBlock } from "#backends/wasm/jit/types.js";
+import type { JitIrBody, JitIrOp, JitOptimizedIrBlock } from "#backends/wasm/jit/types.js";
 
 const emptyBoundaryMaskByOpIndex = new Map<number, number>();
 
@@ -73,10 +72,10 @@ function addBoundaryMask(
 }
 
 function insertInstructionFlagBoundaries(
-  block: IrBlock,
+  block: JitIrBody,
   boundaryMasks: ReadonlyMap<number, number>
-): IrBlock {
-  const ops: IrOp[] = [];
+): JitIrBody {
+  const ops: JitIrOp[] = [];
 
   for (let index = 0; index < block.length; index += 1) {
     const boundaryMask = boundaryMasks.get(index);

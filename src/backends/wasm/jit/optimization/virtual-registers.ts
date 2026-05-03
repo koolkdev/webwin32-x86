@@ -1,8 +1,8 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import type { IrOp } from "#x86/ir/model/types.js";
 import type {
   JitIrBlock,
   JitIrBlockInstruction,
+  JitIrOp,
   JitOptimizedIrBlock,
   JitOptimizedIrBlockInstruction
 } from "#backends/wasm/jit/types.js";
@@ -118,7 +118,7 @@ export function foldJitVirtualRegisters(
 }
 
 function rewriteOp(
-  op: IrOp,
+  op: JitIrOp,
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
   opIndex: number,

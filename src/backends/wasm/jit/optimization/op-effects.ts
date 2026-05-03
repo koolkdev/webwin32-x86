@@ -1,21 +1,21 @@
-import type { IrOp, StorageRef, ValueRef } from "#x86/ir/model/types.js";
+import type { StorageRef, ValueRef } from "#x86/ir/model/types.js";
 import {
-  irOpStorageReads,
-  irOpStorageWrites
-} from "#x86/ir/model/op-semantics.js";
+  jitIrOpStorageReads,
+  jitIrOpStorageWrites
+} from "#backends/wasm/jit/ir-semantics.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
-import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 
 export function jitMemoryFaultReason(
-  op: IrOp,
+  op: JitIrOp,
   operands: readonly JitOperandBinding[]
 ): ExitReasonValue | undefined {
-  if (irOpStorageReads(op).some((storage) => storageMayAccessMemory(storage, operands))) {
+  if (jitIrOpStorageReads(op).some((storage) => storageMayAccessMemory(storage, operands))) {
     return ExitReason.MEMORY_READ_FAULT;
   }
 
-  const writesMemory = irOpStorageWrites(op).some((storage) => storageMayAccessMemory(storage, operands));
+  const writesMemory = jitIrOpStorageWrites(op).some((storage) => storageMayAccessMemory(storage, operands));
 
   if (!writesMemory) {
     return undefined;
@@ -29,7 +29,7 @@ export function jitMemoryFaultReason(
 }
 
 export function jitPostInstructionExitReasons(
-  op: IrOp,
+  op: JitIrOp,
   instruction: JitIrBlockInstruction
 ): readonly ExitReasonValue[] {
   switch (op.op) {
@@ -47,7 +47,7 @@ export function jitPostInstructionExitReasons(
 }
 
 export function jitExitConditionValues(
-  op: IrOp,
+  op: JitIrOp,
   instruction: JitIrBlockInstruction
 ): readonly ValueRef[] {
   if (jitPostInstructionExitReasons(op, instruction).length === 0) {
@@ -62,7 +62,7 @@ export function jitExitConditionValues(
   }
 }
 
-export function jitLocalConditionValues(op: IrOp): readonly ValueRef[] {
+export function jitLocalConditionValues(op: JitIrOp): readonly ValueRef[] {
   switch (op.op) {
     case "set32.if":
       return [op.condition];

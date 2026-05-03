@@ -1,10 +1,9 @@
 import {
-  irOpDst,
-  irOpResult,
-  visitIrOpValueRefs
-} from "#x86/ir/model/op-semantics.js";
-import type { IrOp } from "#x86/ir/model/types.js";
-import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+  jitIrOpDst,
+  jitIrOpResult,
+  visitJitIrOpValueRefs
+} from "#backends/wasm/jit/ir-semantics.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 import { jitMemoryFaultReason } from "./op-effects.js";
 
 export type JitDeadLocalValuePruning = Readonly<{
@@ -33,7 +32,7 @@ function pruneInstructionDeadLocalValues(
   instructionIndex: number
 ): Readonly<{ instruction: JitIrBlockInstruction; removedOpCount: number }> {
   const liveVars = new Set<number>();
-  const ops: IrOp[] = [];
+  const ops: JitIrOp[] = [];
   let removedOpCount = 0;
 
   for (let opIndex = instruction.ir.length - 1; opIndex >= 0; opIndex -= 1) {
@@ -43,9 +42,9 @@ function pruneInstructionDeadLocalValues(
       throw new Error(`missing JIT IR op while pruning dead local values: ${instructionIndex}:${opIndex}`);
     }
 
-    const dst = irOpDst(op);
+    const dst = jitIrOpDst(op);
 
-    if (dst !== undefined && !liveVars.has(dst.id) && isPureLocalDefinition(op, instruction)) {
+    if (dst !== undefined && !liveVars.has(dst.id) && canDropUnusedResult(op, instruction)) {
       removedOpCount += 1;
       continue;
     }
@@ -54,7 +53,7 @@ function pruneInstructionDeadLocalValues(
       liveVars.delete(dst.id);
     }
 
-    visitIrOpValueRefs(op, (value) => {
+    visitJitIrOpValueRefs(op, (value) => {
       if (value.kind === "var") {
         liveVars.add(value.id);
       }
@@ -72,8 +71,8 @@ function pruneInstructionDeadLocalValues(
   };
 }
 
-function isPureLocalDefinition(op: IrOp, instruction: JitIrBlockInstruction): boolean {
-  const result = irOpResult(op);
+function canDropUnusedResult(op: JitIrOp, instruction: JitIrBlockInstruction): boolean {
+  const result = jitIrOpResult(op);
 
   if (result.kind === "none") {
     return false;

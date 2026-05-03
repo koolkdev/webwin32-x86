@@ -53,5 +53,5 @@ test("runJitIrOptimizationPipeline prunes dead flag producer inputs before virtu
   strictEqual(cmoveInstruction.ir.some((op) =>
     op.op === "set32" && op.target.kind === "reg" && op.target.reg === "eax"
   ), false);
-  strictEqual(cmoveInstruction.ir.some((op) => op.op === "flagProducer.condition"), true);
+  strictEqual(cmoveInstruction.ir.some((op) => op.op === "jit.flagCondition"), true);
 });

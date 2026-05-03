@@ -1,4 +1,12 @@
-import type { IrBlock, IrOp, RegRef } from "#x86/ir/model/types.js";
+import type {
+  ConditionCode,
+  FlagMask,
+  FlagProducerName,
+  IrOp,
+  RegRef,
+  ValueRef,
+  VarRef
+} from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "./lowering/operand-bindings.js";
 
 export type JitIrBlockInstructionMetadata = Readonly<{
@@ -8,9 +16,22 @@ export type JitIrBlockInstructionMetadata = Readonly<{
   nextMode: "continue" | "exit";
 }>;
 
+export type JitFlagConditionOp = Readonly<{
+  op: "jit.flagCondition";
+  dst: VarRef;
+  cc: ConditionCode;
+  producer: FlagProducerName;
+  writtenMask: FlagMask;
+  undefMask: FlagMask;
+  inputs: Readonly<Record<string, ValueRef>>;
+}>;
+
+export type JitIrOp = IrOp | JitFlagConditionOp;
+export type JitIrBody = readonly JitIrOp[];
+
 export type JitIrBlockInstruction = JitIrBlockInstructionMetadata & Readonly<{
   operands: readonly JitOperandBinding[];
-  ir: IrBlock;
+  ir: JitIrBody;
 }>;
 
 export type JitIrBlock = Readonly<{
@@ -27,7 +48,7 @@ export type JitOptimizedIrPreludeOp = Extract<
 export type JitOptimizedIrBlockInstruction = JitIrBlockInstructionMetadata & Readonly<{
   operands: readonly JitOperandBinding[];
   prelude: readonly JitOptimizedIrPreludeOp[];
-  ir: IrBlock;
+  ir: JitIrBody;
 }>;
 
 export type JitOptimizedIrBlock = Readonly<{

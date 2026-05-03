@@ -8,6 +8,7 @@ import type { JitExitPoint } from "#backends/wasm/jit/optimization/types.js";
 import type { JitVirtualFlagOwnerMask } from "#backends/wasm/jit/optimization/virtual-flags.js";
 import type {
   JitIrBlock,
+  JitIrBody,
   JitIrBlockInstruction,
   JitOptimizedIrBlockInstruction
 } from "#backends/wasm/jit/types.js";
@@ -79,7 +80,7 @@ export function set32TargetRegs(
   );
 }
 
-function instructionOps(instruction: JitIrBlockInstruction | JitOptimizedIrBlockInstruction): IrBlock {
+function instructionOps(instruction: JitIrBlockInstruction | JitOptimizedIrBlockInstruction): JitIrBody {
   return "prelude" in instruction
     ? [...instruction.prelude, ...instruction.ir]
     : instruction.ir;

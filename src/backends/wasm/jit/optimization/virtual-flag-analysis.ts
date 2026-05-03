@@ -8,12 +8,11 @@ import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import type {
   ConditionCode,
   IrFlagSetOp,
-  IrOp,
   StorageRef,
   ValueRef
 } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
@@ -130,7 +129,7 @@ export function analyzeJitVirtualFlags(
     instructionIndex: number,
     opIndex: number,
     instruction: JitIrBlockInstruction,
-    op: IrOp,
+    op: JitIrOp,
     localValues: Map<number, JitVirtualValue>,
     instructionEntryOwners: ReadonlyMap<number, JitVirtualFlagOwner>
   ): void {

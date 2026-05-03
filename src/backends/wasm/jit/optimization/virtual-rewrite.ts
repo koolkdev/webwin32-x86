@@ -1,11 +1,11 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import type { IrOp, ValueRef, VarRef } from "#x86/ir/model/types.js";
-import { irOpDst } from "#x86/ir/model/op-semantics.js";
-import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { ValueRef, VarRef } from "#x86/ir/model/types.js";
+import { jitIrOpDst } from "#backends/wasm/jit/ir-semantics.js";
+import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 import type { JitVirtualValue } from "./virtual-values.js";
 
 export type JitVirtualRewrite = {
-  ops: IrOp[];
+  ops: JitIrOp[];
   localValues: Map<number, JitVirtualValue>;
   nextVarId: number;
 };
@@ -121,7 +121,7 @@ function nextInstructionVarId(instruction: JitIrBlockInstruction): number {
   let nextVarId = 0;
 
   for (const op of instruction.ir) {
-    const dst = irOpDst(op);
+    const dst = jitIrOpDst(op);
 
     if (dst !== undefined) {
       nextVarId = Math.max(nextVarId, dst.id + 1);

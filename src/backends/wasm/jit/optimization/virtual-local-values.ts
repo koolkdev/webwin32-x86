@@ -1,6 +1,5 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import type { IrOp } from "#x86/ir/model/types.js";
-import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 import {
   jitVirtualValueForEffectiveAddress,
   jitVirtualValueForStorage,
@@ -9,7 +8,7 @@ import {
 } from "./virtual-values.js";
 
 export function recordJitVirtualLocalValue(
-  op: IrOp,
+  op: JitIrOp,
   instruction: JitIrBlockInstruction,
   localValues: Map<number, JitVirtualValue>,
   virtualRegs: ReadonlyMap<Reg32, JitVirtualValue> = new Map()
@@ -49,7 +48,7 @@ export function recordJitVirtualLocalValue(
 }
 
 function virtualBinaryValue(
-  op: Extract<IrOp, { op: "i32.add" | "i32.sub" | "i32.xor" | "i32.or" | "i32.and" }>,
+  op: Extract<JitIrOp, { op: "i32.add" | "i32.sub" | "i32.xor" | "i32.or" | "i32.and" }>,
   localValues: ReadonlyMap<number, JitVirtualValue>
 ): JitVirtualValue | undefined {
   const a = jitVirtualValueForValue(op.a, localValues);

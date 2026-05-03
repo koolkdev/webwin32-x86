@@ -86,7 +86,7 @@ export function emitDirectVirtualFlagCondition(
   }
 
   rewrite.ops.push({
-    op: "flagProducer.condition",
+    op: "jit.flagCondition",
     dst: op.dst,
     cc: op.cc,
     producer: condition.source.producer,
