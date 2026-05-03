@@ -3,8 +3,10 @@ import { test } from "node:test";
 
 import { irVar } from "#x86/ir/build/builder.js";
 import { CONDITIONS } from "#x86/ir/model/conditions.js";
+import { canUseFlagProducerCondition, flagProducerConditionKind } from "#x86/ir/model/flag-conditions.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS, maskIrAluFlags } from "#x86/ir/passes/flag-analysis.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
+import type { ConditionCode, FlagProducerName, IrFlagSetOp } from "#x86/ir/model/types.js";
 
 const left = irVar(0);
 const right = irVar(1);
@@ -134,3 +136,32 @@ test("condition registry records flag reads and boolean formulas", () => {
     }
   });
 });
+
+test("sub32 flag producers support direct condition emission", () => {
+  const cases: readonly [ConditionCode, NonNullable<ReturnType<typeof flagProducerConditionKind>>][] = [
+    ["E", "eq32"],
+    ["NE", "ne32"],
+    ["B", "uLt32"],
+    ["AE", "uGe32"],
+    ["L", "sLt32"],
+    ["GE", "sGe32"],
+    ["LE", "sLe32"],
+    ["G", "sGt32"]
+  ];
+
+  deepStrictEqual(
+    cases.map(([cc]) => flagProducerConditionKind({ producer: "sub32", cc })),
+    cases.map(([, kind]) => kind)
+  );
+  deepStrictEqual(canUseFlagProducerCondition(createDescriptor("sub32"), "E"), true);
+  deepStrictEqual(canUseFlagProducerCondition(createDescriptor("add32"), "E"), false);
+});
+
+function createDescriptor(producer: FlagProducerName): Pick<IrFlagSetOp, "producer" | "writtenMask" | "undefMask" | "inputs"> {
+  return {
+    producer,
+    writtenMask: FLAG_PRODUCERS[producer].writtenMask,
+    undefMask: FLAG_PRODUCERS[producer].undefMask,
+    inputs: {}
+  };
+}
