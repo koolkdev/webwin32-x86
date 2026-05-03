@@ -40,6 +40,10 @@ export type JitTrackedRead = Readonly<{
   producers: readonly JitTrackedProducerOwnership[];
 }>;
 
+export type JitTrackedFlagReadRequest = Omit<JitTrackedRead, "location" | "producers"> & Readonly<{
+  requiredMask: number;
+}>;
+
 export type JitTrackedWrite = Readonly<{
   location: JitTrackedLocation;
   producer?: JitTrackedProducer;
@@ -107,6 +111,19 @@ export class JitTrackedState {
     };
   }
 
+  recordFlagRead(
+    read: JitTrackedFlagReadRequest,
+    owners: JitFlagOwners = this.flags
+  ): JitTrackedRead {
+    const { requiredMask, ...trackedRead } = read;
+
+    return {
+      ...trackedRead,
+      location: jitTrackedFlagsLocation(requiredMask),
+      producers: owners.forMask(requiredMask).map((owner) => flagOwnerProducerOwnership(owner))
+    };
+  }
+
   recordClobber(location: JitTrackedLocation): void {
     switch (location.kind) {
       case "register":
@@ -160,6 +177,10 @@ export class JitTrackedState {
       location: jitTrackedFlagsLocation(mask),
       producer: { kind: "materializedFlags" }
     });
+  }
+
+  cloneFlagOwners(): JitFlagOwners {
+    return this.flags.clone();
   }
 
   flagOwnersForMask(mask: number): readonly JitFlagOwnerMask[] {

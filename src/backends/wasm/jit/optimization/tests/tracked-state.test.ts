@@ -43,6 +43,7 @@ test("JitTrackedState records flag producers and materialized owners through one
   };
 
   state.recordFlagSource(source);
+  const sourceOwners = state.cloneFlagOwners();
 
   deepStrictEqual(state.recordRead({
     location: { kind: "flags", mask: IR_ALU_FLAG_MASKS.CF },
@@ -68,6 +69,13 @@ test("JitTrackedState records flag producers and materialized owners through one
 
   state.recordFlagsMaterialized(IR_ALU_FLAG_MASKS.CF);
 
+  deepStrictEqual(state.recordFlagRead({
+    requiredMask: IR_ALU_FLAG_MASKS.CF,
+    reason: "condition"
+  }, sourceOwners).producers, [{
+    location: { kind: "flags", mask: IR_ALU_FLAG_MASKS.CF },
+    producer: { kind: "flagSource", source }
+  }]);
   deepStrictEqual(state.recordRead({
     location: { kind: "flags", mask: IR_ALU_FLAG_MASKS.CF },
     reason: "materialize"

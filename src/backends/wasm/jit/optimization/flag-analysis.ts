@@ -20,6 +20,7 @@ import {
 } from "./effects.js";
 import {
   JitFlagOwners,
+  type JitFlagOwner,
   type JitFlagOwnerMask
 } from "./flag-owners.js";
 import type { JitConditionUse } from "./condition-uses.js";
@@ -33,6 +34,10 @@ import {
   type JitFlagSource
 } from "./flag-sources.js";
 import { JitOptimizationState } from "./state.js";
+import type {
+  JitTrackedProducer,
+  JitTrackedRead
+} from "./tracked-state.js";
 
 export type {
   JitFlagOwner,
@@ -87,7 +92,7 @@ export function analyzeJitFlags(
     }
 
     const values = state.beginInstructionValues();
-    const instructionEntryOwners = state.flags.clone();
+    const instructionEntryOwners = state.tracked.cloneFlagOwners();
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
       const op = instruction.ir[opIndex];
@@ -104,7 +109,7 @@ export function analyzeJitFlags(
     sources,
     reads,
     sourceClobbers,
-    finalOwners: state.flags.forMask(IR_ALU_FLAG_MASK)
+    finalOwners: state.tracked.flagOwnersForMask(IR_ALU_FLAG_MASK)
   };
 
   function analyzeOp(
@@ -162,11 +167,11 @@ export function analyzeJitFlags(
       }
       case "flags.materialize":
         recordRead({ instructionIndex, opIndex, reason: "materialize", requiredMask: op.mask });
-        state.flags.recordMaterialized(op.mask);
+        state.tracked.recordFlagsMaterialized(op.mask);
         return;
       case "flags.boundary":
         recordRead({ instructionIndex, opIndex, reason: "boundary", requiredMask: op.mask });
-        state.flags.recordMaterialized(op.mask);
+        state.tracked.recordFlagsMaterialized(op.mask);
         return;
       case "next":
       case "jump":
@@ -188,20 +193,24 @@ export function analyzeJitFlags(
 
     nextSourceId += 1;
     sources.push(source);
-    state.flags.recordSource(source);
+    state.tracked.recordFlagSource(source);
   }
 
   function recordRead(
     read: Omit<JitFlagRead, "owners">,
-    readOwners: JitFlagOwners = state.flags
+    readOwners?: JitFlagOwners
   ): void {
     if (read.requiredMask === 0) {
       return;
     }
 
+    const trackedRead = readOwners === undefined
+      ? state.tracked.recordFlagRead(read)
+      : state.tracked.recordFlagRead(read, readOwners);
+
     reads.push({
       ...read,
-      owners: readOwners.forMask(read.requiredMask)
+      owners: trackedFlagReadOwners(trackedRead)
     });
   }
 
@@ -217,12 +226,38 @@ export function analyzeJitFlags(
       return;
     }
 
-    const clobberedOwners = state.flags.producerOwnersReadingReg(reg);
+    const clobberedOwners = state.tracked.flagProducerOwnersReadingReg(reg);
 
     if (clobberedOwners.length === 0) {
       return;
     }
 
     sourceClobbers.push({ instructionIndex, opIndex, reg, owners: clobberedOwners });
+  }
+}
+
+function trackedFlagReadOwners(read: JitTrackedRead): readonly JitFlagOwnerMask[] {
+  return read.producers.map(({ location, producer }) => {
+    if (location.kind !== "flags") {
+      throw new Error("tracked flag read included a non-flag producer location");
+    }
+
+    return {
+      mask: location.mask,
+      owner: trackedFlagProducerOwner(producer)
+    };
+  });
+}
+
+function trackedFlagProducerOwner(producer: JitTrackedProducer): JitFlagOwner {
+  switch (producer.kind) {
+    case "incomingFlags":
+      return { kind: "incoming" };
+    case "materializedFlags":
+      return { kind: "materialized" };
+    case "flagSource":
+      return { kind: "producer", source: producer.source };
+    case "registerValue":
+      throw new Error("tracked flag read included a register producer");
   }
 }
