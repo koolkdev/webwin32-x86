@@ -8,7 +8,7 @@ import { callSemantic, jccSemantic, jmpSemantic, retImmSemantic } from "#x86/isa
 import { cmpSemantic } from "#x86/isa/semantics/cmp.js";
 import { leaSemantic } from "#x86/isa/semantics/lea.js";
 import { intSemantic, nopSemantic } from "#x86/isa/semantics/misc.js";
-import { movSemantic } from "#x86/isa/semantics/mov.js";
+import { cmovSemantic, movSemantic } from "#x86/isa/semantics/mov.js";
 import { leaveSemantic, popSemantic } from "#x86/isa/semantics/stack.js";
 import { testSemantic } from "#x86/isa/semantics/test.js";
 
@@ -22,6 +22,15 @@ test("mov semantic gets source, sets destination, and falls through", () => {
   deepStrictEqual(buildIr(movSemantic()), [
     { op: "get32", dst: v(0), source: op(1) },
     { op: "set32", target: op(0), value: v(0) },
+    { op: "next" }
+  ]);
+});
+
+test("cmov semantic reads source unconditionally and conditionally sets destination", () => {
+  deepStrictEqual(buildIr(cmovSemantic("E")), [
+    { op: "get32", dst: v(0), source: op(1) },
+    { op: "aluFlags.condition", dst: v(1), cc: "E" },
+    { op: "set32.if", condition: v(1), target: op(0), value: v(0) },
     { op: "next" }
   ]);
 });

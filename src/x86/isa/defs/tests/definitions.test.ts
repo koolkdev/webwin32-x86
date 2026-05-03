@@ -9,7 +9,7 @@ import type { InstructionSpec } from "#x86/isa/schema/types.js";
 
 test("x86-32 core registers the initial instruction surface", () => {
   strictEqual(X86_32_CORE.name, "x86-32-core");
-  strictEqual(X86_32_CORE.instructions.length, 89);
+  strictEqual(X86_32_CORE.instructions.length, 105);
 
   const ids = X86_32_CORE.instructions.map((spec) => spec.id);
 
@@ -19,6 +19,7 @@ test("x86-32 core registers the initial instruction surface", () => {
     "mov.rm32_r32",
     "mov.r32_imm32",
     "mov.rm32_imm32",
+    "cmove.r32_rm32",
     "lea.r32_m32",
     "add.rm32_imm8",
     "or.rm32_imm8",
@@ -39,11 +40,34 @@ test("x86-32 core registers the initial instruction surface", () => {
     "ret.near",
     "ret.imm16",
     "int.imm8",
+    "cmovne.r32_rm32",
     "jne.rel8",
     "jne.rel32"
   ]) {
     strictEqual(ids.includes(id), true, `missing ${id}`);
   }
+});
+
+test("cmovcc forms are concrete specs with conditional-write semantics", () => {
+  const spec = instruction("cmove.r32_rm32");
+
+  deepStrictEqual(spec.opcode, [0x0f, 0x44]);
+  deepStrictEqual(spec.operands, [
+    { kind: "modrm.reg", type: "reg32" },
+    { kind: "modrm.rm", type: "rm32" }
+  ]);
+  deepStrictEqual(spec.format, { syntax: "cmove {0}, {1}" });
+
+  const program = buildIr(spec.semantics as SemanticTemplate);
+
+  deepStrictEqual(program[1], { op: "aluFlags.condition", dst: { kind: "var", id: 1 }, cc: "E" });
+  deepStrictEqual(program[2], {
+    op: "set32.if",
+    condition: { kind: "var", id: 1 },
+    target: { kind: "operand", index: 0 },
+    value: { kind: "var", id: 0 }
+  });
+  strictEqual(program.at(-1)?.op, "next");
 });
 
 test("leave is a no-operand stack frame instruction", () => {

@@ -135,6 +135,20 @@ const fixtures: readonly DecoderFixture[] = [
     id: "mov.rm32_r32"
   },
   {
+    name: "cmove edx, ecx",
+    bytes: [0x0f, 0x44, 0xd1],
+    mnemonic: "cmove",
+    operands: [reg32("edx"), reg32("ecx")],
+    id: "cmove.r32_rm32"
+  },
+  {
+    name: "cmovne edx, [ebx]",
+    bytes: [0x0f, 0x45, 0x13],
+    mnemonic: "cmovne",
+    operands: [reg32("edx"), mem32({ base: "ebx", scale: 1, disp: 0 })],
+    id: "cmovne.r32_rm32"
+  },
+  {
     name: "lea eax, [ebx + ecx*4 + 0x10]",
     bytes: [0x8d, 0x44, 0x8b, 0x10],
     mnemonic: "lea",

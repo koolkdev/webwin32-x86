@@ -216,6 +216,51 @@ test("jit IR block lowers memory mov with static effective addresses", async () 
   strictEqual(storeImmediate.guestView.getUint32(0x200c, true), 0x1234_5678);
 });
 
+test("jit IR block lowers cmovcc as a conditional register write", async () => {
+  const taken = await runJitIrBlock(
+    [0x0f, 0x44, 0xd1], // cmove edx, ecx
+    createCpuState({
+      ecx: 0x2222_2222,
+      edx: 0x1111_1111,
+      eflags: preservedEflags | zeroFlag,
+      eip: startAddress
+    })
+  );
+  const notTaken = await runJitIrBlock(
+    [0x0f, 0x44, 0xd1], // cmove edx, ecx
+    createCpuState({
+      ecx: 0x2222_2222,
+      edx: 0x1111_1111,
+      eflags: preservedEflags,
+      eip: startAddress
+    })
+  );
+
+  strictEqual(taken.state.edx, 0x2222_2222);
+  strictEqual(taken.state.eflags, (preservedEflags | zeroFlag) >>> 0);
+  strictEqual(taken.state.instructionCount, 1);
+  strictEqual(notTaken.state.edx, 0x1111_1111);
+  strictEqual(notTaken.state.eflags, preservedEflags);
+  strictEqual(notTaken.state.instructionCount, 1);
+});
+
+test("jit IR block keeps cmovcc source memory faults unconditional", async () => {
+  const result = await runJitIrBlock(
+    [0x0f, 0x45, 0x13], // cmovne edx, [ebx]
+    createCpuState({
+      ebx: 0x10000,
+      edx: 0x1111_1111,
+      eflags: preservedEflags | zeroFlag,
+      eip: startAddress
+    })
+  );
+
+  strictEqual(result.state.edx, 0x1111_1111);
+  strictEqual(result.state.eip, startAddress);
+  strictEqual(result.state.instructionCount, 0);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000 });
+});
+
 test("jit IR block lowers leave", async () => {
   const result = await runJitIrBlock(
     [0xc9],
@@ -627,6 +672,8 @@ function irOpOperandIndexes(op: IrOp): readonly number[] {
     case "get32":
       return storageOperandIndexes(op.source);
     case "set32":
+      return storageOperandIndexes(op.target);
+    case "set32.if":
       return storageOperandIndexes(op.target);
     case "address32":
       return [op.operand.index];

@@ -12,6 +12,7 @@ export type JitReg32InstructionOptions = Readonly<{
 export type JitReg32State = WasmIrReg32Storage & Readonly<{
   beginInstruction(options: JitReg32InstructionOptions): void;
   commitPending(): void;
+  emitSetIf(reg: Reg32, emitCondition: () => void, emitValue: () => void): void;
   emitCommittedStore(reg: Reg32): void;
 }>;
 
@@ -35,6 +36,22 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
         : committedLocalForRegWrite(body, committedLocals, reg);
 
       body.localSet(local);
+    },
+    emitSetIf: (reg, emitCondition, emitValue) => {
+      const committedLocal = committedLocalForReg(body, committedLocals, reg);
+      const local = preserveCommittedRegs
+        ? pendingLocalForReg(body, pendingLocals, reg)
+        : committedLocal;
+
+      if (preserveCommittedRegs) {
+        body.localGet(committedLocal).localSet(local);
+      }
+
+      emitCondition();
+      body.ifBlock();
+      emitValue();
+      body.localSet(local);
+      body.endBlock();
     },
     commitPending: () => {
       for (const [reg, pendingLocal] of pendingLocals) {

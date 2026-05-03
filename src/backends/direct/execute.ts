@@ -78,6 +78,16 @@ function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
 
       return write.kind === "ok" ? undefined : stopFromAccess(context.state, write);
     }
+    case "set32.if": {
+      if (evalValueRef(context, op.condition) === 0) {
+        return undefined;
+      }
+
+      const value = evalValueRef(context, op.value);
+      const write = writeStorage(context, op.target, value);
+
+      return write.kind === "ok" ? undefined : stopFromAccess(context.state, write);
+    }
     case "address32": {
       const binding = context.instruction.operands[op.operand.index];
 

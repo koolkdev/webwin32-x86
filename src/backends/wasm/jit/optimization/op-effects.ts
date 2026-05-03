@@ -12,6 +12,12 @@ export function jitMemoryFaultReason(
       return storageMayAccessMemory(op.source, operands) ? ExitReason.MEMORY_READ_FAULT : undefined;
     case "set32":
       return storageMayAccessMemory(op.target, operands) ? ExitReason.MEMORY_WRITE_FAULT : undefined;
+    case "set32.if":
+      if (storageMayAccessMemory(op.target, operands)) {
+        throw new Error("JIT conditional memory writes are not supported by exit analysis");
+      }
+
+      return undefined;
     default:
       return undefined;
   }

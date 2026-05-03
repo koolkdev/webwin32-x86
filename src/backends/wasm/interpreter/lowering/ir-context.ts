@@ -62,6 +62,8 @@ export function lowerIrWithInterpreterContext(block: IrBlock, context: Interpret
     expression: { canInlineGet32: (source) => canInlineGet32(context, source) },
     emitGet32: (source, helpers) => emitGet32(context, regs, source, helpers),
     emitSet32: (target, value, helpers) => emitSet32(context, regs, target, value, helpers),
+    emitSet32If: (condition, target, value, helpers) =>
+      emitSet32If(context, regs, condition, target, value, helpers),
     emitAddress32: (source) => emitAddress32(context, source),
     emitSetFlags: (descriptor, helpers) =>
       emitSetFlags(context.body, aluFlags, descriptor, helpers),
@@ -136,6 +138,20 @@ function emitSet32(
       emitStoreMem32(context, () => helpers.emitValue(target.address), () => helpers.emitValue(value));
       return;
   }
+}
+
+function emitSet32If(
+  context: InterpreterIrContext,
+  regs: WasmIrReg32Storage,
+  condition: IrValueExpr,
+  target: IrStorageExpr,
+  value: IrValueExpr,
+  helpers: WasmIrEmitHelpers
+): void {
+  helpers.emitValue(condition);
+  context.body.ifBlock();
+  emitSet32(context, regs, target, value, helpers);
+  context.body.endBlock();
 }
 
 function emitAddress32(context: InterpreterIrContext, source: IrStorageExpr): void {

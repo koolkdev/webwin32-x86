@@ -62,6 +62,7 @@ export type IrAluFlagsConditionOp = Readonly<{
 export type IrOp =
   | Readonly<{ op: "get32"; dst: VarRef; source: StorageRef }>
   | Readonly<{ op: "set32"; target: StorageRef; value: ValueRef }>
+  | Readonly<{ op: "set32.if"; condition: ValueRef; target: StorageRef; value: ValueRef }>
   | Readonly<{ op: "address32"; dst: VarRef; operand: OperandRef }>
   | Readonly<{ op: "const32"; dst: VarRef; value: number }>
   | Readonly<{ op: "i32.add"; dst: VarRef; a: ValueRef; b: ValueRef }>
@@ -91,6 +92,7 @@ export interface IrBuilder {
 
   get32(source: StorageInput): VarRef;
   set32(target: StorageInput, value: ValueInput): void;
+  set32If(condition: ValueInput, target: StorageInput, value: ValueInput): void;
   address32(operand: OperandInput): VarRef;
 
   setConst32(value: number): VarRef;

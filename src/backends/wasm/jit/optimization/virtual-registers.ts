@@ -144,6 +144,8 @@ function rewriteOp(
       return rewriteAddress32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "set32":
       return rewriteSet32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
+    case "set32.if":
+      return rewriteSet32If(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "next": {
       const shouldMaterialize = jitPostInstructionExitReasonsAt(analysis, instructionIndex, opIndex).length !== 0 ||
         nextInstructionMayFault(analysis, instructionIndex, nextInstruction);
@@ -264,6 +266,29 @@ function recordBinaryValue(
   if (a !== undefined && b !== undefined) {
     rewrite.localValues.set(op.dst.id, { kind: op.op, a, b });
   }
+}
+
+function rewriteSet32If(
+  op: Extract<IrOp, { op: "set32.if" }>,
+  instruction: JitIrBlockInstruction,
+  rewrite: JitVirtualRewrite,
+  virtualRegs: Map<Reg32, JitVirtualValue>,
+  virtualRegReadCounts: Map<Reg32, number>
+): RewriteResult {
+  const target = jitStorageReg(op.target, instruction.operands);
+  let materializedSetCount = target === undefined
+    ? 0
+    : materializeVirtualRegsForRead(rewrite, virtualRegs, [target]);
+
+  if (target !== undefined) {
+    materializedSetCount += materializeVirtualRegsReadingReg(rewrite, virtualRegs, target);
+    virtualRegs.delete(target);
+    virtualRegReadCounts.delete(target);
+  }
+
+  syncVirtualRegReadCounts(virtualRegReadCounts, virtualRegs);
+  rewrite.ops.push(op);
+  return { removedSet: false, materializedSetCount };
 }
 
 function rewriteSet32(

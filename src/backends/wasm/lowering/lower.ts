@@ -23,6 +23,7 @@ export type WasmIrLoweringContext = Readonly<{
   expression?: IrExpressionOptions;
   emitGet32(source: IrStorageExpr, helpers: WasmIrEmitHelpers): void;
   emitSet32(target: IrStorageExpr, value: IrValueExpr, helpers: WasmIrEmitHelpers): void;
+  emitSet32If(condition: IrValueExpr, target: IrStorageExpr, value: IrValueExpr, helpers: WasmIrEmitHelpers): void;
   emitAddress32(source: IrStorageExpr, helpers: WasmIrEmitHelpers): void;
   emitSetFlags(descriptor: IrFlagSetOp, helpers: WasmIrEmitHelpers): void;
   emitMaterializeFlags(mask: number, helpers: WasmIrEmitHelpers): void;
@@ -92,6 +93,9 @@ class IrExprWasmLowerer {
         return;
       case "set32":
         this.#context.emitSet32(op.target, op.value, this.#helpers);
+        return;
+      case "set32.if":
+        this.#context.emitSet32If(op.condition, op.target, op.value, this.#helpers);
         return;
       case "flags.set":
         this.#context.emitSetFlags(op, this.#helpers);

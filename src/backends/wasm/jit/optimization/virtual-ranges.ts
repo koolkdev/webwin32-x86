@@ -70,7 +70,7 @@ export function jitRegClobberedBetween(
   let clobbered = false;
 
   forEachJitIrOpBetween(block, after, before, (instruction, op) => {
-    if (op.op === "set32" && jitStorageReg(op.target, instruction.operands) === reg) {
+    if ((op.op === "set32" || op.op === "set32.if") && jitStorageReg(op.target, instruction.operands) === reg) {
       clobbered = true;
     }
   });

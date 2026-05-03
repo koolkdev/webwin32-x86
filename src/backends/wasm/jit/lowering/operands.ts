@@ -67,6 +67,27 @@ export function emitJitSet32(
   }
 }
 
+export function emitJitSet32If(
+  context: JitIrContext,
+  condition: IrValueExpr,
+  target: IrStorageExpr,
+  value: IrValueExpr,
+  helpers: WasmIrEmitHelpers
+): void {
+  const regs = context.state.regs;
+
+  switch (target.kind) {
+    case "operand":
+      emitSetBinding32If(context, regs, operandBinding(context, target.index), condition, value, helpers);
+      return;
+    case "reg":
+      regs.emitSetIf(target.reg, () => helpers.emitValue(condition), () => helpers.emitValue(value));
+      return;
+    case "mem":
+      throw new Error("JIT conditional memory writes are not supported");
+  }
+}
+
 export function emitJitAddress32(context: JitIrContext, source: IrStorageExpr): void {
   if (source.kind !== "operand") {
     throw new Error(`unsupported address32 source for JIT IR: ${source.kind}`);
@@ -120,6 +141,26 @@ function emitSetBinding32(
     case "static.imm32":
     case "static.relTarget":
       throw new Error(`cannot set ${binding.kind} operand`);
+  }
+}
+
+function emitSetBinding32If(
+  context: JitIrContext,
+  regs: JitIrContext["state"]["regs"],
+  binding: JitOperandBinding,
+  condition: IrValueExpr,
+  value: IrValueExpr,
+  helpers: WasmIrEmitHelpers
+): void {
+  switch (binding.kind) {
+    case "static.reg32":
+      regs.emitSetIf(binding.reg, () => helpers.emitValue(condition), () => helpers.emitValue(value));
+      return;
+    case "static.mem32":
+      throw new Error("JIT conditional memory writes are not supported");
+    case "static.imm32":
+    case "static.relTarget":
+      throw new Error(`cannot conditionally set ${binding.kind} operand`);
   }
 }
 

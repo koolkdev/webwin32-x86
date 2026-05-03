@@ -114,6 +114,7 @@ export function analyzeJitBlockState(
   ): void {
     switch (op.op) {
       case "set32":
+      case "set32.if":
         recordStorageWriteEffects(op.target, instruction.operands);
         return;
       case "flags.set":

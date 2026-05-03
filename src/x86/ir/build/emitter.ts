@@ -106,6 +106,15 @@ export class IrEmitter implements IrBuilder {
     this.#push({ op: "set32", target: toStorageRef(target), value: toValueRef(value) });
   }
 
+  set32If(condition: ValueInput, target: StorageInput, value: ValueInput): void {
+    this.#push({
+      op: "set32.if",
+      condition: toValueRef(condition),
+      target: toStorageRef(target),
+      value: toValueRef(value)
+    });
+  }
+
   address32(operandInput: OperandInput): VarRef {
     const dst = this.#allocVar();
 

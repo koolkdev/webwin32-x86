@@ -166,6 +166,7 @@ export function analyzeJitVirtualFlags(
         recordBinaryValue(op, localValues);
         return;
       case "set32":
+      case "set32.if":
         recordSourceClobber(instructionIndex, opIndex, op.target, instruction);
         return;
       case "flags.set":

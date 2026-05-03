@@ -14,7 +14,8 @@ import {
   canInlineJitGet32,
   emitJitAddress32,
   emitJitGet32,
-  emitJitSet32
+  emitJitSet32,
+  emitJitSet32If
 } from "./operands.js";
 import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/optimization/types.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
@@ -135,6 +136,8 @@ function lowerCurrentInstruction(jitContext: JitIrContext): void {
     expression: { canInlineGet32: (source) => canInlineJitGet32(jitContext, source) },
     emitGet32: (source, helpers) => emitJitGet32(jitContext, source, helpers),
     emitSet32: (target, value, helpers) => emitJitSet32(jitContext, target, value, helpers),
+    emitSet32If: (condition, target, value, helpers) =>
+      emitJitSet32If(jitContext, condition, target, value, helpers),
     emitAddress32: (source) => emitJitAddress32(jitContext, source),
     emitSetFlags: (descriptor, helpers) =>
       jitContext.state.flags.emitSet(descriptor, helpers),

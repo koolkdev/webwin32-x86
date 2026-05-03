@@ -6,13 +6,14 @@ import { jccSemantic } from "#x86/isa/semantics/control.js";
 import { cmpSemantic } from "#x86/isa/semantics/cmp.js";
 import { leaSemantic } from "#x86/isa/semantics/lea.js";
 import { intSemantic } from "#x86/isa/semantics/misc.js";
-import { movSemantic } from "#x86/isa/semantics/mov.js";
+import { cmovSemantic, movSemantic } from "#x86/isa/semantics/mov.js";
 import { buildIr, const32, operand, irVar } from "#x86/ir/build/builder.js";
 import { createIrFlagProducerConditionOp, createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import { validateIrBlock } from "#x86/ir/passes/validator.js";
 
 test("validator accepts representative generated semantic templates", () => {
   doesNotThrow(() => validateIrBlock(buildIr(movSemantic()), { operandCount: 2 }));
+  doesNotThrow(() => validateIrBlock(buildIr(cmovSemantic("E")), { operandCount: 2 }));
   doesNotThrow(() => validateIrBlock(buildIr(leaSemantic()), { operandCount: 2 }));
   doesNotThrow(() => validateIrBlock(buildIr(aluSemantic("add", 32)), { operandCount: 2 }));
   doesNotThrow(() => validateIrBlock(buildIr(cmpSemantic()), { operandCount: 2 }));

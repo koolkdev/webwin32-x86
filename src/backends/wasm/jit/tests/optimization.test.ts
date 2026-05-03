@@ -506,6 +506,46 @@ test("materializeJitVirtualFlags emits sub32 equality from writeback registers",
   ]);
 });
 
+test("materializeJitVirtualFlags emits direct conditions for real cmovcc instructions", () => {
+  const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
+  const cmove = ok(decodeBytes([0x0f, 0x44, 0xca], cmp.nextEip));
+  const xor = ok(decodeBytes([0x31, 0xf6], cmove.nextEip));
+  const analysis = analyzeJitVirtualFlags(buildJitIrBlock([cmp, cmove, xor]));
+  const conditionRead = analysis.reads.find((read) => read.reason === "condition" && read.cc === "E");
+  const materialized = materializeJitVirtualFlags(buildJitIrBlock([cmp, cmove, xor]));
+  const cmovIr = materialized.block.instructions[1]!.ir;
+
+  strictEqual(conditionRead?.conditionUse, "localCondition");
+  strictEqual(materialized.flags.directConditionCount, 1);
+  strictEqual(materialized.flags.removedSetCount, 1);
+  strictEqual(materialized.flags.retainedSetCount, 1);
+  strictEqual(cmovIr.some((op) => op.op === "aluFlags.condition"), false);
+  strictEqual(cmovIr.some((op) => op.op === "flagProducer.condition"), true);
+});
+
+test("materializeJitVirtualFlags emits cmovcc conditions from inc writeback results", () => {
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
+  const inc = ok(decodeBytes([0x40], add.nextEip));
+  const cmove = ok(decodeBytes([0x0f, 0x44, 0xca], inc.nextEip));
+  const xor = ok(decodeBytes([0x31, 0xf6], cmove.nextEip));
+  const materialized = materializeJitVirtualFlags(buildJitIrBlock([add, inc, cmove, xor]));
+  const cmovIr = materialized.block.instructions[2]!.ir;
+  const condition = cmovIr.find((op) => op.op === "flagProducer.condition");
+
+  strictEqual(materialized.flags.directConditionCount, 1);
+  strictEqual(materialized.flags.removedSetCount, 2);
+  strictEqual(materialized.flags.retainedSetCount, 1);
+  deepStrictEqual(condition, {
+    op: "flagProducer.condition",
+    dst: v(1),
+    cc: "E",
+    producer: "inc32",
+    writtenMask: createIrFlagSetOp("inc32", { left: v(0), result: v(1) }).writtenMask,
+    undefMask: 0,
+    inputs: { result: v(2) }
+  });
+});
+
 test("materializeJitVirtualFlags emits logic32 compound conditions from writeback registers", () => {
   const materialized = materializeJitVirtualFlags({
     instructions: [

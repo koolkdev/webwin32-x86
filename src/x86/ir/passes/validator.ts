@@ -54,6 +54,11 @@ function validateOpUses(
       validateStorageRef(op.target, definedVars, options);
       validateValueRef(op.value, definedVars);
       break;
+    case "set32.if":
+      validateValueRef(op.condition, definedVars);
+      validateStorageRef(op.target, definedVars, options);
+      validateValueRef(op.value, definedVars);
+      break;
     case "address32":
       validateOperandIndex(op.operand.index, options);
       break;

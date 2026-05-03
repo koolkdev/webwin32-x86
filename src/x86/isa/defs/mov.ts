@@ -1,7 +1,8 @@
+import { CONDITION_CODE_DESCRIPTORS } from "#x86/isa/defs/condition-codes.js";
 import { form, mnemonic } from "#x86/isa/schema/builders.js";
 import { imm, modrmReg, modrmRm, opReg } from "#x86/isa/schema/operands.js";
 import { opcodePlusReg } from "#x86/isa/schema/opcodes.js";
-import { movSemantic } from "#x86/isa/semantics/mov.js";
+import { cmovSemantic, movSemantic } from "#x86/isa/semantics/mov.js";
 
 export const MOV = mnemonic("mov", [
   // 8B /r: MOV r32, r/m32
@@ -34,3 +35,15 @@ export const MOV = mnemonic("mov", [
     semantics: movSemantic()
   })
 ]);
+
+export const CMOVCC = CONDITION_CODE_DESCRIPTORS.map((descriptor) =>
+  mnemonic(`cmov${descriptor.suffix}`, [
+    // 0F 40+cc /r: CMOVcc r32, r/m32
+    form("r32_rm32", {
+      opcode: [0x0f, 0x40 + descriptor.opcodeLow],
+      operands: [modrmReg("reg32"), modrmRm("rm32")],
+      format: { syntax: `cmov${descriptor.suffix} {0}, {1}` },
+      semantics: cmovSemantic(descriptor.cc)
+    })
+  ])
+);

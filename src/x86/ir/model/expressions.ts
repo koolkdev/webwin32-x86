@@ -42,6 +42,7 @@ export type IrValueExpr =
 export type IrExprOp =
   | Readonly<{ op: "let32"; dst: VarRef; value: IrValueExpr }>
   | Readonly<{ op: "set32"; target: IrStorageExpr; value: IrValueExpr }>
+  | Readonly<{ op: "set32.if"; condition: IrValueExpr; target: IrStorageExpr; value: IrValueExpr }>
   | IrFlagSetOp
   | Readonly<{ op: "flags.materialize"; mask: number }>
   | Readonly<{ op: "flags.boundary"; mask: number }>
@@ -85,6 +86,14 @@ class ExpressionBuilder {
           break;
         case "set32":
           this.#ops.push({ op: "set32", target: this.#storageExpr(op.target), value: this.#valueExpr(op.value) });
+          break;
+        case "set32.if":
+          this.#ops.push({
+            op: "set32.if",
+            condition: this.#valueExpr(op.condition),
+            target: this.#storageExpr(op.target),
+            value: this.#valueExpr(this.#materializedValue(op.value))
+          });
           break;
         case "address32":
           this.#defineValue(op.dst, { kind: "address32", operand: op.operand }, true);
@@ -226,6 +235,11 @@ function countVarUses(block: IrBlock): Map<number, number> {
         countStorageUses(counts, op.source);
         break;
       case "set32":
+        countStorageUses(counts, op.target);
+        countValueUse(counts, op.value);
+        break;
+      case "set32.if":
+        countValueUse(counts, op.condition);
         countStorageUses(counts, op.target);
         countValueUse(counts, op.value);
         break;
