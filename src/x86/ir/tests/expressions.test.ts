@@ -2,7 +2,7 @@ import { deepStrictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { buildIrExpressionBlock } from "#x86/ir/model/expressions.js";
-import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
+import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/model/flag-effects.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 
 const v = (id: number) => ({ kind: "var" as const, id });

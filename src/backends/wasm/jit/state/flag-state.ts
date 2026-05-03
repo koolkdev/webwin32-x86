@@ -2,7 +2,7 @@ import {
   conditionFlagReadMask,
   IR_ALU_FLAG_MASK,
   IR_ALU_FLAG_MASKS
-} from "#x86/ir/passes/flag-analysis.js";
+} from "#x86/ir/model/flag-effects.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import {
   flagProducerConditionInputNames,

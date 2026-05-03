@@ -1,4 +1,4 @@
-import { assertIrAluFlagMask, IR_FLAG_MASK_NONE } from "./flag-analysis.js";
+import { assertIrAluFlagMask, IR_FLAG_MASK_NONE } from "#x86/ir/model/flag-effects.js";
 import {
   canUseFlagProducerCondition,
   flagProducerConditionInputNames,
