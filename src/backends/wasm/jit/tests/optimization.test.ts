@@ -8,6 +8,10 @@ import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/e
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import { pruneDeadJitFlags } from "#backends/wasm/jit/optimization/flag-pruning.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
+import {
+  jitIrOptimizationPassOrder,
+  runJitIrOptimizationPipeline
+} from "#backends/wasm/jit/optimization/pipeline.js";
 import type { JitExitPoint } from "#backends/wasm/jit/optimization/types.js";
 import { foldJitVirtualRegisters } from "#backends/wasm/jit/optimization/virtual-registers.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
@@ -134,6 +138,23 @@ test("pruneDeadJitFlags keeps partial flag producers needed by later conditions"
 
   strictEqual(pruned.pruning.prunedCount, 0);
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
+});
+
+test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
+  const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
+  const xorEax = ok(decodeBytes([0x83, 0xf0, 0x02], movEaxEcx.nextEip));
+  const addEbxEax = ok(decodeBytes([0x01, 0xc3], xorEax.nextEip));
+  const trap = ok(decodeBytes([0xcd, 0x2e], addEbxEax.nextEip));
+  const result = runJitIrOptimizationPipeline(buildJitIrBlock([
+    movEaxEcx,
+    xorEax,
+    addEbxEax,
+    trap
+  ]));
+
+  deepStrictEqual(jitIrOptimizationPassOrder, ["virtual-registers", "dead-flags"]);
+  strictEqual(result.passes.virtualRegisters.removedSetCount, 3);
+  strictEqual(result.passes.deadFlags.prunedCount, 1);
 });
 
 test("foldJitVirtualRegisters keeps transient register calculations virtual until exit", () => {
