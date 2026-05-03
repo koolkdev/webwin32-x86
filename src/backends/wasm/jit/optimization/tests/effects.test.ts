@@ -16,7 +16,7 @@ import {
   jitExitConditionValues,
   jitLocalConditionValues,
   jitPostInstructionExitReasons
-} from "#backends/wasm/jit/optimization/op-effects.js";
+} from "#backends/wasm/jit/optimization/effect-primitives.js";
 import { c32, syntheticInstruction, v } from "./helpers.js";
 
 test("JIT op effects identify post-instruction exits and condition values", () => {

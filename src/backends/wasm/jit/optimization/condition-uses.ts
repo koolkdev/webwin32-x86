@@ -2,7 +2,7 @@ import type { ValueRef } from "#x86/ir/model/types.js";
 import { visitJitIrOpValueRefs } from "#backends/wasm/jit/ir-semantics.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { walkJitIrBlockOps } from "./ir-walk.js";
-import { jitExitConditionValues, jitLocalConditionValues } from "./op-effects.js";
+import { jitExitConditionValues, jitLocalConditionValues } from "./effect-primitives.js";
 import { setJitOpIndexValue, type JitOpIndex } from "./op-index.js";
 
 export type JitConditionUse = "localCondition" | "exitCondition";

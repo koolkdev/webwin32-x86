@@ -7,7 +7,7 @@ import {
   indexJitLocalConditionValues,
   type JitConditionUse
 } from "./condition-uses.js";
-import { jitMemoryFaultReason, jitPostInstructionExitReasons } from "./op-effects.js";
+import { jitMemoryFaultReason, jitPostInstructionExitReasons } from "./effect-primitives.js";
 
 export type JitOpEffects = Readonly<{
   preInstructionExitReason?: ExitReasonValue;

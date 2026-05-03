@@ -6,6 +6,7 @@ import {
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import { requiredJitOperandBinding } from "./operand-binding.js";
 
 export function jitMemoryFaultReason(
   op: JitIrOp,
@@ -69,19 +70,6 @@ export function jitLocalConditionValues(op: JitIrOp): readonly ValueRef[] {
     default:
       return [];
   }
-}
-
-export function requiredJitOperandBinding(
-  operands: readonly JitOperandBinding[],
-  index: number
-): JitOperandBinding {
-  const operand = operands[index];
-
-  if (operand === undefined) {
-    throw new Error(`missing JIT operand while analyzing JIT IR block: ${index}`);
-  }
-
-  return operand;
 }
 
 function storageMayAccessMemory(storage: StorageRef, operands: readonly JitOperandBinding[]): boolean {

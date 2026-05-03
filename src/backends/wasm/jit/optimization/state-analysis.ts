@@ -14,9 +14,7 @@ import {
   jitPreInstructionExitReasonAt,
   jitPostInstructionExitReasonsAt
 } from "./effects.js";
-import {
-  requiredJitOperandBinding
-} from "./op-effects.js";
+import { requiredJitOperandBinding } from "./operand-binding.js";
 import type {
   JitBlockOptimization,
   JitExitPoint,

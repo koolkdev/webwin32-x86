@@ -2,7 +2,7 @@ import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { OperandRef, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
-import { requiredJitOperandBinding } from "./op-effects.js";
+import { requiredJitOperandBinding } from "./operand-binding.js";
 
 export type JitValue =
   | Readonly<{ kind: "const32"; value: number }>
