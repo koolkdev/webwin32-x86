@@ -88,7 +88,11 @@ export function planRegisterOp(
     }
     case "set32": {
       const clobberFacts = registerWriteClobberFacts(instructionIndex, opIndex, op.target, instruction);
-      const clobber = planRegisterSet32Clobber(context, op.target);
+      const clobber = planRegisterSet32Clobber(
+        context,
+        op.target,
+        !registerSet32RetainsTrackedProducer(context, op)
+      );
       const producer = planRegisterSet32Producer(context, op);
 
       return {
@@ -255,7 +259,8 @@ function planRegisterAddress32(
 
 function planRegisterSet32Clobber(
   context: JitPlannerOpContext,
-  storage: StorageRef
+  storage: StorageRef,
+  clobbersTarget: boolean
 ): JitRegisterPlannerMaterializationResult {
   const { instruction, instructionIndex, opIndex, state } = context;
   const reg = jitStorageReg(storage, instruction.operands);
@@ -277,7 +282,10 @@ function planRegisterSet32Clobber(
     "clobber"
   );
 
-  state.tracked.recordClobber(location);
+  if (clobbersTarget) {
+    state.tracked.recordClobber(location);
+  }
+
   syncRegisterReadCounts(state.tracked.registers);
   return materialization;
 }
@@ -419,6 +427,16 @@ function planRegisterSet32Producer(
     producerCount: 1,
     materializedSetCount: 0
   };
+}
+
+function registerSet32RetainsTrackedProducer(
+  context: JitPlannerOpContext,
+  op: Extract<JitIrOp, { op: "set32" }>
+): boolean {
+  const reg = jitStorageReg(op.target, context.instruction.operands);
+  const value = context.state.values.valueFor(op.value);
+
+  return reg !== undefined && value !== undefined && shouldRetainRegisterValue(value);
 }
 
 function registerReadFact(

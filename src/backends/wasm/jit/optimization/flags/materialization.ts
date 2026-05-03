@@ -3,7 +3,8 @@ import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
 } from "#backends/wasm/jit/optimization/tracked/analysis.js";
-import { emitJitFlagMaterialization } from "#backends/wasm/jit/optimization/planner/emitter.js";
+import { emitJitFlagMaterializationFromPlan } from "#backends/wasm/jit/optimization/planner/emitter.js";
+import { planJitOptimization } from "#backends/wasm/jit/optimization/planner/planner.js";
 
 export type JitFlagMaterialization = Readonly<{
   removedSetCount: number;
@@ -16,5 +17,8 @@ export function materializeJitFlags(
   block: JitIrBlock,
   optimizationAnalysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ) {
-  return emitJitFlagMaterialization(block, optimizationAnalysis);
+  return emitJitFlagMaterializationFromPlan(
+    planJitOptimization(block, optimizationAnalysis),
+    optimizationAnalysis
+  );
 }

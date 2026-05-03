@@ -1,11 +1,5 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import type {
-  JitIrBlock,
-  JitIrBlockInstruction,
-  JitOptimizedIrBlockInstruction
-} from "#backends/wasm/jit/types.js";
-import type { JitFlagMaterialization } from "#backends/wasm/jit/optimization/flags/materialization.js";
-import type { JitRegisterFolding } from "#backends/wasm/jit/optimization/passes/register-folding.js";
+import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import type {
   JitTrackedLocation,
   JitTrackedMaterializationReason,
@@ -101,18 +95,4 @@ export type JitOptimizationPlan = Readonly<{
   block: JitIrBlock;
   records: readonly JitOptimizationPlanRecord[];
   stats: JitTrackedOptimizationStats;
-}>;
-
-export type JitFlagMaterializationPlan = Readonly<{
-  block: JitIrBlock;
-  instructions: readonly JitIrBlockInstruction[];
-  flags: JitFlagMaterialization;
-  records: readonly JitOptimizationPlanRecord[];
-}>;
-
-export type JitRegisterFoldingPlan = Readonly<{
-  block: JitIrBlock;
-  instructions: readonly JitOptimizedIrBlockInstruction[];
-  folding: JitRegisterFolding;
-  records: readonly JitOptimizationPlanRecord[];
 }>;

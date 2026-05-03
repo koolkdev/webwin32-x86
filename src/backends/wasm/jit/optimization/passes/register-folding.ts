@@ -3,7 +3,8 @@ import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
 } from "#backends/wasm/jit/optimization/tracked/analysis.js";
-import { emitJitRegisterFolding } from "#backends/wasm/jit/optimization/planner/emitter.js";
+import { emitJitRegisterFoldingFromPlan } from "#backends/wasm/jit/optimization/planner/emitter.js";
+import { planJitOptimization } from "#backends/wasm/jit/optimization/planner/planner.js";
 
 export type JitRegisterFolding = Readonly<{
   removedSetCount: number;
@@ -14,5 +15,8 @@ export function foldJitRegisters(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ) {
-  return emitJitRegisterFolding(block, analysis);
+  return emitJitRegisterFoldingFromPlan(
+    planJitOptimization(block, analysis),
+    analysis
+  );
 }
