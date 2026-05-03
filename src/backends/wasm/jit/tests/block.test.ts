@@ -664,7 +664,7 @@ test("jit IR block keeps flags live across memory fault exits before later overw
 
 function loweringIr(block: ReturnType<typeof buildJitIrBlock>): readonly JitIrOp[] {
   return buildJitLoweringBlock(optimizeJitIrBlock(block)).instructions.flatMap(
-    (instruction) => [...instruction.prelude, ...instruction.ir]
+    (instruction) => instruction.ir
   );
 }
 

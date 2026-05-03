@@ -21,9 +21,9 @@ import {
 import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/lowering-prep/types.js";
 import { lowerableJitIrBlock } from "#backends/wasm/jit/ir-semantics.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
-import type { JitIrOp, JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 
-export type JitIrInstructionContext = Pick<JitOptimizedIrBlockInstruction, "prelude" | "ir" | "operands"> & Pick<
+export type JitIrInstructionContext = Pick<JitIrBlockInstruction, "ir" | "operands"> & Pick<
   JitInstructionState,
   | "instructionId"
   | "eip"
@@ -58,7 +58,6 @@ export function lowerIrWithJitContext(context: JitIrBlockLoweringContext): void 
   const jitContext = createJitIrContext(context);
 
   for (let index = 0; index < context.instructions.length; index += 1) {
-    lowerCurrentPrelude(jitContext);
     beginInstruction(jitContext, context.exit, jitContext.currentInstruction());
     lowerCurrentInstruction(jitContext);
   }
@@ -123,10 +122,6 @@ function createJitIrContext(context: JitIrBlockLoweringContext): JitIrContext {
       completedPreInstructionExitPointCount = 0;
     }
   };
-}
-
-function lowerCurrentPrelude(jitContext: JitIrContext): void {
-  lowerJitIrBlock(jitContext, jitContext.currentInstruction().prelude);
 }
 
 function lowerCurrentInstruction(jitContext: JitIrContext): void {

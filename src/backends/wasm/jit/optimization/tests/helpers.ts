@@ -9,8 +9,7 @@ import type { JitFlagOwnerMask } from "#backends/wasm/jit/optimization/flags/own
 import type {
   JitIrBlock,
   JitIrBody,
-  JitIrBlockInstruction,
-  JitOptimizedIrBlockInstruction
+  JitIrBlockInstruction
 } from "#backends/wasm/jit/types.js";
 
 export const startAddress = 0x1000;
@@ -57,7 +56,7 @@ export function syntheticInstruction(
 }
 
 export function set32TargetRegs(
-  instructions: readonly (JitIrBlockInstruction | JitOptimizedIrBlockInstruction)[]
+  instructions: readonly JitIrBlockInstruction[]
 ): readonly Reg32[] {
   return instructions.flatMap((instruction) =>
     instructionOps(instruction).flatMap((op) => {
@@ -80,10 +79,8 @@ export function set32TargetRegs(
   );
 }
 
-function instructionOps(instruction: JitIrBlockInstruction | JitOptimizedIrBlockInstruction): JitIrBody {
-  return "prelude" in instruction
-    ? [...instruction.prelude, ...instruction.ir]
-    : instruction.ir;
+function instructionOps(instruction: JitIrBlockInstruction): JitIrBody {
+  return instruction.ir;
 }
 
 export function flagOwnerSummary(owners: readonly JitFlagOwnerMask[]): readonly object[] {

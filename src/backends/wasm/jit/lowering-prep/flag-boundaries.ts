@@ -1,12 +1,12 @@
 import type { JitBlockOptimization } from "#backends/wasm/jit/lowering-prep/types.js";
-import type { JitIrBody, JitIrOp, JitOptimizedIrBlock } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrBody, JitIrOp } from "#backends/wasm/jit/types.js";
 
 const emptyBoundaryMaskByOpIndex = new Map<number, number>();
 
 export function insertJitFlagBoundaries(
-  block: JitOptimizedIrBlock,
+  block: JitIrBlock,
   optimization: JitBlockOptimization
-): JitOptimizedIrBlock {
+): JitIrBlock {
   const boundaryMasks = jitFlagBoundaryMasks(optimization);
 
   if (boundaryMasks.size === 0) {

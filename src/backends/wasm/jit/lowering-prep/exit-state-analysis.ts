@@ -1,8 +1,7 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import { conditionFlagReadMask } from "#x86/ir/model/flag-effects.js";
-import { jitIrOpStorageWrites } from "#backends/wasm/jit/ir-semantics.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitIrOp, JitOptimizedIrBlock, JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 import { JitBlockStateTracker } from "#backends/wasm/jit/lowering-prep/block-state-tracker.js";
 import {
   indexJitEffects,
@@ -21,7 +20,7 @@ import type {
 } from "#backends/wasm/jit/lowering-prep/types.js";
 
 export function analyzeJitBlockState(
-  block: JitOptimizedIrBlock,
+  block: JitIrBlock,
   effects: JitEffectIndex = indexJitEffects(block)
 ): Omit<JitBlockOptimization, "block"> {
   const state = new JitBlockStateTracker();
@@ -38,16 +37,6 @@ export function analyzeJitBlockState(
 
     if (instruction === undefined) {
       throw new Error(`missing JIT instruction while optimizing JIT IR block: ${instructionIndex}`);
-    }
-
-    for (let opIndex = 0; opIndex < instruction.prelude.length; opIndex += 1) {
-      const op = instruction.prelude[opIndex];
-
-      if (op === undefined) {
-        throw new Error(`missing JIT prelude op while optimizing JIT IR block: ${instructionIndex}:${opIndex}`);
-      }
-
-      recordPreludeOpEffects(op, instruction);
     }
 
     const entry = state.snapshot("preInstruction", instruction.eip);
@@ -98,24 +87,15 @@ export function analyzeJitBlockState(
     maxExitStateIndex: exitStates.length - 1
   };
 
-  function instructionPostState(instruction: JitOptimizedIrBlockInstruction): JitStateSnapshot {
+  function instructionPostState(instruction: JitIrBlockInstruction): JitStateSnapshot {
     currentPostState ??= state.snapshotPostInstruction(instruction.nextEip);
 
     return currentPostState;
   }
 
-  function recordPreludeOpEffects(
-    op: JitIrOp,
-    instruction: JitOptimizedIrBlockInstruction
-  ): void {
-    for (const storage of jitIrOpStorageWrites(op)) {
-      state.recordCommittedStorageWrite(storage, instruction.operands);
-    }
-  }
-
   function recordOpEffects(
     op: JitIrOp,
-    instruction: JitOptimizedIrBlockInstruction,
+    instruction: JitIrBlockInstruction,
     instructionIndex: number,
     opIndex: number
   ): void {
@@ -170,7 +150,7 @@ export function analyzeJitBlockState(
   }
 
   function recordPostInstructionExits(
-    instruction: JitOptimizedIrBlockInstruction,
+    instruction: JitIrBlockInstruction,
     instructionIndex: number,
     opIndex: number
   ): void {

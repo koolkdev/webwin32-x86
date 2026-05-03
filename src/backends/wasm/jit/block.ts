@@ -12,20 +12,16 @@ import { lowerIrWithJitContext, type JitIrInstructionContext } from "./lowering/
 import { optimizeJitIrBlockOnly } from "./optimization/optimize.js";
 import type { JitBlockOptimization } from "#backends/wasm/jit/lowering-prep/types.js";
 import { jitIrOpDst, visitJitIrOpValueRefs } from "./ir-semantics.js";
-import { assertJitOptimizedIrPreludeOp } from "./prelude.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
 import type {
   JitIrBlock,
   JitIrBody,
-  JitOptimizedIrBlock,
-  JitOptimizedIrBlockInstruction
+  JitIrBlockInstruction
 } from "./types.js";
 
 export type {
   JitIrBlock,
-  JitIrBlockInstruction,
-  JitOptimizedIrBlock,
-  JitOptimizedIrBlockInstruction
+  JitIrBlockInstruction
 } from "./types.js";
 
 export function buildJitIrBlock(instructions: readonly IsaDecodedInstruction[]): JitIrBlock {
@@ -104,7 +100,7 @@ function emitExitStateBlocks(body: WasmFunctionBodyEncoder, maxExitStateIndex: n
   }
 }
 
-function validateLoweringBlock(block: JitOptimizedIrBlock): void {
+function validateLoweringBlock(block: JitIrBlock): void {
   for (let index = 0; index < block.instructions.length; index += 1) {
     const instruction = block.instructions[index];
 
@@ -112,23 +108,11 @@ function validateLoweringBlock(block: JitOptimizedIrBlock): void {
       throw new Error(`missing JIT lowering instruction: ${index}`);
     }
 
-    validateJitPreludeBlock(instruction);
     validateJitInstructionBody(instruction);
   }
 }
 
-function validateJitPreludeBlock(instruction: JitOptimizedIrBlockInstruction): void {
-  validateIrBlock(instruction.prelude, {
-    operandCount: instruction.operands.length,
-    terminatorMode: "none"
-  });
-
-  for (const op of instruction.prelude) {
-    assertJitOptimizedIrPreludeOp(op);
-  }
-}
-
-function validateJitInstructionBody(instruction: JitOptimizedIrBlockInstruction): void {
+function validateJitInstructionBody(instruction: JitIrBlockInstruction): void {
   validateIrBlock(jitValidationIrBlock(instruction.ir), {
     operandCount: instruction.operands.length,
     terminatorMode: "single"
@@ -171,7 +155,7 @@ function validateJitValueRef(value: ValueRef, definedVars: ReadonlySet<number>):
 }
 
 function loweringInstructions(
-  block: JitOptimizedIrBlock,
+  block: JitIrBlock,
   optimization: JitBlockOptimization
 ): readonly JitIrInstructionContext[] {
   if (block.instructions.length !== optimization.instructionStates.length) {
@@ -189,7 +173,6 @@ function loweringInstructions(
 
     return {
       ...state,
-      prelude: instruction.prelude,
       ir: instruction.ir,
       operands: instruction.operands
     };

@@ -4,9 +4,7 @@ import { test } from "node:test";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import {
-  jitIrPassOptimizationPassOrder,
   jitIrOptimizationPassOrder,
-  runJitIrPassOptimizationPipeline,
   runJitIrOptimizationPipeline
 } from "#backends/wasm/jit/optimization/pipeline.js";
 import type { JitOptimizationPass } from "#backends/wasm/jit/optimization/pass.js";
@@ -36,7 +34,7 @@ test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
   deepStrictEqual(result.passResults.map((pass) => pass.name), jitIrOptimizationPassOrder);
   strictEqual(result.passResults.some((pass) => pass.changed), true);
   strictEqual(result.stats["register-value-propagation"]?.removedSetCount, 3);
-  strictEqual(result.block.instructions.every((instruction) => instruction.prelude.length === 0), true);
+  strictEqual(result.block.instructions.every((instruction) => !("prelude" in instruction)), true);
 });
 
 test("runJitIrOptimizationPipeline prunes dead flag producer inputs before register values", () => {
@@ -103,13 +101,13 @@ test("runJitOptimizationPasses runs named IR-to-IR passes and validates pass out
   deepStrictEqual(result.block.instructions[0]?.ir.map((op) => op.op), ["const32", "next"]);
 });
 
-test("runJitIrPassOptimizationPipeline exposes the new pass pipeline without preludes", () => {
+test("runJitIrOptimizationPipeline exposes the new pass pipeline as plain JIT IR", () => {
   const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
   const cmove = ok(decodeBytes([0x0f, 0x44, 0xd1], cmp.nextEip));
   const trap = ok(decodeBytes([0xcd, 0x2e], cmove.nextEip));
-  const result = runJitIrPassOptimizationPipeline(buildJitIrBlock([cmp, cmove, trap]), { validate: true });
+  const result = runJitIrOptimizationPipeline(buildJitIrBlock([cmp, cmove, trap]), { validate: true });
 
-  deepStrictEqual(jitIrPassOptimizationPassOrder, [
+  deepStrictEqual(jitIrOptimizationPassOrder, [
     "local-dce",
     "flag-condition-specialization",
     "flag-dce",
@@ -117,7 +115,7 @@ test("runJitIrPassOptimizationPipeline exposes the new pass pipeline without pre
     "register-value-propagation",
     "local-dce"
   ]);
-  strictEqual(result.block.instructions.every((instruction) => instruction.prelude.length === 0), true);
+  strictEqual(result.block.instructions.every((instruction) => !("prelude" in instruction)), true);
   strictEqual(result.passResults.some((pass) =>
     pass.name === "flag-condition-specialization" && pass.stats.directConditionCount === 1
   ), true);
