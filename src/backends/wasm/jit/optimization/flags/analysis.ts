@@ -33,6 +33,7 @@ import {
   type JitFlagInput,
   type JitFlagSource
 } from "#backends/wasm/jit/optimization/flags/sources.js";
+import { flagProducerOwnersInvalidatedByRegisterWrite } from "#backends/wasm/jit/optimization/flags/policy.js";
 import { JitOptimizationState } from "#backends/wasm/jit/optimization/tracked/optimization-state.js";
 import type {
   JitTrackedProducer,
@@ -226,7 +227,7 @@ export function analyzeJitFlags(
       return;
     }
 
-    const clobberedOwners = state.tracked.flagProducerOwnersReadingReg(reg);
+    const clobberedOwners = flagProducerOwnersInvalidatedByRegisterWrite(state.tracked, reg);
 
     if (clobberedOwners.length === 0) {
       return;

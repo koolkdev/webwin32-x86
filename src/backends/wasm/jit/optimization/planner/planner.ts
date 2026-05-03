@@ -22,6 +22,7 @@ import {
   emitJitFlagMaterialization,
   emitJitRegisterFolding
 } from "#backends/wasm/jit/optimization/planner/emitter.js";
+import { registerWriteInvalidatesFlagProducerInputs } from "#backends/wasm/jit/optimization/planner/policy.js";
 import type {
   JitOptimizationPlan,
   JitOptimizationPlanRecord
@@ -375,7 +376,7 @@ function recordFlagSourceClobber(
     return 0;
   }
 
-  if (state.tracked.flagProducerOwnersReadingReg(reg).length === 0) {
+  if (!registerWriteInvalidatesFlagProducerInputs(state.tracked, storage, instruction)) {
     return 0;
   }
 
