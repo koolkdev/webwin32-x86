@@ -100,7 +100,7 @@ function directVirtualFlagCondition(
   block: JitIrBlock,
   read: JitVirtualFlagRead
 ): JitDirectVirtualFlagCondition | undefined {
-  if (read.reason !== "condition" || read.cc === undefined || read.conditionUse !== "localCondition") {
+  if (read.reason !== "condition" || read.cc === undefined || read.conditionUse === undefined) {
     return undefined;
   }
 

@@ -104,12 +104,12 @@ test("buildJitIrBlock keeps earlier CF producer live across INC", () => {
   strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
 });
 
-test("buildJitIrBlock keeps cmp and jcc condition IR instruction-local", () => {
+test("buildJitIrBlock emits direct cmp and jcc branch conditions", () => {
   const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
   const je = ok(decodeBytes([0x74, 0x05], cmp.nextEip));
   const ir = loweringIr(buildJitIrBlock([cmp, je]));
 
-  strictEqual(ir.some((op) => op.op === "flagProducer.condition"), false);
+  strictEqual(ir.some((op) => op.op === "flagProducer.condition"), true);
   strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
 });
 

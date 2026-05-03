@@ -118,8 +118,8 @@ test("optimizeJitIrBlock records exit states only for actual exit points", () =>
 
 test("optimizeJitIrBlock records flag materialization requirements before conditions and exits", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
-  const jz = ok(decodeBytes([0x74, 0x05], add.nextEip));
-  const optimization = optimizeJitIrBlock(buildJitIrBlock([add, jz]));
+  const jb = ok(decodeBytes([0x72, 0x05], add.nextEip));
+  const optimization = optimizeJitIrBlock(buildJitIrBlock([add, jb]));
   const conditionMaterialization = optimization.flagMaterializationRequirements.find(
     (entry) => entry.reason === "condition"
   );
@@ -131,8 +131,8 @@ test("optimizeJitIrBlock records flag materialization requirements before condit
     instructionIndex: 1,
     opIndex: 0,
     reason: "condition",
-    requiredMask: IR_ALU_FLAG_MASKS.ZF,
-    pendingMask: IR_ALU_FLAG_MASKS.ZF
+    requiredMask: IR_ALU_FLAG_MASKS.CF,
+    pendingMask: IR_ALU_FLAG_MASKS.CF
   });
   strictEqual(branchExits.length, 2);
 
@@ -661,7 +661,7 @@ test("materializeJitVirtualFlags emits supported logic32 local direct conditions
   }
 });
 
-test("materializeJitVirtualFlags keeps logic32 exit conditions materialized", () => {
+test("materializeJitVirtualFlags emits direct logic32 exit conditions and retains snapshot flags", () => {
   const materialized = materializeJitVirtualFlags({
     instructions: [
       syntheticInstruction([
@@ -679,11 +679,63 @@ test("materializeJitVirtualFlags keeps logic32 exit conditions materialized", ()
   });
   const conditionInstruction = materialized.block.instructions[1]!;
 
-  strictEqual(materialized.flags.directConditionCount, 0);
+  strictEqual(materialized.flags.directConditionCount, 1);
   strictEqual(materialized.flags.removedSetCount, 0);
   strictEqual(materialized.flags.retainedSetCount, 1);
-  strictEqual(conditionInstruction.ir.some((op) => op.op === "aluFlags.condition"), true);
-  strictEqual(conditionInstruction.ir.some((op) => op.op === "flagProducer.condition"), false);
+  strictEqual(conditionInstruction.ir.some((op) => op.op === "aluFlags.condition"), false);
+  strictEqual(conditionInstruction.ir.some((op) => op.op === "flagProducer.condition"), true);
+});
+
+test("materializeJitVirtualFlags emits add-inc branch conditions from INC while retaining merged exit flags", () => {
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
+  const inc = ok(decodeBytes([0x40], add.nextEip));
+  const je = ok(decodeBytes([0x74, 0x05], inc.nextEip));
+  const materialized = materializeJitVirtualFlags(buildJitIrBlock([add, inc, je]));
+  const branchIr = materialized.block.instructions[2]!.ir;
+  const condition = branchIr.find((op) => op.op === "flagProducer.condition");
+  const flagSets = materialized.block.instructions.flatMap((instruction) =>
+    instruction.ir.filter((op) => op.op === "flags.set")
+  );
+
+  strictEqual(materialized.flags.directConditionCount, 1);
+  strictEqual(materialized.flags.removedSetCount, 0);
+  strictEqual(materialized.flags.retainedSetCount, 2);
+  strictEqual(branchIr.some((op) => op.op === "aluFlags.condition"), false);
+  deepStrictEqual(condition, {
+    op: "flagProducer.condition",
+    dst: v(0),
+    cc: "E",
+    producer: "inc32",
+    writtenMask: createIrFlagSetOp("inc32", { left: v(0), result: v(1) }).writtenMask,
+    undefMask: 0,
+    inputs: { result: v(2) }
+  });
+  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
+});
+
+test("optimizeJitIrBlock keeps add-inc branch exit flag materialization out of the branch condition", () => {
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
+  const inc = ok(decodeBytes([0x40], add.nextEip));
+  const je = ok(decodeBytes([0x74, 0x05], inc.nextEip));
+  const optimization = optimizeJitIrBlock(buildJitIrBlock([add, inc, je]));
+
+  strictEqual(optimization.block.instructions[2]!.ir.some((op) => op.op === "aluFlags.condition"), false);
+  strictEqual(optimization.block.instructions[2]!.ir.some((op) => op.op === "flagProducer.condition"), true);
+  strictEqual(
+    optimization.flagMaterializationRequirements.some((requirement) => requirement.reason === "condition"),
+    false
+  );
+  deepStrictEqual(
+    optimization.flagMaterializationRequirements.map((requirement) => ({
+      reason: requirement.reason,
+      requiredMask: requirement.requiredMask,
+      pendingMask: requirement.pendingMask
+    })),
+    [
+      { reason: "exit", requiredMask: IR_ALU_FLAG_MASK, pendingMask: IR_ALU_FLAG_MASK },
+      { reason: "exit", requiredMask: IR_ALU_FLAG_MASK, pendingMask: IR_ALU_FLAG_MASK }
+    ]
+  );
 });
 
 test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
