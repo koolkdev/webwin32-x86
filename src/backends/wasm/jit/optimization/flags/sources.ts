@@ -1,9 +1,9 @@
 import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import type { IrFlagSetOp, ValueRef } from "#x86/ir/model/types.js";
-import type { JitValue } from "./values.js";
-import { jitValueReadRegs } from "./values.js";
-import type { JitValueTracker } from "./value-tracker.js";
+import type { JitValue } from "#backends/wasm/jit/optimization/ir/values.js";
+import { jitValueReadRegs } from "#backends/wasm/jit/optimization/ir/values.js";
+import type { JitValueTracker } from "#backends/wasm/jit/optimization/ir/value-tracker.js";
 
 export type JitFlagInput =
   | Readonly<{ kind: "value"; value: JitValue }>

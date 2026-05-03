@@ -4,8 +4,8 @@ import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import {
   walkJitIrOpsBetween,
   type JitIrLocation
-} from "./ir-walk.js";
-import { jitStorageReg } from "./values.js";
+} from "#backends/wasm/jit/optimization/ir/walk.js";
+import { jitStorageReg } from "#backends/wasm/jit/optimization/ir/values.js";
 
 export function jitRegClobberedBetween(
   block: JitIrBlock,

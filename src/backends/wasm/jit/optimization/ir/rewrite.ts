@@ -2,8 +2,8 @@ import type { Reg32 } from "#x86/isa/types.js";
 import type { ValueRef, VarRef } from "#x86/ir/model/types.js";
 import { jitIrOpDst } from "#backends/wasm/jit/ir-semantics.js";
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
-import type { JitValue } from "./values.js";
-import { JitValueTracker } from "./value-tracker.js";
+import type { JitValue } from "#backends/wasm/jit/optimization/ir/values.js";
+import { JitValueTracker } from "#backends/wasm/jit/optimization/ir/value-tracker.js";
 
 export type JitInstructionRewrite = {
   ops: JitIrOp[];

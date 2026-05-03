@@ -1,4 +1,4 @@
-import type { JitBlockOptimization } from "#backends/wasm/jit/optimization/types.js";
+import type { JitBlockOptimization } from "#backends/wasm/jit/optimization/tracked/types.js";
 import type { JitIrBody, JitIrOp, JitOptimizedIrBlock } from "#backends/wasm/jit/types.js";
 
 const emptyBoundaryMaskByOpIndex = new Map<number, number>();

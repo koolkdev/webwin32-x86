@@ -6,13 +6,13 @@ import type { JitIrOp, JitOptimizedIrBlock, JitOptimizedIrBlockInstruction } fro
 import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
-} from "./analysis.js";
-import { JitBlockStateTracker } from "./block-state-tracker.js";
+} from "#backends/wasm/jit/optimization/tracked/analysis.js";
+import { JitBlockStateTracker } from "#backends/wasm/jit/optimization/tracked/block-state-tracker.js";
 import {
   jitOpHasPostInstructionExit,
   jitPreInstructionExitReasonAt,
   jitPostInstructionExitReasonsAt
-} from "./effects.js";
+} from "#backends/wasm/jit/optimization/effects/effects.js";
 import type {
   JitBlockOptimization,
   JitExitPoint,
@@ -20,7 +20,7 @@ import type {
   JitFlagMaterializationRequirement,
   JitInstructionState,
   JitStateSnapshot
-} from "./types.js";
+} from "#backends/wasm/jit/optimization/tracked/types.js";
 
 export function analyzeJitBlockState(
   block: JitOptimizedIrBlock,

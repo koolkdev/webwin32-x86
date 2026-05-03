@@ -7,26 +7,26 @@ import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import type {
   JitFlagInput,
   JitFlagSource
-} from "./flag-sources.js";
+} from "#backends/wasm/jit/optimization/flags/sources.js";
 import {
   type JitFlagAnalysis,
   type JitFlagRead,
   type JitFlagOwnerMask
-} from "./flag-analysis.js";
-import { jitValueReadRegs } from "./values.js";
+} from "#backends/wasm/jit/optimization/flags/analysis.js";
+import { jitValueReadRegs } from "#backends/wasm/jit/optimization/ir/values.js";
 import {
   emitJitValueRef,
   type JitInstructionRewrite
-} from "./rewrite.js";
+} from "#backends/wasm/jit/optimization/ir/rewrite.js";
 import {
   jitIrLocation,
   requiredJitIrInstruction,
   type JitIrLocation
-} from "./ir-walk.js";
+} from "#backends/wasm/jit/optimization/ir/walk.js";
 import {
   findJitRegWritebackBetween,
   jitRegClobberedBetween
-} from "./ir-ranges.js";
+} from "#backends/wasm/jit/optimization/ir/ranges.js";
 
 type PlannedConditionInput = Readonly<{
   input: JitFlagInput;

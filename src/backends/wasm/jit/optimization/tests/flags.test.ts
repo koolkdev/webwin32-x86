@@ -8,11 +8,9 @@ import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/model/flag-effects.
 import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
-import {
-  analyzeJitConditionUses,
-  analyzeJitFlags,
-  materializeJitFlags
-} from "#backends/wasm/jit/optimization/flags.js";
+import { analyzeJitConditionUses } from "#backends/wasm/jit/optimization/effects/condition-uses.js";
+import { analyzeJitFlags } from "#backends/wasm/jit/optimization/flags/analysis.js";
+import { materializeJitFlags } from "#backends/wasm/jit/optimization/flags/materialization.js";
 import {
   c32,
   flagOwnerSummary,

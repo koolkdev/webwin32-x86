@@ -1,7 +1,7 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import type { JitInstructionRewrite } from "./rewrite.js";
-import type { JitOptimizationState } from "./state.js";
-import { jitTrackedRegisterLocation } from "./tracked-state.js";
+import type { JitInstructionRewrite } from "#backends/wasm/jit/optimization/ir/rewrite.js";
+import type { JitOptimizationState } from "#backends/wasm/jit/optimization/tracked/optimization-state.js";
+import { jitTrackedRegisterLocation } from "#backends/wasm/jit/optimization/tracked/state.js";
 
 export function materializeRegisterValuesForPreInstructionExits(
   rewrite: JitInstructionRewrite,

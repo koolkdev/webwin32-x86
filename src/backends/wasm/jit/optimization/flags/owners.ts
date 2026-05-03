@@ -3,7 +3,7 @@ import {
   IR_ALU_FLAG_MASK,
   IR_ALU_FLAG_MASKS
 } from "#x86/ir/model/flag-effects.js";
-import type { JitFlagSource } from "./flag-sources.js";
+import type { JitFlagSource } from "#backends/wasm/jit/optimization/flags/sources.js";
 
 export type JitFlagOwner =
   | Readonly<{ kind: "incoming" }>

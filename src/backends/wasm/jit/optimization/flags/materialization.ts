@@ -1,16 +1,16 @@
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
-import { analyzeJitOptimization, type JitOptimizationAnalysis } from "./analysis.js";
-import type { JitFlagSource } from "./flag-sources.js";
+import { analyzeJitOptimization, type JitOptimizationAnalysis } from "#backends/wasm/jit/optimization/tracked/analysis.js";
+import type { JitFlagSource } from "#backends/wasm/jit/optimization/flags/sources.js";
 import {
   analyzeJitFlags,
   type JitFlagAnalysis
-} from "./flag-analysis.js";
+} from "#backends/wasm/jit/optimization/flags/analysis.js";
 import {
   emitDirectFlagCondition,
   indexDirectFlagConditions,
   type JitDirectFlagConditionIndex
-} from "./flag-condition-planning.js";
-import { rewriteJitIrInstruction } from "./rewrite.js";
+} from "#backends/wasm/jit/optimization/flags/conditions.js";
+import { rewriteJitIrInstruction } from "#backends/wasm/jit/optimization/ir/rewrite.js";
 
 export type JitFlagMaterialization = Readonly<{
   removedSetCount: number;

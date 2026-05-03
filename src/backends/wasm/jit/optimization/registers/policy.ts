@@ -1,17 +1,17 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
-import type { JitInstructionRewrite } from "./rewrite.js";
-import { JitRegisterValues } from "./register-values.js";
+import type { JitInstructionRewrite } from "#backends/wasm/jit/optimization/ir/rewrite.js";
+import { JitRegisterValues } from "#backends/wasm/jit/optimization/registers/values.js";
 import {
   jitTrackedRegisterLocation,
   type JitTrackedLocation,
   type JitTrackedState
-} from "./tracked-state.js";
+} from "#backends/wasm/jit/optimization/tracked/state.js";
 import {
   jitValueCost,
   type JitValue
-} from "./values.js";
+} from "#backends/wasm/jit/optimization/ir/values.js";
 
 const maxRepeatedInlineRegisterValueCost = 2;
 const maxRetainedRegisterValueCost = 8;

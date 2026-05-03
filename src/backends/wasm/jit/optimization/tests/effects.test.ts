@@ -2,7 +2,7 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { ExitReason } from "#backends/wasm/exit.js";
-import { analyzeJitOptimization } from "#backends/wasm/jit/optimization/analysis.js";
+import { analyzeJitOptimization } from "#backends/wasm/jit/optimization/tracked/analysis.js";
 import {
   jitConditionUseAt,
   jitConditionValuesAt,
@@ -11,12 +11,12 @@ import {
   jitLastPreInstructionExitOpIndex,
   jitPreInstructionExitReasonAt,
   jitPostInstructionExitReasonsAt
-} from "#backends/wasm/jit/optimization/effects.js";
+} from "#backends/wasm/jit/optimization/effects/effects.js";
 import {
   jitExitConditionValues,
   jitLocalConditionValues,
   jitPostInstructionExitReasons
-} from "#backends/wasm/jit/optimization/effect-primitives.js";
+} from "#backends/wasm/jit/optimization/effects/primitives.js";
 import { c32, syntheticInstruction, v } from "./helpers.js";
 
 test("JIT op effects identify post-instruction exits and condition values", () => {

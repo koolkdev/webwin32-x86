@@ -2,7 +2,7 @@ import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import {
   createJitOptimizationContext,
   type JitOptimizationContext
-} from "./context.js";
+} from "#backends/wasm/jit/optimization/tracked/context.js";
 
 export type JitOptimizationAnalysis = Readonly<{
   context: JitOptimizationContext;

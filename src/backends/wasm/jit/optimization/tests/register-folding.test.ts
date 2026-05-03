@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { Reg32 } from "#x86/isa/types.js";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
-import { foldJitRegisters } from "#backends/wasm/jit/optimization/register-folding.js";
+import { foldJitRegisters } from "#backends/wasm/jit/optimization/passes/register-folding.js";
 import type { JitIrBlockInstruction, JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { set32TargetRegs, startAddress } from "./helpers.js";
 

@@ -12,44 +12,46 @@ import type {
 import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
-} from "./analysis.js";
-import { pruneDeadJitLocalValues } from "./dead-local-values.js";
+} from "#backends/wasm/jit/optimization/tracked/analysis.js";
+import { pruneDeadJitLocalValues } from "#backends/wasm/jit/optimization/passes/dead-local-values.js";
 import {
   jitConditionUseAt,
   jitOpHasPostInstructionExit,
   jitPreInstructionExitReasonAt
-} from "./effects.js";
+} from "#backends/wasm/jit/optimization/effects/effects.js";
 import {
   emitDirectFlagCondition,
   indexDirectFlagConditions,
   type JitDirectFlagConditionIndex
-} from "./flag-condition-planning.js";
+} from "#backends/wasm/jit/optimization/flags/conditions.js";
+import {
+  type JitFlagMaterialization
+} from "#backends/wasm/jit/optimization/flags/materialization.js";
 import {
   analyzeJitFlags,
-  type JitFlagAnalysis,
-  type JitFlagMaterialization
-} from "./flags.js";
+  type JitFlagAnalysis
+} from "#backends/wasm/jit/optimization/flags/analysis.js";
 import {
   buildJitFlagSource,
   type JitFlagSource
-} from "./flag-sources.js";
-import type { JitIrOptimizationPipelineResult } from "./pipeline.js";
+} from "#backends/wasm/jit/optimization/flags/sources.js";
+import type { JitIrOptimizationPipelineResult } from "#backends/wasm/jit/optimization/pipeline.js";
 import {
   firstRegisterFoldableOpIndex,
   recordCopiedRegisterOp
-} from "./register-folding-prefix.js";
-import type { JitRegisterFolding } from "./register-folding.js";
+} from "#backends/wasm/jit/optimization/registers/folding-prefix.js";
+import type { JitRegisterFolding } from "#backends/wasm/jit/optimization/passes/register-folding.js";
 import {
   materializeRegisterValuesForPostInstructionExit,
   materializeRegisterValuesForPreInstructionExits
-} from "./register-materialization.js";
-import { shouldRetainRegisterValue } from "./register-policy.js";
+} from "#backends/wasm/jit/optimization/registers/materialization.js";
+import { shouldRetainRegisterValue } from "#backends/wasm/jit/optimization/registers/policy.js";
 import {
   createJitPreludeRewrite,
   rewriteJitIrInstruction,
   rewriteJitIrInstructionInto,
   type JitInstructionRewrite
-} from "./rewrite.js";
+} from "#backends/wasm/jit/optimization/ir/rewrite.js";
 import {
   rewriteRegisterAddress32,
   rewriteRegisterGet32,
@@ -57,10 +59,10 @@ import {
   rewriteRegisterSet32If,
   unchangedJitRegisterRewriteResult,
   type JitRegisterRewriteResult
-} from "./register-rewrite.js";
-import { JitOptimizationState } from "./state.js";
-import { jitTrackedRegisterLocation } from "./tracked-state.js";
-import { jitStorageReg } from "./values.js";
+} from "#backends/wasm/jit/optimization/registers/rewrite.js";
+import { JitOptimizationState } from "#backends/wasm/jit/optimization/tracked/optimization-state.js";
+import { jitTrackedRegisterLocation } from "#backends/wasm/jit/optimization/tracked/state.js";
+import { jitStorageReg } from "#backends/wasm/jit/optimization/ir/values.js";
 
 export type JitDraftCombinedTracking = Readonly<{
   instructionsWalked: number;

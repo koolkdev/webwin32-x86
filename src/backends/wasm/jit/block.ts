@@ -10,7 +10,7 @@ import { JitIrBlockBuilder } from "./lowering/block-builder.js";
 import { buildJitLoweringBlock } from "./lowering/lowering-block.js";
 import { lowerIrWithJitContext, type JitIrInstructionContext } from "./lowering/ir-context.js";
 import { optimizeJitIrBlock } from "./optimization/optimize.js";
-import type { JitBlockOptimization } from "./optimization/types.js";
+import type { JitBlockOptimization } from "#backends/wasm/jit/optimization/tracked/types.js";
 import { jitIrOpDst, visitJitIrOpValueRefs } from "./ir-semantics.js";
 import { assertJitOptimizedIrPreludeOp } from "./prelude.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";

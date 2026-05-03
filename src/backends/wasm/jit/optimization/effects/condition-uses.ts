@@ -1,9 +1,9 @@
 import type { ValueRef } from "#x86/ir/model/types.js";
 import { visitJitIrOpValueRefs } from "#backends/wasm/jit/ir-semantics.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
-import { walkJitIrBlockOps } from "./ir-walk.js";
-import { jitExitConditionValues, jitLocalConditionValues } from "./effect-primitives.js";
-import { setJitOpIndexValue, type JitOpIndex } from "./op-index.js";
+import { walkJitIrBlockOps } from "#backends/wasm/jit/optimization/ir/walk.js";
+import { jitExitConditionValues, jitLocalConditionValues } from "#backends/wasm/jit/optimization/effects/primitives.js";
+import { setJitOpIndexValue, type JitOpIndex } from "#backends/wasm/jit/optimization/ir/op-index.js";
 
 export type JitConditionUse = "localCondition" | "exitCondition";
 

@@ -1,5 +1,5 @@
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
-import { indexJitEffects, type JitEffectIndex } from "./effects.js";
+import { indexJitEffects, type JitEffectIndex } from "#backends/wasm/jit/optimization/effects/effects.js";
 
 export type JitOptimizationContext = Readonly<{
   block: JitIrBlock;

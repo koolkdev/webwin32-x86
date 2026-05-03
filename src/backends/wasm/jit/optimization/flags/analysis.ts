@@ -12,42 +12,42 @@ import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/
 import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
-} from "./analysis.js";
+} from "#backends/wasm/jit/optimization/tracked/analysis.js";
 import {
   jitConditionUseAt,
   jitOpHasPostInstructionExit,
   jitPreInstructionExitReasonAt
-} from "./effects.js";
+} from "#backends/wasm/jit/optimization/effects/effects.js";
 import {
   JitFlagOwners,
   type JitFlagOwner,
   type JitFlagOwnerMask
-} from "./flag-owners.js";
-import type { JitConditionUse } from "./condition-uses.js";
+} from "#backends/wasm/jit/optimization/flags/owners.js";
+import type { JitConditionUse } from "#backends/wasm/jit/optimization/effects/condition-uses.js";
 import {
   jitStorageReg
-} from "./values.js";
-import { JitValueTracker } from "./value-tracker.js";
+} from "#backends/wasm/jit/optimization/ir/values.js";
+import { JitValueTracker } from "#backends/wasm/jit/optimization/ir/value-tracker.js";
 import {
   buildJitFlagSource,
   type JitFlagInput,
   type JitFlagSource
-} from "./flag-sources.js";
-import { JitOptimizationState } from "./state.js";
+} from "#backends/wasm/jit/optimization/flags/sources.js";
+import { JitOptimizationState } from "#backends/wasm/jit/optimization/tracked/optimization-state.js";
 import type {
   JitTrackedProducer,
   JitTrackedRead
-} from "./tracked-state.js";
+} from "#backends/wasm/jit/optimization/tracked/state.js";
 
 export type {
   JitFlagOwner,
   JitFlagOwnerMask
-} from "./flag-owners.js";
+} from "#backends/wasm/jit/optimization/flags/owners.js";
 
 export type {
   JitFlagInput,
   JitFlagSource
-} from "./flag-sources.js";
+} from "#backends/wasm/jit/optimization/flags/sources.js";
 
 export type JitFlagRead = Readonly<{
   instructionIndex: number;

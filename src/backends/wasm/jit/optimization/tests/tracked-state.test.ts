@@ -2,10 +2,10 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/model/flag-effects.js";
-import { analyzeJitOptimization } from "#backends/wasm/jit/optimization/analysis.js";
-import type { JitFlagSource } from "#backends/wasm/jit/optimization/flags.js";
-import { createJitPreludeRewrite } from "#backends/wasm/jit/optimization/rewrite.js";
-import { JitTrackedState } from "#backends/wasm/jit/optimization/tracked-state.js";
+import { analyzeJitOptimization } from "#backends/wasm/jit/optimization/tracked/analysis.js";
+import type { JitFlagSource } from "#backends/wasm/jit/optimization/flags/sources.js";
+import { createJitPreludeRewrite } from "#backends/wasm/jit/optimization/ir/rewrite.js";
+import { JitTrackedState } from "#backends/wasm/jit/optimization/tracked/state.js";
 import { syntheticInstruction } from "./helpers.js";
 
 test("JitTrackedState records register producers, reads, and clobbers", () => {

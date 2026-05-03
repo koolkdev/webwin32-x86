@@ -1,24 +1,24 @@
 import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
-import type { JitOptimizationState } from "./state.js";
+import type { JitOptimizationState } from "#backends/wasm/jit/optimization/tracked/optimization-state.js";
 import {
   materializeRegisterValuesForRead,
   materializeRegisterValuesReadingReg
-} from "./register-materialization.js";
+} from "#backends/wasm/jit/optimization/registers/materialization.js";
 import {
   assignJitValue,
   type JitInstructionRewrite
-} from "./rewrite.js";
+} from "#backends/wasm/jit/optimization/ir/rewrite.js";
 import {
   materializeRepeatedEffectiveAddressReads,
   shouldMaterializeRepeatedRegisterRead,
   shouldRetainRegisterValue,
   syncRegisterReadCounts
-} from "./register-policy.js";
+} from "#backends/wasm/jit/optimization/registers/policy.js";
 import {
   jitStorageReg
-} from "./values.js";
-import { jitTrackedRegisterLocation } from "./tracked-state.js";
+} from "#backends/wasm/jit/optimization/ir/values.js";
+import { jitTrackedRegisterLocation } from "#backends/wasm/jit/optimization/tracked/state.js";
 
 export type JitRegisterRewriteResult = Readonly<{
   removedSet: boolean;

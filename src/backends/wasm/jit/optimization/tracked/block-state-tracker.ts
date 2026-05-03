@@ -2,11 +2,11 @@ import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
 import type { StorageRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
-import { requiredJitOperandBinding } from "./operand-binding.js";
+import { requiredJitOperandBinding } from "#backends/wasm/jit/optimization/ir/operand-binding.js";
 import type {
   JitExitSnapshotKind,
   JitStateSnapshot
-} from "./types.js";
+} from "#backends/wasm/jit/optimization/tracked/types.js";
 
 export class JitBlockStateTracker {
   private readonly committedRegs = new Set<Reg32>();

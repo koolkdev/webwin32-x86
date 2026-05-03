@@ -6,8 +6,8 @@ import {
   indexJitExitConditionValues,
   indexJitLocalConditionValues,
   type JitConditionUse
-} from "./condition-uses.js";
-import { jitMemoryFaultReason, jitPostInstructionExitReasons } from "./effect-primitives.js";
+} from "#backends/wasm/jit/optimization/effects/condition-uses.js";
+import { jitMemoryFaultReason, jitPostInstructionExitReasons } from "#backends/wasm/jit/optimization/effects/primitives.js";
 
 export type JitOpEffects = Readonly<{
   preInstructionExitReason?: ExitReasonValue;

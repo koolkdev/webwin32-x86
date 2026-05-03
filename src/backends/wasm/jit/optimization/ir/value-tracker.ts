@@ -6,7 +6,7 @@ import {
   jitValueForStorage,
   jitValueForValue,
   type JitValue
-} from "./values.js";
+} from "#backends/wasm/jit/optimization/ir/values.js";
 
 export class JitValueTracker {
   private readonly locals = new Map<number, JitValue>();

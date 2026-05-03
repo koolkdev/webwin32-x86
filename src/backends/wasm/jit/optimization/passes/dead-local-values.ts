@@ -7,9 +7,9 @@ import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/
 import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
-} from "./analysis.js";
-import { jitPreInstructionExitReasonAt } from "./effects.js";
-import { JitOptimizationState } from "./state.js";
+} from "#backends/wasm/jit/optimization/tracked/analysis.js";
+import { jitPreInstructionExitReasonAt } from "#backends/wasm/jit/optimization/effects/effects.js";
+import { JitOptimizationState } from "#backends/wasm/jit/optimization/tracked/optimization-state.js";
 
 export type JitDeadLocalValuePruning = Readonly<{
   removedOpCount: number;

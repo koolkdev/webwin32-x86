@@ -1,24 +1,24 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { ConditionCode } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitOptimizationContext } from "./context.js";
+import type { JitOptimizationContext } from "#backends/wasm/jit/optimization/tracked/context.js";
 import {
   jitInstructionHasPreInstructionExit,
   jitOpHasPostInstructionExit
-} from "./effects.js";
+} from "#backends/wasm/jit/optimization/effects/effects.js";
 import {
   JitFlagOwners,
   type JitFlagOwner,
   type JitFlagOwnerMask
-} from "./flag-owners.js";
-import type { JitFlagSource } from "./flag-sources.js";
-import { JitRegisterValues } from "./register-values.js";
+} from "#backends/wasm/jit/optimization/flags/owners.js";
+import type { JitFlagSource } from "#backends/wasm/jit/optimization/flags/sources.js";
+import { JitRegisterValues } from "#backends/wasm/jit/optimization/registers/values.js";
 import {
   materializeJitRegisterValue,
   type JitInstructionRewrite
-} from "./rewrite.js";
-import type { JitValue } from "./values.js";
-import { jitValueReadsReg } from "./values.js";
+} from "#backends/wasm/jit/optimization/ir/rewrite.js";
+import type { JitValue } from "#backends/wasm/jit/optimization/ir/values.js";
+import { jitValueReadsReg } from "#backends/wasm/jit/optimization/ir/values.js";
 
 export type JitTrackedLocation =
   | Readonly<{ kind: "register"; reg: Reg32 }>

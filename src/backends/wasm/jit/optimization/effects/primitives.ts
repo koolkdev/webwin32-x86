@@ -6,7 +6,7 @@ import {
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
-import { requiredJitOperandBinding } from "./operand-binding.js";
+import { requiredJitOperandBinding } from "#backends/wasm/jit/optimization/ir/operand-binding.js";
 
 export function jitMemoryFaultReason(
   op: JitIrOp,

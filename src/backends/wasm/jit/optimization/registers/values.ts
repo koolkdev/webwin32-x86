@@ -1,13 +1,13 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { OperandRef, StorageRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
-import type { JitValue } from "./values.js";
+import type { JitValue } from "#backends/wasm/jit/optimization/ir/values.js";
 import {
   jitStorageHasRegisterValue,
   jitRegisterValuesReadByEffectiveAddress,
   jitValueForEffectiveAddress,
   jitValueForStorage
-} from "./values.js";
+} from "#backends/wasm/jit/optimization/ir/values.js";
 
 export class JitRegisterValues {
   private readonly values = new Map<Reg32, JitValue>();

@@ -2,10 +2,10 @@ import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js
 import {
   createJitInstructionRewrite,
   type JitInstructionRewrite
-} from "./rewrite.js";
-import { JitTrackedState } from "./tracked-state.js";
-import { JitValueTracker } from "./value-tracker.js";
-import type { JitOptimizationContext } from "./context.js";
+} from "#backends/wasm/jit/optimization/ir/rewrite.js";
+import { JitTrackedState } from "#backends/wasm/jit/optimization/tracked/state.js";
+import { JitValueTracker } from "#backends/wasm/jit/optimization/ir/value-tracker.js";
+import type { JitOptimizationContext } from "#backends/wasm/jit/optimization/tracked/context.js";
 
 export class JitOptimizationState {
   readonly values = new JitValueTracker();

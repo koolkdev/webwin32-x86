@@ -9,17 +9,17 @@ import { toJitOptimizedIrPreludeOp } from "#backends/wasm/jit/prelude.js";
 import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
-} from "./analysis.js";
-import { JitOptimizationState } from "./state.js";
+} from "#backends/wasm/jit/optimization/tracked/analysis.js";
+import { JitOptimizationState } from "#backends/wasm/jit/optimization/tracked/optimization-state.js";
 import {
   materializeRegisterValuesForPostInstructionExit,
   materializeRegisterValuesForPreInstructionExits
-} from "./register-materialization.js";
+} from "#backends/wasm/jit/optimization/registers/materialization.js";
 import {
   createJitPreludeRewrite,
   rewriteJitIrInstructionInto,
   type JitInstructionRewrite
-} from "./rewrite.js";
+} from "#backends/wasm/jit/optimization/ir/rewrite.js";
 import {
   rewriteRegisterAddress32,
   rewriteRegisterGet32,
@@ -27,11 +27,11 @@ import {
   rewriteRegisterSet32If,
   unchangedJitRegisterRewriteResult,
   type JitRegisterRewriteResult
-} from "./register-rewrite.js";
+} from "#backends/wasm/jit/optimization/registers/rewrite.js";
 import {
   firstRegisterFoldableOpIndex,
   recordCopiedRegisterOp
-} from "./register-folding-prefix.js";
+} from "#backends/wasm/jit/optimization/registers/folding-prefix.js";
 
 export type JitRegisterFolding = Readonly<{
   removedSetCount: number;
