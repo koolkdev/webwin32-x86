@@ -37,6 +37,20 @@ export function materializeRepeatedEffectiveAddressReads(
   rewrite: JitInstructionRewrite,
   tracked: JitTrackedState
 ): number {
+  const locations = repeatedEffectiveAddressReadMaterializationLocations(op, instruction, tracked);
+
+  return tracked.materializeRequiredLocations(rewrite, {
+    kind: "locations",
+    reason: "read",
+    locations
+  });
+}
+
+export function repeatedEffectiveAddressReadMaterializationLocations(
+  op: Extract<IrOp, { op: "address32" }>,
+  instruction: JitIrBlockInstruction,
+  tracked: JitTrackedState
+): readonly JitTrackedLocation[] {
   const { registers } = tracked;
   const locations: JitTrackedLocation[] = [];
 
@@ -48,11 +62,7 @@ export function materializeRepeatedEffectiveAddressReads(
     }
   }
 
-  return tracked.materializeRequiredLocations(rewrite, {
-    kind: "locations",
-    reason: "read",
-    locations
-  });
+  return locations;
 }
 
 export function syncRegisterReadCounts(registers: JitRegisterValues): void {

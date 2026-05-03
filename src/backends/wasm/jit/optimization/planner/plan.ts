@@ -1,5 +1,11 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import type {
+  JitIrBlock,
+  JitIrBlockInstruction,
+  JitOptimizedIrBlockInstruction
+} from "#backends/wasm/jit/types.js";
+import type { JitFlagMaterialization } from "#backends/wasm/jit/optimization/flags/materialization.js";
+import type { JitRegisterFolding } from "#backends/wasm/jit/optimization/passes/register-folding.js";
 import type {
   JitTrackedLocation,
   JitTrackedMaterializationReason,
@@ -9,15 +15,15 @@ import type {
 import type { JitTrackedOptimizationStats } from "#backends/wasm/jit/optimization/planner/stats.js";
 
 export type JitOptimizationPlanRecord =
-  | JitOptimizationProducerRecord
-  | JitOptimizationReadRecord
-  | JitOptimizationClobberRecord
-  | JitOptimizationFoldRecord
-  | JitOptimizationMaterializationRecord
-  | JitOptimizationRewriteRecord
-  | JitOptimizationDropRecord;
+  | PlannedProducer
+  | PlannedRead
+  | PlannedClobber
+  | PlannedFold
+  | PlannedMaterialization
+  | PlannedRewrite
+  | PlannedDrop;
 
-export type JitOptimizationProducerRecord = Readonly<{
+export type PlannedProducer = Readonly<{
   kind: "producer";
   domain: "flags" | "registers";
   instructionIndex: number;
@@ -26,59 +32,87 @@ export type JitOptimizationProducerRecord = Readonly<{
   producer: JitTrackedProducer;
 }>;
 
-export type JitOptimizationReadRecord = Readonly<{
+export type PlannedRead = Readonly<{
   kind: "read";
   domain: "flags" | "registers";
-  instructionIndex?: number;
-  opIndex?: number;
+  instructionIndex: number;
+  opIndex: number;
+  location: JitTrackedLocation;
+  reason: JitTrackedMaterializationReason;
   read: JitTrackedRead;
 }>;
 
-export type JitOptimizationClobberRecord = Readonly<{
+export type PlannedClobber = Readonly<{
   kind: "clobber";
   domain: "flags" | "registers";
   instructionIndex: number;
   opIndex: number;
   location: JitTrackedLocation;
   reg?: Reg32;
+  reason: "write" | "dependency";
 }>;
 
-export type JitOptimizationFoldRecord = Readonly<{
+export type PlannedFold = Readonly<{
   kind: "fold";
   domain: "flags" | "registers";
   instructionIndex: number;
   opIndex: number;
-  reason: "condition" | "read";
+  location: JitTrackedLocation;
+  foldKind: "registerValue" | "flagCondition";
 }>;
 
-export type JitOptimizationMaterializationRecord = Readonly<{
+export type PlannedMaterialization = Readonly<{
   kind: "materialization";
   domain: "flags" | "registers";
   instructionIndex: number;
   opIndex?: number;
-  reason: JitTrackedMaterializationReason;
-  location?: JitTrackedLocation;
-  count: number;
+  location: JitTrackedLocation;
+  phase: "prelude" | "beforeOp" | "atOp" | "beforeExit";
+  reason: JitTrackedMaterializationReason | "policy";
 }>;
 
-export type JitOptimizationRewriteRecord = Readonly<{
+export type PlannedRewrite = Readonly<{
   kind: "rewrite";
   domain: "flags" | "registers";
   instructionIndex: number;
   opIndex: number;
+  rewriteKind: "replace" | "insertBefore" | "insertPrelude" | "keep";
   op: "jit.flagCondition" | "set32" | "value";
 }>;
 
-export type JitOptimizationDropRecord = Readonly<{
+export type PlannedDrop = Readonly<{
   kind: "drop";
   domain: "flags" | "registers";
   instructionIndex: number;
   opIndex: number;
   op: "flags.set" | "set32";
+  reason: "folded" | "unusedProducer";
 }>;
+
+export type JitOptimizationProducerRecord = PlannedProducer;
+export type JitOptimizationReadRecord = PlannedRead;
+export type JitOptimizationClobberRecord = PlannedClobber;
+export type JitOptimizationFoldRecord = PlannedFold;
+export type JitOptimizationMaterializationRecord = PlannedMaterialization;
+export type JitOptimizationRewriteRecord = PlannedRewrite;
+export type JitOptimizationDropRecord = PlannedDrop;
 
 export type JitOptimizationPlan = Readonly<{
   block: JitIrBlock;
   records: readonly JitOptimizationPlanRecord[];
   stats: JitTrackedOptimizationStats;
+}>;
+
+export type JitFlagMaterializationPlan = Readonly<{
+  block: JitIrBlock;
+  instructions: readonly JitIrBlockInstruction[];
+  flags: JitFlagMaterialization;
+  records: readonly JitOptimizationPlanRecord[];
+}>;
+
+export type JitRegisterFoldingPlan = Readonly<{
+  block: JitIrBlock;
+  instructions: readonly JitOptimizedIrBlockInstruction[];
+  folding: JitRegisterFolding;
+  records: readonly JitOptimizationPlanRecord[];
 }>;

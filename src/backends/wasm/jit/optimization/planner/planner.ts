@@ -19,8 +19,10 @@ import {
 import { buildJitFlagSource } from "#backends/wasm/jit/optimization/flags/sources.js";
 import type { JitIrOptimizationPipelineResult } from "#backends/wasm/jit/optimization/pipeline.js";
 import {
-  emitJitFlagMaterialization,
-  emitJitRegisterFolding
+  emitJitFlagMaterializationPlan,
+  emitJitRegisterFoldingPlan,
+  planJitFlagMaterialization,
+  planJitRegisterFolding
 } from "#backends/wasm/jit/optimization/planner/emitter.js";
 import { registerWriteInvalidatesFlagProducerInputs } from "#backends/wasm/jit/optimization/planner/policy.js";
 import type {
@@ -35,7 +37,7 @@ import {
   jitTrackedFlagsLocation,
   jitTrackedRegisterLocation
 } from "#backends/wasm/jit/optimization/tracked/state.js";
-import { jitStorageReg } from "#backends/wasm/jit/optimization/ir/values.js";
+import { jitStorageReg, jitValueReadsReg } from "#backends/wasm/jit/optimization/ir/values.js";
 
 export type { JitOptimizationPlan } from "#backends/wasm/jit/optimization/planner/plan.js";
 export type { JitTrackedOptimizationStats } from "#backends/wasm/jit/optimization/planner/stats.js";
@@ -61,13 +63,15 @@ export function runTrackedJitOptimization(
 
 export function runTrackedJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizationPipelineResult {
   const initialAnalysis = analyzeJitOptimization(block);
-  const flagMaterialization = emitJitFlagMaterialization(block, initialAnalysis);
+  const flagPlan = planJitFlagMaterialization(block, initialAnalysis);
+  const flagMaterialization = emitJitFlagMaterializationPlan(flagPlan);
   const deadLocalValues = pruneDeadJitLocalValues(flagMaterialization.block);
   const registerAnalysis = analyzeJitOptimization(deadLocalValues.block);
-  const registerFolding = emitJitRegisterFolding(
+  const registerPlan = planJitRegisterFolding(
     deadLocalValues.block,
     registerAnalysis
   );
+  const registerFolding = emitJitRegisterFoldingPlan(registerPlan);
 
   return {
     block: registerFolding.block,
@@ -107,6 +111,7 @@ export function planJitOptimization(
     state.beginInstructionValues();
     const instructionEntryOwners = state.tracked.cloneFlagOwners();
     const prelude = createJitPreludeRewrite();
+    const preInstructionMaterializationLocations = trackedRegisterLocations(state);
 
     const preInstructionMaterializedSetCount = state.tracked.materializeRegistersForPreInstructionExits(
       prelude,
@@ -115,13 +120,14 @@ export function planJitOptimization(
     registerMaterializedSetCount += preInstructionMaterializedSetCount;
 
     if (preInstructionMaterializedSetCount > 0) {
-      records.push({
-        kind: "materialization",
-        domain: "registers",
+      records.push(...preInstructionMaterializationLocations.map((location) => ({
+        kind: "materialization" as const,
+        domain: "registers" as const,
         instructionIndex,
-        reason: "preInstructionExit",
-        count: preInstructionMaterializedSetCount
-      });
+        location,
+        phase: "prelude" as const,
+        reason: "preInstructionExit" as const,
+      })));
     }
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
@@ -162,6 +168,7 @@ export function planJitOptimization(
           "exit",
           IR_ALU_FLAG_MASK
         );
+        const postInstructionMaterializationLocations = trackedRegisterLocations(state);
         const postInstructionMaterializedSetCount = state.tracked.materializeRegistersForPostInstructionExit(
           createJitPreludeRewrite(),
           instructionIndex,
@@ -170,20 +177,21 @@ export function planJitOptimization(
         registerMaterializedSetCount += postInstructionMaterializedSetCount;
 
         if (postInstructionMaterializedSetCount > 0) {
-          records.push({
-            kind: "materialization",
-            domain: "registers",
+          records.push(...postInstructionMaterializationLocations.map((location) => ({
+            kind: "materialization" as const,
+            domain: "registers" as const,
             instructionIndex,
             opIndex,
-            reason: "exit",
-            count: postInstructionMaterializedSetCount
-          });
+            location,
+            phase: "beforeExit" as const,
+            reason: "exit" as const,
+          })));
         }
       }
 
       switch (op.op) {
         case "get32":
-          registerReadCount += recordStorageRead(state, records, op.source, instruction);
+          registerReadCount += recordStorageRead(state, records, instructionIndex, opIndex, op.source, instruction);
           state.recordOpValue(op, instruction);
           break;
         case "address32":
@@ -194,6 +202,8 @@ export function planJitOptimization(
               domain: "registers",
               instructionIndex,
               opIndex,
+              location: read.location,
+              reason: read.reason,
               read
             });
             registerReadCount += 1;
@@ -334,6 +344,8 @@ function recordFlagRead(
     domain: "flags",
     instructionIndex,
     opIndex,
+    location: trackedRead.location,
+    reason: trackedRead.reason,
     read: trackedRead
   });
 
@@ -343,6 +355,8 @@ function recordFlagRead(
 function recordStorageRead(
   state: JitOptimizationState,
   records: JitOptimizationPlanRecord[],
+  instructionIndex: number,
+  opIndex: number,
   storage: StorageRef,
   instruction: JitIrBlockInstruction
 ): number {
@@ -357,6 +371,10 @@ function recordStorageRead(
   records.push({
     kind: "read",
     domain: "registers",
+    instructionIndex,
+    opIndex,
+    location: read.location,
+    reason: read.reason,
     read
   });
   return 1;
@@ -386,7 +404,8 @@ function recordFlagSourceClobber(
     instructionIndex,
     opIndex,
     location: jitTrackedFlagsLocation(IR_ALU_FLAG_MASK),
-    reg
+    reg,
+    reason: "dependency"
   });
   return 1;
 }
@@ -406,6 +425,7 @@ function recordRegisterClobber(
   }
 
   const rewrite = createJitPreludeRewrite();
+  const materializationLocations = registerDependencyLocations(state, reg);
   const materializedSetCount = state.tracked.materializeRequiredLocations(rewrite, {
     kind: "registerDependencies",
     reason: "clobber",
@@ -415,15 +435,15 @@ function recordRegisterClobber(
   const location = jitTrackedRegisterLocation(reg);
 
   if (materializedSetCount > 0) {
-    records.push({
-      kind: "materialization",
-      domain: "registers",
+    records.push(...materializationLocations.map((location) => ({
+      kind: "materialization" as const,
+      domain: "registers" as const,
       instructionIndex,
       opIndex,
-      reason: "clobber",
       location,
-      count: materializedSetCount
-    });
+      phase: "beforeOp" as const,
+      reason: "clobber" as const,
+    })));
   }
 
   state.tracked.recordClobber(location);
@@ -449,7 +469,8 @@ function recordRegisterClobberCount(
     instructionIndex,
     opIndex,
     location: jitTrackedRegisterLocation(reg),
-    reg
+    reg,
+    reason: "write"
   });
   return 1;
 }
@@ -481,4 +502,17 @@ function recordRegisterProducer(
     producer: { kind: "registerValue", value }
   });
   return 1;
+}
+
+function trackedRegisterLocations(state: JitOptimizationState) {
+  return [...state.tracked.registers.entries()].map(([reg]) => jitTrackedRegisterLocation(reg));
+}
+
+function registerDependencyLocations(
+  state: JitOptimizationState,
+  readReg: NonNullable<ReturnType<typeof jitStorageReg>>
+) {
+  return [...state.tracked.registers.entries()]
+    .filter(([reg, value]) => reg !== readReg && jitValueReadsReg(value, readReg))
+    .map(([reg]) => jitTrackedRegisterLocation(reg));
 }
