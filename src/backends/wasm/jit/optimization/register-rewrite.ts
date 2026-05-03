@@ -18,6 +18,7 @@ import {
 import {
   jitStorageReg
 } from "./values.js";
+import { jitTrackedRegisterLocation } from "./tracked-state.js";
 
 export type JitRegisterRewriteResult = Readonly<{
   removedSet: boolean;
@@ -35,19 +36,19 @@ export function rewriteRegisterAddress32(
   rewrite: JitInstructionRewrite,
   state: JitOptimizationState
 ): JitRegisterRewriteResult {
-  const { registers } = state;
+  const { registers } = state.tracked;
   let materializedSetCount = materializeRepeatedEffectiveAddressReads(
     op,
     instruction,
     rewrite,
-    registers
+    state.tracked
   );
   const value = registers.valueForEffectiveAddress(op.operand, instruction.operands);
 
   if (value === undefined) {
     materializedSetCount += materializeRegisterValuesForRead(
       rewrite,
-      registers,
+      state,
       registers.regsReadByEffectiveAddress(op.operand, instruction.operands)
     );
     syncRegisterReadCounts(registers);
@@ -57,7 +58,7 @@ export function rewriteRegisterAddress32(
   }
 
   for (const reg of registers.regsReadByEffectiveAddress(op.operand, instruction.operands)) {
-    registers.recordRead(reg);
+    state.tracked.recordRegisterRead(reg);
   }
 
   state.recordOpValue(op, instruction);
@@ -70,7 +71,7 @@ export function rewriteRegisterGet32(
   rewrite: JitInstructionRewrite,
   state: JitOptimizationState
 ): JitRegisterRewriteResult {
-  const { registers } = state;
+  const { registers } = state.tracked;
   const sourceReg = jitStorageReg(op.source, instruction.operands);
   const value = registers.valueForStorage(op.source, instruction.operands);
 
@@ -81,7 +82,7 @@ export function rewriteRegisterGet32(
       sourceReg !== undefined &&
       shouldMaterializeRepeatedRegisterRead(sourceReg, value, registers)
     ) {
-      const materializedSetCount = materializeRegisterValuesForRead(rewrite, registers, [sourceReg]);
+      const materializedSetCount = materializeRegisterValuesForRead(rewrite, state, [sourceReg]);
 
       rewrite.ops.push(op);
       state.recordOpValue(op, instruction);
@@ -89,7 +90,7 @@ export function rewriteRegisterGet32(
     }
 
     if (sourceReg !== undefined) {
-      registers.recordRead(sourceReg);
+      state.tracked.recordRegisterRead(sourceReg);
     }
 
     assignJitValue(rewrite, op.dst, value);
@@ -106,15 +107,15 @@ export function rewriteRegisterSet32If(
   rewrite: JitInstructionRewrite,
   state: JitOptimizationState
 ): JitRegisterRewriteResult {
-  const { registers } = state;
+  const { registers } = state.tracked;
   const target = jitStorageReg(op.target, instruction.operands);
   let materializedSetCount = target === undefined
     ? 0
-    : materializeRegisterValuesForRead(rewrite, registers, [target]);
+    : materializeRegisterValuesForRead(rewrite, state, [target]);
 
   if (target !== undefined) {
-    materializedSetCount += materializeRegisterValuesReadingReg(rewrite, registers, target);
-    registers.delete(target);
+    materializedSetCount += materializeRegisterValuesReadingReg(rewrite, state, target);
+    state.tracked.recordClobber(jitTrackedRegisterLocation(target));
   }
 
   syncRegisterReadCounts(registers);
@@ -128,28 +129,28 @@ export function rewriteRegisterSet32(
   rewrite: JitInstructionRewrite,
   state: JitOptimizationState
 ): JitRegisterRewriteResult {
-  const { registers } = state;
+  const { registers } = state.tracked;
   const target = jitStorageReg(op.target, instruction.operands);
   const value = state.values.valueFor(op.value);
   const materializedSetCount = target === undefined
     ? 0
-    : materializeRegisterValuesReadingReg(rewrite, registers, target);
+    : materializeRegisterValuesReadingReg(rewrite, state, target);
 
   syncRegisterReadCounts(registers);
 
   if (target !== undefined && value !== undefined) {
     if (!shouldRetainRegisterValue(value)) {
-      registers.delete(target);
+      state.tracked.recordClobber(jitTrackedRegisterLocation(target));
       rewrite.ops.push(op);
       return { removedSet: false, materializedSetCount };
     }
 
-    registers.set(target, value);
+    state.tracked.recordRegisterValue(target, value);
     return { removedSet: true, materializedSetCount };
   }
 
   if (target !== undefined) {
-    registers.delete(target);
+    state.tracked.recordClobber(jitTrackedRegisterLocation(target));
   }
 
   rewrite.ops.push(op);

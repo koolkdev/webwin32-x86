@@ -1,8 +1,13 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
-import { materializeJitRegisterValue, type JitInstructionRewrite } from "./rewrite.js";
+import type { JitInstructionRewrite } from "./rewrite.js";
 import { JitRegisterValues } from "./register-values.js";
+import {
+  jitTrackedRegisterLocation,
+  type JitTrackedLocation,
+  type JitTrackedState
+} from "./tracked-state.js";
 import {
   jitValueCost,
   type JitValue
@@ -30,21 +35,24 @@ export function materializeRepeatedEffectiveAddressReads(
   op: Extract<IrOp, { op: "address32" }>,
   instruction: JitIrBlockInstruction,
   rewrite: JitInstructionRewrite,
-  registers: JitRegisterValues
+  tracked: JitTrackedState
 ): number {
-  let materializedSetCount = 0;
+  const { registers } = tracked;
+  const locations: JitTrackedLocation[] = [];
 
   for (const reg of registers.regsReadByEffectiveAddress(op.operand, instruction.operands)) {
     const value = registers.get(reg);
 
     if (value !== undefined && shouldMaterializeRepeatedRegisterRead(reg, value, registers)) {
-      materializeJitRegisterValue(rewrite, reg, value);
-      registers.delete(reg);
-      materializedSetCount += 1;
+      locations.push(jitTrackedRegisterLocation(reg));
     }
   }
 
-  return materializedSetCount;
+  return tracked.materializeRequiredLocations(rewrite, {
+    kind: "locations",
+    reason: "read",
+    locations
+  });
 }
 
 export function syncRegisterReadCounts(registers: JitRegisterValues): void {

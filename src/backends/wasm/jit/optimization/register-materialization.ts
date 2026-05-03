@@ -1,23 +1,14 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import { materializeJitRegisterValue, type JitInstructionRewrite } from "./rewrite.js";
-import {
-  jitInstructionHasPreInstructionExit,
-  jitOpHasPostInstructionExit
-} from "./effects.js";
-import { JitRegisterValues } from "./register-values.js";
+import type { JitInstructionRewrite } from "./rewrite.js";
 import type { JitOptimizationState } from "./state.js";
-import { jitValueReadsReg } from "./values.js";
+import { jitTrackedRegisterLocation } from "./tracked-state.js";
 
 export function materializeRegisterValuesForPreInstructionExits(
   rewrite: JitInstructionRewrite,
   instructionIndex: number,
   state: JitOptimizationState
 ): number {
-  if (!jitInstructionHasPreInstructionExit(state.context.effects, instructionIndex)) {
-    return 0;
-  }
-
-  return materializeAllRegisterValues(rewrite, state.registers);
+  return state.tracked.materializeRegistersForPreInstructionExits(rewrite, instructionIndex);
 }
 
 export function materializeRegisterValuesForPostInstructionExit(
@@ -26,63 +17,39 @@ export function materializeRegisterValuesForPostInstructionExit(
   opIndex: number,
   state: JitOptimizationState
 ): number {
-  if (!jitOpHasPostInstructionExit(state.context.effects, instructionIndex, opIndex)) {
-    return 0;
-  }
-
-  return materializeAllRegisterValues(rewrite, state.registers);
+  return state.tracked.materializeRegistersForPostInstructionExit(rewrite, instructionIndex, opIndex);
 }
 
 export function materializeRegisterValuesReadingReg(
   rewrite: JitInstructionRewrite,
-  registers: JitRegisterValues,
+  state: JitOptimizationState,
   readReg: Reg32
 ): number {
-  let materializedSetCount = 0;
-
-  for (const [reg, value] of [...registers.entries()]) {
-    if (reg !== readReg && jitValueReadsReg(value, readReg)) {
-      materializeJitRegisterValue(rewrite, reg, value);
-      registers.delete(reg);
-      materializedSetCount += 1;
-    }
-  }
-
-  return materializedSetCount;
+  return state.tracked.materializeRequiredLocations(rewrite, {
+    kind: "registerDependencies",
+    reason: "clobber",
+    reg: readReg
+  });
 }
 
 export function materializeAllRegisterValues(
   rewrite: JitInstructionRewrite,
-  registers: JitRegisterValues
+  state: JitOptimizationState
 ): number {
-  const materializedSetCount = registers.size;
-
-  for (const [reg, value] of registers.entries()) {
-    materializeJitRegisterValue(rewrite, reg, value);
-  }
-
-  registers.clear();
-  return materializedSetCount;
+  return state.tracked.materializeRequiredLocations(rewrite, {
+    kind: "allRegisters",
+    reason: "exit"
+  });
 }
 
 export function materializeRegisterValuesForRead(
   rewrite: JitInstructionRewrite,
-  registers: JitRegisterValues,
+  state: JitOptimizationState,
   readRegs: readonly Reg32[]
 ): number {
-  let materializedSetCount = 0;
-
-  for (const reg of readRegs) {
-    const value = registers.get(reg);
-
-    if (value === undefined) {
-      continue;
-    }
-
-    materializeJitRegisterValue(rewrite, reg, value);
-    registers.delete(reg);
-    materializedSetCount += 1;
-  }
-
-  return materializedSetCount;
+  return state.tracked.materializeRequiredLocations(rewrite, {
+    kind: "locations",
+    reason: "read",
+    locations: readRegs.map(jitTrackedRegisterLocation)
+  });
 }

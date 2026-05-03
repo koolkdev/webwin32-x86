@@ -101,7 +101,7 @@ export function foldJitRegisters(
     });
   }
 
-  if (state.registers.size !== 0) {
+  if (state.tracked.registers.size !== 0) {
     throw new Error("JIT register values were not materialized before block end");
   }
 

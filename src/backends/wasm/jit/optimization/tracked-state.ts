@@ -75,6 +75,14 @@ export type JitTrackedProducerOwnership = Readonly<{
   producer: JitTrackedProducer;
 }>;
 
+export function jitTrackedRegisterLocation(reg: Reg32): JitTrackedLocation {
+  return { kind: "register", reg };
+}
+
+export function jitTrackedFlagsLocation(mask: number): JitTrackedLocation {
+  return { kind: "flags", mask };
+}
+
 export class JitTrackedState {
   readonly registers = new JitRegisterValues();
   readonly flags = JitFlagOwners.incoming();
@@ -126,21 +134,30 @@ export class JitTrackedState {
 
   recordRegisterValue(reg: Reg32, value: JitValue): void {
     this.recordProducer({
-      location: { kind: "register", reg },
+      location: jitTrackedRegisterLocation(reg),
       producer: { kind: "registerValue", value }
+    });
+  }
+
+  recordRegisterRead(reg: Reg32): JitTrackedRead {
+    this.registers.recordRead(reg);
+
+    return this.recordRead({
+      location: jitTrackedRegisterLocation(reg),
+      reason: "read"
     });
   }
 
   recordFlagSource(source: JitFlagSource): void {
     this.recordProducer({
-      location: { kind: "flags", mask: source.writtenMask | source.undefMask },
+      location: jitTrackedFlagsLocation(source.writtenMask | source.undefMask),
       producer: { kind: "flagSource", source }
     });
   }
 
   recordFlagsMaterialized(mask: number): void {
     this.recordProducer({
-      location: { kind: "flags", mask },
+      location: jitTrackedFlagsLocation(mask),
       producer: { kind: "materializedFlags" }
     });
   }
