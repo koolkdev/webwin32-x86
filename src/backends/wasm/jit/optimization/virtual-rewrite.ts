@@ -57,6 +57,12 @@ export function emitJitVirtualValueToVar(
 }
 
 function emitJitVirtualValue(rewrite: JitVirtualRewrite, value: JitVirtualValue): ValueRef {
+  const existingValue = existingJitVirtualValueRef(rewrite, value);
+
+  if (existingValue !== undefined) {
+    return existingValue;
+  }
+
   switch (value.kind) {
     case "const32":
       return { kind: "const32", value: value.value };
@@ -64,6 +70,7 @@ function emitJitVirtualValue(rewrite: JitVirtualRewrite, value: JitVirtualValue)
       const dst = allocVar(rewrite);
 
       rewrite.ops.push({ op: "get32", dst, source: { kind: "reg", reg: value.reg } });
+      rewrite.localValues.set(dst.id, value);
       return dst;
     }
     case "i32.add":
@@ -79,9 +86,27 @@ function emitJitVirtualValue(rewrite: JitVirtualRewrite, value: JitVirtualValue)
         a: emitJitVirtualValue(rewrite, value.a),
         b: emitJitVirtualValue(rewrite, value.b)
       });
+      rewrite.localValues.set(dst.id, value);
       return dst;
     }
   }
+}
+
+function existingJitVirtualValueRef(
+  rewrite: JitVirtualRewrite,
+  value: JitVirtualValue
+): ValueRef | undefined {
+  if (value.kind === "const32") {
+    return { kind: "const32", value: value.value };
+  }
+
+  for (const [id, localValue] of rewrite.localValues) {
+    if (localValue === value) {
+      return { kind: "var", id };
+    }
+  }
+
+  return undefined;
 }
 
 function allocVar(rewrite: JitVirtualRewrite): VarRef {

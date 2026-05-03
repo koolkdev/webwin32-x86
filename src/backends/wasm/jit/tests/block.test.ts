@@ -375,6 +375,24 @@ test("jit IR block materializes repeated virtual register reads without changing
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
+test("jit IR block folds virtual register values into indirect jump targets", async () => {
+  const result = await runJitIrBlock([
+    0x89, 0xc8, // mov eax, ecx
+    0x83, 0xf0, 0x02, // xor eax, 2
+    0xff, 0xe0 // jmp eax
+  ], createCpuState({
+    eax: 0xaaaa_aaaa,
+    ecx: 0x1234_5678,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0x1234_567a);
+  strictEqual(result.state.ecx, 0x1234_5678);
+  strictEqual(result.state.eip, 0x1234_567a);
+  strictEqual(result.state.instructionCount, 3);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.JUMP, payload: 0x1234_567a });
+});
+
 test("jit IR block preserves CF across INC partial flag writes", async () => {
   const result = await runJitIrBlock([
     0x83, 0xc0, 0x01, // add eax, 1

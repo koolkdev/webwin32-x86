@@ -216,6 +216,27 @@ test("foldJitVirtualRegisters keeps oversized expressions concrete", () => {
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
 });
 
+test("foldJitVirtualRegisters folds virtual register values into indirect jump targets", () => {
+  const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
+  const xorEax = ok(decodeBytes([0x83, 0xf0, 0x02], movEaxEcx.nextEip));
+  const jmpEax = ok(decodeBytes([0xff, 0xe0], xorEax.nextEip));
+  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+    movEaxEcx,
+    xorEax,
+    jmpEax
+  ]));
+  const jumpInstruction = folded.block.instructions.at(-1)!;
+  const jumpIndex = jumpInstruction.ir.findIndex((op) => op.op === "jump");
+
+  strictEqual(folded.folding.removedSetCount, 2);
+  strictEqual(folded.folding.flushSetCount, 1);
+  deepStrictEqual(
+    jumpInstruction.ir.slice(0, jumpIndex).map((op) => op.op),
+    ["get32", "i32.xor", "set32"]
+  );
+  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
+});
+
 function onlyExit(exits: readonly JitExitPoint[], reason: ExitReasonValue): JitExitPoint {
   const matches = exits.filter((entry) => entry.exitReason === reason);
 
