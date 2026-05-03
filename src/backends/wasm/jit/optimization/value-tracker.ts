@@ -9,7 +9,7 @@ import {
 } from "./values.js";
 
 export class JitValueTracker {
-  readonly locals = new Map<number, JitValue>();
+  private readonly locals = new Map<number, JitValue>();
 
   clear(): void {
     this.locals.clear();
