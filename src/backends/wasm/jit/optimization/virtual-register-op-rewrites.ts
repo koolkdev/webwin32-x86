@@ -4,7 +4,7 @@ import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import {
   materializeVirtualRegsForRead,
   materializeVirtualRegsReadingReg
-} from "./virtual-boundaries.js";
+} from "./virtual-register-materialization.js";
 import { recordJitVirtualLocalValue } from "./virtual-local-values.js";
 import {
   assignJitValue,
