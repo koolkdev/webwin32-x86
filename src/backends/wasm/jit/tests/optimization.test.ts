@@ -5,11 +5,9 @@ import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
-import {
-  optimizeJitIrBlock,
-  pruneDeadJitFlags,
-  type JitExitPoint
-} from "#backends/wasm/jit/optimization/optimize.js";
+import { pruneDeadJitFlags } from "#backends/wasm/jit/optimization/flag-pruning.js";
+import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
+import type { JitExitPoint } from "#backends/wasm/jit/optimization/types.js";
 
 const startAddress = 0x1000;
 

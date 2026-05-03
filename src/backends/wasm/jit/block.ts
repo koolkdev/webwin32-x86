@@ -8,7 +8,8 @@ import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { JitIrBlockBuilder } from "./lowering/block-builder.js";
 import { buildJitLoweringBlock } from "./lowering/lowering-block.js";
 import { lowerIrWithJitContext, type JitIrInstructionContext } from "./lowering/ir-context.js";
-import { optimizeJitIrBlock, type JitBlockOptimization } from "./optimization/optimize.js";
+import { optimizeJitIrBlock } from "./optimization/optimize.js";
+import type { JitBlockOptimization } from "./optimization/types.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
 import type { JitIrBlock } from "./types.js";
 

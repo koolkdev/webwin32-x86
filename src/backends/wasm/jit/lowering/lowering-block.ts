@@ -1,6 +1,6 @@
 import { IR_ALU_FLAG_MASK } from "#x86/ir/passes/flag-analysis.js";
 import type { IrBlock, IrOp } from "#x86/ir/model/types.js";
-import type { JitBlockOptimization } from "#backends/wasm/jit/optimization/optimize.js";
+import type { JitBlockOptimization } from "#backends/wasm/jit/optimization/types.js";
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 
 const emptyBoundaryMaskByOpIndex = new Map<number, number>();

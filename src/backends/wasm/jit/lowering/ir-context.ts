@@ -16,7 +16,7 @@ import {
   emitJitGet32,
   emitJitSet32
 } from "./operands.js";
-import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/optimization/optimize.js";
+import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/optimization/types.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 
