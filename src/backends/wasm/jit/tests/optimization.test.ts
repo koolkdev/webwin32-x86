@@ -176,6 +176,46 @@ test("foldJitVirtualRegisters keeps transient register calculations virtual unti
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
 
+test("foldJitVirtualRegisters materializes repeated expensive virtual reads", () => {
+  const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
+  const xorEax = ok(decodeBytes([0x83, 0xf0, 0x02], movEaxEcx.nextEip));
+  const addEbxEax = ok(decodeBytes([0x01, 0xc3], xorEax.nextEip));
+  const addEdxEax = ok(decodeBytes([0x01, 0xc2], addEbxEax.nextEip));
+  const trap = ok(decodeBytes([0xcd, 0x2e], addEdxEax.nextEip));
+  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+    movEaxEcx,
+    xorEax,
+    addEbxEax,
+    addEdxEax,
+    trap
+  ]));
+
+  strictEqual(folded.folding.removedSetCount, 4);
+  strictEqual(folded.folding.flushSetCount, 3);
+  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx", "edx"]);
+});
+
+test("foldJitVirtualRegisters keeps oversized expressions concrete", () => {
+  const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
+  const xor1 = ok(decodeBytes([0x83, 0xf0, 0x01], movEaxEcx.nextEip));
+  const xor2 = ok(decodeBytes([0x83, 0xf0, 0x02], xor1.nextEip));
+  const xor3 = ok(decodeBytes([0x83, 0xf0, 0x03], xor2.nextEip));
+  const xor4 = ok(decodeBytes([0x83, 0xf0, 0x04], xor3.nextEip));
+  const trap = ok(decodeBytes([0xcd, 0x2e], xor4.nextEip));
+  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+    movEaxEcx,
+    xor1,
+    xor2,
+    xor3,
+    xor4,
+    trap
+  ]));
+
+  strictEqual(folded.folding.removedSetCount, 4);
+  strictEqual(folded.folding.flushSetCount, 0);
+  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
+});
+
 function onlyExit(exits: readonly JitExitPoint[], reason: ExitReasonValue): JitExitPoint {
   const matches = exits.filter((entry) => entry.exitReason === reason);
 

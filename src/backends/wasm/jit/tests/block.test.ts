@@ -351,6 +351,30 @@ test("jit IR block preserves virtual register values before source clobbers", as
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
+test("jit IR block materializes repeated virtual register reads without changing results", async () => {
+  const result = await runJitIrBlock([
+    0x89, 0xc8, // mov eax, ecx
+    0x83, 0xf0, 0x02, // xor eax, 2
+    0x01, 0xc3, // add ebx, eax
+    0x01, 0xc2, // add edx, eax
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eax: 0xaaaa_aaaa,
+    ebx: 10,
+    ecx: 5,
+    edx: 20,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 7);
+  strictEqual(result.state.ebx, 17);
+  strictEqual(result.state.ecx, 5);
+  strictEqual(result.state.edx, 27);
+  strictEqual(result.state.eip, startAddress + 11);
+  strictEqual(result.state.instructionCount, 5);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
 test("jit IR block preserves CF across INC partial flag writes", async () => {
   const result = await runJitIrBlock([
     0x83, 0xc0, 0x01, // add eax, 1

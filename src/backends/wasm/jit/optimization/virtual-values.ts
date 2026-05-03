@@ -84,6 +84,20 @@ export function jitVirtualValueReadsReg(value: JitVirtualValue, reg: Reg32): boo
   }
 }
 
+export function jitVirtualValueCost(value: JitVirtualValue): number {
+  switch (value.kind) {
+    case "const32":
+    case "reg":
+      return 1;
+    case "i32.add":
+    case "i32.sub":
+    case "i32.xor":
+    case "i32.or":
+    case "i32.and":
+      return 1 + jitVirtualValueCost(value.a) + jitVirtualValueCost(value.b);
+  }
+}
+
 function jitVirtualValueForOperandBinding(
   binding: JitOperandBinding,
   virtualRegs: ReadonlyMap<Reg32, JitVirtualValue>

@@ -11,11 +11,13 @@ import {
 import {
   createJitVirtualRewrite,
   emitJitVirtualValueToVar,
+  materializeJitVirtualReg,
   type JitVirtualRewrite
 } from "./virtual-rewrite.js";
 import {
   jitStorageHasVirtualRegister,
   jitStorageReg,
+  jitVirtualValueCost,
   jitVirtualValueForStorage,
   jitVirtualValueForValue,
   type JitVirtualValue
@@ -31,12 +33,15 @@ type RewriteResult = Readonly<{
   flushSetCount: number;
 }>;
 
+const maxRepeatedInlineVirtualValueCost = 2;
+const maxRetainedVirtualValueCost = 8;
 const unchangedOpResult: RewriteResult = { removedSet: false, flushSetCount: 0 };
 
 export function foldJitVirtualRegisters(
   block: JitIrBlock
 ): Readonly<{ block: JitIrBlock; folding: JitVirtualRegisterFolding }> {
   const virtualRegs = new Map<Reg32, JitVirtualValue>();
+  const virtualRegReadCounts = new Map<Reg32, number>();
   const instructions: JitIrBlockInstruction[] = [];
   let removedSetCount = 0;
   let flushSetCount = 0;
@@ -51,6 +56,7 @@ export function foldJitVirtualRegisters(
     if (instructionMayFault(instruction)) {
       flushSetCount += flushVirtualRegsIntoPreviousInstruction(instructions, virtualRegs);
       virtualRegs.clear();
+      virtualRegReadCounts.clear();
       instructions.push(instruction);
       continue;
     }
@@ -65,7 +71,14 @@ export function foldJitVirtualRegisters(
         throw new Error(`missing JIT IR op while folding virtual registers: ${instructionIndex}:${opIndex}`);
       }
 
-      const result = rewriteOp(op, instruction, nextInstruction, rewrite, virtualRegs);
+      const result = rewriteOp(
+        op,
+        instruction,
+        nextInstruction,
+        rewrite,
+        virtualRegs,
+        virtualRegReadCounts
+      );
 
       if (result.removedSet) {
         removedSetCount += 1;
@@ -95,12 +108,12 @@ function rewriteOp(
   instruction: JitIrBlockInstruction,
   nextInstruction: JitIrBlockInstruction | undefined,
   rewrite: JitVirtualRewrite,
-  virtualRegs: Map<Reg32, JitVirtualValue>
+  virtualRegs: Map<Reg32, JitVirtualValue>,
+  virtualRegReadCounts: Map<Reg32, number>
 ): RewriteResult {
   switch (op.op) {
     case "get32":
-      rewriteGet32(op, instruction, rewrite, virtualRegs);
-      return unchangedOpResult;
+      return rewriteGet32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "const32":
       rewrite.localValues.set(op.dst.id, { kind: "const32", value: op.value });
       rewrite.ops.push(op);
@@ -114,11 +127,15 @@ function rewriteOp(
       rewrite.ops.push(op);
       return unchangedOpResult;
     case "set32":
-      return rewriteSet32(op, instruction, rewrite, virtualRegs);
+      return rewriteSet32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "next": {
       const flushSetCount = instruction.nextMode === "exit" || nextInstructionMayFault(nextInstruction)
         ? flushVirtualRegs(rewrite, virtualRegs)
         : 0;
+
+      if (flushSetCount !== 0) {
+        virtualRegReadCounts.clear();
+      }
 
       rewrite.ops.push(op);
       return { removedSet: false, flushSetCount };
@@ -127,6 +144,10 @@ function rewriteOp(
     case "conditionalJump":
     case "hostTrap": {
       const flushSetCount = flushVirtualRegs(rewrite, virtualRegs);
+
+      if (flushSetCount !== 0) {
+        virtualRegReadCounts.clear();
+      }
 
       rewrite.ops.push(op);
       return { removedSet: false, flushSetCount };
@@ -141,13 +162,31 @@ function rewriteGet32(
   op: Extract<IrOp, { op: "get32" }>,
   instruction: JitIrBlockInstruction,
   rewrite: JitVirtualRewrite,
-  virtualRegs: ReadonlyMap<Reg32, JitVirtualValue>
-): void {
+  virtualRegs: Map<Reg32, JitVirtualValue>,
+  virtualRegReadCounts: Map<Reg32, number>
+): RewriteResult {
+  const sourceReg = jitStorageReg(op.source, instruction.operands);
   const value = jitVirtualValueForStorage(op.source, instruction.operands, virtualRegs);
 
   if (value === undefined || !jitStorageHasVirtualRegister(op.source, instruction.operands, virtualRegs)) {
     rewrite.ops.push(op);
   } else {
+    if (
+      sourceReg !== undefined &&
+      shouldMaterializeRepeatedRead(sourceReg, value, virtualRegReadCounts)
+    ) {
+      materializeJitVirtualReg(rewrite, sourceReg, value);
+      virtualRegs.delete(sourceReg);
+      virtualRegReadCounts.delete(sourceReg);
+      rewrite.ops.push(op);
+      rewrite.localValues.set(op.dst.id, { kind: "reg", reg: sourceReg });
+      return { removedSet: false, flushSetCount: 1 };
+    }
+
+    if (sourceReg !== undefined) {
+      virtualRegReadCounts.set(sourceReg, (virtualRegReadCounts.get(sourceReg) ?? 0) + 1);
+    }
+
     emitJitVirtualValueToVar(rewrite, op.dst, value);
   }
 
@@ -156,6 +195,8 @@ function rewriteGet32(
   if (sourceValue !== undefined) {
     rewrite.localValues.set(op.dst.id, sourceValue);
   }
+
+  return unchangedOpResult;
 }
 
 function recordBinaryValue(
@@ -174,7 +215,8 @@ function rewriteSet32(
   op: Extract<IrOp, { op: "set32" }>,
   instruction: JitIrBlockInstruction,
   rewrite: JitVirtualRewrite,
-  virtualRegs: Map<Reg32, JitVirtualValue>
+  virtualRegs: Map<Reg32, JitVirtualValue>,
+  virtualRegReadCounts: Map<Reg32, number>
 ): RewriteResult {
   const target = jitStorageReg(op.target, instruction.operands);
   const value = jitVirtualValueForValue(op.value, rewrite.localValues);
@@ -182,15 +224,48 @@ function rewriteSet32(
     ? 0
     : flushVirtualRegsDependingOn(rewrite, virtualRegs, target);
 
+  syncVirtualRegReadCounts(virtualRegReadCounts, virtualRegs);
+
   if (target !== undefined && value !== undefined) {
+    if (jitVirtualValueCost(value) > maxRetainedVirtualValueCost) {
+      virtualRegs.delete(target);
+      virtualRegReadCounts.delete(target);
+      rewrite.ops.push(op);
+      return { removedSet: false, flushSetCount };
+    }
+
     virtualRegs.set(target, value);
+    virtualRegReadCounts.set(target, 0);
     return { removedSet: true, flushSetCount };
   }
 
   if (target !== undefined) {
     virtualRegs.delete(target);
+    virtualRegReadCounts.delete(target);
   }
 
   rewrite.ops.push(op);
   return { removedSet: false, flushSetCount };
+}
+
+function shouldMaterializeRepeatedRead(
+  reg: Reg32,
+  value: JitVirtualValue,
+  virtualRegReadCounts: ReadonlyMap<Reg32, number>
+): boolean {
+  return (
+    (virtualRegReadCounts.get(reg) ?? 0) > 0 &&
+    jitVirtualValueCost(value) > maxRepeatedInlineVirtualValueCost
+  );
+}
+
+function syncVirtualRegReadCounts(
+  virtualRegReadCounts: Map<Reg32, number>,
+  virtualRegs: ReadonlyMap<Reg32, JitVirtualValue>
+): void {
+  for (const reg of virtualRegReadCounts.keys()) {
+    if (!virtualRegs.has(reg)) {
+      virtualRegReadCounts.delete(reg);
+    }
+  }
 }
