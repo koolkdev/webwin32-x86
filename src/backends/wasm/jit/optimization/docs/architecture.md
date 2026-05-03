@@ -39,10 +39,8 @@ order remains `["tracked-optimization"]`.
   `flags/planner.ts`, `flags/policy.ts`, and `flags/materialization.ts`: flag
   source ownership, normalized flag fact discovery, direct condition planning,
   and thin compatibility helpers.
-- `registers/values.ts`, `registers/planner.ts`, `registers/rewrite.ts`,
-  `registers/policy.ts`, and `registers/materialization.ts`: register value
-  tracking, normalized register fact discovery, rewrite support, policy, and
-  thin compatibility helpers.
+- `registers/values.ts`, `registers/planner.ts`, and `registers/policy.ts`:
+  register value tracking, normalized register fact discovery, and policy.
 - `effects/`: indexed side-effect and exit metadata used by the planner.
 - `ir/`: IR walking, ranges, values, operand binding, and rewrite primitives.
 - `passes/`: compatibility wrappers for legacy public helper names that now
@@ -54,13 +52,11 @@ order remains `["tracked-optimization"]`.
 - Local IR helpers that are only used by tests remain test-only even when they
   import production types.
 
-## Legacy Names Removed
+## Historical Cleanup
 
-- `combined.ts` is replaced by `planner/planner.ts` and `planner/emitter.ts`.
-- `flag-materialization.ts` is replaced by `flags/materialization.ts`.
-- `register-folding.ts` is replaced by a thin wrapper under `passes/`.
-- `tracked-state.ts` is replaced by `tracked/state.ts` and `tracked/types.ts`.
+- Earlier transitional optimizer entry points have been collapsed into
+  `planner/planner.ts` and `planner/emitter.ts`.
+- Flag and register compatibility entry points are thin wrappers over the
+  shared planner/emitter path.
+- The tracked state model lives in `tracked/state.ts` and `tracked/types.ts`.
 - `RESPONSIBILITIES.md` is removed; this document is the architecture source.
-
-Production code must not introduce transition names such as `draft`,
-`combined`, or `merged`.
