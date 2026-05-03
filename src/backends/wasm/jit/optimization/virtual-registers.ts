@@ -15,6 +15,7 @@ import {
   materializeVirtualRegsForRead,
   materializeVirtualRegsReadingReg
 } from "./virtual-boundaries.js";
+import { recordJitVirtualLocalValue } from "./virtual-local-values.js";
 import {
   createJitVirtualRewrite,
   emitJitVirtualValueToVar,
@@ -140,7 +141,7 @@ function rewriteOp(
     case "get32":
       return rewriteGet32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "const32":
-      rewrite.localValues.set(op.dst.id, { kind: "const32", value: op.value });
+      recordJitVirtualLocalValue(op, instruction, rewrite.localValues, virtualRegs);
       rewrite.ops.push(op);
       return unchangedOpResult;
     case "i32.add":
@@ -148,7 +149,7 @@ function rewriteOp(
     case "i32.xor":
     case "i32.or":
     case "i32.and":
-      recordBinaryValue(op, rewrite);
+      recordJitVirtualLocalValue(op, instruction, rewrite.localValues, virtualRegs);
       rewrite.ops.push(op);
       return unchangedOpResult;
     case "address32":
@@ -214,6 +215,7 @@ function rewriteAddress32(
       jitVirtualRegsReadByEffectiveAddress(op.operand, instruction.operands, virtualRegs)
     );
     syncVirtualRegReadCounts(virtualRegReadCounts, virtualRegs);
+    recordJitVirtualLocalValue(op, instruction, rewrite.localValues, virtualRegs);
     rewrite.ops.push(op);
     return { removedSet: false, materializedSetCount };
   }
@@ -222,7 +224,7 @@ function rewriteAddress32(
     virtualRegReadCounts.set(reg, (virtualRegReadCounts.get(reg) ?? 0) + 1);
   }
 
-  rewrite.localValues.set(op.dst.id, value);
+  recordJitVirtualLocalValue(op, instruction, rewrite.localValues, virtualRegs);
   return { removedSet: false, materializedSetCount };
 }
 
@@ -247,7 +249,7 @@ function rewriteGet32(
       virtualRegs.delete(sourceReg);
       virtualRegReadCounts.delete(sourceReg);
       rewrite.ops.push(op);
-      rewrite.localValues.set(op.dst.id, { kind: "reg", reg: sourceReg });
+      recordJitVirtualLocalValue(op, instruction, rewrite.localValues, virtualRegs);
       return { removedSet: false, materializedSetCount: 1 };
     }
 
@@ -258,25 +260,9 @@ function rewriteGet32(
     emitJitVirtualValueToVar(rewrite, op.dst, value);
   }
 
-  const sourceValue = value ?? jitVirtualValueForStorage(op.source, instruction.operands);
-
-  if (sourceValue !== undefined) {
-    rewrite.localValues.set(op.dst.id, sourceValue);
-  }
+  recordJitVirtualLocalValue(op, instruction, rewrite.localValues, virtualRegs);
 
   return unchangedOpResult;
-}
-
-function recordBinaryValue(
-  op: Extract<IrOp, { op: "i32.add" | "i32.sub" | "i32.xor" | "i32.or" | "i32.and" }>,
-  rewrite: JitVirtualRewrite
-): void {
-  const a = jitVirtualValueForValue(op.a, rewrite.localValues);
-  const b = jitVirtualValueForValue(op.b, rewrite.localValues);
-
-  if (a !== undefined && b !== undefined) {
-    rewrite.localValues.set(op.dst.id, { kind: op.op, a, b });
-  }
 }
 
 function rewriteSet32If(

@@ -26,12 +26,11 @@ import {
 import type { JitConditionUse } from "./condition-uses.js";
 import {
   jitStorageReg,
-  jitVirtualValueForEffectiveAddress,
-  jitVirtualValueForStorage,
   jitVirtualValueForValue,
   jitVirtualValueReadRegs,
   type JitVirtualValue
 } from "./virtual-values.js";
+import { recordJitVirtualLocalValue } from "./virtual-local-values.js";
 
 export type JitVirtualFlagInput =
   | Readonly<{ kind: "value"; value: JitVirtualValue }>
@@ -151,27 +150,11 @@ export function analyzeJitVirtualFlags(
       recordRead({ instructionIndex, opIndex, reason: "exit", requiredMask: IR_ALU_FLAG_MASK });
     }
 
+    if (recordJitVirtualLocalValue(op, instruction, localValues)) {
+      return;
+    }
+
     switch (op.op) {
-      case "get32":
-        recordGet32(op.dst.id, op.source, instruction, localValues);
-        return;
-      case "address32":
-        recordLocalValue(
-          op.dst.id,
-          jitVirtualValueForEffectiveAddress(op.operand, instruction.operands, new Map()),
-          localValues
-        );
-        return;
-      case "const32":
-        localValues.set(op.dst.id, { kind: "const32", value: op.value });
-        return;
-      case "i32.add":
-      case "i32.sub":
-      case "i32.xor":
-      case "i32.or":
-      case "i32.and":
-        recordBinaryValue(op, localValues);
-        return;
       case "set32":
       case "set32.if":
         recordSourceClobber(instructionIndex, opIndex, op.target, instruction);
@@ -278,37 +261,6 @@ export function analyzeJitVirtualFlags(
     }
 
     sourceClobbers.push({ instructionIndex, opIndex, reg, owners });
-  }
-}
-
-function recordGet32(
-  dstId: number,
-  source: StorageRef,
-  instruction: JitIrBlockInstruction,
-  localValues: Map<number, JitVirtualValue>
-): void {
-  recordLocalValue(dstId, jitVirtualValueForStorage(source, instruction.operands), localValues);
-}
-
-function recordBinaryValue(
-  op: Extract<IrOp, { op: "i32.add" | "i32.sub" | "i32.xor" | "i32.or" | "i32.and" }>,
-  localValues: Map<number, JitVirtualValue>
-): void {
-  const a = jitVirtualValueForValue(op.a, localValues);
-  const b = jitVirtualValueForValue(op.b, localValues);
-
-  if (a !== undefined && b !== undefined) {
-    localValues.set(op.dst.id, { kind: op.op, a, b });
-  }
-}
-
-function recordLocalValue(
-  dstId: number,
-  value: JitVirtualValue | undefined,
-  localValues: Map<number, JitVirtualValue>
-): void {
-  if (value !== undefined) {
-    localValues.set(dstId, value);
   }
 }
 
