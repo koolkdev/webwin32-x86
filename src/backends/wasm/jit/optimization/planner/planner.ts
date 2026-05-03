@@ -12,10 +12,8 @@ import { createFlagPlanner } from "#backends/wasm/jit/optimization/flags/planner
 import type { JitIrOptimizationPipelineResult } from "#backends/wasm/jit/optimization/pipeline.js";
 import { recordJitPlannerFacts } from "#backends/wasm/jit/optimization/planner/decisions.js";
 import {
-  emitJitFlagMaterializationPlan,
-  emitJitRegisterFoldingPlan,
-  planJitFlagMaterialization,
-  planJitRegisterFolding
+  emitJitFlagMaterializationFromPlan,
+  emitJitRegisterFoldingFromPlan
 } from "#backends/wasm/jit/optimization/planner/emitter.js";
 import type {
   JitOptimizationPlan,
@@ -53,15 +51,15 @@ export function runTrackedJitOptimization(
 
 export function runTrackedJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizationPipelineResult {
   const initialAnalysis = analyzeJitOptimization(block);
-  const flagPlan = planJitFlagMaterialization(block, initialAnalysis);
-  const flagMaterialization = emitJitFlagMaterializationPlan(flagPlan);
+  const flagPlan = planJitOptimization(block, initialAnalysis);
+  const flagMaterialization = emitJitFlagMaterializationFromPlan(flagPlan, initialAnalysis);
   const deadLocalValues = pruneDeadJitLocalValues(flagMaterialization.block);
   const registerAnalysis = analyzeJitOptimization(deadLocalValues.block);
-  const registerPlan = planJitRegisterFolding(
+  const registerPlan = planJitOptimization(
     deadLocalValues.block,
     registerAnalysis
   );
-  const registerFolding = emitJitRegisterFoldingPlan(registerPlan);
+  const registerFolding = emitJitRegisterFoldingFromPlan(registerPlan, registerAnalysis);
 
   return {
     block: registerFolding.block,
