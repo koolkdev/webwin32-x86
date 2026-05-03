@@ -10,7 +10,7 @@ import { optimizeIrBlock } from "#x86/ir/passes/optimization.js";
 import { isIrTerminatorOp } from "#x86/ir/model/ops.js";
 import type { IrBlock, IrOp, OperandRef, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "./operand-bindings.js";
-import { planJitIrBlock, type JitIrBlockPlan } from "#backends/wasm/jit/planning/plan.js";
+import { optimizeJitIrBlock, type JitBlockOptimization } from "#backends/wasm/jit/optimization/optimize.js";
 import type {
   JitIrBlock,
   JitIrBlockInstructionMetadata,
@@ -21,9 +21,9 @@ const emptyBoundaryMaskByOpIndex = new Map<number, number>();
 
 export function prepareJitIrBlockForLowering(
   block: JitIrBlock,
-  plan: JitIrBlockPlan = planJitIrBlock(block)
+  optimization: JitBlockOptimization = optimizeJitIrBlock(block)
 ): JitIrLoweringBlock {
-  return optimizeJitIrLoweringBlock(flattenJitIrBlock(insertPlannedFlagBoundaries(block, plan)));
+  return optimizeJitIrLoweringBlock(flattenJitIrBlock(insertExitFlagBoundaries(block, optimization)));
 }
 
 function optimizeJitIrLoweringBlock(block: JitIrLoweringBlock): JitIrLoweringBlock {
@@ -65,8 +65,8 @@ function flattenJitIrBlock(block: JitIrBlock): JitIrLoweringBlock {
   return { ir, operands, instructions };
 }
 
-function insertPlannedFlagBoundaries(block: JitIrBlock, plan: JitIrBlockPlan): JitIrBlock {
-  const boundaryMasks = plannedBoundaryMasks(plan);
+function insertExitFlagBoundaries(block: JitIrBlock, optimization: JitBlockOptimization): JitIrBlock {
+  const boundaryMasks = exitFlagBoundaryMasks(optimization);
 
   if (boundaryMasks.size === 0) {
     return block;
@@ -83,10 +83,10 @@ function insertPlannedFlagBoundaries(block: JitIrBlock, plan: JitIrBlockPlan): J
   };
 }
 
-function plannedBoundaryMasks(plan: JitIrBlockPlan): ReadonlyMap<number, ReadonlyMap<number, number>> {
+function exitFlagBoundaryMasks(optimization: JitBlockOptimization): ReadonlyMap<number, ReadonlyMap<number, number>> {
   const masks = new Map<number, Map<number, number>>();
 
-  for (const exit of plan.exits) {
+  for (const exit of optimization.exitPoints) {
     let instructionMasks = masks.get(exit.instructionIndex);
 
     if (instructionMasks === undefined) {
@@ -116,7 +116,7 @@ function insertInstructionFlagBoundaries(
     const op = block[index];
 
     if (op === undefined) {
-      throw new Error(`missing JIT IR op while inserting planned flag boundary: ${index}`);
+      throw new Error(`missing JIT IR op while inserting JIT exit flag boundary: ${index}`);
     }
 
     ops.push(op);

@@ -7,29 +7,29 @@ import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bind
 
 export type JitExitSnapshotKind = "preInstruction" | "postInstruction";
 
-export type JitPlannedFlagState = Readonly<{
+export type JitFlagSnapshot = Readonly<{
   mask: number;
 }>;
 
-export type JitPlannedStateSnapshot = Readonly<{
+export type JitStateSnapshot = Readonly<{
   kind: JitExitSnapshotKind;
   eip: number;
   instructionCountDelta: number;
   committedRegs: readonly Reg32[];
   speculativeRegs: readonly Reg32[];
-  committedFlags: JitPlannedFlagState;
-  speculativeFlags: JitPlannedFlagState;
+  committedFlags: JitFlagSnapshot;
+  speculativeFlags: JitFlagSnapshot;
 }>;
 
-export type JitPlannedExit = Readonly<{
+export type JitExitPoint = Readonly<{
   instructionIndex: number;
   opIndex: number;
   exitReason: ExitReasonValue;
-  snapshot: JitPlannedStateSnapshot;
+  snapshot: JitStateSnapshot;
   requiredFlagCommitMask: number;
 }>;
 
-export type JitPlannedFlagMaterialization = Readonly<{
+export type JitFlagMaterializationRequirement = Readonly<{
   instructionIndex: number;
   opIndex: number;
   reason: "condition" | "exit";
@@ -37,23 +37,23 @@ export type JitPlannedFlagMaterialization = Readonly<{
   pendingMask: number;
 }>;
 
-export type JitPlannedInstruction = Readonly<{
+export type JitInstructionState = Readonly<{
   instructionId: string;
   eip: number;
   nextEip: number;
   nextMode: "continue" | "exit";
-  entry: JitPlannedStateSnapshot;
-  exitCount: number;
+  entryState: JitStateSnapshot;
+  exitPointCount: number;
 }>;
 
-export type JitIrBlockPlan = Readonly<{
-  instructions: readonly JitPlannedInstruction[];
-  exits: readonly JitPlannedExit[];
-  flagMaterializations: readonly JitPlannedFlagMaterialization[];
+export type JitBlockOptimization = Readonly<{
+  instructionStates: readonly JitInstructionState[];
+  exitPoints: readonly JitExitPoint[];
+  flagMaterializationRequirements: readonly JitFlagMaterializationRequirement[];
   maxExitGeneration: number;
 }>;
 
-type MutablePlanningState = {
+type MutableJitStateTracker = {
   committedRegs: Set<Reg32>;
   speculativeRegs: Set<Reg32>;
   committedFlagsMask: number;
@@ -61,62 +61,62 @@ type MutablePlanningState = {
   instructionCountDelta: number;
 };
 
-export function planJitIrBlock(block: JitIrBlock): JitIrBlockPlan {
-  const state: MutablePlanningState = {
+export function optimizeJitIrBlock(block: JitIrBlock): JitBlockOptimization {
+  const state: MutableJitStateTracker = {
     committedRegs: new Set(),
     speculativeRegs: new Set(),
     committedFlagsMask: IR_ALU_FLAG_MASK,
     speculativeFlagsMask: 0,
     instructionCountDelta: 0
   };
-  const plannedInstructions: JitPlannedInstruction[] = [];
-  const exits: JitPlannedExit[] = [];
-  const flagMaterializations: JitPlannedFlagMaterialization[] = [];
+  const instructionStates: JitInstructionState[] = [];
+  const exitPoints: JitExitPoint[] = [];
+  const flagMaterializationRequirements: JitFlagMaterializationRequirement[] = [];
 
   for (let instructionIndex = 0; instructionIndex < block.instructions.length; instructionIndex += 1) {
     const instruction = block.instructions[instructionIndex];
 
     if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while planning: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction while optimizing JIT IR block: ${instructionIndex}`);
     }
 
     const entry = snapshotState(state, "preInstruction", instruction.eip);
-    const exitStart = exits.length;
+    const exitStart = exitPoints.length;
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
       const op = instruction.ir[opIndex];
 
       if (op === undefined) {
-        throw new Error(`missing JIT IR op while planning: ${instructionIndex}:${opIndex}`);
+        throw new Error(`missing JIT IR op while optimizing JIT IR block: ${instructionIndex}:${opIndex}`);
       }
 
       const faultReason = memoryFaultReason(op, instruction.operands);
 
       if (faultReason !== undefined) {
-        planExit(instructionIndex, opIndex, faultReason, entry);
+        recordExitPoint(instructionIndex, opIndex, faultReason, entry);
       }
 
-      planOp(op, instruction, instructionIndex, opIndex);
+      recordOpEffects(op, instruction, instructionIndex, opIndex);
     }
 
-    plannedInstructions.push({
+    instructionStates.push({
       instructionId: instruction.instructionId,
       eip: instruction.eip,
       nextEip: instruction.nextEip,
       nextMode: instruction.nextMode,
-      entry,
-      exitCount: exits.length - exitStart
+      entryState: entry,
+      exitPointCount: exitPoints.length - exitStart
     });
   }
 
   return {
-    instructions: plannedInstructions,
-    exits,
-    flagMaterializations,
+    instructionStates,
+    exitPoints,
+    flagMaterializationRequirements,
     maxExitGeneration: block.instructions.length
   };
 
-  function planOp(
+  function recordOpEffects(
     op: IrOp,
     instruction: JitIrBlockInstruction,
     instructionIndex: number,
@@ -124,7 +124,7 @@ export function planJitIrBlock(block: JitIrBlock): JitIrBlockPlan {
   ): void {
     switch (op.op) {
       case "set32":
-        planStorageWrite(op.target, instruction.operands);
+        recordStorageWriteEffects(op.target, instruction.operands);
         return;
       case "flags.set":
         markSpeculativeFlags(op.writtenMask | op.undefMask);
@@ -137,7 +137,7 @@ export function planJitIrBlock(block: JitIrBlock): JitIrBlockPlan {
         const pendingMask = requiredMask & state.speculativeFlagsMask;
 
         if (requiredMask !== 0) {
-          flagMaterializations.push({
+          flagMaterializationRequirements.push({
             instructionIndex,
             opIndex,
             reason: "condition",
@@ -149,7 +149,7 @@ export function planJitIrBlock(block: JitIrBlock): JitIrBlockPlan {
       }
       case "next":
         if (instruction.nextMode === "exit") {
-          planExit(
+          recordExitPoint(
             instructionIndex,
             opIndex,
             ExitReason.FALLTHROUGH,
@@ -160,32 +160,32 @@ export function planJitIrBlock(block: JitIrBlock): JitIrBlockPlan {
         }
         return;
       case "jump":
-        planExit(instructionIndex, opIndex, ExitReason.JUMP, snapshotPostInstruction(state, instruction.nextEip));
+        recordExitPoint(instructionIndex, opIndex, ExitReason.JUMP, snapshotPostInstruction(state, instruction.nextEip));
         return;
       case "conditionalJump": {
         const snapshot = snapshotPostInstruction(state, instruction.nextEip);
 
-        planExit(instructionIndex, opIndex, ExitReason.BRANCH_TAKEN, snapshot);
-        planExit(instructionIndex, opIndex, ExitReason.BRANCH_NOT_TAKEN, snapshot);
+        recordExitPoint(instructionIndex, opIndex, ExitReason.BRANCH_TAKEN, snapshot);
+        recordExitPoint(instructionIndex, opIndex, ExitReason.BRANCH_NOT_TAKEN, snapshot);
         return;
       }
       case "hostTrap":
-        planExit(instructionIndex, opIndex, ExitReason.HOST_TRAP, snapshotPostInstruction(state, instruction.nextEip));
+        recordExitPoint(instructionIndex, opIndex, ExitReason.HOST_TRAP, snapshotPostInstruction(state, instruction.nextEip));
         return;
       default:
         return;
     }
   }
 
-  function planExit(
+  function recordExitPoint(
     instructionIndex: number,
     opIndex: number,
     exitReason: ExitReasonValue,
-    snapshot: JitPlannedStateSnapshot
+    snapshot: JitStateSnapshot
   ): void {
     const requiredFlagCommitMask = snapshot.speculativeFlags.mask;
 
-    exits.push({
+    exitPoints.push({
       instructionIndex,
       opIndex,
       exitReason,
@@ -194,7 +194,7 @@ export function planJitIrBlock(block: JitIrBlock): JitIrBlockPlan {
     });
 
     if (requiredFlagCommitMask !== 0) {
-      flagMaterializations.push({
+      flagMaterializationRequirements.push({
         instructionIndex,
         opIndex,
         reason: "exit",
@@ -204,7 +204,7 @@ export function planJitIrBlock(block: JitIrBlock): JitIrBlockPlan {
     }
   }
 
-  function planStorageWrite(storage: StorageRef, operands: readonly JitOperandBinding[]): void {
+  function recordStorageWriteEffects(storage: StorageRef, operands: readonly JitOperandBinding[]): void {
     switch (storage.kind) {
       case "reg":
         state.speculativeRegs.add(storage.reg);
@@ -270,13 +270,13 @@ function requiredOperand(operands: readonly JitOperandBinding[], index: number):
   const operand = operands[index];
 
   if (operand === undefined) {
-    throw new Error(`missing JIT operand while planning: ${index}`);
+    throw new Error(`missing JIT operand while optimizing JIT IR block: ${index}`);
   }
 
   return operand;
 }
 
-function snapshotPostInstruction(state: MutablePlanningState, eip: number): JitPlannedStateSnapshot {
+function snapshotPostInstruction(state: MutableJitStateTracker, eip: number): JitStateSnapshot {
   return {
     kind: "postInstruction",
     eip,
@@ -289,10 +289,10 @@ function snapshotPostInstruction(state: MutablePlanningState, eip: number): JitP
 }
 
 function snapshotState(
-  state: MutablePlanningState,
+  state: MutableJitStateTracker,
   kind: JitExitSnapshotKind,
   eip: number
-): JitPlannedStateSnapshot {
+): JitStateSnapshot {
   return {
     kind,
     eip,
