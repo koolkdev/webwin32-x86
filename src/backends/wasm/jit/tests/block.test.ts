@@ -4,12 +4,14 @@ import { test } from "node:test";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
+import { isIrTerminatorOp } from "#x86/ir/model/ops.js";
 import type { IrOp, StorageRef } from "#x86/ir/model/types.js";
 import { createCpuState } from "#x86/state/cpu-state.js";
 import { stateOffset } from "#backends/wasm/abi.js";
 import { wasmOpcode, wasmSectionId } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
+import { prepareJitIrBlockForLowering } from "#backends/wasm/jit/lowering/ir-optimization.js";
 import { runJitIrBlock } from "./helpers.js";
 
 const startAddress = 0x1000;
@@ -18,26 +20,46 @@ const zeroFlag = 1 << 6;
 const addWraparoundEflags = 0x55;
 const zeroResultEflags = 0x44;
 
-test("buildJitIrBlock builds one IR program with a shared var namespace", () => {
+test("buildJitIrBlock builds instruction-local IR bodies", () => {
   const first = ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress));
   const second = ok(decodeBytes([0x83, 0xc0, 0x01], first.nextEip));
   const block = buildJitIrBlock([first, second]);
-  const defIds = block.ir.flatMap(irOpDstId);
-  const operandIndexes = new Set(block.ir.flatMap(irOpOperandIndexes));
+  const firstIr = block.instructions[0]!.ir;
+  const secondIr = block.instructions[1]!.ir;
+  const firstDefIds = firstIr.flatMap(irOpDstId);
+  const secondDefIds = secondIr.flatMap(irOpDstId);
 
-  strictEqual("ir" in block.instructions[0]!, false);
+  strictEqual("ir" in block, false);
+  strictEqual("operands" in block, false);
   strictEqual(block.instructions.length, 2);
-  strictEqual(block.operands.length, first.operands.length + second.operands.length);
-  strictEqual(block.ir.filter((op) => op.op === "next").length, 2);
+  strictEqual(block.instructions[0]!.operands.length, first.operands.length);
+  strictEqual(block.instructions[1]!.operands.length, second.operands.length);
+  strictEqual(firstIr.filter((op) => op.op === "next").length, 1);
+  strictEqual(secondIr.filter((op) => op.op === "next").length, 1);
+  deepStrictEqual([...new Set(firstIr.flatMap(irOpOperandIndexes))].sort((a, b) => a - b), [0, 1]);
+  deepStrictEqual([...new Set(secondIr.flatMap(irOpOperandIndexes))].sort((a, b) => a - b), [0, 1]);
+  strictEqual(new Set(firstDefIds).size, firstDefIds.length);
+  strictEqual(new Set(secondDefIds).size, secondDefIds.length);
+  strictEqual(Math.min(...secondDefIds), 0);
+});
+
+test("JIT lowering preparation flattens instruction-local operands for the current lowering adapter", () => {
+  const first = ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress));
+  const second = ok(decodeBytes([0x83, 0xc0, 0x01], first.nextEip));
+  const loweringBlock = prepareJitIrBlockForLowering(buildJitIrBlock([first, second]));
+  const operandIndexes = new Set(loweringBlock.ir.flatMap(irOpOperandIndexes));
+
+  strictEqual(loweringBlock.instructions.length, 2);
+  strictEqual(loweringBlock.operands.length, first.operands.length + second.operands.length);
+  strictEqual(loweringBlock.ir.filter(isIrTerminatorOp).length, 2);
   deepStrictEqual([...operandIndexes].sort((a, b) => a - b), [0, 1, 2, 3]);
-  strictEqual(new Set(defIds).size, defIds.length);
 });
 
 test("buildJitIrBlock prunes flag producers overwritten inside the block", () => {
   const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], cmp.nextEip));
-  const block = buildJitIrBlock([cmp, add]);
-  const flagSets = block.ir.filter((op) => op.op === "flags.set");
+  const ir = loweringIr(buildJitIrBlock([cmp, add]));
+  const flagSets = ir.filter((op) => op.op === "flags.set");
 
   strictEqual(flagSets.length, 1);
   deepStrictEqual(
@@ -53,24 +75,24 @@ test("buildJitIrBlock prunes flag producers overwritten inside the block", () =>
 test("buildJitIrBlock inserts explicit flag materialization before consumers and boundaries", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const jz = ok(decodeBytes([0x74, 0x05], add.nextEip));
-  const branchBlock = buildJitIrBlock([add, jz]);
-  const conditionIndex = branchBlock.ir.findIndex((op) => op.op === "aluFlags.condition");
-  const conditionalJumpIndex = branchBlock.ir.findIndex((op) => op.op === "conditionalJump");
+  const branchIr = loweringIr(buildJitIrBlock([add, jz]));
+  const conditionIndex = branchIr.findIndex((op) => op.op === "aluFlags.condition");
+  const conditionalJumpIndex = branchIr.findIndex((op) => op.op === "conditionalJump");
 
-  deepStrictEqual(branchBlock.ir[conditionIndex - 1], {
+  deepStrictEqual(branchIr[conditionIndex - 1], {
     op: "flags.materialize",
     mask: IR_ALU_FLAG_MASKS.ZF
   });
-  deepStrictEqual(branchBlock.ir[conditionalJumpIndex - 1], {
+  deepStrictEqual(branchIr[conditionalJumpIndex - 1], {
     op: "flags.boundary",
     mask: IR_ALU_FLAG_MASK
   });
 
   const trap = ok(decodeBytes([0xcd, 0x2e], add.nextEip));
-  const exitBlock = buildJitIrBlock([add, trap]);
-  const hostTrapIndex = exitBlock.ir.findIndex((op) => op.op === "hostTrap");
+  const exitIr = loweringIr(buildJitIrBlock([add, trap]));
+  const hostTrapIndex = exitIr.findIndex((op) => op.op === "hostTrap");
 
-  deepStrictEqual(exitBlock.ir[hostTrapIndex - 1], {
+  deepStrictEqual(exitIr[hostTrapIndex - 1], {
     op: "flags.boundary",
     mask: IR_ALU_FLAG_MASK
   });
@@ -80,12 +102,12 @@ test("buildJitIrBlock keeps earlier CF producer live across INC", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const inc = ok(decodeBytes([0x40], add.nextEip));
   const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
-  const block = buildJitIrBlock([add, inc, jc]);
-  const flagSets = block.ir.filter((op) => op.op === "flags.set");
-  const conditionIndex = block.ir.findIndex((op) => op.op === "aluFlags.condition");
+  const ir = loweringIr(buildJitIrBlock([add, inc, jc]));
+  const flagSets = ir.filter((op) => op.op === "flags.set");
+  const conditionIndex = ir.findIndex((op) => op.op === "aluFlags.condition");
 
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
-  deepStrictEqual(block.ir[conditionIndex - 1], {
+  deepStrictEqual(ir[conditionIndex - 1], {
     op: "flags.materialize",
     mask: IR_ALU_FLAG_MASKS.CF
   });
@@ -94,9 +116,9 @@ test("buildJitIrBlock keeps earlier CF producer live across INC", () => {
 test("buildJitIrBlock specializes cmp and jcc conditions without flag materialization", () => {
   const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
   const je = ok(decodeBytes([0x74, 0x05], cmp.nextEip));
-  const block = buildJitIrBlock([cmp, je]);
-  const flagProducerConditionIndex = block.ir.findIndex((op) => op.op === "flagProducer.condition");
-  const flagProducerCondition = block.ir[flagProducerConditionIndex];
+  const ir = loweringIr(buildJitIrBlock([cmp, je]));
+  const flagProducerConditionIndex = ir.findIndex((op) => op.op === "flagProducer.condition");
+  const flagProducerCondition = ir[flagProducerConditionIndex];
 
   if (flagProducerCondition === undefined || flagProducerCondition.op !== "flagProducer.condition") {
     throw new Error("missing flagProducer.condition");
@@ -104,17 +126,18 @@ test("buildJitIrBlock specializes cmp and jcc conditions without flag materializ
 
   strictEqual(flagProducerCondition.producer, "sub32");
   strictEqual(flagProducerCondition.cc, "E");
-  strictEqual(block.ir.some((op) => op.op === "flags.materialize"), false);
+  strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
 });
 
 test("buildJitIrBlock does not specialize incoming CF after INC", () => {
   const inc = ok(decodeBytes([0x40], startAddress));
   const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
   const block = buildJitIrBlock([inc, jc]);
-  const conditionIndex = block.ir.findIndex((op) => op.op === "aluFlags.condition");
+  const ir = loweringIr(block);
+  const conditionIndex = ir.findIndex((op) => op.op === "aluFlags.condition");
 
-  strictEqual(block.ir.some((op) => op.op === "flagProducer.condition"), false);
-  deepStrictEqual(block.ir[conditionIndex - 1], {
+  strictEqual(ir.some((op) => op.op === "flagProducer.condition"), false);
+  deepStrictEqual(ir[conditionIndex - 1], {
     op: "flags.materialize",
     mask: IR_ALU_FLAG_MASKS.CF
   });
@@ -122,27 +145,27 @@ test("buildJitIrBlock does not specialize incoming CF after INC", () => {
 });
 
 test("buildJitIrBlock represents JIT flag exits as explicit IR boundaries", () => {
-  const flagFreeBlock = buildJitIrBlock([
+  const flagFreeIr = loweringIr(buildJitIrBlock([
     ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress)),
     ok(decodeBytes([0xbb, 0x02, 0x00, 0x00, 0x00], startAddress + 5)),
     ok(decodeBytes([0xcd, 0x2e], startAddress + 10))
-  ]);
-  const flagFreeTrapIndex = flagFreeBlock.ir.findIndex((op) => op.op === "hostTrap");
+  ]));
+  const flagFreeTrapIndex = flagFreeIr.findIndex((op) => op.op === "hostTrap");
 
-  deepStrictEqual(flagFreeBlock.ir[flagFreeTrapIndex - 1], {
+  deepStrictEqual(flagFreeIr[flagFreeTrapIndex - 1], {
     op: "flags.boundary",
     mask: IR_ALU_FLAG_MASK
   });
 
-  const jzBlock = buildJitIrBlock([ok(decodeBytes([0x74, 0x05], startAddress))]);
-  const jzConditionIndex = jzBlock.ir.findIndex((op) => op.op === "aluFlags.condition");
-  const jzJumpIndex = jzBlock.ir.findIndex((op) => op.op === "conditionalJump");
+  const jzIr = loweringIr(buildJitIrBlock([ok(decodeBytes([0x74, 0x05], startAddress))]));
+  const jzConditionIndex = jzIr.findIndex((op) => op.op === "aluFlags.condition");
+  const jzJumpIndex = jzIr.findIndex((op) => op.op === "conditionalJump");
 
-  deepStrictEqual(jzBlock.ir[jzConditionIndex - 1], {
+  deepStrictEqual(jzIr[jzConditionIndex - 1], {
     op: "flags.materialize",
     mask: IR_ALU_FLAG_MASKS.ZF
   });
-  deepStrictEqual(jzBlock.ir[jzJumpIndex - 1], {
+  deepStrictEqual(jzIr[jzJumpIndex - 1], {
     op: "flags.boundary",
     mask: IR_ALU_FLAG_MASK
   });
@@ -451,6 +474,10 @@ test("jit IR block keeps flags live across memory fault exits before later overw
   strictEqual(result.state.instructionCount, 1);
   deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000 });
 });
+
+function loweringIr(block: ReturnType<typeof buildJitIrBlock>): readonly IrOp[] {
+  return prepareJitIrBlockForLowering(block).ir;
+}
 
 function irOpDstId(op: IrOp): readonly number[] {
   switch (op.op) {

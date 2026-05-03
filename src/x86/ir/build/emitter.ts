@@ -1,5 +1,6 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
+import { isIrTerminatorOp, type IrTerminatorOp } from "#x86/ir/model/ops.js";
 import {
   const32,
   mem32,
@@ -30,7 +31,7 @@ import type {
   ValueInput
 } from "#x86/ir/model/types.js";
 
-export type IrProgramTerminator = "next" | "jump" | "conditionalJump" | "hostTrap";
+export type IrProgramTerminator = IrTerminatorOp["op"];
 
 export type IrEmitterOptions = Readonly<{
   ops?: IrOp[];
@@ -69,7 +70,7 @@ export class IrEmitter implements IrBuilder {
 
     this.#ops.push(op);
 
-    if (isIrTerminator(op)) {
+    if (isIrTerminatorOp(op)) {
       this.#terminator = op.op;
     }
   }
@@ -220,13 +221,9 @@ export class IrEmitter implements IrBuilder {
 export function irProgramTerminator(program: IrProgram): IrProgramTerminator {
   const terminator = program[program.length - 1];
 
-  if (terminator === undefined || !isIrTerminator(terminator)) {
+  if (terminator === undefined || !isIrTerminatorOp(terminator)) {
     throw new Error("IR program is missing a terminator");
   }
 
   return terminator.op;
-}
-
-function isIrTerminator(op: IrOp): op is Extract<IrOp, { op: IrProgramTerminator }> {
-  return op.op === "next" || op.op === "jump" || op.op === "conditionalJump" || op.op === "hostTrap";
 }

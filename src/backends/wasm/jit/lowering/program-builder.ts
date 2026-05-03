@@ -2,7 +2,6 @@ import type { IsaDecodedInstruction } from "#x86/isa/decoder/types.js";
 import { operand } from "#x86/ir/build/builder.js";
 import { IrProgramBuilder } from "#x86/ir/build/program.js";
 import { jitBindingsFromIsaInstruction, type JitOperandBinding } from "./operand-bindings.js";
-import { optimizeJitIrBlock } from "./ir-optimization.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 
 export type AppendJitIrInstructionOptions = Readonly<{
@@ -10,8 +9,6 @@ export type AppendJitIrInstructionOptions = Readonly<{
 }>;
 
 export class JitIrProgramBuilder {
-  readonly #irBuilder = new IrProgramBuilder();
-  readonly #operands: JitOperandBinding[] = [];
   readonly #instructions: JitIrBlockInstruction[] = [];
 
   appendInstruction(
@@ -19,22 +16,23 @@ export class JitIrProgramBuilder {
     options: AppendJitIrInstructionOptions
   ): void {
     const instructionOperands = jitBindingsFromIsaInstruction(instruction);
-    const operandBase = this.#operands.length;
-    const appended = this.#irBuilder.appendInstruction({
+    const irBuilder = new IrProgramBuilder();
+    const appended = irBuilder.appendInstruction({
       semantics: instruction.spec.semantics,
-      operands: instructionOperands.map((_, index) => operand(operandBase + index))
+      operands: instructionOperands.map((_, index) => operand(index))
     });
 
     if (options.nextMode === "continue" && appended.terminator !== "next") {
       throw new Error(`non-final JIT IR block instruction must fall through: ${instruction.spec.id}`);
     }
 
-    this.#operands.push(...instructionOperands);
     this.#instructions.push({
       instructionId: instruction.spec.id,
       eip: instruction.address,
       nextEip: instruction.nextEip,
-      nextMode: options.nextMode
+      nextMode: options.nextMode,
+      operands: instructionOperands,
+      ir: irBuilder.build()
     });
   }
 
@@ -43,10 +41,8 @@ export class JitIrProgramBuilder {
       throw new Error("cannot build empty JIT IR block");
     }
 
-    return optimizeJitIrBlock({
-      ir: this.#irBuilder.build(),
-      operands: [...this.#operands],
+    return {
       instructions: [...this.#instructions]
-    });
+    };
   }
 }

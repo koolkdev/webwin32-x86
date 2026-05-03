@@ -6,6 +6,7 @@ import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { JitIrProgramBuilder } from "./lowering/program-builder.js";
+import { prepareJitIrBlockForLowering } from "./lowering/ir-optimization.js";
 import { lowerIrWithJitContext } from "./lowering/ir-context.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
 import type { JitIrBlock } from "./types.js";
@@ -32,12 +33,14 @@ export function buildJitIrBlock(instructions: readonly IsaDecodedInstruction[]):
 }
 
 export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
+  const loweringBlock = prepareJitIrBlockForLowering(block);
+
   if (block.instructions.length === 0) {
     throw new Error("cannot encode empty JIT IR block");
   }
 
-  validateIrProgram(block.ir, {
-    operandCount: block.operands.length,
+  validateIrProgram(loweringBlock.ir, {
+    operandCount: loweringBlock.operands.length,
     terminatorMode: "multi"
   });
 
@@ -56,19 +59,19 @@ export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
   const body = new WasmFunctionBodyEncoder();
   const scratch = new WasmLocalScratchAllocator(body);
   const exitLocal = body.addLocal(wasmValueType.i64);
-  const state = createJitIrState(body, block.instructions.length);
+  const state = createJitIrState(body, loweringBlock.instructions.length);
   const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitGeneration };
 
   state.emitLoadInstructionCount();
 
   emitExitGenerationBlocks(body, state.maxExitGeneration);
-  lowerIrWithJitContext(block.ir, {
+  lowerIrWithJitContext(loweringBlock.ir, {
     body,
     scratch,
     state,
     exit,
-    operands: block.operands,
-    instructions: block.instructions
+    operands: loweringBlock.operands,
+    instructions: loweringBlock.instructions
   });
   emitExitGenerationStores(body, state, exitLocal);
   scratch.assertClear();
