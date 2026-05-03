@@ -17,11 +17,13 @@ import {
   type JitVirtualRewrite
 } from "./virtual-rewrite.js";
 import {
-  findJitRegWritebackBetween,
   jitIrLocation,
-  jitRegClobberedBetween,
   requiredJitIrInstruction,
   type JitIrLocation
+} from "./ir-walk.js";
+import {
+  findJitRegWritebackBetween,
+  jitRegClobberedBetween
 } from "./virtual-ranges.js";
 
 type PlannedConditionInput = Readonly<{

@@ -3,9 +3,11 @@ import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import {
   analyzeJitConditionUses,
   indexJitExitConditionValues,
+  indexJitLocalConditionValues,
   type JitConditionUse,
   type JitConditionUseIndex,
-  type JitExitConditionValueIndex
+  type JitExitConditionValueIndex,
+  type JitLocalConditionValueIndex
 } from "./condition-uses.js";
 import { jitMemoryFaultReason, jitPostInstructionExitReasons } from "./op-effects.js";
 
@@ -17,18 +19,21 @@ export type JitPostInstructionExitIndex = JitOpIndex<readonly ExitReasonValue[]>
 export type JitOptimizationAnalysis = Readonly<{
   preInstructionMemoryFaults: JitPreInstructionMemoryFaultIndex;
   postInstructionExits: JitPostInstructionExitIndex;
+  localConditionValues: JitLocalConditionValueIndex;
   exitConditionValues: JitExitConditionValueIndex;
   conditionUses: JitConditionUseIndex;
 }>;
 
 export function analyzeJitOptimization(block: JitIrBlock): JitOptimizationAnalysis {
+  const localConditionValues = indexJitLocalConditionValues(block);
   const exitConditionValues = indexJitExitConditionValues(block);
 
   return {
     preInstructionMemoryFaults: indexJitPreInstructionMemoryFaults(block),
     postInstructionExits: indexJitPostInstructionExits(block),
+    localConditionValues,
     exitConditionValues,
-    conditionUses: analyzeJitConditionUses(block, exitConditionValues)
+    conditionUses: analyzeJitConditionUses(block, localConditionValues, exitConditionValues)
   };
 }
 

@@ -16,13 +16,16 @@ import {
   jitPostInstructionExitReasonsAt
 } from "#backends/wasm/jit/optimization/analysis.js";
 import {
-  findJitRegWritebackBetween,
-  forEachJitIrOpBetween,
   jitIrLocation,
+  walkJitIrOpsBetween
+} from "#backends/wasm/jit/optimization/ir-walk.js";
+import {
+  findJitRegWritebackBetween,
   jitRegClobberedBetween
 } from "#backends/wasm/jit/optimization/virtual-ranges.js";
 import {
   jitExitConditionValues,
+  jitLocalConditionValues,
   jitPostInstructionExitReasons
 } from "#backends/wasm/jit/optimization/op-effects.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
@@ -139,9 +142,13 @@ test("optimizeJitIrBlock records flag materialization requirements before condit
   }
 });
 
-test("JIT op effects identify post-instruction exits and exit-coupled condition values", () => {
+test("JIT op effects identify post-instruction exits and condition values", () => {
   const fallthrough = syntheticInstruction([{ op: "next" }], 0, "exit");
   const localNext = syntheticInstruction([{ op: "next" }]);
+  const localCondition = syntheticInstruction([
+    { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+    { op: "next" }
+  ]);
   const branch = syntheticInstruction([
     { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
   ]);
@@ -153,6 +160,7 @@ test("JIT op effects identify post-instruction exits and exit-coupled condition 
     ExitReason.BRANCH_TAKEN,
     ExitReason.BRANCH_NOT_TAKEN
   ]);
+  deepStrictEqual(jitLocalConditionValues(localCondition.ir[0]!), [v(0)]);
   deepStrictEqual(jitExitConditionValues(branchOp, branch), [v(0)]);
 });
 
@@ -161,6 +169,7 @@ test("analyzeJitOptimization indexes shared op effects", () => {
     instructions: [
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
       ]),
       syntheticInstruction([
@@ -170,11 +179,12 @@ test("analyzeJitOptimization indexes shared op effects", () => {
     ]
   });
 
-  deepStrictEqual(jitPostInstructionExitReasonsAt(analysis, 0, 1), [
+  deepStrictEqual(jitPostInstructionExitReasonsAt(analysis, 0, 2), [
     ExitReason.BRANCH_TAKEN,
     ExitReason.BRANCH_NOT_TAKEN
   ]);
-  deepStrictEqual(analysis.exitConditionValues.get(0)?.get(1), [v(0)]);
+  deepStrictEqual(analysis.localConditionValues.get(0)?.get(1), [v(0)]);
+  deepStrictEqual(analysis.exitConditionValues.get(0)?.get(2), [v(0)]);
   strictEqual(jitConditionUseAt(analysis, 0, 0), "exitCondition");
   strictEqual(jitMemoryFaultAt(analysis, 1, 0), ExitReason.MEMORY_READ_FAULT);
   strictEqual(jitInstructionMayFault(analysis, 1), true);
@@ -197,7 +207,7 @@ test("virtual range utilities iterate between locations and find register writeb
   };
   const visited: string[] = [];
 
-  forEachJitIrOpBetween(block, jitIrLocation(0, 0), jitIrLocation(1, 1), (_instruction, op, location) => {
+  walkJitIrOpsBetween(block, jitIrLocation(0, 0), jitIrLocation(1, 1), (_instruction, op, location) => {
     visited.push(`${location.instructionIndex}:${location.opIndex}:${op.op}`);
   });
 
@@ -280,7 +290,7 @@ test("analyzeJitConditionUses classifies exit-coupled condition values", () => {
     instructions: [
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
-        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ])
     ]
@@ -289,7 +299,7 @@ test("analyzeJitConditionUses classifies exit-coupled condition values", () => {
     instructions: [
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
-        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
       ])
     ]

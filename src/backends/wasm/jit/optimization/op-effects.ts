@@ -57,6 +57,15 @@ export function jitExitConditionValues(
   }
 }
 
+export function jitLocalConditionValues(op: IrOp): readonly ValueRef[] {
+  switch (op.op) {
+    case "set32.if":
+      return [op.condition];
+    default:
+      return [];
+  }
+}
+
 export function requiredJitOperandBinding(
   operands: readonly JitOperandBinding[],
   index: number
