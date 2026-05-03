@@ -5,7 +5,7 @@ import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import type { ConditionCode, IrBlock, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitExitPoint } from "#backends/wasm/jit/optimization/types.js";
-import type { JitVirtualFlagOwnerMask } from "#backends/wasm/jit/optimization/virtual-flags.js";
+import type { JitFlagOwnerMask } from "#backends/wasm/jit/optimization/flags.js";
 import type {
   JitIrBlock,
   JitIrBody,
@@ -86,7 +86,7 @@ function instructionOps(instruction: JitIrBlockInstruction | JitOptimizedIrBlock
     : instruction.ir;
 }
 
-export function flagOwnerSummary(owners: readonly JitVirtualFlagOwnerMask[]): readonly object[] {
+export function flagOwnerSummary(owners: readonly JitFlagOwnerMask[]): readonly object[] {
   return owners.map(({ mask, owner }) => {
     switch (owner.kind) {
       case "producer":

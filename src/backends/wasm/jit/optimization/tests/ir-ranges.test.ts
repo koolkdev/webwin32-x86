@@ -8,10 +8,10 @@ import {
 import {
   findJitRegWritebackBetween,
   jitRegClobberedBetween
-} from "#backends/wasm/jit/optimization/virtual-ranges.js";
+} from "#backends/wasm/jit/optimization/ir-ranges.js";
 import { syntheticInstruction, v } from "./helpers.js";
 
-test("virtual range utilities iterate between locations and find register writebacks", () => {
+test("IR range utilities iterate between locations and find register writebacks", () => {
   const block = {
     instructions: [
       syntheticInstruction([

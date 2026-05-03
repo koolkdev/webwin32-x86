@@ -1,11 +1,11 @@
 import type { JitIrBlock, JitOptimizedIrBlock } from "#backends/wasm/jit/types.js";
 import { analyzeJitOptimization } from "./analysis.js";
 import { pruneDeadJitLocalValues, type JitDeadLocalValuePruning } from "./dead-local-values.js";
-import { materializeJitVirtualFlags, type JitVirtualFlagMaterialization } from "./virtual-flags.js";
+import { materializeJitFlags, type JitFlagMaterialization } from "./flags.js";
 import { foldJitRegisters, type JitRegisterFolding } from "./register-folding.js";
 
 export const jitIrOptimizationPassOrder = [
-  "virtual-flags",
+  "flag-materialization",
   "dead-local-values",
   "register-folding"
 ] as const;
@@ -15,7 +15,7 @@ export type JitIrOptimizationPassName = typeof jitIrOptimizationPassOrder[number
 export type JitIrOptimizationPipelineResult = Readonly<{
   block: JitOptimizedIrBlock;
   passes: Readonly<{
-    virtualFlags: JitVirtualFlagMaterialization;
+    flagMaterialization: JitFlagMaterialization;
     deadLocalValues: JitDeadLocalValuePruning;
     registerFolding: JitRegisterFolding;
   }>;
@@ -23,8 +23,8 @@ export type JitIrOptimizationPipelineResult = Readonly<{
 
 export function runJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizationPipelineResult {
   const initialAnalysis = analyzeJitOptimization(block);
-  const virtualFlags = materializeJitVirtualFlags(block, initialAnalysis);
-  const deadLocalValues = pruneDeadJitLocalValues(virtualFlags.block);
+  const flagMaterialization = materializeJitFlags(block, initialAnalysis);
+  const deadLocalValues = pruneDeadJitLocalValues(flagMaterialization.block);
   const registerAnalysis = analyzeJitOptimization(deadLocalValues.block);
   const registerFolding = foldJitRegisters(
     deadLocalValues.block,
@@ -34,7 +34,7 @@ export function runJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizati
   return {
     block: registerFolding.block,
     passes: {
-      virtualFlags: virtualFlags.flags,
+      flagMaterialization: flagMaterialization.flags,
       deadLocalValues: deadLocalValues.deadLocalValues,
       registerFolding: registerFolding.folding
     }

@@ -5,18 +5,18 @@ import {
 } from "#x86/ir/model/flag-effects.js";
 import type { JitFlagSource } from "./flag-sources.js";
 
-export type JitVirtualFlagOwner =
+export type JitFlagOwner =
   | Readonly<{ kind: "incoming" }>
   | Readonly<{ kind: "materialized" }>
   | Readonly<{ kind: "producer"; source: JitFlagSource }>;
 
-export type JitVirtualFlagOwnerMask = Readonly<{
+export type JitFlagOwnerMask = Readonly<{
   mask: number;
-  owner: JitVirtualFlagOwner;
+  owner: JitFlagOwner;
 }>;
 
-const incomingJitFlagOwner: JitVirtualFlagOwner = { kind: "incoming" };
-const materializedJitFlagOwner: JitVirtualFlagOwner = { kind: "materialized" };
+const incomingJitFlagOwner: JitFlagOwner = { kind: "incoming" };
+const materializedJitFlagOwner: JitFlagOwner = { kind: "materialized" };
 
 const flagBits = Object.values(IR_ALU_FLAG_MASKS);
 
@@ -27,7 +27,7 @@ export class JitFlagOwners {
     );
   }
 
-  private constructor(private readonly byFlag: Map<number, JitVirtualFlagOwner>) {}
+  private constructor(private readonly byFlag: Map<number, JitFlagOwner>) {}
 
   clone(): JitFlagOwners {
     return new JitFlagOwners(new Map(this.byFlag));
@@ -41,8 +41,8 @@ export class JitFlagOwners {
     this.set(source.writtenMask | source.undefMask, { kind: "producer", source });
   }
 
-  forMask(mask: number): readonly JitVirtualFlagOwnerMask[] {
-    const owners: JitVirtualFlagOwnerMask[] = [];
+  forMask(mask: number): readonly JitFlagOwnerMask[] {
+    const owners: JitFlagOwnerMask[] = [];
 
     for (const flagBit of flagBits) {
       if ((mask & flagBit) === 0) {
@@ -67,13 +67,13 @@ export class JitFlagOwners {
     return owners;
   }
 
-  producerOwnersReadingReg(reg: Reg32): readonly JitVirtualFlagOwnerMask[] {
+  producerOwnersReadingReg(reg: Reg32): readonly JitFlagOwnerMask[] {
     return this.forMask(IR_ALU_FLAG_MASK).filter((entry) =>
       entry.owner.kind === "producer" && entry.owner.source.readRegs.includes(reg)
     );
   }
 
-  private set(mask: number, owner: JitVirtualFlagOwner): void {
+  private set(mask: number, owner: JitFlagOwner): void {
     for (const flagBit of flagBits) {
       if ((mask & flagBit) !== 0) {
         this.byFlag.set(flagBit, owner);
@@ -82,7 +82,7 @@ export class JitFlagOwners {
   }
 }
 
-function sameOwner(a: JitVirtualFlagOwner, b: JitVirtualFlagOwner): boolean {
+function sameOwner(a: JitFlagOwner, b: JitFlagOwner): boolean {
   if (a.kind !== b.kind) {
     return false;
   }

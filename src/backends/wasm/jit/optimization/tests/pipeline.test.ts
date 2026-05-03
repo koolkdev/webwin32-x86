@@ -21,8 +21,8 @@ test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
     trap
   ]));
 
-  deepStrictEqual(jitIrOptimizationPassOrder, ["virtual-flags", "dead-local-values", "register-folding"]);
-  strictEqual(result.passes.virtualFlags.removedSetCount, 1);
+  deepStrictEqual(jitIrOptimizationPassOrder, ["flag-materialization", "dead-local-values", "register-folding"]);
+  strictEqual(result.passes.flagMaterialization.removedSetCount, 1);
   strictEqual(result.passes.deadLocalValues.removedOpCount, 0);
   strictEqual(result.passes.registerFolding.removedSetCount, 3);
 });
@@ -47,7 +47,7 @@ test("runJitIrOptimizationPipeline prunes dead flag producer inputs before regis
   const cmpInstruction = result.block.instructions[2]!;
   const cmoveInstruction = result.block.instructions[3]!;
 
-  strictEqual(result.passes.virtualFlags.directConditionCount, 1);
+  strictEqual(result.passes.flagMaterialization.directConditionCount, 1);
   strictEqual(result.passes.deadLocalValues.removedOpCount, 3);
   deepStrictEqual(cmpInstruction.ir.map((op) => op.op), ["next"]);
   strictEqual(cmoveInstruction.ir.some((op) =>

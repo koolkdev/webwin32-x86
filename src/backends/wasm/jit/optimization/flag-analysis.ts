@@ -20,7 +20,7 @@ import {
 } from "./effects.js";
 import {
   JitFlagOwners,
-  type JitVirtualFlagOwnerMask
+  type JitFlagOwnerMask
 } from "./flag-owners.js";
 import type { JitConditionUse } from "./condition-uses.js";
 import {
@@ -35,8 +35,8 @@ import {
 import { JitOptimizationState } from "./state.js";
 
 export type {
-  JitVirtualFlagOwner,
-  JitVirtualFlagOwnerMask
+  JitFlagOwner,
+  JitFlagOwnerMask
 } from "./flag-owners.js";
 
 export type {
@@ -44,10 +44,7 @@ export type {
   JitFlagSource
 } from "./flag-sources.js";
 
-export type JitVirtualFlagInput = JitFlagInput;
-export type JitVirtualFlagSource = JitFlagSource;
-
-export type JitVirtualFlagRead = Readonly<{
+export type JitFlagRead = Readonly<{
   instructionIndex: number;
   opIndex: number;
   reason: "condition" | "materialize" | "boundary" | "preInstructionExit" | "exit";
@@ -55,38 +52,38 @@ export type JitVirtualFlagRead = Readonly<{
   exitReason?: ExitReasonValue;
   cc?: ConditionCode;
   conditionUse?: JitConditionUse;
-  owners: readonly JitVirtualFlagOwnerMask[];
+  owners: readonly JitFlagOwnerMask[];
 }>;
 
-export type JitVirtualFlagSourceClobber = Readonly<{
+export type JitFlagSourceClobber = Readonly<{
   instructionIndex: number;
   opIndex: number;
   reg: Reg32;
-  owners: readonly JitVirtualFlagOwnerMask[];
+  owners: readonly JitFlagOwnerMask[];
 }>;
 
-export type JitVirtualFlagAnalysis = Readonly<{
+export type JitFlagAnalysis = Readonly<{
   sources: readonly JitFlagSource[];
-  reads: readonly JitVirtualFlagRead[];
-  sourceClobbers: readonly JitVirtualFlagSourceClobber[];
-  finalOwners: readonly JitVirtualFlagOwnerMask[];
+  reads: readonly JitFlagRead[];
+  sourceClobbers: readonly JitFlagSourceClobber[];
+  finalOwners: readonly JitFlagOwnerMask[];
 }>;
 
-export function analyzeJitVirtualFlags(
+export function analyzeJitFlags(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
-): JitVirtualFlagAnalysis {
+): JitFlagAnalysis {
   const state = new JitOptimizationState();
   const sources: JitFlagSource[] = [];
-  const reads: JitVirtualFlagRead[] = [];
-  const sourceClobbers: JitVirtualFlagSourceClobber[] = [];
+  const reads: JitFlagRead[] = [];
+  const sourceClobbers: JitFlagSourceClobber[] = [];
   let nextSourceId = 0;
 
   for (let instructionIndex = 0; instructionIndex < block.instructions.length; instructionIndex += 1) {
     const instruction = block.instructions[instructionIndex];
 
     if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while analyzing virtual flags: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction while analyzing flags: ${instructionIndex}`);
     }
 
     const values = state.beginInstructionValues();
@@ -96,7 +93,7 @@ export function analyzeJitVirtualFlags(
       const op = instruction.ir[opIndex];
 
       if (op === undefined) {
-        throw new Error(`missing JIT IR op while analyzing virtual flags: ${instructionIndex}:${opIndex}`);
+        throw new Error(`missing JIT IR op while analyzing flags: ${instructionIndex}:${opIndex}`);
       }
 
       analyzeOp(instructionIndex, opIndex, instruction, op, values, instructionEntryOwners);
@@ -195,7 +192,7 @@ export function analyzeJitVirtualFlags(
   }
 
   function recordRead(
-    read: Omit<JitVirtualFlagRead, "owners">,
+    read: Omit<JitFlagRead, "owners">,
     readOwners: JitFlagOwners = state.flags
   ): void {
     if (read.requiredMask === 0) {

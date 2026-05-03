@@ -2,31 +2,31 @@ import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types
 import { analyzeJitOptimization, type JitOptimizationAnalysis } from "./analysis.js";
 import type { JitFlagSource } from "./flag-sources.js";
 import {
-  analyzeJitVirtualFlags,
-  type JitVirtualFlagAnalysis
-} from "./virtual-flag-analysis.js";
+  analyzeJitFlags,
+  type JitFlagAnalysis
+} from "./flag-analysis.js";
 import {
-  emitDirectVirtualFlagCondition,
-  indexDirectVirtualFlagConditions,
-  type JitDirectVirtualFlagConditionIndex
-} from "./virtual-flag-conditions.js";
+  emitDirectFlagCondition,
+  indexDirectFlagConditions,
+  type JitDirectFlagConditionIndex
+} from "./flag-condition-planning.js";
 import { rewriteJitIrInstruction } from "./rewrite.js";
 
-export type JitVirtualFlagMaterialization = Readonly<{
+export type JitFlagMaterialization = Readonly<{
   removedSetCount: number;
   retainedSetCount: number;
   directConditionCount: number;
   sourceClobberCount: number;
 }>;
 
-export function materializeJitVirtualFlags(
+export function materializeJitFlags(
   block: JitIrBlock,
   optimizationAnalysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
-): Readonly<{ block: JitIrBlock; flags: JitVirtualFlagMaterialization }> {
-  const flagAnalysis = analyzeJitVirtualFlags(block, optimizationAnalysis);
-  const directConditionsByLocation = indexDirectVirtualFlagConditions(block, flagAnalysis);
-  const neededSourceIds = neededVirtualFlagSourceIds(flagAnalysis, directConditionsByLocation);
-  const sourcesByLocation = indexVirtualFlagSourcesByLocation(flagAnalysis);
+): Readonly<{ block: JitIrBlock; flags: JitFlagMaterialization }> {
+  const flagAnalysis = analyzeJitFlags(block, optimizationAnalysis);
+  const directConditionsByLocation = indexDirectFlagConditions(block, flagAnalysis);
+  const neededSourceIds = neededFlagSourceIds(flagAnalysis, directConditionsByLocation);
+  const sourcesByLocation = indexFlagSourcesByLocation(flagAnalysis);
   const instructions = new Array<JitIrBlockInstruction>(block.instructions.length);
   let removedSetCount = 0;
   let retainedSetCount = 0;
@@ -36,13 +36,13 @@ export function materializeJitVirtualFlags(
     const instruction = block.instructions[instructionIndex];
 
     if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while materializing virtual flags: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction while materializing flags: ${instructionIndex}`);
     }
 
     instructions[instructionIndex] = rewriteJitIrInstruction(
       instruction,
       instructionIndex,
-      "materializing virtual flags",
+      "materializing flags",
       ({ op, opIndex, rewrite }) => {
         const source = sourcesByLocation.get(instructionIndex)?.get(opIndex);
         const directCondition = directConditionsByLocation.get(instructionIndex)?.get(opIndex);
@@ -50,7 +50,7 @@ export function materializeJitVirtualFlags(
         if (op.op === "flags.set" && (source === undefined || !neededSourceIds.has(source.id))) {
           removedSetCount += 1;
         } else if (op.op === "aluFlags.condition" && directCondition !== undefined) {
-          emitDirectVirtualFlagCondition(rewrite, op, directCondition);
+          emitDirectFlagCondition(rewrite, op, directCondition);
           directConditionCount += 1;
         } else {
           if (op.op === "flags.set") {
@@ -74,9 +74,9 @@ export function materializeJitVirtualFlags(
   };
 }
 
-function neededVirtualFlagSourceIds(
-  analysis: JitVirtualFlagAnalysis,
-  directConditionsByLocation: JitDirectVirtualFlagConditionIndex
+function neededFlagSourceIds(
+  analysis: JitFlagAnalysis,
+  directConditionsByLocation: JitDirectFlagConditionIndex
 ): ReadonlySet<number> {
   const neededSourceIds = new Set<number>();
 
@@ -95,8 +95,8 @@ function neededVirtualFlagSourceIds(
   return neededSourceIds;
 }
 
-function indexVirtualFlagSourcesByLocation(
-  analysis: JitVirtualFlagAnalysis
+function indexFlagSourcesByLocation(
+  analysis: JitFlagAnalysis
 ): ReadonlyMap<number, ReadonlyMap<number, JitFlagSource>> {
   const sourcesByLocation = new Map<number, Map<number, JitFlagSource>>();
 

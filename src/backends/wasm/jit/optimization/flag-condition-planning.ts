@@ -9,10 +9,10 @@ import type {
   JitFlagSource
 } from "./flag-sources.js";
 import {
-  type JitVirtualFlagAnalysis,
-  type JitVirtualFlagRead,
-  type JitVirtualFlagOwnerMask
-} from "./virtual-flag-analysis.js";
+  type JitFlagAnalysis,
+  type JitFlagRead,
+  type JitFlagOwnerMask
+} from "./flag-analysis.js";
 import { jitValueReadRegs } from "./values.js";
 import {
   emitJitValueRef,
@@ -26,32 +26,32 @@ import {
 import {
   findJitRegWritebackBetween,
   jitRegClobberedBetween
-} from "./virtual-ranges.js";
+} from "./ir-ranges.js";
 
 type PlannedConditionInput = Readonly<{
   input: JitFlagInput;
   validAfter: JitIrLocation;
 }>;
 
-export type JitDirectVirtualFlagCondition = Readonly<{
-  read: JitVirtualFlagRead;
+export type JitDirectFlagCondition = Readonly<{
+  read: JitFlagRead;
   source: JitFlagSource;
   inputs: Readonly<Record<string, JitFlagInput>>;
 }>;
 
-export type JitDirectVirtualFlagConditionIndex = ReadonlyMap<
+export type JitDirectFlagConditionIndex = ReadonlyMap<
   number,
-  ReadonlyMap<number, JitDirectVirtualFlagCondition>
+  ReadonlyMap<number, JitDirectFlagCondition>
 >;
 
-export function indexDirectVirtualFlagConditions(
+export function indexDirectFlagConditions(
   block: JitIrBlock,
-  analysis: JitVirtualFlagAnalysis
-): JitDirectVirtualFlagConditionIndex {
-  const byLocation = new Map<number, Map<number, JitDirectVirtualFlagCondition>>();
+  analysis: JitFlagAnalysis
+): JitDirectFlagConditionIndex {
+  const byLocation = new Map<number, Map<number, JitDirectFlagCondition>>();
 
   for (const read of analysis.reads) {
-    const directCondition = directVirtualFlagCondition(block, read);
+    const directCondition = directFlagCondition(block, read);
 
     if (directCondition === undefined) {
       continue;
@@ -70,10 +70,10 @@ export function indexDirectVirtualFlagConditions(
   return byLocation;
 }
 
-export function emitDirectVirtualFlagCondition(
+export function emitDirectFlagCondition(
   rewrite: JitInstructionRewrite,
   op: Extract<IrOp, { op: "aluFlags.condition" }>,
-  condition: JitDirectVirtualFlagCondition
+  condition: JitDirectFlagCondition
 ): void {
   const inputs: Record<string, ValueRef> = {};
 
@@ -81,7 +81,7 @@ export function emitDirectVirtualFlagCondition(
     const input = condition.inputs[inputName];
 
     if (input?.kind !== "value") {
-      throw new Error(`missing modeled virtual flag condition input '${inputName}' for ${condition.source.producer}/${op.cc}`);
+      throw new Error(`missing modeled flag condition input '${inputName}' for ${condition.source.producer}/${op.cc}`);
     }
 
     inputs[inputName] = emitJitValueRef(rewrite, input.value);
@@ -98,10 +98,10 @@ export function emitDirectVirtualFlagCondition(
   });
 }
 
-function directVirtualFlagCondition(
+function directFlagCondition(
   block: JitIrBlock,
-  read: JitVirtualFlagRead
-): JitDirectVirtualFlagCondition | undefined {
+  read: JitFlagRead
+): JitDirectFlagCondition | undefined {
   if (read.reason !== "condition" || read.cc === undefined || read.conditionUse === undefined) {
     return undefined;
   }
@@ -130,7 +130,7 @@ function directVirtualFlagCondition(
 function directConditionInputs(
   block: JitIrBlock,
   source: JitFlagSource,
-  read: JitVirtualFlagRead
+  read: JitFlagRead
 ): Readonly<Record<string, JitFlagInput>> | undefined {
   const sourceInputs = plannedSourceInputs(source, read);
 
@@ -159,7 +159,7 @@ function directConditionInputs(
     : undefined;
 }
 
-function singleConditionSource(owners: readonly JitVirtualFlagOwnerMask[]): JitFlagSource | undefined {
+function singleConditionSource(owners: readonly JitFlagOwnerMask[]): JitFlagSource | undefined {
   let source: JitFlagSource | undefined;
 
   for (const { owner } of owners) {
@@ -179,7 +179,7 @@ function singleConditionSource(owners: readonly JitVirtualFlagOwnerMask[]): JitF
 
 function plannedSourceInputs(
   source: JitFlagSource,
-  read: JitVirtualFlagRead
+  read: JitFlagRead
 ): Readonly<Record<string, PlannedConditionInput>> | undefined {
   if (read.cc === undefined) {
     return undefined;
@@ -204,7 +204,7 @@ function plannedSourceInputs(
 function plannedResultWritebackInput(
   block: JitIrBlock,
   source: JitFlagSource,
-  read: JitVirtualFlagRead
+  read: JitFlagRead
 ): PlannedConditionInput | undefined {
   const writeback = findResultWritebackReg(block, source, read);
 
@@ -221,7 +221,7 @@ function plannedResultWritebackInput(
 function plannedInputsSafe(
   block: JitIrBlock,
   inputs: Readonly<Record<string, PlannedConditionInput>>,
-  read: JitVirtualFlagRead
+  read: JitFlagRead
 ): boolean {
   for (const { input, validAfter } of Object.values(inputs)) {
     if (input.kind !== "value") {
@@ -246,7 +246,7 @@ function plannedInputValues(
   );
 }
 
-function findResultWritebackReg(block: JitIrBlock, source: JitFlagSource, read: JitVirtualFlagRead) {
+function findResultWritebackReg(block: JitIrBlock, source: JitFlagSource, read: JitFlagRead) {
   const resultId = sourceResultVarId(block, source);
 
   if (resultId === undefined) {
@@ -280,7 +280,7 @@ function sourceLocation(source: JitFlagSource): JitIrLocation {
 
 function canUseResultInputForCondition(
   source: JitFlagSource,
-  read: JitVirtualFlagRead
+  read: JitFlagRead
 ): boolean {
   if (read.cc === undefined || conditionInput(source, "result")?.kind !== "value") {
     return false;
@@ -293,7 +293,7 @@ function canUseResultInputForCondition(
   }) !== undefined;
 }
 
-function readLocation(read: JitVirtualFlagRead): JitIrLocation {
+function readLocation(read: JitFlagRead): JitIrLocation {
   return jitIrLocation(read.instructionIndex, read.opIndex);
 }
 
