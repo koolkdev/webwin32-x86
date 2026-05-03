@@ -11,16 +11,16 @@ import { walkJitIrBlockOps } from "./ir-walk.js";
 import { jitMemoryFaultReason, jitPostInstructionExitReasons } from "./op-effects.js";
 import { setJitOpIndexValue, type JitOpIndex } from "./op-index.js";
 
-export type JitOptimizationBoundary =
+export type JitOptimizationEvent =
   | Readonly<{ kind: "preInstructionExit"; exitReason: ExitReasonValue }>
   | Readonly<{ kind: "postInstructionExit"; exitReasons: readonly ExitReasonValue[] }>
   | Readonly<{ kind: "conditionRead"; conditionUse: JitConditionUse }>
   | Readonly<{ kind: "localCondition"; values: readonly ValueRef[] }>
   | Readonly<{ kind: "exitCondition"; values: readonly ValueRef[] }>;
 
-export type JitOptimizationBoundaryIndex = JitOpIndex<readonly JitOptimizationBoundary[]>;
+export type JitOptimizationEventIndex = JitOpIndex<readonly JitOptimizationEvent[]>;
 
-type JitOptimizationBoundarySources = Readonly<{
+type JitOptimizationEventSources = Readonly<{
   preInstructionExits: JitOpIndex<ExitReasonValue>;
   postInstructionExits: JitOpIndex<readonly ExitReasonValue[]>;
   localConditionValues: JitOpIndex<readonly ValueRef[]>;
@@ -28,13 +28,13 @@ type JitOptimizationBoundarySources = Readonly<{
   conditionUses: JitOpIndex<JitConditionUse>;
 }>;
 
-export function indexJitOptimizationBoundaries(
+export function indexJitOptimizationEvents(
   block: JitIrBlock
-): JitOptimizationBoundaryIndex {
+): JitOptimizationEventIndex {
   const localConditionValues = indexJitLocalConditionValues(block);
   const exitConditionValues = indexJitExitConditionValues(block);
 
-  return indexJitOptimizationBoundariesFromSources({
+  return indexJitOptimizationEventsFromSources({
     preInstructionExits: indexJitPreInstructionExits(block),
     postInstructionExits: indexJitPostInstructionExits(block),
     localConditionValues,
@@ -43,24 +43,24 @@ export function indexJitOptimizationBoundaries(
   });
 }
 
-function indexJitOptimizationBoundariesFromSources(
-  analysis: JitOptimizationBoundarySources
-): JitOptimizationBoundaryIndex {
-  const boundaries = new Map<number, Map<number, readonly JitOptimizationBoundary[]>>();
+function indexJitOptimizationEventsFromSources(
+  analysis: JitOptimizationEventSources
+): JitOptimizationEventIndex {
+  const events = new Map<number, Map<number, readonly JitOptimizationEvent[]>>();
 
-  addIndexedBoundaries(analysis.preInstructionExits, boundaries, (exitReason) => ({
+  addIndexedEvents(analysis.preInstructionExits, events, (exitReason) => ({
     kind: "preInstructionExit",
     exitReason
   }));
-  addIndexedBoundaries(analysis.postInstructionExits, boundaries, (exitReasons) => ({
+  addIndexedEvents(analysis.postInstructionExits, events, (exitReasons) => ({
     kind: "postInstructionExit",
     exitReasons
   }));
-  addConditionValueBoundaries(analysis.localConditionValues, boundaries, "localCondition");
-  addConditionValueBoundaries(analysis.exitConditionValues, boundaries, "exitCondition");
-  addConditionReadBoundaries(analysis.conditionUses, boundaries);
+  addConditionValueEvents(analysis.localConditionValues, events, "localCondition");
+  addConditionValueEvents(analysis.exitConditionValues, events, "exitCondition");
+  addConditionReadEvents(analysis.conditionUses, events);
 
-  return boundaries;
+  return events;
 }
 
 function indexJitPreInstructionExits(block: JitIrBlock): JitOpIndex<ExitReasonValue> {
@@ -91,90 +91,90 @@ function indexJitPostInstructionExits(block: JitIrBlock): JitOpIndex<readonly Ex
   return postInstructionExits;
 }
 
-export function jitBoundariesAt(
-  boundaries: JitOptimizationBoundaryIndex,
+export function jitEventsAt(
+  events: JitOptimizationEventIndex,
   instructionIndex: number,
   opIndex: number
-): readonly JitOptimizationBoundary[] {
-  return boundaries.get(instructionIndex)?.get(opIndex) ?? [];
+): readonly JitOptimizationEvent[] {
+  return events.get(instructionIndex)?.get(opIndex) ?? [];
 }
 
-export function jitBoundaryAt<K extends JitOptimizationBoundary["kind"]>(
-  boundaries: JitOptimizationBoundaryIndex,
+export function jitEventAt<K extends JitOptimizationEvent["kind"]>(
+  events: JitOptimizationEventIndex,
   instructionIndex: number,
   opIndex: number,
   kind: K
-): Extract<JitOptimizationBoundary, { kind: K }> | undefined {
-  return jitBoundariesAt(boundaries, instructionIndex, opIndex).find((entry): entry is Extract<JitOptimizationBoundary, { kind: K }> =>
+): Extract<JitOptimizationEvent, { kind: K }> | undefined {
+  return jitEventsAt(events, instructionIndex, opIndex).find((entry): entry is Extract<JitOptimizationEvent, { kind: K }> =>
     entry.kind === kind
   );
 }
 
 export function jitConditionValuesAt(
-  boundaries: JitOptimizationBoundaryIndex,
+  events: JitOptimizationEventIndex,
   instructionIndex: number,
   opIndex: number,
   kind: "localCondition" | "exitCondition"
 ): readonly ValueRef[] {
-  return jitBoundaryAt(boundaries, instructionIndex, opIndex, kind)?.values ?? [];
+  return jitEventAt(events, instructionIndex, opIndex, kind)?.values ?? [];
 }
 
 export function jitPreInstructionExitReasonAt(
-  boundaries: JitOptimizationBoundaryIndex,
+  events: JitOptimizationEventIndex,
   instructionIndex: number,
   opIndex: number
 ): ExitReasonValue | undefined {
-  return jitBoundaryAt(boundaries, instructionIndex, opIndex, "preInstructionExit")?.exitReason;
+  return jitEventAt(events, instructionIndex, opIndex, "preInstructionExit")?.exitReason;
 }
 
 export function jitPostInstructionExitReasonsAt(
-  boundaries: JitOptimizationBoundaryIndex,
+  events: JitOptimizationEventIndex,
   instructionIndex: number,
   opIndex: number
 ): readonly ExitReasonValue[] {
-  return jitBoundaryAt(boundaries, instructionIndex, opIndex, "postInstructionExit")?.exitReasons ?? [];
+  return jitEventAt(events, instructionIndex, opIndex, "postInstructionExit")?.exitReasons ?? [];
 }
 
 export function jitOpHasPostInstructionExit(
-  boundaries: JitOptimizationBoundaryIndex,
+  events: JitOptimizationEventIndex,
   instructionIndex: number,
   opIndex: number
 ): boolean {
-  return jitPostInstructionExitReasonsAt(boundaries, instructionIndex, opIndex).length !== 0;
+  return jitPostInstructionExitReasonsAt(events, instructionIndex, opIndex).length !== 0;
 }
 
 export function jitConditionUseAt(
-  boundaries: JitOptimizationBoundaryIndex,
+  events: JitOptimizationEventIndex,
   instructionIndex: number,
   opIndex: number
 ): JitConditionUse | undefined {
-  return jitBoundaryAt(boundaries, instructionIndex, opIndex, "conditionRead")?.conditionUse;
+  return jitEventAt(events, instructionIndex, opIndex, "conditionRead")?.conditionUse;
 }
 
 export function jitInstructionHasPreInstructionExit(
-  boundaries: JitOptimizationBoundaryIndex,
+  events: JitOptimizationEventIndex,
   instructionIndex: number
 ): boolean {
-  return jitLastPreInstructionExitOpIndex(boundaries, instructionIndex) !== undefined;
+  return jitLastPreInstructionExitOpIndex(events, instructionIndex) !== undefined;
 }
 
 export function jitFirstOpIndexAfterPreInstructionExits(
-  boundaries: JitOptimizationBoundaryIndex,
+  events: JitOptimizationEventIndex,
   instructionIndex: number
 ): number {
-  const lastPreInstructionExitOpIndex = jitLastPreInstructionExitOpIndex(boundaries, instructionIndex);
+  const lastPreInstructionExitOpIndex = jitLastPreInstructionExitOpIndex(events, instructionIndex);
 
   return lastPreInstructionExitOpIndex === undefined ? 0 : lastPreInstructionExitOpIndex + 1;
 }
 
 export function jitLastPreInstructionExitOpIndex(
-  boundaries: JitOptimizationBoundaryIndex,
+  events: JitOptimizationEventIndex,
   instructionIndex: number
 ): number | undefined {
   let lastPreInstructionExitOpIndex: number | undefined;
 
-  for (const [opIndex, opBoundaries] of boundaries.get(instructionIndex)?.entries() ?? []) {
-    if (opBoundaries.some((entry) => entry.kind === "preInstructionExit")) {
+  for (const [opIndex, opEvents] of events.get(instructionIndex)?.entries() ?? []) {
+    if (opEvents.some((entry) => entry.kind === "preInstructionExit")) {
       lastPreInstructionExitOpIndex = Math.max(lastPreInstructionExitOpIndex ?? opIndex, opIndex);
     }
   }
@@ -182,56 +182,56 @@ export function jitLastPreInstructionExitOpIndex(
   return lastPreInstructionExitOpIndex;
 }
 
-function addConditionValueBoundaries(
+function addConditionValueEvents(
   valuesByLocation: JitOpIndex<readonly ValueRef[]>,
-  boundaries: Map<number, Map<number, readonly JitOptimizationBoundary[]>>,
+  events: Map<number, Map<number, readonly JitOptimizationEvent[]>>,
   kind: "localCondition" | "exitCondition"
 ): void {
   for (const [instructionIndex, valuesByOp] of valuesByLocation) {
     for (const [opIndex, values] of valuesByOp) {
-      addBoundary(boundaries, instructionIndex, opIndex, { kind, values });
+      addEvent(events, instructionIndex, opIndex, { kind, values });
     }
   }
 }
 
-function addConditionReadBoundaries(
+function addConditionReadEvents(
   conditionUses: JitOpIndex<JitConditionUse>,
-  boundaries: Map<number, Map<number, readonly JitOptimizationBoundary[]>>
+  events: Map<number, Map<number, readonly JitOptimizationEvent[]>>
 ): void {
   for (const [instructionIndex, usesByOp] of conditionUses) {
     for (const [opIndex, conditionUse] of usesByOp) {
-      addBoundary(boundaries, instructionIndex, opIndex, { kind: "conditionRead", conditionUse });
+      addEvent(events, instructionIndex, opIndex, { kind: "conditionRead", conditionUse });
     }
   }
 }
 
-function addIndexedBoundaries<T>(
+function addIndexedEvents<T>(
   index: JitOpIndex<T>,
-  boundaries: Map<number, Map<number, readonly JitOptimizationBoundary[]>>,
-  createBoundary: (value: T) => JitOptimizationBoundary
+  events: Map<number, Map<number, readonly JitOptimizationEvent[]>>,
+  createEvent: (value: T) => JitOptimizationEvent
 ): void {
   for (const [instructionIndex, valuesByOp] of index) {
     for (const [opIndex, value] of valuesByOp) {
-      addBoundary(boundaries, instructionIndex, opIndex, createBoundary(value));
+      addEvent(events, instructionIndex, opIndex, createEvent(value));
     }
   }
 }
 
-function addBoundary(
-  boundaries: Map<number, Map<number, readonly JitOptimizationBoundary[]>>,
+function addEvent(
+  events: Map<number, Map<number, readonly JitOptimizationEvent[]>>,
   instructionIndex: number,
   opIndex: number,
-  boundary: JitOptimizationBoundary
+  event: JitOptimizationEvent
 ): void {
-  let instructionBoundaries = boundaries.get(instructionIndex);
+  let instructionEvents = events.get(instructionIndex);
 
-  if (instructionBoundaries === undefined) {
-    instructionBoundaries = new Map();
-    boundaries.set(instructionIndex, instructionBoundaries);
+  if (instructionEvents === undefined) {
+    instructionEvents = new Map();
+    events.set(instructionIndex, instructionEvents);
   }
 
-  instructionBoundaries.set(opIndex, [
-    ...(instructionBoundaries.get(opIndex) ?? []),
-    boundary
+  instructionEvents.set(opIndex, [
+    ...(instructionEvents.get(opIndex) ?? []),
+    event
   ]);
 }

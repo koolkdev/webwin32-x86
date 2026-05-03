@@ -14,7 +14,7 @@ import {
 import {
   jitInstructionHasPreInstructionExit,
   jitOpHasPostInstructionExit
-} from "./boundaries.js";
+} from "./events.js";
 import {
   materializeAllVirtualRegs
 } from "./virtual-boundaries.js";
@@ -63,7 +63,7 @@ export function foldJitVirtualRegisters(
 
     const prelude = createJitPreludeRewrite();
 
-    if (jitInstructionHasPreInstructionExit(analysis.boundaries, instructionIndex)) {
+    if (jitInstructionHasPreInstructionExit(analysis.events, instructionIndex)) {
       materializedSetCount += materializeAllVirtualRegs(prelude, virtualRegs);
       virtualRegReadCounts.clear();
     }
@@ -151,7 +151,7 @@ function rewriteOp(
     case "set32.if":
       return rewriteVirtualRegisterSet32If(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "next": {
-      const shouldMaterialize = jitOpHasPostInstructionExit(analysis.boundaries, instructionIndex, opIndex);
+      const shouldMaterialize = jitOpHasPostInstructionExit(analysis.events, instructionIndex, opIndex);
       const materializedSetCount = shouldMaterialize
         ? materializeAllVirtualRegs(rewrite, virtualRegs)
         : 0;
@@ -166,7 +166,7 @@ function rewriteOp(
     case "jump":
     case "conditionalJump":
     case "hostTrap": {
-      const materializedSetCount = !jitOpHasPostInstructionExit(analysis.boundaries, instructionIndex, opIndex)
+      const materializedSetCount = !jitOpHasPostInstructionExit(analysis.events, instructionIndex, opIndex)
         ? 0
         : materializeAllVirtualRegs(rewrite, virtualRegs);
 
