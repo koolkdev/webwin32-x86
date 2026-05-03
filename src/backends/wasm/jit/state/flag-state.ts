@@ -25,12 +25,16 @@ type PendingFlags = Readonly<{
   producer: IrFlagSetOp["producer"];
   writtenMask: IrFlagSetOp["writtenMask"];
   undefMask: IrFlagSetOp["undefMask"];
-  inputs: ReadonlyMap<string, number>;
+  inputs: ReadonlyMap<string, PendingInput>;
 }>;
+
+type PendingInput =
+  | Readonly<{ kind: "local"; local: number }>
+  | Readonly<{ kind: "value"; value: ValueRef }>;
 
 type PendingInputRefs = Readonly<{
   inputRefs: Readonly<Record<string, ValueRef>>;
-  localsByVarId: ReadonlyMap<number, number>;
+  inputsByVarId: ReadonlyMap<number, PendingInput>;
 }>;
 
 // Each compact aluFlags bit can come from a different place after partial writes:
@@ -69,7 +73,7 @@ export function createJitFlagState(
 
   return {
     emitSet: (descriptor, helpers) => {
-      const pendingInputs = new Map<string, number>();
+      const pendingInputs = new Map<string, PendingInput>();
 
       for (const inputName of FLAG_PRODUCERS[descriptor.producer].inputs) {
         const input = descriptor.inputs[inputName];
@@ -78,13 +82,17 @@ export function createJitFlagState(
           throw new Error(`missing flag input '${inputName}' for ${descriptor.producer}`);
         }
 
+        if (canKeepPendingInputDirect(input)) {
+          pendingInputs.set(inputName, { kind: "value", value: input });
+          continue;
+        }
+
         // A pending producer may outlive later flag producers. Allocate fresh
         // captured inputs so ADD.CF can survive a later INC, for example.
         const local = localForInput();
-
         helpers.emitValue(input);
         body.localSet(local);
-        pendingInputs.set(inputName, local);
+        pendingInputs.set(inputName, { kind: "local", local });
       }
 
       const pendingFlags = {
@@ -202,7 +210,7 @@ export function createJitFlagState(
         inputs: inputs.inputRefs
       },
       {
-        emitValue: (value) => emitPendingInputValue(inputs.localsByVarId, value, "pending flag input")
+        emitValue: (value) => emitPendingInputValue(inputs.inputsByVarId, value, "pending flag input")
       },
       { mask }
     );
@@ -225,39 +233,52 @@ export function createJitFlagState(
         inputs: inputs.inputRefs
       },
       {
-        emitValue: (value) => emitPendingInputValue(inputs.localsByVarId, value, "pending flag condition input")
+        emitValue: (value) => emitPendingInputValue(inputs.inputsByVarId, value, "pending flag condition input")
       }
     );
   }
 
   function pendingInputRefs(pendingFlags: PendingFlags, inputNames: readonly string[]): PendingInputRefs {
     const inputRefs: Record<string, ValueRef> = {};
-    const localsByVarId = new Map<number, number>();
+    const inputsByVarId = new Map<number, PendingInput>();
 
     for (let index = 0; index < inputNames.length; index += 1) {
       const inputName = inputNames[index]!;
-      const local = pendingFlags.inputs.get(inputName);
+      const input = pendingFlags.inputs.get(inputName);
 
-      if (local === undefined) {
+      if (input === undefined) {
         throw new Error(`missing pending flag input '${inputName}' for ${pendingFlags.producer}`);
       }
 
-      inputRefs[inputName] = { kind: "var", id: index };
-      localsByVarId.set(index, local);
+      if (input.kind === "value") {
+        inputRefs[inputName] = input.value;
+      } else {
+        inputRefs[inputName] = { kind: "var", id: index };
+        inputsByVarId.set(index, input);
+      }
     }
 
-    return { inputRefs, localsByVarId };
+    return { inputRefs, inputsByVarId };
   }
 
   function emitPendingInputValue(
-    localsByVarId: ReadonlyMap<number, number>,
+    inputsByVarId: ReadonlyMap<number, PendingInput>,
     value: IrValueExpr,
     context: string
   ): void {
     switch (value.kind) {
-      case "var":
-        body.localGet(requiredLocal(localsByVarId, value.id));
-        return;
+      case "var": {
+        const input = requiredPendingInput(inputsByVarId, value.id);
+
+        switch (input.kind) {
+          case "local":
+            body.localGet(input.local);
+            return;
+          case "value":
+            emitDirectPendingInput(input.value, context);
+            return;
+        }
+      }
       case "const32":
         body.i32Const(i32(value.value));
         return;
@@ -265,6 +286,18 @@ export function createJitFlagState(
         throw new Error(`nextEip is not a valid ${context}`);
       default:
         throw new Error(`unsupported ${context}: ${value.kind}`);
+    }
+  }
+
+  function emitDirectPendingInput(value: ValueRef, context: string): void {
+    switch (value.kind) {
+      case "const32":
+        body.i32Const(i32(value.value));
+        return;
+      case "nextEip":
+        throw new Error(`nextEip is not a valid ${context}`);
+      default:
+        throw new Error(`unsupported direct ${context}: ${value.kind}`);
     }
   }
 
@@ -347,14 +380,18 @@ export function createJitFlagState(
   }
 }
 
-function requiredLocal(localsByVarId: ReadonlyMap<number, number>, id: number): number {
-  const local = localsByVarId.get(id);
+function canKeepPendingInputDirect(input: ValueRef): boolean {
+  return input.kind === "const32";
+}
 
-  if (local === undefined) {
-    throw new Error(`missing pending flag local: ${id}`);
+function requiredPendingInput(inputsByVarId: ReadonlyMap<number, PendingInput>, id: number): PendingInput {
+  const input = inputsByVarId.get(id);
+
+  if (input === undefined) {
+    throw new Error(`missing pending flag input: ${id}`);
   }
 
-  return local;
+  return input;
 }
 
 const aluFlagMasks = Object.values(IR_ALU_FLAG_MASKS);
