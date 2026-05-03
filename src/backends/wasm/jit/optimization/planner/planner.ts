@@ -64,7 +64,7 @@ import { JitOptimizationState } from "#backends/wasm/jit/optimization/tracked/op
 import { jitTrackedRegisterLocation } from "#backends/wasm/jit/optimization/tracked/state.js";
 import { jitStorageReg } from "#backends/wasm/jit/optimization/ir/values.js";
 
-export type JitDraftCombinedTracking = Readonly<{
+export type JitTrackedOptimizationStats = Readonly<{
   instructionsWalked: number;
   opsWalked: number;
   flagSourceCount: number;
@@ -76,29 +76,29 @@ export type JitDraftCombinedTracking = Readonly<{
   registerMaterializedSetCount: number;
 }>;
 
-export type JitDraftCombinedOptimizationResult = JitIrOptimizationPipelineResult & Readonly<{
-  combinedTracking: JitDraftCombinedTracking;
+export type JitTrackedOptimizationResult = JitIrOptimizationPipelineResult & Readonly<{
+  tracking: JitTrackedOptimizationStats;
 }>;
 
-export function runDraftCombinedJitOptimization(
+export function runTrackedJitOptimization(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
-): JitDraftCombinedOptimizationResult {
-  const combinedTracking = trackDraftCombinedOptimization(block, analysis);
-  const pipeline = runMergedJitIrOptimizationPipeline(block);
+): JitTrackedOptimizationResult {
+  const tracking = trackJitOptimization(block, analysis);
+  const pipeline = runTrackedJitIrOptimizationPipeline(block);
 
   return {
     ...pipeline,
-    combinedTracking
+    tracking
   };
 }
 
-export function runMergedJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizationPipelineResult {
+export function runTrackedJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizationPipelineResult {
   const initialAnalysis = analyzeJitOptimization(block);
-  const flagMaterialization = materializeFlagsForMergedPipeline(block, initialAnalysis);
+  const flagMaterialization = materializeFlagsForTrackedPipeline(block, initialAnalysis);
   const deadLocalValues = pruneDeadJitLocalValues(flagMaterialization.block);
   const registerAnalysis = analyzeJitOptimization(deadLocalValues.block);
-  const registerFolding = foldRegistersForMergedPipeline(
+  const registerFolding = foldRegistersForTrackedPipeline(
     deadLocalValues.block,
     registerAnalysis
   );
@@ -113,14 +113,14 @@ export function runMergedJitIrOptimizationPipeline(block: JitIrBlock): JitIrOpti
   };
 }
 
-function materializeFlagsForMergedPipeline(
+function materializeFlagsForTrackedPipeline(
   block: JitIrBlock,
   optimizationAnalysis: JitOptimizationAnalysis
 ): Readonly<{ block: JitIrBlock; flags: JitFlagMaterialization }> {
   const flagAnalysis = analyzeJitFlags(block, optimizationAnalysis);
   const directConditionsByLocation = indexDirectFlagConditions(block, flagAnalysis);
-  const neededSourceIds = neededMergedFlagSourceIds(flagAnalysis, directConditionsByLocation);
-  const sourcesByLocation = indexMergedFlagSourcesByLocation(flagAnalysis);
+  const neededSourceIds = neededTrackedFlagSourceIds(flagAnalysis, directConditionsByLocation);
+  const sourcesByLocation = indexTrackedFlagSourcesByLocation(flagAnalysis);
   const instructions = new Array<JitIrBlockInstruction>(block.instructions.length);
   let removedSetCount = 0;
   let retainedSetCount = 0;
@@ -130,13 +130,13 @@ function materializeFlagsForMergedPipeline(
     const instruction = block.instructions[instructionIndex];
 
     if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while merged-materializing flags: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction while tracking flag materialization: ${instructionIndex}`);
     }
 
     instructions[instructionIndex] = rewriteJitIrInstruction(
       instruction,
       instructionIndex,
-      "merged-materializing flags",
+      "tracking flag materialization",
       ({ op, opIndex, rewrite }) => {
         const source = sourcesByLocation.get(instructionIndex)?.get(opIndex);
         const directCondition = directConditionsByLocation.get(instructionIndex)?.get(opIndex);
@@ -168,7 +168,7 @@ function materializeFlagsForMergedPipeline(
   };
 }
 
-function foldRegistersForMergedPipeline(
+function foldRegistersForTrackedPipeline(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis
 ): Readonly<{ block: JitOptimizedIrBlock; folding: JitRegisterFolding }> {
@@ -181,7 +181,7 @@ function foldRegistersForMergedPipeline(
     const instruction = block.instructions[instructionIndex];
 
     if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while merged-folding register values: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction while tracking register folding: ${instructionIndex}`);
     }
 
     const prelude = createJitPreludeRewrite();
@@ -198,7 +198,7 @@ function foldRegistersForMergedPipeline(
     rewriteJitIrInstructionInto(
       instruction,
       instructionIndex,
-      "merged-folding register values",
+      "tracking register folding",
       rewrite,
       ({ op, opIndex }) => {
         if (opIndex < firstFoldableOpIndex) {
@@ -207,7 +207,7 @@ function foldRegistersForMergedPipeline(
           return;
         }
 
-        const result = rewriteMergedRegisterOp(
+        const result = rewriteTrackedRegisterOp(
           op,
           instruction,
           instructionIndex,
@@ -232,7 +232,7 @@ function foldRegistersForMergedPipeline(
   }
 
   if (state.tracked.registers.size !== 0) {
-    throw new Error("JIT register values were not materialized before merged block end");
+    throw new Error("JIT register values were not materialized before tracked block end");
   }
 
   return {
@@ -241,7 +241,7 @@ function foldRegistersForMergedPipeline(
   };
 }
 
-function rewriteMergedRegisterOp(
+function rewriteTrackedRegisterOp(
   op: JitIrOp,
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
@@ -290,7 +290,7 @@ function rewriteMergedRegisterOp(
   }
 }
 
-function neededMergedFlagSourceIds(
+function neededTrackedFlagSourceIds(
   analysis: JitFlagAnalysis,
   directConditionsByLocation: JitDirectFlagConditionIndex
 ): ReadonlySet<number> {
@@ -311,7 +311,7 @@ function neededMergedFlagSourceIds(
   return neededSourceIds;
 }
 
-function indexMergedFlagSourcesByLocation(
+function indexTrackedFlagSourcesByLocation(
   analysis: JitFlagAnalysis
 ): ReadonlyMap<number, ReadonlyMap<number, JitFlagSource>> {
   const sourcesByLocation = new Map<number, Map<number, JitFlagSource>>();
@@ -330,10 +330,10 @@ function indexMergedFlagSourcesByLocation(
   return sourcesByLocation;
 }
 
-function trackDraftCombinedOptimization(
+function trackJitOptimization(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis
-): JitDraftCombinedTracking {
+): JitTrackedOptimizationStats {
   const state = new JitOptimizationState(analysis.context);
   let instructionsWalked = 0;
   let opsWalked = 0;
@@ -350,7 +350,7 @@ function trackDraftCombinedOptimization(
     const instruction = block.instructions[instructionIndex];
 
     if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while draft-combining optimization: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction while tracking optimization: ${instructionIndex}`);
     }
 
     instructionsWalked += 1;
@@ -367,7 +367,7 @@ function trackDraftCombinedOptimization(
       const op = instruction.ir[opIndex];
 
       if (op === undefined) {
-        throw new Error(`missing JIT IR op while draft-combining optimization: ${instructionIndex}:${opIndex}`);
+        throw new Error(`missing JIT IR op while tracking optimization: ${instructionIndex}:${opIndex}`);
       }
 
       opsWalked += 1;

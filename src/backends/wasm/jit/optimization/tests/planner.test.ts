@@ -6,7 +6,7 @@ import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import { analyzeJitOptimization } from "#backends/wasm/jit/optimization/tracked/analysis.js";
-import { runDraftCombinedJitOptimization } from "#backends/wasm/jit/optimization/planner/planner.js";
+import { runTrackedJitOptimization } from "#backends/wasm/jit/optimization/planner/planner.js";
 import { pruneDeadJitLocalValues } from "#backends/wasm/jit/optimization/passes/dead-local-values.js";
 import { materializeJitFlags } from "#backends/wasm/jit/optimization/flags/materialization.js";
 import type { JitIrOptimizationPipelineResult } from "#backends/wasm/jit/optimization/pipeline.js";
@@ -18,24 +18,24 @@ import {
   v
 } from "./helpers.js";
 
-test("draft combined optimizer matches the production pipeline for direct flag and register folding", () => {
+test("tracked optimizer matches the production pipeline for direct flag and register folding", () => {
   const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
   const cmove = ok(decodeBytes([0x0f, 0x44, 0xca], cmp.nextEip));
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], cmove.nextEip));
   const xorEax = ok(decodeBytes([0x83, 0xf0, 0x02], movEaxEcx.nextEip));
   const trap = ok(decodeBytes([0xcd, 0x2e], xorEax.nextEip));
   const block = buildJitIrBlock([cmp, cmove, movEaxEcx, xorEax, trap]);
-  const draft = runDraftCombinedJitOptimization(block);
+  const tracked = runTrackedJitOptimization(block);
   const separate = runSeparateOptimizationPasses(block);
 
-  deepStrictEqual(draft.block, separate.block);
-  deepStrictEqual(draft.passes, separate.passes);
-  strictEqual(draft.combinedTracking.instructionsWalked, block.instructions.length);
-  strictEqual(draft.combinedTracking.flagSourceCount > 0, true);
-  strictEqual(draft.combinedTracking.registerProducerCount > 0, true);
+  deepStrictEqual(tracked.block, separate.block);
+  deepStrictEqual(tracked.passes, separate.passes);
+  strictEqual(tracked.tracking.instructionsWalked, block.instructions.length);
+  strictEqual(tracked.tracking.flagSourceCount > 0, true);
+  strictEqual(tracked.tracking.registerProducerCount > 0, true);
 });
 
-test("draft combined optimizer matches the production pipeline for flag/register clobbers", () => {
+test("tracked optimizer matches the production pipeline for flag/register clobbers", () => {
   const block = {
     instructions: [
       syntheticInstruction([
@@ -57,13 +57,13 @@ test("draft combined optimizer matches the production pipeline for flag/register
       ], 2)
     ]
   };
-  const draft = runDraftCombinedJitOptimization(block);
+  const tracked = runTrackedJitOptimization(block);
   const separate = runSeparateOptimizationPasses(block);
 
-  deepStrictEqual(draft.block, separate.block);
-  deepStrictEqual(draft.passes, separate.passes);
-  strictEqual(draft.combinedTracking.instructionsWalked, block.instructions.length);
-  strictEqual(draft.combinedTracking.sourceClobberCount, 1);
+  deepStrictEqual(tracked.block, separate.block);
+  deepStrictEqual(tracked.passes, separate.passes);
+  strictEqual(tracked.tracking.instructionsWalked, block.instructions.length);
+  strictEqual(tracked.tracking.sourceClobberCount, 1);
 });
 
 function runSeparateOptimizationPasses(block: JitIrBlock): JitIrOptimizationPipelineResult {

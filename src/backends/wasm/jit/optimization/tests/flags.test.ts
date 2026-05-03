@@ -537,7 +537,7 @@ test("materializeJitFlags emits direct logic32 exit conditions and retains snaps
   strictEqual(conditionInstruction.ir.some((op) => op.op === "jit.flagCondition"), true);
 });
 
-test("materializeJitFlags emits add-inc branch conditions from INC while retaining merged exit flags", () => {
+test("materializeJitFlags emits add-inc branch conditions from INC while retaining tracked exit flags", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const inc = ok(decodeBytes([0x40], add.nextEip));
   const je = ok(decodeBytes([0x74, 0x05], inc.nextEip));
