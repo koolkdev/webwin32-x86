@@ -30,9 +30,12 @@ test("tracked optimizer matches the production pipeline for direct flag and regi
 
   deepStrictEqual(tracked.block, separate.block);
   deepStrictEqual(tracked.passes, separate.passes);
+  deepStrictEqual(tracked.plan.stats, tracked.tracking);
   strictEqual(tracked.tracking.instructionsWalked, block.instructions.length);
   strictEqual(tracked.tracking.flagSourceCount > 0, true);
   strictEqual(tracked.tracking.registerProducerCount > 0, true);
+  strictEqual(tracked.plan.records.some((record) => record.kind === "producer"), true);
+  strictEqual(tracked.plan.records.some((record) => record.kind === "read"), true);
 });
 
 test("tracked optimizer matches the production pipeline for flag/register clobbers", () => {
@@ -64,6 +67,7 @@ test("tracked optimizer matches the production pipeline for flag/register clobbe
   deepStrictEqual(tracked.passes, separate.passes);
   strictEqual(tracked.tracking.instructionsWalked, block.instructions.length);
   strictEqual(tracked.tracking.sourceClobberCount, 1);
+  strictEqual(tracked.plan.records.some((record) => record.kind === "clobber"), true);
 });
 
 function runSeparateOptimizationPasses(block: JitIrBlock): JitIrOptimizationPipelineResult {
