@@ -1,15 +1,15 @@
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import {
-  indexJitOptimizationEvents,
-  type JitOptimizationEventIndex
-} from "./events.js";
+  createJitOptimizationContext,
+  type JitOptimizationContext
+} from "./context.js";
 
 export type JitOptimizationAnalysis = Readonly<{
-  events: JitOptimizationEventIndex;
+  context: JitOptimizationContext;
 }>;
 
 export function analyzeJitOptimization(block: JitIrBlock): JitOptimizationAnalysis {
   return {
-    events: indexJitOptimizationEvents(block)
+    context: createJitOptimizationContext(block)
   };
 }

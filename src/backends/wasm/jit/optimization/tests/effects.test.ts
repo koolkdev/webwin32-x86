@@ -4,7 +4,6 @@ import { test } from "node:test";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { analyzeJitOptimization } from "#backends/wasm/jit/optimization/analysis.js";
 import {
-  jitEventsAt,
   jitConditionUseAt,
   jitConditionValuesAt,
   jitFirstOpIndexAfterPreInstructionExits,
@@ -12,7 +11,7 @@ import {
   jitLastPreInstructionExitOpIndex,
   jitPreInstructionExitReasonAt,
   jitPostInstructionExitReasonsAt
-} from "#backends/wasm/jit/optimization/events.js";
+} from "#backends/wasm/jit/optimization/effects.js";
 import {
   jitExitConditionValues,
   jitLocalConditionValues,
@@ -56,35 +55,23 @@ test("analyzeJitOptimization indexes shared op effects", () => {
       ], 1)
     ]
   });
+  const effects = analysis.context.effects;
 
-  deepStrictEqual(jitPostInstructionExitReasonsAt(analysis.events, 0, 2), [
+  deepStrictEqual(jitPostInstructionExitReasonsAt(effects, 0, 2), [
     ExitReason.BRANCH_TAKEN,
     ExitReason.BRANCH_NOT_TAKEN
   ]);
-  deepStrictEqual(jitConditionValuesAt(analysis.events, 0, 1, "localCondition"), [v(0)]);
-  deepStrictEqual(jitConditionValuesAt(analysis.events, 0, 2, "exitCondition"), [v(0)]);
-  strictEqual(jitConditionUseAt(analysis.events, 0, 0), "exitCondition");
-  strictEqual(jitPreInstructionExitReasonAt(analysis.events, 1, 0), ExitReason.MEMORY_READ_FAULT);
-  strictEqual(jitInstructionHasPreInstructionExit(analysis.events, 1), true);
-  strictEqual(jitLastPreInstructionExitOpIndex(analysis.events, 1), 0);
-  strictEqual(jitFirstOpIndexAfterPreInstructionExits(analysis.events, 0), 0);
-  strictEqual(jitFirstOpIndexAfterPreInstructionExits(analysis.events, 1), 1);
-  deepStrictEqual(jitEventsAt(analysis.events, 0, 0), [
-    { kind: "conditionRead", conditionUse: "exitCondition" }
-  ]);
-  deepStrictEqual(jitEventsAt(analysis.events, 0, 1), [
-    { kind: "localCondition", values: [v(0)] }
-  ]);
-  deepStrictEqual(jitEventsAt(analysis.events, 0, 2), [
-    { kind: "postInstructionExit", exitReasons: [ExitReason.BRANCH_TAKEN, ExitReason.BRANCH_NOT_TAKEN] },
-    { kind: "exitCondition", values: [v(0)] }
-  ]);
-  deepStrictEqual(jitEventsAt(analysis.events, 1, 0), [
-    { kind: "preInstructionExit", exitReason: ExitReason.MEMORY_READ_FAULT }
-  ]);
+  deepStrictEqual(jitConditionValuesAt(effects, 0, 1, "localCondition"), [v(0)]);
+  deepStrictEqual(jitConditionValuesAt(effects, 0, 2, "exitCondition"), [v(0)]);
+  strictEqual(jitConditionUseAt(effects, 0, 0), "exitCondition");
+  strictEqual(jitPreInstructionExitReasonAt(effects, 1, 0), ExitReason.MEMORY_READ_FAULT);
+  strictEqual(jitInstructionHasPreInstructionExit(effects, 1), true);
+  strictEqual(jitLastPreInstructionExitOpIndex(effects, 1), 0);
+  strictEqual(jitFirstOpIndexAfterPreInstructionExits(effects, 0), 0);
+  strictEqual(jitFirstOpIndexAfterPreInstructionExits(effects, 1), 1);
 });
 
-test("JIT event helpers find the end of pre-instruction exits", () => {
+test("JIT effect helpers find the end of pre-instruction exits", () => {
   const analysis = analyzeJitOptimization({
     instructions: [
       syntheticInstruction([
@@ -95,7 +82,8 @@ test("JIT event helpers find the end of pre-instruction exits", () => {
       ])
     ]
   });
+  const effects = analysis.context.effects;
 
-  strictEqual(jitLastPreInstructionExitOpIndex(analysis.events, 0), 2);
-  strictEqual(jitFirstOpIndexAfterPreInstructionExits(analysis.events, 0), 3);
+  strictEqual(jitLastPreInstructionExitOpIndex(effects, 0), 2);
+  strictEqual(jitFirstOpIndexAfterPreInstructionExits(effects, 0), 3);
 });

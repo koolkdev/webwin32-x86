@@ -62,7 +62,7 @@ export function foldJitVirtualRegisters(
 
     materializedSetCount += materializeVirtualRegsForPreInstructionExits(
       prelude,
-      analysis.events,
+      analysis.context.effects,
       instructionIndex,
       virtualRegs,
       virtualRegReadCounts
@@ -156,7 +156,7 @@ function rewriteOp(
     case "hostTrap": {
       const materializedSetCount = materializeVirtualRegsForPostInstructionExit(
         rewrite,
-        analysis.events,
+        analysis.context.effects,
         instructionIndex,
         opIndex,
         virtualRegs,

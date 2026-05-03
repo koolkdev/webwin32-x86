@@ -1,6 +1,6 @@
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 import type { JitOptimizationAnalysis } from "./analysis.js";
-import { jitFirstOpIndexAfterPreInstructionExits } from "./events.js";
+import { jitFirstOpIndexAfterPreInstructionExits } from "./effects.js";
 import { recordJitVirtualLocalValue } from "./virtual-local-values.js";
 import type { JitInstructionRewrite } from "./rewrite.js";
 
@@ -8,7 +8,7 @@ export function firstVirtualRegisterFoldableOpIndex(
   instructionIndex: number,
   analysis: JitOptimizationAnalysis
 ): number {
-  return jitFirstOpIndexAfterPreInstructionExits(analysis.events, instructionIndex);
+  return jitFirstOpIndexAfterPreInstructionExits(analysis.context.effects, instructionIndex);
 }
 
 export function recordCopiedVirtualRegisterOp(

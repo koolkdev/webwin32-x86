@@ -1,20 +1,20 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import { materializeJitVirtualReg, type JitInstructionRewrite } from "./rewrite.js";
-import type { JitOptimizationEventIndex } from "./events.js";
+import type { JitEffectIndex } from "./effects.js";
 import {
   jitInstructionHasPreInstructionExit,
   jitOpHasPostInstructionExit
-} from "./events.js";
+} from "./effects.js";
 import { jitVirtualValueReadsReg, type JitVirtualValue } from "./virtual-values.js";
 
 export function materializeVirtualRegsForPreInstructionExits(
   rewrite: JitInstructionRewrite,
-  events: JitOptimizationEventIndex,
+  effects: JitEffectIndex,
   instructionIndex: number,
   virtualRegs: Map<Reg32, JitVirtualValue>,
   virtualRegReadCounts: Map<Reg32, number>
 ): number {
-  if (!jitInstructionHasPreInstructionExit(events, instructionIndex)) {
+  if (!jitInstructionHasPreInstructionExit(effects, instructionIndex)) {
     return 0;
   }
 
@@ -26,13 +26,13 @@ export function materializeVirtualRegsForPreInstructionExits(
 
 export function materializeVirtualRegsForPostInstructionExit(
   rewrite: JitInstructionRewrite,
-  events: JitOptimizationEventIndex,
+  effects: JitEffectIndex,
   instructionIndex: number,
   opIndex: number,
   virtualRegs: Map<Reg32, JitVirtualValue>,
   virtualRegReadCounts: Map<Reg32, number>
 ): number {
-  if (!jitOpHasPostInstructionExit(events, instructionIndex, opIndex)) {
+  if (!jitOpHasPostInstructionExit(effects, instructionIndex, opIndex)) {
     return 0;
   }
 
