@@ -1,5 +1,6 @@
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import { walkJitIrBlockOps } from "./ir-walk.js";
 import {
   analyzeJitConditionUses,
   indexJitExitConditionValues,
@@ -13,11 +14,11 @@ import { jitMemoryFaultReason, jitPostInstructionExitReasons } from "./op-effect
 
 export type JitOpIndex<T> = ReadonlyMap<number, ReadonlyMap<number, T>>;
 
-export type JitPreInstructionMemoryFaultIndex = JitOpIndex<ExitReasonValue>;
+export type JitPreInstructionExitIndex = JitOpIndex<ExitReasonValue>;
 export type JitPostInstructionExitIndex = JitOpIndex<readonly ExitReasonValue[]>;
 
 export type JitOptimizationAnalysis = Readonly<{
-  preInstructionMemoryFaults: JitPreInstructionMemoryFaultIndex;
+  preInstructionExits: JitPreInstructionExitIndex;
   postInstructionExits: JitPostInstructionExitIndex;
   localConditionValues: JitLocalConditionValueIndex;
   exitConditionValues: JitExitConditionValueIndex;
@@ -29,7 +30,7 @@ export function analyzeJitOptimization(block: JitIrBlock): JitOptimizationAnalys
   const exitConditionValues = indexJitExitConditionValues(block);
 
   return {
-    preInstructionMemoryFaults: indexJitPreInstructionMemoryFaults(block),
+    preInstructionExits: indexJitPreInstructionExits(block),
     postInstructionExits: indexJitPostInstructionExits(block),
     localConditionValues,
     exitConditionValues,
@@ -37,12 +38,12 @@ export function analyzeJitOptimization(block: JitIrBlock): JitOptimizationAnalys
   };
 }
 
-export function jitMemoryFaultAt(
+export function jitPreInstructionExitReasonAt(
   analysis: JitOptimizationAnalysis,
   instructionIndex: number,
   opIndex: number
 ): ExitReasonValue | undefined {
-  return indexedOpValue(analysis.preInstructionMemoryFaults, instructionIndex, opIndex);
+  return indexedOpValue(analysis.preInstructionExits, instructionIndex, opIndex);
 }
 
 export function jitPostInstructionExitReasonsAt(
@@ -53,6 +54,14 @@ export function jitPostInstructionExitReasonsAt(
   return indexedOpValue(analysis.postInstructionExits, instructionIndex, opIndex) ?? [];
 }
 
+export function jitOpHasPostInstructionExit(
+  analysis: JitOptimizationAnalysis,
+  instructionIndex: number,
+  opIndex: number
+): boolean {
+  return jitPostInstructionExitReasonsAt(analysis, instructionIndex, opIndex).length !== 0;
+}
+
 export function jitConditionUseAt(
   analysis: JitOptimizationAnalysis,
   instructionIndex: number,
@@ -61,65 +70,37 @@ export function jitConditionUseAt(
   return indexedOpValue(analysis.conditionUses, instructionIndex, opIndex);
 }
 
-export function jitInstructionMayFault(
+export function jitInstructionHasPreInstructionExit(
   analysis: JitOptimizationAnalysis,
   instructionIndex: number
 ): boolean {
-  return (analysis.preInstructionMemoryFaults.get(instructionIndex)?.size ?? 0) !== 0;
+  return (analysis.preInstructionExits.get(instructionIndex)?.size ?? 0) !== 0;
 }
 
-function indexJitPreInstructionMemoryFaults(block: JitIrBlock): JitPreInstructionMemoryFaultIndex {
-  const memoryFaults = new Map<number, Map<number, ExitReasonValue>>();
+function indexJitPreInstructionExits(block: JitIrBlock): JitPreInstructionExitIndex {
+  const preInstructionExits = new Map<number, Map<number, ExitReasonValue>>();
 
-  for (let instructionIndex = 0; instructionIndex < block.instructions.length; instructionIndex += 1) {
-    const instruction = block.instructions[instructionIndex];
+  walkJitIrBlockOps(block, (instruction, op, location) => {
+    const faultReason = jitMemoryFaultReason(op, instruction.operands);
 
-    if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while indexing memory faults: ${instructionIndex}`);
+    if (faultReason !== undefined) {
+      setIndexedOpValue(preInstructionExits, location.instructionIndex, location.opIndex, faultReason);
     }
+  }, "indexing pre-instruction exits");
 
-    for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
-      const op = instruction.ir[opIndex];
-
-      if (op === undefined) {
-        throw new Error(`missing JIT IR op while indexing memory faults: ${instructionIndex}:${opIndex}`);
-      }
-
-      const faultReason = jitMemoryFaultReason(op, instruction.operands);
-
-      if (faultReason !== undefined) {
-        setIndexedOpValue(memoryFaults, instructionIndex, opIndex, faultReason);
-      }
-    }
-  }
-
-  return memoryFaults;
+  return preInstructionExits;
 }
 
 function indexJitPostInstructionExits(block: JitIrBlock): JitPostInstructionExitIndex {
   const postInstructionExits = new Map<number, Map<number, readonly ExitReasonValue[]>>();
 
-  for (let instructionIndex = 0; instructionIndex < block.instructions.length; instructionIndex += 1) {
-    const instruction = block.instructions[instructionIndex];
+  walkJitIrBlockOps(block, (instruction, op, location) => {
+    const exitReasons = jitPostInstructionExitReasons(op, instruction);
 
-    if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while indexing post-instruction exits: ${instructionIndex}`);
+    if (exitReasons.length !== 0) {
+      setIndexedOpValue(postInstructionExits, location.instructionIndex, location.opIndex, exitReasons);
     }
-
-    for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
-      const op = instruction.ir[opIndex];
-
-      if (op === undefined) {
-        throw new Error(`missing JIT IR op while indexing post-instruction exits: ${instructionIndex}:${opIndex}`);
-      }
-
-      const exitReasons = jitPostInstructionExitReasons(op, instruction);
-
-      if (exitReasons.length !== 0) {
-        setIndexedOpValue(postInstructionExits, instructionIndex, opIndex, exitReasons);
-      }
-    }
-  }
+  }, "indexing post-instruction exits");
 
   return postInstructionExits;
 }

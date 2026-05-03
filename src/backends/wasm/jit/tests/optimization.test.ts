@@ -11,8 +11,8 @@ import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import {
   analyzeJitOptimization,
   jitConditionUseAt,
-  jitInstructionMayFault,
-  jitMemoryFaultAt,
+  jitInstructionHasPreInstructionExit,
+  jitPreInstructionExitReasonAt,
   jitPostInstructionExitReasonsAt
 } from "#backends/wasm/jit/optimization/analysis.js";
 import {
@@ -186,8 +186,8 @@ test("analyzeJitOptimization indexes shared op effects", () => {
   deepStrictEqual(analysis.localConditionValues.get(0)?.get(1), [v(0)]);
   deepStrictEqual(analysis.exitConditionValues.get(0)?.get(2), [v(0)]);
   strictEqual(jitConditionUseAt(analysis, 0, 0), "exitCondition");
-  strictEqual(jitMemoryFaultAt(analysis, 1, 0), ExitReason.MEMORY_READ_FAULT);
-  strictEqual(jitInstructionMayFault(analysis, 1), true);
+  strictEqual(jitPreInstructionExitReasonAt(analysis, 1, 0), ExitReason.MEMORY_READ_FAULT);
+  strictEqual(jitInstructionHasPreInstructionExit(analysis, 1), true);
 });
 
 test("virtual range utilities iterate between locations and find register writebacks", () => {

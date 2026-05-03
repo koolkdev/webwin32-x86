@@ -3,8 +3,8 @@ import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import {
   analyzeJitOptimization,
-  jitInstructionMayFault,
-  jitPostInstructionExitReasonsAt,
+  jitInstructionHasPreInstructionExit,
+  jitOpHasPostInstructionExit,
   type JitOptimizationAnalysis
 } from "./analysis.js";
 import {
@@ -61,7 +61,7 @@ export function foldJitVirtualRegisters(
       throw new Error(`missing JIT instruction while folding virtual registers: ${instructionIndex}`);
     }
 
-    if (jitInstructionMayFault(analysis, instructionIndex)) {
+    if (jitInstructionHasPreInstructionExit(analysis, instructionIndex)) {
       materializedSetCount += materializeVirtualRegsIntoPreviousInstruction(instructions, virtualRegs);
       virtualRegs.clear();
       virtualRegReadCounts.clear();
@@ -147,8 +147,8 @@ function rewriteOp(
     case "set32.if":
       return rewriteSet32If(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "next": {
-      const shouldMaterialize = jitPostInstructionExitReasonsAt(analysis, instructionIndex, opIndex).length !== 0 ||
-        nextInstructionMayFault(analysis, instructionIndex, nextInstruction);
+      const shouldMaterialize = jitOpHasPostInstructionExit(analysis, instructionIndex, opIndex) ||
+        nextInstructionHasPreInstructionExit(analysis, instructionIndex, nextInstruction);
       const materializedSetCount = shouldMaterialize
         ? materializeAllVirtualRegs(rewrite, virtualRegs)
         : 0;
@@ -163,7 +163,7 @@ function rewriteOp(
     case "jump":
     case "conditionalJump":
     case "hostTrap": {
-      const materializedSetCount = jitPostInstructionExitReasonsAt(analysis, instructionIndex, opIndex).length === 0
+      const materializedSetCount = !jitOpHasPostInstructionExit(analysis, instructionIndex, opIndex)
         ? 0
         : materializeAllVirtualRegs(rewrite, virtualRegs);
 
@@ -373,10 +373,10 @@ function syncVirtualRegReadCounts(
   }
 }
 
-function nextInstructionMayFault(
+function nextInstructionHasPreInstructionExit(
   analysis: JitOptimizationAnalysis,
   instructionIndex: number,
   nextInstruction: JitIrBlockInstruction | undefined
 ): boolean {
-  return nextInstruction !== undefined && jitInstructionMayFault(analysis, instructionIndex + 1);
+  return nextInstruction !== undefined && jitInstructionHasPreInstructionExit(analysis, instructionIndex + 1);
 }

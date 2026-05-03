@@ -16,8 +16,8 @@ import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types
 import {
   analyzeJitOptimization,
   jitConditionUseAt,
-  jitMemoryFaultAt,
-  jitPostInstructionExitReasonsAt,
+  jitOpHasPostInstructionExit,
+  jitPreInstructionExitReasonAt,
   type JitOptimizationAnalysis
 } from "./analysis.js";
 import type { JitConditionUse } from "./condition-uses.js";
@@ -131,7 +131,7 @@ export function analyzeJitVirtualFlags(
     localValues: Map<number, JitVirtualValue>,
     instructionEntryOwners: ReadonlyMap<number, JitVirtualFlagOwner>
   ): void {
-    if (jitMemoryFaultAt(analysis, instructionIndex, opIndex) !== undefined) {
+    if (jitPreInstructionExitReasonAt(analysis, instructionIndex, opIndex) !== undefined) {
       recordRead({
         instructionIndex,
         opIndex,
@@ -140,7 +140,7 @@ export function analyzeJitVirtualFlags(
       }, instructionEntryOwners);
     }
 
-    if (jitPostInstructionExitReasonsAt(analysis, instructionIndex, opIndex).length !== 0) {
+    if (jitOpHasPostInstructionExit(analysis, instructionIndex, opIndex)) {
       recordRead({ instructionIndex, opIndex, reason: "exit", requiredMask: IR_ALU_FLAG_MASK });
     }
 
