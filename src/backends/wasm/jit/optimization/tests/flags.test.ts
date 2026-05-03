@@ -7,10 +7,12 @@ import type { ConditionCode } from "#x86/ir/model/types.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/model/flag-effects.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
+import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
-import { analyzeJitConditionUses } from "#backends/wasm/jit/optimization/effects/condition-uses.js";
-import { analyzeJitFlags } from "#backends/wasm/jit/optimization/flags/analysis.js";
-import { materializeJitFlags } from "#backends/wasm/jit/optimization/flags/materialization.js";
+import { analyzeJitConditionUses } from "#backends/wasm/jit/ir/condition-uses.js";
+import { analyzeJitReachingFlags as analyzeJitFlags } from "#backends/wasm/jit/optimization/analyses/reaching-flags.js";
+import { specializeJitFlagConditions } from "#backends/wasm/jit/optimization/passes/flag-condition-specialization.js";
+import { pruneDeadJitFlagSets } from "#backends/wasm/jit/optimization/passes/flag-dce.js";
 import {
   c32,
   flagOwnerSummary,
@@ -20,10 +22,25 @@ import {
   v
 } from "./helpers.js";
 
-test("materializeJitFlags removes overwritten flag producers across instruction bodies", () => {
+function runFlagPasses(block: JitIrBlock): ReturnType<typeof pruneDeadJitFlagSets> & Readonly<{
+  flags: ReturnType<typeof pruneDeadJitFlagSets>["flagDce"] & Readonly<{ directConditionCount: number }>;
+}> {
+  const specialized = specializeJitFlagConditions(block);
+  const pruned = pruneDeadJitFlagSets(specialized.block);
+
+  return {
+    ...pruned,
+    flags: {
+      ...pruned.flagDce,
+      directConditionCount: specialized.flagConditions.directConditionCount
+    }
+  };
+}
+
+test("runFlagPasses removes overwritten flag producers across instruction bodies", () => {
   const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], cmp.nextEip));
-  const materialized = materializeJitFlags(buildJitIrBlock([cmp, add]));
+  const materialized = runFlagPasses(buildJitIrBlock([cmp, add]));
   const flagSets = materialized.block.instructions.flatMap((instruction) =>
     instruction.ir.filter((op) => op.op === "flags.set")
   );
@@ -33,11 +50,11 @@ test("materializeJitFlags removes overwritten flag producers across instruction 
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32"]);
 });
 
-test("materializeJitFlags keeps partial flag producers needed by later conditions", () => {
+test("runFlagPasses keeps partial flag producers needed by later conditions", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const inc = ok(decodeBytes([0x40], add.nextEip));
   const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
-  const materialized = materializeJitFlags(buildJitIrBlock([add, inc, jc]));
+  const materialized = runFlagPasses(buildJitIrBlock([add, inc, jc]));
   const flagSets = materialized.block.instructions.flatMap((instruction) =>
     instruction.ir.filter((op) => op.op === "flags.set")
   );
@@ -47,10 +64,10 @@ test("materializeJitFlags keeps partial flag producers needed by later condition
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
 });
 
-test("materializeJitFlags keeps flag producers needed by memory fault exits", () => {
+test("runFlagPasses keeps flag producers needed by memory fault exits", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const load = ok(decodeBytes([0x8b, 0x15, 0x00, 0x00, 0x01, 0x00], add.nextEip));
-  const materialized = materializeJitFlags(buildJitIrBlock([add, load]));
+  const materialized = runFlagPasses(buildJitIrBlock([add, load]));
   const flagSets = materialized.block.instructions.flatMap((instruction) =>
     instruction.ir.filter((op) => op.op === "flags.set")
   );
@@ -60,12 +77,12 @@ test("materializeJitFlags keeps flag producers needed by memory fault exits", ()
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32"]);
 });
 
-test("materializeJitFlags keeps flag producers needed by explicit flag reads", () => {
+test("runFlagPasses keeps flag producers needed by explicit flag reads", () => {
   for (const op of [
     { op: "flags.boundary" as const, mask: IR_ALU_FLAG_MASKS.ZF },
     { op: "flags.materialize" as const, mask: IR_ALU_FLAG_MASKS.ZF }
   ]) {
-    const materialized = materializeJitFlags({
+    const materialized = runFlagPasses({
       instructions: [
         syntheticInstruction([
           { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
@@ -86,8 +103,8 @@ test("materializeJitFlags keeps flag producers needed by explicit flag reads", (
   }
 });
 
-test("materializeJitFlags keeps undefined flag producers needed by explicit boundaries", () => {
-  const materialized = materializeJitFlags({
+test("runFlagPasses keeps undefined flag producers needed by explicit boundaries", () => {
+  const materialized = runFlagPasses({
     instructions: [
       syntheticInstruction([
         { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
@@ -233,11 +250,10 @@ test("analyzeJitFlags records pre-instruction exit reads from instruction entry 
   ]);
 });
 
-test("analyzeJitFlags records producer inputs and source clobbers", () => {
+test("analyzeJitFlags records producer inputs", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const analysis = analyzeJitFlags(buildJitIrBlock([add]));
   const source = analysis.sources[0]!;
-  const clobber = analysis.sourceClobbers[0]!;
 
   strictEqual(source.producer, "add32");
   strictEqual(source.writtenMask, IR_ALU_FLAG_MASK);
@@ -255,15 +271,10 @@ test("analyzeJitFlags records producer inputs and source clobbers", () => {
     }
   });
   deepStrictEqual(source.readRegs, ["eax"]);
-  strictEqual(clobber.instructionIndex, 0);
-  strictEqual(clobber.reg, "eax");
-  deepStrictEqual(flagOwnerSummary(clobber.owners), [
-    { mask: IR_ALU_FLAG_MASK, kind: "producer", sourceId: 0, producer: "add32" }
-  ]);
 });
 
-test("materializeJitFlags emits direct non-exit condition reads", () => {
-  const materialized = materializeJitFlags({
+test("runFlagPasses emits direct non-exit condition reads", () => {
+  const materialized = runFlagPasses({
     instructions: [
       syntheticInstruction([
         { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
@@ -286,8 +297,8 @@ test("materializeJitFlags emits direct non-exit condition reads", () => {
   strictEqual(ir.some((op) => op.op === "jit.flagCondition"), true);
 });
 
-test("materializeJitFlags keeps clobbered producer inputs captured", () => {
-  const materialized = materializeJitFlags({
+test("runFlagPasses keeps clobbered producer inputs captured", () => {
+  const materialized = runFlagPasses({
     instructions: [
       syntheticInstruction([
         { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
@@ -315,8 +326,8 @@ test("materializeJitFlags keeps clobbered producer inputs captured", () => {
   strictEqual(ir.some((op) => op.op === "jit.flagCondition"), false);
 });
 
-test("materializeJitFlags emits result conditions from writeback registers", () => {
-  const materialized = materializeJitFlags({
+test("runFlagPasses emits result conditions from writeback registers", () => {
+  const materialized = runFlagPasses({
     instructions: [
       syntheticInstruction([
         { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
@@ -361,8 +372,8 @@ test("materializeJitFlags emits result conditions from writeback registers", () 
   strictEqual(condition?.op, "jit.flagCondition");
 });
 
-test("materializeJitFlags emits sub32 equality from writeback registers", () => {
-  const materialized = materializeJitFlags({
+test("runFlagPasses emits sub32 equality from writeback registers", () => {
+  const materialized = runFlagPasses({
     instructions: [
       syntheticInstruction([
         { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
@@ -397,13 +408,13 @@ test("materializeJitFlags emits sub32 equality from writeback registers", () => 
   ]);
 });
 
-test("materializeJitFlags emits direct conditions for real cmovcc instructions", () => {
+test("runFlagPasses emits direct conditions for real cmovcc instructions", () => {
   const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
   const cmove = ok(decodeBytes([0x0f, 0x44, 0xca], cmp.nextEip));
   const xor = ok(decodeBytes([0x31, 0xf6], cmove.nextEip));
   const analysis = analyzeJitFlags(buildJitIrBlock([cmp, cmove, xor]));
   const conditionRead = analysis.reads.find((read) => read.reason === "condition" && read.cc === "E");
-  const materialized = materializeJitFlags(buildJitIrBlock([cmp, cmove, xor]));
+  const materialized = runFlagPasses(buildJitIrBlock([cmp, cmove, xor]));
   const cmovIr = materialized.block.instructions[1]!.ir;
 
   strictEqual(conditionRead?.conditionUse, "localCondition");
@@ -414,12 +425,12 @@ test("materializeJitFlags emits direct conditions for real cmovcc instructions",
   strictEqual(cmovIr.some((op) => op.op === "jit.flagCondition"), true);
 });
 
-test("materializeJitFlags emits cmovcc conditions from inc writeback results", () => {
+test("runFlagPasses emits cmovcc conditions from inc writeback results", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const inc = ok(decodeBytes([0x40], add.nextEip));
   const cmove = ok(decodeBytes([0x0f, 0x44, 0xca], inc.nextEip));
   const xor = ok(decodeBytes([0x31, 0xf6], cmove.nextEip));
-  const materialized = materializeJitFlags(buildJitIrBlock([add, inc, cmove, xor]));
+  const materialized = runFlagPasses(buildJitIrBlock([add, inc, cmove, xor]));
   const cmovIr = materialized.block.instructions[2]!.ir;
   const condition = cmovIr.find((op) => op.op === "jit.flagCondition");
 
@@ -437,8 +448,8 @@ test("materializeJitFlags emits cmovcc conditions from inc writeback results", (
   });
 });
 
-test("materializeJitFlags emits logic32 compound conditions from writeback registers", () => {
-  const materialized = materializeJitFlags({
+test("runFlagPasses emits logic32 compound conditions from writeback registers", () => {
+  const materialized = runFlagPasses({
     instructions: [
       syntheticInstruction([
         { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
@@ -473,7 +484,7 @@ test("materializeJitFlags emits logic32 compound conditions from writeback regis
   ]);
 });
 
-test("materializeJitFlags emits supported logic32 local direct conditions", () => {
+test("runFlagPasses emits supported logic32 local direct conditions", () => {
   const cases: readonly Readonly<{ cc: ConditionCode; resultInput: boolean }>[] = [
     { cc: "O", resultInput: false },
     { cc: "NO", resultInput: false },
@@ -490,7 +501,7 @@ test("materializeJitFlags emits supported logic32 local direct conditions", () =
   ];
 
   for (const { cc, resultInput } of cases) {
-    const materialized = materializeJitFlags(logic32LocalConditionBlock(cc));
+    const materialized = runFlagPasses(logic32LocalConditionBlock(cc));
     const conditionInstruction = materialized.block.instructions[1]!;
     const condition = conditionInstruction.ir.find((op) => op.op === "jit.flagCondition");
     const getCount = conditionInstruction.ir.filter((op) => op.op === "get32").length;
@@ -512,8 +523,8 @@ test("materializeJitFlags emits supported logic32 local direct conditions", () =
   }
 });
 
-test("materializeJitFlags emits direct logic32 exit conditions and retains snapshot flags", () => {
-  const materialized = materializeJitFlags({
+test("runFlagPasses emits direct logic32 exit conditions and retains snapshot flags", () => {
+  const materialized = runFlagPasses({
     instructions: [
       syntheticInstruction([
         { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
@@ -537,11 +548,11 @@ test("materializeJitFlags emits direct logic32 exit conditions and retains snaps
   strictEqual(conditionInstruction.ir.some((op) => op.op === "jit.flagCondition"), true);
 });
 
-test("materializeJitFlags emits add-inc branch conditions from INC while retaining tracked exit flags", () => {
+test("runFlagPasses emits add-inc branch conditions from INC while retaining tracked exit flags", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const inc = ok(decodeBytes([0x40], add.nextEip));
   const je = ok(decodeBytes([0x74, 0x05], inc.nextEip));
-  const materialized = materializeJitFlags(buildJitIrBlock([add, inc, je]));
+  const materialized = runFlagPasses(buildJitIrBlock([add, inc, je]));
   const branchIr = materialized.block.instructions[2]!.ir;
   const condition = branchIr.find((op) => op.op === "jit.flagCondition");
   const flagSets = materialized.block.instructions.flatMap((instruction) =>

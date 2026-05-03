@@ -10,7 +10,7 @@ import { wasmOpcode, wasmSectionId } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
 import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir-semantics.js";
-import { buildJitLoweringBlock } from "#backends/wasm/jit/lowering/lowering-block.js";
+import { buildJitLoweringBlock } from "#backends/wasm/jit/lowering-prep/lowering-block.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
 import type { JitIrOp } from "#backends/wasm/jit/types.js";
 import { runJitIrBlock } from "./helpers.js";
@@ -45,8 +45,8 @@ test("buildJitIrBlock builds instruction-local IR bodies", () => {
 });
 
 test("JIT lowering preparation keeps instruction-local operand namespaces", () => {
-  const first = ok(decodeBytes([0x01, 0xd8], startAddress));
-  const second = ok(decodeBytes([0x01, 0xd1], first.nextEip));
+  const first = ok(decodeBytes([0x89, 0x18], startAddress));
+  const second = ok(decodeBytes([0x89, 0x11], first.nextEip));
   const loweringBlock = buildJitLoweringBlock(
     optimizeJitIrBlock(buildJitIrBlock([first, second]))
   );

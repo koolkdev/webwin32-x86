@@ -4,11 +4,11 @@ import { test } from "node:test";
 import {
   jitIrLocation,
   walkJitIrOpsBetween
-} from "#backends/wasm/jit/optimization/ir/walk.js";
+} from "#backends/wasm/jit/ir/walk.js";
 import {
   findJitRegWritebackBetween,
   jitRegClobberedBetween
-} from "#backends/wasm/jit/optimization/ir/ranges.js";
+} from "#backends/wasm/jit/ir/ranges.js";
 import { syntheticInstruction, v } from "./helpers.js";
 
 test("IR range utilities iterate between locations and find register writebacks", () => {

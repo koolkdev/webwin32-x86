@@ -1,7 +1,8 @@
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import { lowerIrToWasm } from "#backends/wasm/lowering/lower.js";
+import { lowerIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
+import type { IrSet32ExprOp, IrStorageExpr, IrValueExpr } from "#backends/wasm/lowering/expressions.js";
 import { emitFlagProducerCondition } from "#backends/wasm/lowering/conditions.js";
 import {
   emitJitConditionalJump,
@@ -17,10 +18,10 @@ import {
   emitJitSet32,
   emitJitSet32If
 } from "./operands.js";
-import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/optimization/tracked/types.js";
+import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/lowering-prep/types.js";
 import { lowerableJitIrBlock } from "#backends/wasm/jit/ir-semantics.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
-import type { JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitIrOp, JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
 
 export type JitIrInstructionContext = Pick<JitOptimizedIrBlockInstruction, "prelude" | "ir" | "operands"> & Pick<
   JitInstructionState,
@@ -138,7 +139,7 @@ function lowerJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["
     scratch: jitContext.scratch,
     expression: { canInlineGet32: (source) => canInlineJitGet32(jitContext, source) },
     emitGet32: (source, helpers) => emitJitGet32(jitContext, source, helpers),
-    emitSet32: (target, value, helpers) => emitJitSet32(jitContext, target, value, helpers),
+    emitSet32: (target, value, helpers, op) => emitJitSet32WithRole(jitContext, target, value, helpers, op),
     emitSet32If: (condition, target, value, helpers) =>
       emitJitSet32If(jitContext, condition, target, value, helpers),
     emitAddress32: (source) => emitJitAddress32(jitContext, source),
@@ -155,6 +156,30 @@ function lowerJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["
       emitJitConditionalJump(jitContext, condition, taken, notTaken, helpers),
     emitHostTrap: (vector, helpers) => emitJitHostTrap(jitContext, vector, helpers)
   });
+}
+
+function emitJitSet32WithRole(
+  jitContext: JitIrContext,
+  target: IrStorageExpr,
+  value: IrValueExpr,
+  helpers: WasmIrEmitHelpers,
+  op: IrSet32ExprOp
+): void {
+  emitJitSet32(jitContext, target, value, helpers);
+
+  if (!isRegisterMaterializationSet32(op.inputOp)) {
+    return;
+  }
+
+  if (target.kind !== "reg") {
+    throw new Error(`JIT register materialization cannot target ${target.kind}`);
+  }
+
+  jitContext.state.regs.commitPendingReg(target.reg);
+}
+
+function isRegisterMaterializationSet32(op: Extract<JitIrOp, { op: "set32" }> | undefined): boolean {
+  return op?.jitRole === "registerMaterialization";
 }
 
 function beginInstruction(

@@ -4,10 +4,14 @@ import { test } from "node:test";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import {
+  jitIrPassOptimizationPassOrder,
   jitIrOptimizationPassOrder,
+  runJitIrPassOptimizationPipeline,
   runJitIrOptimizationPipeline
 } from "#backends/wasm/jit/optimization/pipeline.js";
-import { startAddress } from "./helpers.js";
+import type { JitOptimizationPass } from "#backends/wasm/jit/optimization/pass.js";
+import { runJitOptimizationPasses } from "#backends/wasm/jit/optimization/pass.js";
+import { startAddress, syntheticInstruction, v } from "./helpers.js";
 
 test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
@@ -21,10 +25,18 @@ test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
     trap
   ]));
 
-  deepStrictEqual(jitIrOptimizationPassOrder, ["tracked-optimization"]);
-  strictEqual(result.passes.flagMaterialization.removedSetCount, 1);
-  strictEqual(result.passes.deadLocalValues.removedOpCount, 0);
-  strictEqual(result.passes.registerFolding.removedSetCount, 3);
+  deepStrictEqual(jitIrOptimizationPassOrder, [
+    "local-dce",
+    "flag-condition-specialization",
+    "flag-dce",
+    "local-dce",
+    "register-value-propagation",
+    "local-dce"
+  ]);
+  deepStrictEqual(result.passResults.map((pass) => pass.name), jitIrOptimizationPassOrder);
+  strictEqual(result.passResults.some((pass) => pass.changed), true);
+  strictEqual(result.stats["register-value-propagation"]?.removedSetCount, 3);
+  strictEqual(result.block.instructions.every((instruction) => instruction.prelude.length === 0), true);
 });
 
 test("runJitIrOptimizationPipeline prunes dead flag producer inputs before register values", () => {
@@ -47,11 +59,69 @@ test("runJitIrOptimizationPipeline prunes dead flag producer inputs before regis
   const cmpInstruction = result.block.instructions[2]!;
   const cmoveInstruction = result.block.instructions[3]!;
 
-  strictEqual(result.passes.flagMaterialization.directConditionCount, 1);
-  strictEqual(result.passes.deadLocalValues.removedOpCount, 3);
+  strictEqual(result.stats["flag-condition-specialization"]?.directConditionCount, 1);
+  strictEqual(result.passResults.some((pass) =>
+    pass.name === "local-dce" && pass.stats.removedOpCount === 3
+  ), true);
   deepStrictEqual(cmpInstruction.ir.map((op) => op.op), ["next"]);
   strictEqual(cmoveInstruction.ir.some((op) =>
     op.op === "set32" && op.target.kind === "reg" && op.target.reg === "eax"
   ), false);
   strictEqual(cmoveInstruction.ir.some((op) => op.op === "jit.flagCondition"), true);
+});
+
+test("runJitOptimizationPasses runs named IR-to-IR passes and validates pass output", () => {
+  const appendConstPass: JitOptimizationPass = {
+    name: "append-const",
+    run(block) {
+      return {
+        block: {
+          instructions: block.instructions.map((instruction) => ({
+            ...instruction,
+            ir: [
+              { op: "const32", dst: v(0), value: 7 },
+              ...instruction.ir
+            ]
+          }))
+        },
+        changed: true,
+        stats: { insertedOpCount: 1 }
+      };
+    }
+  };
+
+  const result = runJitOptimizationPasses({
+    instructions: [syntheticInstruction([{ op: "next" }])]
+  }, [appendConstPass], { validate: true });
+
+  strictEqual(result.changed, true);
+  deepStrictEqual(result.passes, [{
+    name: "append-const",
+    changed: true,
+    stats: { insertedOpCount: 1 }
+  }]);
+  deepStrictEqual(result.block.instructions[0]?.ir.map((op) => op.op), ["const32", "next"]);
+});
+
+test("runJitIrPassOptimizationPipeline exposes the new pass pipeline without preludes", () => {
+  const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
+  const cmove = ok(decodeBytes([0x0f, 0x44, 0xd1], cmp.nextEip));
+  const trap = ok(decodeBytes([0xcd, 0x2e], cmove.nextEip));
+  const result = runJitIrPassOptimizationPipeline(buildJitIrBlock([cmp, cmove, trap]), { validate: true });
+
+  deepStrictEqual(jitIrPassOptimizationPassOrder, [
+    "local-dce",
+    "flag-condition-specialization",
+    "flag-dce",
+    "local-dce",
+    "register-value-propagation",
+    "local-dce"
+  ]);
+  strictEqual(result.block.instructions.every((instruction) => instruction.prelude.length === 0), true);
+  strictEqual(result.passResults.some((pass) =>
+    pass.name === "flag-condition-specialization" && pass.stats.directConditionCount === 1
+  ), true);
+  strictEqual(result.block.instructions.some((instruction) =>
+    instruction.ir.some((op) => op.op === "jit.flagCondition")
+  ), true);
 });

@@ -2,8 +2,8 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { ExitReason } from "#backends/wasm/exit.js";
-import { analyzeJitOptimization } from "#backends/wasm/jit/optimization/tracked/analysis.js";
 import {
+  indexJitEffects,
   jitConditionUseAt,
   jitConditionValuesAt,
   jitFirstOpIndexAfterPreInstructionExits,
@@ -11,12 +11,12 @@ import {
   jitLastPreInstructionExitOpIndex,
   jitPreInstructionExitReasonAt,
   jitPostInstructionExitReasonsAt
-} from "#backends/wasm/jit/optimization/effects/effects.js";
+} from "#backends/wasm/jit/ir/effects.js";
 import {
   jitExitConditionValues,
   jitLocalConditionValues,
   jitPostInstructionExitReasons
-} from "#backends/wasm/jit/optimization/effects/primitives.js";
+} from "#backends/wasm/jit/ir/effect-primitives.js";
 import { c32, syntheticInstruction, v } from "./helpers.js";
 
 test("JIT op effects identify post-instruction exits and condition values", () => {
@@ -41,8 +41,8 @@ test("JIT op effects identify post-instruction exits and condition values", () =
   deepStrictEqual(jitExitConditionValues(branchOp, branch), [v(0)]);
 });
 
-test("analyzeJitOptimization indexes shared op effects", () => {
-  const analysis = analyzeJitOptimization({
+test("indexJitEffects indexes shared op effects", () => {
+  const effects = indexJitEffects({
     instructions: [
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
@@ -55,7 +55,6 @@ test("analyzeJitOptimization indexes shared op effects", () => {
       ], 1)
     ]
   });
-  const effects = analysis.context.effects;
 
   deepStrictEqual(jitPostInstructionExitReasonsAt(effects, 0, 2), [
     ExitReason.BRANCH_TAKEN,
@@ -72,7 +71,7 @@ test("analyzeJitOptimization indexes shared op effects", () => {
 });
 
 test("JIT effect helpers find the end of pre-instruction exits", () => {
-  const analysis = analyzeJitOptimization({
+  const effects = indexJitEffects({
     instructions: [
       syntheticInstruction([
         { op: "get32", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
@@ -82,7 +81,6 @@ test("JIT effect helpers find the end of pre-instruction exits", () => {
       ])
     ]
   });
-  const effects = analysis.context.effects;
 
   strictEqual(jitLastPreInstructionExitOpIndex(effects, 0), 2);
   strictEqual(jitFirstOpIndexAfterPreInstructionExits(effects, 0), 3);

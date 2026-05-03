@@ -38,9 +38,16 @@ export type IrValueExpr =
   | Readonly<{ kind: "i32.or"; a: IrValueExpr; b: IrValueExpr }>
   | Readonly<{ kind: "i32.and"; a: IrValueExpr; b: IrValueExpr }>;
 
+export type IrSet32ExprOp = Readonly<{
+  op: "set32";
+  target: IrStorageExpr;
+  value: IrValueExpr;
+  inputOp?: Extract<IrExpressionInputOp, { op: "set32" }>;
+}>;
+
 export type IrExprOp =
   | Readonly<{ op: "let32"; dst: VarRef; value: IrValueExpr }>
-  | Readonly<{ op: "set32"; target: IrStorageExpr; value: IrValueExpr }>
+  | IrSet32ExprOp
   | Readonly<{ op: "set32.if"; condition: IrValueExpr; target: IrStorageExpr; value: IrValueExpr }>
   | IrFlagSetOp
   | Readonly<{ op: "flags.materialize"; mask: number }>
@@ -94,7 +101,7 @@ class ExpressionBuilder {
           this.#defineValue(op.dst, { kind: "src32", source: this.#storageExpr(op.source) }, this.options.canInlineGet32?.(op.source) === true);
           break;
         case "set32":
-          this.#ops.push({ op: "set32", target: this.#storageExpr(op.target), value: this.#valueExpr(op.value) });
+          this.#ops.push(this.#set32Expr(op));
           break;
         case "set32.if":
           this.#ops.push({
@@ -177,6 +184,19 @@ class ExpressionBuilder {
     }
 
     this.#ops.push({ op: "let32", dst, value });
+  }
+
+  #set32Expr(op: Extract<IrExpressionInputOp, { op: "set32" }>): IrSet32ExprOp {
+    const expr: IrSet32ExprOp = {
+      op: "set32",
+      target: this.#storageExpr(op.target),
+      value: this.#valueExpr(op.value)
+    };
+
+    Object.defineProperty(expr, "inputOp", {
+      value: op
+    });
+    return expr;
   }
 
   #materializedValue(value: ValueRef): ValueRef {

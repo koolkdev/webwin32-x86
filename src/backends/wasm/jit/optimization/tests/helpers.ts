@@ -4,7 +4,7 @@ import type { Reg32 } from "#x86/isa/types.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import type { ConditionCode, IrBlock, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitExitPoint } from "#backends/wasm/jit/optimization/tracked/types.js";
+import type { JitExitPoint } from "#backends/wasm/jit/lowering-prep/types.js";
 import type { JitFlagOwnerMask } from "#backends/wasm/jit/optimization/flags/owners.js";
 import type {
   JitIrBlock,

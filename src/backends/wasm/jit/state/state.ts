@@ -3,7 +3,7 @@ import { stateOffset } from "#backends/wasm/abi.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { emitLoadStateU32, emitStoreStateU32 } from "#backends/wasm/lowering/state.js";
-import type { JitExitPoint, JitExitState, JitStateSnapshot } from "#backends/wasm/jit/optimization/tracked/types.js";
+import type { JitExitPoint, JitExitState, JitStateSnapshot } from "#backends/wasm/jit/lowering-prep/types.js";
 import { createJitFlagState, type JitFlagState } from "./flag-state.js";
 import {
   createJitReg32State,

@@ -4,6 +4,7 @@ import {
   type IrExpressionInputBlock,
   type IrExprOp,
   type IrExprBlock,
+  type IrSet32ExprOp,
   type IrStorageExpr,
   type IrValueExpr
 } from "#backends/wasm/lowering/expressions.js";
@@ -22,7 +23,7 @@ export type WasmIrLoweringContext = Readonly<{
   scratch: WasmLocalScratchAllocator;
   expression?: IrExpressionOptions;
   emitGet32(source: IrStorageExpr, helpers: WasmIrEmitHelpers): void;
-  emitSet32(target: IrStorageExpr, value: IrValueExpr, helpers: WasmIrEmitHelpers): void;
+  emitSet32(target: IrStorageExpr, value: IrValueExpr, helpers: WasmIrEmitHelpers, op: IrSet32ExprOp): void;
   emitSet32If(condition: IrValueExpr, target: IrStorageExpr, value: IrValueExpr, helpers: WasmIrEmitHelpers): void;
   emitAddress32(source: IrStorageExpr, helpers: WasmIrEmitHelpers): void;
   emitSetFlags(descriptor: IrFlagSetOp, helpers: WasmIrEmitHelpers): void;
@@ -92,7 +93,7 @@ class IrExprWasmLowerer {
         this.#context.body.localSet(this.#wasmLocalForVar(op.dst.id));
         return;
       case "set32":
-        this.#context.emitSet32(op.target, op.value, this.#helpers);
+        this.#context.emitSet32(op.target, op.value, this.#helpers, op);
         return;
       case "set32.if":
         this.#context.emitSet32If(op.condition, op.target, op.value, this.#helpers);

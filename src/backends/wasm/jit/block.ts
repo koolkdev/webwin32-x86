@@ -7,10 +7,10 @@ import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { JitIrBlockBuilder } from "./lowering/block-builder.js";
-import { buildJitLoweringBlock } from "./lowering/lowering-block.js";
+import { buildJitLoweringBlock, prepareJitLowering } from "./lowering-prep/lowering-block.js";
 import { lowerIrWithJitContext, type JitIrInstructionContext } from "./lowering/ir-context.js";
-import { optimizeJitIrBlock } from "./optimization/optimize.js";
-import type { JitBlockOptimization } from "#backends/wasm/jit/optimization/tracked/types.js";
+import { optimizeJitIrBlockOnly } from "./optimization/optimize.js";
+import type { JitBlockOptimization } from "#backends/wasm/jit/lowering-prep/types.js";
 import { jitIrOpDst, visitJitIrOpValueRefs } from "./ir-semantics.js";
 import { assertJitOptimizedIrPreludeOp } from "./prelude.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
@@ -48,7 +48,8 @@ export function buildJitIrBlock(instructions: readonly IsaDecodedInstruction[]):
 }
 
 export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
-  const optimization = optimizeJitIrBlock(block);
+  const optimizedBlock = optimizeJitIrBlockOnly(block);
+  const optimization = prepareJitLowering(optimizedBlock);
   const loweringBlock = buildJitLoweringBlock(optimization);
 
   if (block.instructions.length === 0) {

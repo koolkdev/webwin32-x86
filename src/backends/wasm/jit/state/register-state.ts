@@ -12,6 +12,7 @@ export type JitReg32InstructionOptions = Readonly<{
 export type JitReg32State = WasmIrReg32Storage & Readonly<{
   beginInstruction(options: JitReg32InstructionOptions): void;
   commitPending(): void;
+  commitPendingReg(reg: Reg32): void;
   emitSetIf(reg: Reg32, emitCondition: () => void, emitValue: () => void): void;
   emitCommittedStore(reg: Reg32): void;
 }>;
@@ -55,18 +56,21 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     },
     commitPending: () => {
       for (const [reg, pendingLocal] of pendingLocals) {
-        const committedLocal = committedLocals.get(reg);
-
-        if (committedLocal === undefined) {
-          committedLocals.set(reg, pendingLocal);
-        } else {
-          body.localGet(pendingLocal).localSet(committedLocal);
-        }
-
+        commitPendingReg(reg, pendingLocal);
       }
 
       pendingLocals.clear();
       preserveCommittedRegs = false;
+    },
+    commitPendingReg: (reg) => {
+      const pendingLocal = pendingLocals.get(reg);
+
+      if (pendingLocal === undefined) {
+        return;
+      }
+
+      commitPendingReg(reg, pendingLocal);
+      pendingLocals.delete(reg);
     },
     emitCommittedStore: (reg) => {
       const local = committedLocals.get(reg);
@@ -85,6 +89,17 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     if (pendingLocals.size !== 0) {
       throw new Error("JIT register pending writes were not committed");
     }
+  }
+
+  function commitPendingReg(reg: Reg32, pendingLocal: number): void {
+    const committedLocal = committedLocals.get(reg);
+
+    if (committedLocal === undefined) {
+      committedLocals.set(reg, pendingLocal);
+      return;
+    }
+
+    body.localGet(pendingLocal).localSet(committedLocal);
   }
 }
 

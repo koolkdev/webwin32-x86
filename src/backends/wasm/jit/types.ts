@@ -26,7 +26,11 @@ export type JitFlagConditionOp = Readonly<{
   inputs: Readonly<Record<string, ValueRef>>;
 }>;
 
-export type JitIrOp = IrOp | JitFlagConditionOp;
+export type JitRegisterMaterializationOp = Extract<IrOp, { op: "set32" }> & Readonly<{
+  jitRole?: "registerMaterialization";
+}>;
+
+export type JitIrOp = Exclude<IrOp, Extract<IrOp, { op: "set32" }>> | JitRegisterMaterializationOp | JitFlagConditionOp;
 export type JitIrBody = readonly JitIrOp[];
 
 export type JitIrBlockInstruction = JitIrBlockInstructionMetadata & Readonly<{

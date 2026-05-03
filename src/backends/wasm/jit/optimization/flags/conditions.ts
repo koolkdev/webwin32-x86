@@ -2,31 +2,27 @@ import {
   flagProducerConditionInputNames,
   flagProducerConditionKind
 } from "#x86/ir/model/flag-conditions.js";
-import type { IrOp, ValueRef } from "#x86/ir/model/types.js";
+import type { ConditionCode, IrOp, ValueRef } from "#x86/ir/model/types.js";
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import type {
   JitFlagInput,
   JitFlagSource
 } from "#backends/wasm/jit/optimization/flags/sources.js";
-import {
-  type JitFlagAnalysis,
-  type JitFlagRead,
-  type JitFlagOwnerMask
-} from "#backends/wasm/jit/optimization/flags/analysis.js";
-import { jitValueReadRegs } from "#backends/wasm/jit/optimization/ir/values.js";
+import type { JitFlagOwnerMask } from "#backends/wasm/jit/optimization/flags/owners.js";
+import { jitValueReadRegs } from "#backends/wasm/jit/ir/values.js";
 import {
   emitJitValueRef,
   type JitInstructionRewrite
-} from "#backends/wasm/jit/optimization/ir/rewrite.js";
+} from "#backends/wasm/jit/ir/rewrite.js";
 import {
   jitIrLocation,
   requiredJitIrInstruction,
   type JitIrLocation
-} from "#backends/wasm/jit/optimization/ir/walk.js";
+} from "#backends/wasm/jit/ir/walk.js";
 import {
   findJitRegWritebackBetween,
   jitRegClobberedBetween
-} from "#backends/wasm/jit/optimization/ir/ranges.js";
+} from "#backends/wasm/jit/ir/ranges.js";
 
 type PlannedConditionInput = Readonly<{
   input: JitFlagInput;
@@ -34,9 +30,22 @@ type PlannedConditionInput = Readonly<{
 }>;
 
 export type JitDirectFlagCondition = Readonly<{
-  read: JitFlagRead;
+  read: JitFlagConditionRead;
   source: JitFlagSource;
   inputs: Readonly<Record<string, JitFlagInput>>;
+}>;
+
+export type JitFlagConditionRead = Readonly<{
+  instructionIndex: number;
+  opIndex: number;
+  reason: string;
+  cc?: ConditionCode;
+  conditionUse?: string;
+  owners: readonly JitFlagOwnerMask[];
+}>;
+
+export type JitFlagConditionAnalysis = Readonly<{
+  reads: readonly JitFlagConditionRead[];
 }>;
 
 export type JitDirectFlagConditionIndex = ReadonlyMap<
@@ -46,7 +55,7 @@ export type JitDirectFlagConditionIndex = ReadonlyMap<
 
 export function indexDirectFlagConditions(
   block: JitIrBlock,
-  analysis: JitFlagAnalysis
+  analysis: JitFlagConditionAnalysis
 ): JitDirectFlagConditionIndex {
   const byLocation = new Map<number, Map<number, JitDirectFlagCondition>>();
 
@@ -100,7 +109,7 @@ export function emitDirectFlagCondition(
 
 function directFlagCondition(
   block: JitIrBlock,
-  read: JitFlagRead
+  read: JitFlagConditionRead
 ): JitDirectFlagCondition | undefined {
   if (read.reason !== "condition" || read.cc === undefined || read.conditionUse === undefined) {
     return undefined;
@@ -130,7 +139,7 @@ function directFlagCondition(
 function directConditionInputs(
   block: JitIrBlock,
   source: JitFlagSource,
-  read: JitFlagRead
+  read: JitFlagConditionRead
 ): Readonly<Record<string, JitFlagInput>> | undefined {
   const sourceInputs = plannedSourceInputs(source, read);
 
@@ -179,7 +188,7 @@ function singleConditionSource(owners: readonly JitFlagOwnerMask[]): JitFlagSour
 
 function plannedSourceInputs(
   source: JitFlagSource,
-  read: JitFlagRead
+  read: JitFlagConditionRead
 ): Readonly<Record<string, PlannedConditionInput>> | undefined {
   if (read.cc === undefined) {
     return undefined;
@@ -204,7 +213,7 @@ function plannedSourceInputs(
 function plannedResultWritebackInput(
   block: JitIrBlock,
   source: JitFlagSource,
-  read: JitFlagRead
+  read: JitFlagConditionRead
 ): PlannedConditionInput | undefined {
   const writeback = findResultWritebackReg(block, source, read);
 
@@ -221,7 +230,7 @@ function plannedResultWritebackInput(
 function plannedInputsSafe(
   block: JitIrBlock,
   inputs: Readonly<Record<string, PlannedConditionInput>>,
-  read: JitFlagRead
+  read: JitFlagConditionRead
 ): boolean {
   for (const { input, validAfter } of Object.values(inputs)) {
     if (input.kind !== "value") {
@@ -246,7 +255,7 @@ function plannedInputValues(
   );
 }
 
-function findResultWritebackReg(block: JitIrBlock, source: JitFlagSource, read: JitFlagRead) {
+function findResultWritebackReg(block: JitIrBlock, source: JitFlagSource, read: JitFlagConditionRead) {
   const resultId = sourceResultVarId(block, source);
 
   if (resultId === undefined) {
@@ -280,7 +289,7 @@ function sourceLocation(source: JitFlagSource): JitIrLocation {
 
 function canUseResultInputForCondition(
   source: JitFlagSource,
-  read: JitFlagRead
+  read: JitFlagConditionRead
 ): boolean {
   if (read.cc === undefined || conditionInput(source, "result")?.kind !== "value") {
     return false;
@@ -293,7 +302,7 @@ function canUseResultInputForCondition(
   }) !== undefined;
 }
 
-function readLocation(read: JitFlagRead): JitIrLocation {
+function readLocation(read: JitFlagConditionRead): JitIrLocation {
   return jitIrLocation(read.instructionIndex, read.opIndex);
 }
 

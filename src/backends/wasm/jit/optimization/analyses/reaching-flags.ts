@@ -1,0 +1,208 @@
+import {
+  conditionFlagReadMask,
+  IR_ALU_FLAG_MASK
+} from "#x86/ir/model/flag-effects.js";
+import type { ConditionCode, FlagMask } from "#x86/ir/model/types.js";
+import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import {
+  indexJitEffects,
+  jitConditionUseAt,
+  jitOpHasPostInstructionExit,
+  jitPreInstructionExitReasonAt
+} from "#backends/wasm/jit/ir/effects.js";
+import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
+import {
+  JitFlagOwners,
+  type JitFlagOwner,
+  type JitFlagOwnerMask
+} from "#backends/wasm/jit/optimization/flags/owners.js";
+import { buildJitFlagSource, type JitFlagSource } from "#backends/wasm/jit/optimization/flags/sources.js";
+import type { JitConditionUse } from "#backends/wasm/jit/ir/condition-uses.js";
+
+export type {
+  JitFlagOwner,
+  JitFlagOwnerMask,
+  JitFlagSource
+};
+
+export type JitReachingFlagReadReason =
+  | "condition"
+  | "materialize"
+  | "boundary"
+  | "preInstructionExit"
+  | "exit";
+
+export type JitReachingFlagRead = Readonly<{
+  instructionIndex: number;
+  opIndex: number;
+  reason: JitReachingFlagReadReason;
+  requiredMask: FlagMask;
+  owners: readonly JitFlagOwnerMask[];
+  cc?: ConditionCode;
+  conditionUse?: JitConditionUse;
+  exitReason?: ExitReasonValue;
+}>;
+
+export type JitReachingFlags = Readonly<{
+  sources: readonly JitFlagSource[];
+  reads: readonly JitReachingFlagRead[];
+  finalOwners: readonly JitFlagOwnerMask[];
+}>;
+
+export function analyzeJitReachingFlags(block: JitIrBlock): JitReachingFlags {
+  const effects = indexJitEffects(block);
+  const owners = JitFlagOwners.incoming();
+  const sources: JitFlagSource[] = [];
+  const reads: JitReachingFlagRead[] = [];
+  let nextSourceId = 0;
+
+  for (let instructionIndex = 0; instructionIndex < block.instructions.length; instructionIndex += 1) {
+    const instruction = block.instructions[instructionIndex];
+
+    if (instruction === undefined) {
+      throw new Error(`missing JIT instruction while analyzing reaching flags: ${instructionIndex}`);
+    }
+
+    const values = new JitValueTracker();
+    const instructionEntryOwners = owners.clone();
+
+    for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
+      const op = instruction.ir[opIndex];
+
+      if (op === undefined) {
+        throw new Error(`missing JIT IR op while analyzing reaching flags: ${instructionIndex}:${opIndex}`);
+      }
+
+      analyzeOp(instruction, instructionIndex, op, opIndex, values, instructionEntryOwners);
+    }
+  }
+
+  return {
+    sources,
+    reads,
+    finalOwners: owners.forMask(IR_ALU_FLAG_MASK)
+  };
+
+  function analyzeOp(
+    instruction: JitIrBlockInstruction,
+    instructionIndex: number,
+    op: JitIrOp,
+    opIndex: number,
+    values: JitValueTracker,
+    instructionEntryOwners: JitFlagOwners
+  ): void {
+    const preInstructionExitReason = jitPreInstructionExitReasonAt(effects, instructionIndex, opIndex);
+
+    if (preInstructionExitReason !== undefined) {
+      recordRead({
+        instructionIndex,
+        opIndex,
+        reason: "preInstructionExit",
+        requiredMask: IR_ALU_FLAG_MASK,
+        exitReason: preInstructionExitReason
+      }, instructionEntryOwners);
+    }
+
+    if (values.recordOp(op, instruction)) {
+      return;
+    }
+
+    switch (op.op) {
+      case "flags.set": {
+        const source = buildJitFlagSource(nextSourceId, instructionIndex, opIndex, op, values);
+
+        nextSourceId += 1;
+        sources.push(source);
+        owners.recordSource(source);
+        break;
+      }
+      case "aluFlags.condition": {
+        const conditionUse = jitConditionUseAt(effects, instructionIndex, opIndex);
+
+        if (conditionUse !== undefined) {
+          recordRead({
+            instructionIndex,
+            opIndex,
+            reason: "condition",
+            requiredMask: conditionFlagReadMask(op.cc),
+            cc: op.cc,
+            conditionUse
+          });
+        }
+        break;
+      }
+      case "flags.materialize":
+        recordRead({
+          instructionIndex,
+          opIndex,
+          reason: "materialize",
+          requiredMask: op.mask
+        });
+        owners.recordMaterialized(op.mask);
+        break;
+      case "flags.boundary":
+        recordRead({
+          instructionIndex,
+          opIndex,
+          reason: "boundary",
+          requiredMask: op.mask
+        });
+        owners.recordMaterialized(op.mask);
+        break;
+      default:
+        break;
+    }
+
+    if (jitOpHasPostInstructionExit(effects, instructionIndex, opIndex)) {
+      recordRead({
+        instructionIndex,
+        opIndex,
+        reason: "exit",
+        requiredMask: IR_ALU_FLAG_MASK
+      });
+    }
+  }
+
+  function recordRead(
+    read: Omit<JitReachingFlagRead, "owners">,
+    readOwners: JitFlagOwners = owners
+  ): void {
+    if (read.requiredMask === 0) {
+      return;
+    }
+
+    reads.push({
+      ...read,
+      owners: readOwners.forMask(read.requiredMask)
+    });
+  }
+}
+
+export function reachingFlagReadAt(
+  analysis: JitReachingFlags,
+  instructionIndex: number,
+  opIndex: number
+): JitReachingFlagRead | undefined {
+  return analysis.reads.find((read) =>
+    read.instructionIndex === instructionIndex && read.opIndex === opIndex
+  );
+}
+
+export function singleReachingFlagProducer(read: JitReachingFlagRead): JitFlagSource | undefined {
+  let source: JitFlagSource | undefined;
+
+  for (const { owner } of read.owners) {
+    if (owner.kind !== "producer") {
+      return undefined;
+    }
+
+    if (source === undefined) {
+      source = owner.source;
+    } else if (source !== owner.source) {
+      return undefined;
+    }
+  }
+
+  return source;
+}
