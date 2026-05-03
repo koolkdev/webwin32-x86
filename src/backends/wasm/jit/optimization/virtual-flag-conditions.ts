@@ -2,7 +2,6 @@ import {
   flagProducerConditionInputNames,
   flagProducerConditionKind
 } from "#x86/ir/model/flag-conditions.js";
-import type { Reg32 } from "#x86/isa/types.js";
 import type { IrOp, ValueRef } from "#x86/ir/model/types.js";
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import {
@@ -12,20 +11,22 @@ import {
   type JitVirtualFlagOwnerMask,
   type JitVirtualFlagSource
 } from "./virtual-flag-analysis.js";
-import { jitStorageReg, jitVirtualValueReadRegs } from "./virtual-values.js";
+import { jitVirtualValueReadRegs } from "./virtual-values.js";
 import {
   emitJitVirtualValue,
   type JitVirtualRewrite
 } from "./virtual-rewrite.js";
-
-type IrLocation = Readonly<{
-  instructionIndex: number;
-  opIndex: number;
-}>;
+import {
+  findJitRegWritebackBetween,
+  jitIrLocation,
+  jitRegClobberedBetween,
+  requiredJitIrInstruction,
+  type JitIrLocation
+} from "./virtual-ranges.js";
 
 type PlannedConditionInput = Readonly<{
   input: JitVirtualFlagInput;
-  validAfter: IrLocation;
+  validAfter: JitIrLocation;
 }>;
 
 export type JitDirectVirtualFlagCondition = Readonly<{
@@ -224,7 +225,7 @@ function plannedInputsSafe(
     }
 
     for (const reg of jitVirtualValueReadRegs(input.value)) {
-      if (regClobberedBetween(block, reg, validAfter, read)) {
+      if (jitRegClobberedBetween(block, reg, validAfter, readLocation(read))) {
         return false;
       }
     }
@@ -241,41 +242,23 @@ function plannedInputValues(
   );
 }
 
-function findResultWritebackReg(
-  block: JitIrBlock,
-  source: JitVirtualFlagSource,
-  read: JitVirtualFlagRead
-): Readonly<{ reg: Reg32; location: IrLocation }> | undefined {
+function findResultWritebackReg(block: JitIrBlock, source: JitVirtualFlagSource, read: JitVirtualFlagRead) {
   const resultId = sourceResultVarId(block, source);
-  let resultWriteback: Readonly<{ reg: Reg32; location: IrLocation }> | undefined;
 
   if (resultId === undefined) {
     return undefined;
   }
 
-  const sourceLocationValue = sourceLocation(source);
-
-  forEachOpBetween(block, sourceLocationValue, read, (instruction, op, location) => {
-    if (resultWriteback !== undefined) {
-      return;
-    }
-
-    if (op.op !== "set32" || op.value.kind !== "var" || op.value.id !== resultId) {
-      return;
-    }
-
-    const reg = jitStorageReg(op.target, instruction.operands);
-
-    if (reg !== undefined) {
-      resultWriteback = { reg, location };
-    }
-  });
-
-  return resultWriteback;
+  return findJitRegWritebackBetween(
+    block,
+    { kind: "var", id: resultId },
+    sourceLocation(source),
+    readLocation(read)
+  );
 }
 
 function sourceResultVarId(block: JitIrBlock, source: JitVirtualFlagSource): number | undefined {
-  const instruction = requiredInstruction(block, source.instructionIndex);
+  const instruction = requiredJitIrInstruction(block, source.instructionIndex);
   const op = instruction.ir[source.opIndex];
 
   if (op?.op !== "flags.set") {
@@ -287,69 +270,8 @@ function sourceResultVarId(block: JitIrBlock, source: JitVirtualFlagSource): num
   return result?.kind === "var" ? result.id : undefined;
 }
 
-function regClobberedBetween(
-  block: JitIrBlock,
-  reg: Reg32,
-  after: IrLocation,
-  before: IrLocation
-): boolean {
-  let clobbered = false;
-
-  forEachOpBetween(block, after, before, (instruction, op) => {
-    if (op.op === "set32" && jitStorageReg(op.target, instruction.operands) === reg) {
-      clobbered = true;
-    }
-  });
-
-  return clobbered;
-}
-
-function forEachOpBetween(
-  block: JitIrBlock,
-  after: IrLocation,
-  before: IrLocation,
-  visit: (
-    instruction: JitIrBlock["instructions"][number],
-    op: IrOp,
-    location: IrLocation
-  ) => void
-): void {
-  if (!locationBefore(after, before)) {
-    return;
-  }
-
-  for (let instructionIndex = after.instructionIndex; instructionIndex <= before.instructionIndex; instructionIndex += 1) {
-    const instruction = requiredInstruction(block, instructionIndex);
-    const startOpIndex = instructionIndex === after.instructionIndex ? after.opIndex + 1 : 0;
-    const endOpIndex = instructionIndex === before.instructionIndex ? before.opIndex : instruction.ir.length;
-
-    for (let opIndex = startOpIndex; opIndex < endOpIndex; opIndex += 1) {
-      const op = instruction.ir[opIndex];
-
-      if (op === undefined) {
-        throw new Error(`missing JIT IR op while checking virtual flag condition inputs: ${instructionIndex}:${opIndex}`);
-      }
-
-      visit(instruction, op, { instructionIndex, opIndex });
-    }
-  }
-}
-
-function requiredInstruction(block: JitIrBlock, instructionIndex: number): JitIrBlock["instructions"][number] {
-  const instruction = block.instructions[instructionIndex];
-
-  if (instruction === undefined) {
-    throw new Error(`missing JIT instruction while checking virtual flag condition inputs: ${instructionIndex}`);
-  }
-
-  return instruction;
-}
-
-function sourceLocation(source: JitVirtualFlagSource): IrLocation {
-  return {
-    instructionIndex: source.instructionIndex,
-    opIndex: source.opIndex
-  };
+function sourceLocation(source: JitVirtualFlagSource): JitIrLocation {
+  return jitIrLocation(source.instructionIndex, source.opIndex);
 }
 
 function canUseResultInputForCondition(
@@ -367,12 +289,8 @@ function canUseResultInputForCondition(
   }) !== undefined;
 }
 
-function locationBefore(
-  a: Readonly<{ instructionIndex: number; opIndex: number }>,
-  b: Readonly<{ instructionIndex: number; opIndex: number }>
-): boolean {
-  return a.instructionIndex < b.instructionIndex ||
-    (a.instructionIndex === b.instructionIndex && a.opIndex < b.opIndex);
+function readLocation(read: JitVirtualFlagRead): JitIrLocation {
+  return jitIrLocation(read.instructionIndex, read.opIndex);
 }
 
 function conditionInput(source: JitVirtualFlagSource, inputName: string): JitVirtualFlagInput | undefined {

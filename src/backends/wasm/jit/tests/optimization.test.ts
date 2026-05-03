@@ -16,6 +16,12 @@ import {
   jitPostInstructionExitReasonsAt
 } from "#backends/wasm/jit/optimization/analysis.js";
 import {
+  findJitRegWritebackBetween,
+  forEachJitIrOpBetween,
+  jitIrLocation,
+  jitRegClobberedBetween
+} from "#backends/wasm/jit/optimization/virtual-ranges.js";
+import {
   jitExitConditionValues,
   jitPostInstructionExitReasons
 } from "#backends/wasm/jit/optimization/op-effects.js";
@@ -172,6 +178,36 @@ test("analyzeJitOptimization indexes shared op effects", () => {
   strictEqual(jitConditionUseAt(analysis, 0, 0), "exitCondition");
   strictEqual(jitMemoryFaultAt(analysis, 1, 0), ExitReason.MEMORY_READ_FAULT);
   strictEqual(jitInstructionMayFault(analysis, 1), true);
+});
+
+test("virtual range utilities iterate between locations and find register writebacks", () => {
+  const block = {
+    instructions: [
+      syntheticInstruction([
+        { op: "const32", dst: v(0), value: 1 },
+        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "next" }
+      ]),
+      syntheticInstruction([
+        { op: "const32", dst: v(0), value: 2 },
+        { op: "set32", target: { kind: "reg", reg: "ebx" }, value: v(0) },
+        { op: "next" }
+      ], 1)
+    ]
+  };
+  const visited: string[] = [];
+
+  forEachJitIrOpBetween(block, jitIrLocation(0, 0), jitIrLocation(1, 1), (_instruction, op, location) => {
+    visited.push(`${location.instructionIndex}:${location.opIndex}:${op.op}`);
+  });
+
+  deepStrictEqual(visited, ["0:1:set32", "0:2:next", "1:0:const32"]);
+  strictEqual(jitRegClobberedBetween(block, "eax", jitIrLocation(0, 0), jitIrLocation(1, 1)), true);
+  strictEqual(jitRegClobberedBetween(block, "ecx", jitIrLocation(0, 0), jitIrLocation(1, 1)), false);
+  deepStrictEqual(findJitRegWritebackBetween(block, v(0), jitIrLocation(0, 0), jitIrLocation(1, 1)), {
+    reg: "eax",
+    location: jitIrLocation(0, 1)
+  });
 });
 
 test("materializeJitVirtualFlags removes overwritten flag producers across instruction bodies", () => {
