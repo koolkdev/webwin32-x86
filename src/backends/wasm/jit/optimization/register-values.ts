@@ -1,9 +1,21 @@
 import type { Reg32 } from "#x86/isa/types.js";
+import type { OperandRef, StorageRef } from "#x86/ir/model/types.js";
+import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
 import type { JitValue } from "./values.js";
+import {
+  jitStorageHasVirtualRegister,
+  jitVirtualRegsReadByEffectiveAddress,
+  jitValueForEffectiveAddress,
+  jitValueForStorage
+} from "./values.js";
 
 export class JitRegisterValues {
-  readonly values = new Map<Reg32, JitValue>();
+  private readonly values = new Map<Reg32, JitValue>();
   private readonly readCounts = new Map<Reg32, number>();
+
+  get trackedValues(): ReadonlyMap<Reg32, JitValue> {
+    return this.values;
+  }
 
   get size(): number {
     return this.values.size;
@@ -19,6 +31,34 @@ export class JitRegisterValues {
 
   has(reg: Reg32): boolean {
     return this.values.has(reg);
+  }
+
+  hasStorageValue(
+    storage: StorageRef,
+    operands: readonly JitOperandBinding[]
+  ): boolean {
+    return jitStorageHasVirtualRegister(storage, operands, this.values);
+  }
+
+  valueForEffectiveAddress(
+    operand: OperandRef,
+    operands: readonly JitOperandBinding[]
+  ): JitValue | undefined {
+    return jitValueForEffectiveAddress(operand, operands, this.values);
+  }
+
+  valueForStorage(
+    storage: StorageRef,
+    operands: readonly JitOperandBinding[]
+  ): JitValue | undefined {
+    return jitValueForStorage(storage, operands, this.values);
+  }
+
+  regsReadByEffectiveAddress(
+    operand: OperandRef,
+    operands: readonly JitOperandBinding[]
+  ): readonly Reg32[] {
+    return jitVirtualRegsReadByEffectiveAddress(operand, operands, this.values);
   }
 
   set(reg: Reg32, value: JitValue): void {

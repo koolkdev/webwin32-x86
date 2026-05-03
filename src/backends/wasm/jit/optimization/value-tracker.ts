@@ -11,6 +11,10 @@ import {
 export class JitValueTracker {
   readonly locals = new Map<number, JitValue>();
 
+  clear(): void {
+    this.locals.clear();
+  }
+
   valueFor(value: ValueRef): JitValue | undefined {
     return jitValueForValue(value, this.locals);
   }

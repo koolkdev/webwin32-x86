@@ -52,10 +52,13 @@ export function rewriteJitIrInstructionInto(
   }
 }
 
-export function createJitInstructionRewrite(instruction: JitIrBlockInstruction): JitInstructionRewrite {
+export function createJitInstructionRewrite(
+  instruction: JitIrBlockInstruction,
+  values: JitValueTracker = new JitValueTracker()
+): JitInstructionRewrite {
   return {
     ops: [],
-    values: new JitValueTracker(),
+    values,
     nextVarId: nextInstructionVarId(instruction)
   };
 }

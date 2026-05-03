@@ -4,7 +4,6 @@ import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { materializeJitVirtualReg, type JitInstructionRewrite } from "./rewrite.js";
 import { JitRegisterValues } from "./register-values.js";
 import {
-  jitVirtualRegsReadByEffectiveAddress,
   jitValueCost,
   type JitValue
 } from "./values.js";
@@ -35,7 +34,7 @@ export function materializeRepeatedEffectiveAddressReads(
 ): number {
   let materializedSetCount = 0;
 
-  for (const reg of jitVirtualRegsReadByEffectiveAddress(op.operand, instruction.operands, registers.values)) {
+  for (const reg of registers.regsReadByEffectiveAddress(op.operand, instruction.operands)) {
     const value = registers.get(reg);
 
     if (value !== undefined && shouldMaterializeRepeatedVirtualRegisterRead(reg, value, registers)) {
