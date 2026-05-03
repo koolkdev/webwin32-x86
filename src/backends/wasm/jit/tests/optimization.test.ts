@@ -172,7 +172,7 @@ test("foldJitVirtualRegisters keeps transient register calculations virtual unti
   ]));
 
   strictEqual(folded.folding.removedSetCount, 4);
-  strictEqual(folded.folding.flushSetCount, 2);
+  strictEqual(folded.folding.materializedSetCount, 2);
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
 
@@ -191,7 +191,7 @@ test("foldJitVirtualRegisters materializes repeated expensive virtual reads", ()
   ]));
 
   strictEqual(folded.folding.removedSetCount, 4);
-  strictEqual(folded.folding.flushSetCount, 3);
+  strictEqual(folded.folding.materializedSetCount, 3);
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx", "edx"]);
 });
 
@@ -212,7 +212,7 @@ test("foldJitVirtualRegisters keeps oversized expressions concrete", () => {
   ]));
 
   strictEqual(folded.folding.removedSetCount, 4);
-  strictEqual(folded.folding.flushSetCount, 0);
+  strictEqual(folded.folding.materializedSetCount, 0);
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
 });
 
@@ -229,12 +229,48 @@ test("foldJitVirtualRegisters folds virtual register values into indirect jump t
   const jumpIndex = jumpInstruction.ir.findIndex((op) => op.op === "jump");
 
   strictEqual(folded.folding.removedSetCount, 2);
-  strictEqual(folded.folding.flushSetCount, 1);
+  strictEqual(folded.folding.materializedSetCount, 1);
   deepStrictEqual(
     jumpInstruction.ir.slice(0, jumpIndex).map((op) => op.op),
     ["get32", "i32.xor", "set32"]
   );
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
+});
+
+test("foldJitVirtualRegisters folds virtual register values into effective addresses", () => {
+  const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
+  const leaEbx = ok(decodeBytes([0x8d, 0x58, 0x04], movEaxEcx.nextEip));
+  const movEaxZero = ok(decodeBytes([0xb8, 0x00, 0x00, 0x00, 0x00], leaEbx.nextEip));
+  const trap = ok(decodeBytes([0xcd, 0x2e], movEaxZero.nextEip));
+  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+    movEaxEcx,
+    leaEbx,
+    movEaxZero,
+    trap
+  ]));
+
+  strictEqual(folded.folding.removedSetCount, 3);
+  strictEqual(folded.folding.materializedSetCount, 2);
+  strictEqual(folded.block.instructions[1]!.ir.some((op) => op.op === "address32"), false);
+  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
+});
+
+test("foldJitVirtualRegisters materializes virtual registers for scaled effective addresses", () => {
+  const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
+  const leaEbx = ok(decodeBytes([0x8d, 0x1c, 0x45, 0x04, 0x00, 0x00, 0x00], movEaxEcx.nextEip));
+  const movEaxZero = ok(decodeBytes([0xb8, 0x00, 0x00, 0x00, 0x00], leaEbx.nextEip));
+  const trap = ok(decodeBytes([0xcd, 0x2e], movEaxZero.nextEip));
+  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+    movEaxEcx,
+    leaEbx,
+    movEaxZero,
+    trap
+  ]));
+
+  strictEqual(folded.folding.removedSetCount, 2);
+  strictEqual(folded.folding.materializedSetCount, 2);
+  strictEqual(folded.block.instructions[1]!.ir.some((op) => op.op === "address32"), true);
+  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx", "eax"]);
 });
 
 function onlyExit(exits: readonly JitExitPoint[], reason: ExitReasonValue): JitExitPoint {

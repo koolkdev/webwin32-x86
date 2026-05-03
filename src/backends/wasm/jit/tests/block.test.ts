@@ -393,6 +393,48 @@ test("jit IR block folds virtual register values into indirect jump targets", as
   deepStrictEqual(result.exit, { exitReason: ExitReason.JUMP, payload: 0x1234_567a });
 });
 
+test("jit IR block folds virtual register values into effective addresses", async () => {
+  const result = await runJitIrBlock([
+    0x89, 0xc8, // mov eax, ecx
+    0x8d, 0x58, 0x04, // lea ebx, [eax+4]
+    0xb8, 0x00, 0x00, 0x00, 0x00, // mov eax, 0
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eax: 0xaaaa_aaaa,
+    ebx: 0xbbbb_bbbb,
+    ecx: 0x1234_5678,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0);
+  strictEqual(result.state.ebx, 0x1234_567c);
+  strictEqual(result.state.ecx, 0x1234_5678);
+  strictEqual(result.state.eip, startAddress + 12);
+  strictEqual(result.state.instructionCount, 4);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
+test("jit IR block materializes virtual registers for scaled effective addresses", async () => {
+  const result = await runJitIrBlock([
+    0x89, 0xc8, // mov eax, ecx
+    0x8d, 0x1c, 0x45, 0x04, 0x00, 0x00, 0x00, // lea ebx, [eax*2+4]
+    0xb8, 0x00, 0x00, 0x00, 0x00, // mov eax, 0
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eax: 0xaaaa_aaaa,
+    ebx: 0xbbbb_bbbb,
+    ecx: 7,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0);
+  strictEqual(result.state.ebx, 18);
+  strictEqual(result.state.ecx, 7);
+  strictEqual(result.state.eip, startAddress + 16);
+  strictEqual(result.state.instructionCount, 4);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
 test("jit IR block preserves CF across INC partial flag writes", async () => {
   const result = await runJitIrBlock([
     0x83, 0xc0, 0x01, // add eax, 1

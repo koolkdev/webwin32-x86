@@ -2,10 +2,11 @@ import type { Reg32 } from "#x86/isa/types.js";
 import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import {
-  flushVirtualRegs,
-  flushVirtualRegsDependingOn,
-  flushVirtualRegsIntoPreviousInstruction,
   instructionMayFault,
+  materializeAllVirtualRegs,
+  materializeVirtualRegsIntoPreviousInstruction,
+  materializeVirtualRegsForRead,
+  materializeVirtualRegsReadingReg,
   nextInstructionMayFault
 } from "./virtual-boundaries.js";
 import {
@@ -17,7 +18,9 @@ import {
 import {
   jitStorageHasVirtualRegister,
   jitStorageReg,
+  jitVirtualRegsReadByEffectiveAddress,
   jitVirtualValueCost,
+  jitVirtualValueForEffectiveAddress,
   jitVirtualValueForStorage,
   jitVirtualValueForValue,
   type JitVirtualValue
@@ -25,17 +28,17 @@ import {
 
 export type JitVirtualRegisterFolding = Readonly<{
   removedSetCount: number;
-  flushSetCount: number;
+  materializedSetCount: number;
 }>;
 
 type RewriteResult = Readonly<{
   removedSet: boolean;
-  flushSetCount: number;
+  materializedSetCount: number;
 }>;
 
 const maxRepeatedInlineVirtualValueCost = 2;
 const maxRetainedVirtualValueCost = 8;
-const unchangedOpResult: RewriteResult = { removedSet: false, flushSetCount: 0 };
+const unchangedOpResult: RewriteResult = { removedSet: false, materializedSetCount: 0 };
 
 export function foldJitVirtualRegisters(
   block: JitIrBlock
@@ -44,7 +47,7 @@ export function foldJitVirtualRegisters(
   const virtualRegReadCounts = new Map<Reg32, number>();
   const instructions: JitIrBlockInstruction[] = [];
   let removedSetCount = 0;
-  let flushSetCount = 0;
+  let materializedSetCount = 0;
 
   for (let instructionIndex = 0; instructionIndex < block.instructions.length; instructionIndex += 1) {
     const instruction = block.instructions[instructionIndex];
@@ -54,7 +57,7 @@ export function foldJitVirtualRegisters(
     }
 
     if (instructionMayFault(instruction)) {
-      flushSetCount += flushVirtualRegsIntoPreviousInstruction(instructions, virtualRegs);
+      materializedSetCount += materializeVirtualRegsIntoPreviousInstruction(instructions, virtualRegs);
       virtualRegs.clear();
       virtualRegReadCounts.clear();
       instructions.push(instruction);
@@ -84,7 +87,7 @@ export function foldJitVirtualRegisters(
         removedSetCount += 1;
       }
 
-      flushSetCount += result.flushSetCount;
+      materializedSetCount += result.materializedSetCount;
     }
 
     instructions.push({
@@ -94,12 +97,12 @@ export function foldJitVirtualRegisters(
   }
 
   if (virtualRegs.size !== 0) {
-    throw new Error("JIT virtual registers were not flushed before block end");
+    throw new Error("JIT virtual registers were not materialized before block end");
   }
 
   return {
     block: { instructions },
-    folding: { removedSetCount, flushSetCount }
+    folding: { removedSetCount, materializedSetCount }
   };
 }
 
@@ -126,36 +129,73 @@ function rewriteOp(
       recordBinaryValue(op, rewrite);
       rewrite.ops.push(op);
       return unchangedOpResult;
+    case "address32":
+      return rewriteAddress32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "set32":
       return rewriteSet32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "next": {
-      const flushSetCount = instruction.nextMode === "exit" || nextInstructionMayFault(nextInstruction)
-        ? flushVirtualRegs(rewrite, virtualRegs)
+      const materializedSetCount = instruction.nextMode === "exit" || nextInstructionMayFault(nextInstruction)
+        ? materializeAllVirtualRegs(rewrite, virtualRegs)
         : 0;
 
-      if (flushSetCount !== 0) {
+      if (materializedSetCount !== 0) {
         virtualRegReadCounts.clear();
       }
 
       rewrite.ops.push(op);
-      return { removedSet: false, flushSetCount };
+      return { removedSet: false, materializedSetCount };
     }
     case "jump":
     case "conditionalJump":
     case "hostTrap": {
-      const flushSetCount = flushVirtualRegs(rewrite, virtualRegs);
+      const materializedSetCount = materializeAllVirtualRegs(rewrite, virtualRegs);
 
-      if (flushSetCount !== 0) {
+      if (materializedSetCount !== 0) {
         virtualRegReadCounts.clear();
       }
 
       rewrite.ops.push(op);
-      return { removedSet: false, flushSetCount };
+      return { removedSet: false, materializedSetCount };
     }
     default:
       rewrite.ops.push(op);
       return unchangedOpResult;
   }
+}
+
+function rewriteAddress32(
+  op: Extract<IrOp, { op: "address32" }>,
+  instruction: JitIrBlockInstruction,
+  rewrite: JitVirtualRewrite,
+  virtualRegs: Map<Reg32, JitVirtualValue>,
+  virtualRegReadCounts: Map<Reg32, number>
+): RewriteResult {
+  let materializedSetCount = materializeRepeatedEffectiveAddressReads(
+    op,
+    instruction,
+    rewrite,
+    virtualRegs,
+    virtualRegReadCounts
+  );
+  const value = jitVirtualValueForEffectiveAddress(op.operand, instruction.operands, virtualRegs);
+
+  if (value === undefined) {
+    materializedSetCount += materializeVirtualRegsForRead(
+      rewrite,
+      virtualRegs,
+      jitVirtualRegsReadByEffectiveAddress(op.operand, instruction.operands, virtualRegs)
+    );
+    syncVirtualRegReadCounts(virtualRegReadCounts, virtualRegs);
+    rewrite.ops.push(op);
+    return { removedSet: false, materializedSetCount };
+  }
+
+  for (const reg of jitVirtualRegsReadByEffectiveAddress(op.operand, instruction.operands, virtualRegs)) {
+    virtualRegReadCounts.set(reg, (virtualRegReadCounts.get(reg) ?? 0) + 1);
+  }
+
+  rewrite.localValues.set(op.dst.id, value);
+  return { removedSet: false, materializedSetCount };
 }
 
 function rewriteGet32(
@@ -180,7 +220,7 @@ function rewriteGet32(
       virtualRegReadCounts.delete(sourceReg);
       rewrite.ops.push(op);
       rewrite.localValues.set(op.dst.id, { kind: "reg", reg: sourceReg });
-      return { removedSet: false, flushSetCount: 1 };
+      return { removedSet: false, materializedSetCount: 1 };
     }
 
     if (sourceReg !== undefined) {
@@ -220,9 +260,9 @@ function rewriteSet32(
 ): RewriteResult {
   const target = jitStorageReg(op.target, instruction.operands);
   const value = jitVirtualValueForValue(op.value, rewrite.localValues);
-  const flushSetCount = target === undefined
+  const materializedSetCount = target === undefined
     ? 0
-    : flushVirtualRegsDependingOn(rewrite, virtualRegs, target);
+    : materializeVirtualRegsReadingReg(rewrite, virtualRegs, target);
 
   syncVirtualRegReadCounts(virtualRegReadCounts, virtualRegs);
 
@@ -231,12 +271,12 @@ function rewriteSet32(
       virtualRegs.delete(target);
       virtualRegReadCounts.delete(target);
       rewrite.ops.push(op);
-      return { removedSet: false, flushSetCount };
+      return { removedSet: false, materializedSetCount };
     }
 
     virtualRegs.set(target, value);
     virtualRegReadCounts.set(target, 0);
-    return { removedSet: true, flushSetCount };
+    return { removedSet: true, materializedSetCount };
   }
 
   if (target !== undefined) {
@@ -245,7 +285,7 @@ function rewriteSet32(
   }
 
   rewrite.ops.push(op);
-  return { removedSet: false, flushSetCount };
+  return { removedSet: false, materializedSetCount };
 }
 
 function shouldMaterializeRepeatedRead(
@@ -257,6 +297,29 @@ function shouldMaterializeRepeatedRead(
     (virtualRegReadCounts.get(reg) ?? 0) > 0 &&
     jitVirtualValueCost(value) > maxRepeatedInlineVirtualValueCost
   );
+}
+
+function materializeRepeatedEffectiveAddressReads(
+  op: Extract<IrOp, { op: "address32" }>,
+  instruction: JitIrBlockInstruction,
+  rewrite: JitVirtualRewrite,
+  virtualRegs: Map<Reg32, JitVirtualValue>,
+  virtualRegReadCounts: Map<Reg32, number>
+): number {
+  let materializedSetCount = 0;
+
+  for (const reg of jitVirtualRegsReadByEffectiveAddress(op.operand, instruction.operands, virtualRegs)) {
+    const value = virtualRegs.get(reg);
+
+    if (value !== undefined && shouldMaterializeRepeatedRead(reg, value, virtualRegReadCounts)) {
+      materializeJitVirtualReg(rewrite, reg, value);
+      virtualRegs.delete(reg);
+      virtualRegReadCounts.delete(reg);
+      materializedSetCount += 1;
+    }
+  }
+
+  return materializedSetCount;
 }
 
 function syncVirtualRegReadCounts(

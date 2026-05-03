@@ -4,39 +4,61 @@ import { createJitVirtualRewrite, materializeJitVirtualReg, type JitVirtualRewri
 import { jitVirtualValueReadsReg, type JitVirtualValue } from "./virtual-values.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 
-export function flushVirtualRegsDependingOn(
+export function materializeVirtualRegsReadingReg(
   rewrite: JitVirtualRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>,
-  clobberedReg: Reg32
+  readReg: Reg32
 ): number {
-  let flushSetCount = 0;
+  let materializedSetCount = 0;
 
   for (const [reg, value] of [...virtualRegs]) {
-    if (reg !== clobberedReg && jitVirtualValueReadsReg(value, clobberedReg)) {
+    if (reg !== readReg && jitVirtualValueReadsReg(value, readReg)) {
       materializeJitVirtualReg(rewrite, reg, value);
       virtualRegs.delete(reg);
-      flushSetCount += 1;
+      materializedSetCount += 1;
     }
   }
 
-  return flushSetCount;
+  return materializedSetCount;
 }
 
-export function flushVirtualRegs(
+export function materializeAllVirtualRegs(
   rewrite: JitVirtualRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>
 ): number {
-  const flushSetCount = virtualRegs.size;
+  const materializedSetCount = virtualRegs.size;
 
   for (const [reg, value] of virtualRegs) {
     materializeJitVirtualReg(rewrite, reg, value);
   }
 
   virtualRegs.clear();
-  return flushSetCount;
+  return materializedSetCount;
 }
 
-export function flushVirtualRegsIntoPreviousInstruction(
+export function materializeVirtualRegsForRead(
+  rewrite: JitVirtualRewrite,
+  virtualRegs: Map<Reg32, JitVirtualValue>,
+  readRegs: readonly Reg32[]
+): number {
+  let materializedSetCount = 0;
+
+  for (const reg of readRegs) {
+    const value = virtualRegs.get(reg);
+
+    if (value === undefined) {
+      continue;
+    }
+
+    materializeJitVirtualReg(rewrite, reg, value);
+    virtualRegs.delete(reg);
+    materializedSetCount += 1;
+  }
+
+  return materializedSetCount;
+}
+
+export function materializeVirtualRegsIntoPreviousInstruction(
   instructions: JitIrBlockInstruction[],
   virtualRegs: ReadonlyMap<Reg32, JitVirtualValue>
 ): number {
@@ -44,7 +66,7 @@ export function flushVirtualRegsIntoPreviousInstruction(
 
   if (previous === undefined) {
     if (virtualRegs.size !== 0) {
-      throw new Error("cannot flush JIT virtual registers before first instruction");
+      throw new Error("cannot materialize JIT virtual registers before first instruction");
     }
 
     return 0;
@@ -55,7 +77,7 @@ export function flushVirtualRegsIntoPreviousInstruction(
   const terminator = previous.ir[terminatorIndex];
 
   if (terminator === undefined) {
-    throw new Error("cannot flush JIT virtual registers into empty instruction");
+    throw new Error("cannot materialize JIT virtual registers into empty instruction");
   }
 
   rewrite.ops.push(...previous.ir.slice(0, terminatorIndex));
