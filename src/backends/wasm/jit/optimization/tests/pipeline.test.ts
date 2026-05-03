@@ -21,7 +21,7 @@ test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
     trap
   ]));
 
-  deepStrictEqual(jitIrOptimizationPassOrder, ["flag-materialization", "dead-local-values", "register-folding"]);
+  deepStrictEqual(jitIrOptimizationPassOrder, ["tracked-optimization"]);
   strictEqual(result.passes.flagMaterialization.removedSetCount, 1);
   strictEqual(result.passes.deadLocalValues.removedOpCount, 0);
   strictEqual(result.passes.registerFolding.removedSetCount, 3);

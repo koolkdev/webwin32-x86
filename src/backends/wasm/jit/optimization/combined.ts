@@ -6,13 +6,16 @@ import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
 } from "./analysis.js";
+import { pruneDeadJitLocalValues } from "./dead-local-values.js";
 import {
   jitConditionUseAt,
   jitOpHasPostInstructionExit,
   jitPreInstructionExitReasonAt
 } from "./effects.js";
 import { buildJitFlagSource } from "./flag-sources.js";
-import { runJitIrOptimizationPipeline, type JitIrOptimizationPipelineResult } from "./pipeline.js";
+import { materializeJitFlags } from "./flags.js";
+import type { JitIrOptimizationPipelineResult } from "./pipeline.js";
+import { foldJitRegisters } from "./register-folding.js";
 import { shouldRetainRegisterValue } from "./register-policy.js";
 import { createJitPreludeRewrite } from "./rewrite.js";
 import { JitOptimizationState } from "./state.js";
@@ -40,11 +43,31 @@ export function runDraftCombinedJitOptimization(
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): JitDraftCombinedOptimizationResult {
   const combinedTracking = trackDraftCombinedOptimization(block, analysis);
-  const pipeline = runJitIrOptimizationPipeline(block);
+  const pipeline = runMergedJitIrOptimizationPipeline(block);
 
   return {
     ...pipeline,
     combinedTracking
+  };
+}
+
+export function runMergedJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizationPipelineResult {
+  const initialAnalysis = analyzeJitOptimization(block);
+  const flagMaterialization = materializeJitFlags(block, initialAnalysis);
+  const deadLocalValues = pruneDeadJitLocalValues(flagMaterialization.block);
+  const registerAnalysis = analyzeJitOptimization(deadLocalValues.block);
+  const registerFolding = foldJitRegisters(
+    deadLocalValues.block,
+    registerAnalysis
+  );
+
+  return {
+    block: registerFolding.block,
+    passes: {
+      flagMaterialization: flagMaterialization.flags,
+      deadLocalValues: deadLocalValues.deadLocalValues,
+      registerFolding: registerFolding.folding
+    }
   };
 }
 
