@@ -4,7 +4,8 @@ import { WASM_STATE_BYTE_LENGTH, WASM_STATE_OFFSETS } from "./state-layout.js";
 export const wasmImport = {
   moduleName: "webwin32",
   stateMemoryName: "state",
-  guestMemoryName: "guest"
+  guestMemoryName: "guest",
+  linkTableName: "links"
 } as const;
 
 export const wasmMemoryIndex = {

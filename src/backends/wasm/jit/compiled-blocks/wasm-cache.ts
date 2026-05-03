@@ -2,12 +2,14 @@ import { decodeIsaBlock, type IsaDecodedBlock } from "#x86/isa/decoder/decode-bl
 import type { IsaDecodeFault } from "#x86/isa/decoder/reader.js";
 import { u32 } from "#x86/state/cpu-state.js";
 import { UnsupportedWasmCodegenError } from "#backends/wasm/errors.js";
-import { compileWasmBlockHandle } from "#backends/wasm/jit/block-handle.js";
+import { compileWasmBlockHandle, type WasmBlockHandle } from "#backends/wasm/jit/block-handle.js";
 import type { WasmHostMemories } from "#backends/wasm/host/memories.js";
 import type { CompiledBlockCache, CompiledBlockHandle, WasmCompiledBlockCodeMap } from "./block-cache.js";
+import type { JitModuleLinkTable, JitLinkedBlockFunction } from "./module-link-table.js";
 
 export type WasmCompiledBlockCacheLike = CompiledBlockCache & Partial<Readonly<{
   clear(): void;
+  invalidate(startEip: number): void;
 }>>;
 
 export class CompiledBlockDecodeError extends Error {
@@ -18,10 +20,12 @@ export class CompiledBlockDecodeError extends Error {
 }
 
 export class WasmCompiledBlockCache implements WasmCompiledBlockCacheLike {
-  readonly #blocksByEip = new Map<number, CompiledBlockHandle>();
+  readonly #blocksByEip = new Map<number, WasmBlockHandle>();
+  readonly #dependentTablesByTargetEip = new Map<number, Set<JitModuleLinkTable>>();
 
   clear(): void {
     this.#blocksByEip.clear();
+    this.#dependentTablesByTargetEip.clear();
   }
 
   getOrCompile(startEip: number, codeMap: WasmCompiledBlockCodeMap, memories: WasmHostMemories): CompiledBlockHandle | undefined {
@@ -48,6 +52,8 @@ export class WasmCompiledBlockCache implements WasmCompiledBlockCacheLike {
       });
 
       this.#blocksByEip.set(blockKey, compiled);
+      this.#registerDependentTable(compiled);
+      this.#installTargetInDependentTables(blockKey, compiled.exportedBlockFunction);
       return compiled;
     } catch (error: unknown) {
       if (error instanceof UnsupportedWasmCodegenError) {
@@ -57,6 +63,95 @@ export class WasmCompiledBlockCache implements WasmCompiledBlockCacheLike {
       throw error;
     }
   }
+
+  invalidate(startEip: number): void {
+    const blockKey = u32(startEip);
+    const compiled = this.#blocksByEip.get(blockKey);
+
+    if (compiled === undefined) {
+      return;
+    }
+
+    this.#blocksByEip.delete(blockKey);
+    this.#unregisterDependentTable(compiled.moduleLinkTable);
+
+    const dependents = this.#dependentTablesByTargetEip.get(blockKey);
+
+    if (dependents === undefined) {
+      return;
+    }
+
+    for (const table of dependents) {
+      table.invalidateTarget(blockKey);
+    }
+  }
+
+  #registerDependentTable(compiled: WasmBlockHandle): void {
+    const table = compiled.moduleLinkTable;
+
+    if (table === undefined) {
+      return;
+    }
+
+    for (const targetEip of table.targetEips()) {
+      const dependents = dependentTablesForTarget(this.#dependentTablesByTargetEip, targetEip);
+
+      dependents.add(table);
+
+      const target = this.#blocksByEip.get(targetEip);
+
+      if (target !== undefined) {
+        table.installTarget(targetEip, target.exportedBlockFunction);
+      }
+    }
+  }
+
+  #unregisterDependentTable(table: JitModuleLinkTable | undefined): void {
+    if (table === undefined) {
+      return;
+    }
+
+    for (const targetEip of table.targetEips()) {
+      const dependents = this.#dependentTablesByTargetEip.get(targetEip);
+
+      if (dependents === undefined) {
+        continue;
+      }
+
+      dependents.delete(table);
+
+      if (dependents.size === 0) {
+        this.#dependentTablesByTargetEip.delete(targetEip);
+      }
+    }
+  }
+
+  #installTargetInDependentTables(targetEip: number, fn: JitLinkedBlockFunction): void {
+    const dependents = this.#dependentTablesByTargetEip.get(targetEip);
+
+    if (dependents === undefined) {
+      return;
+    }
+
+    for (const table of dependents) {
+      table.installTarget(targetEip, fn);
+    }
+  }
+}
+
+function dependentTablesForTarget(
+  tablesByTargetEip: Map<number, Set<JitModuleLinkTable>>,
+  eip: number
+): Set<JitModuleLinkTable> {
+  const targetEip = u32(eip);
+  let dependents = tablesByTargetEip.get(targetEip);
+
+  if (dependents === undefined) {
+    dependents = new Set();
+    tablesByTargetEip.set(targetEip, dependents);
+  }
+
+  return dependents;
 }
 
 function assertCompiledBlockDecodable(block: IsaDecodedBlock): void {

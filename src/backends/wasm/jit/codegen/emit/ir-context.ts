@@ -1,6 +1,7 @@
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
+import type { JitModuleLinkTable } from "#backends/wasm/jit/compiled-blocks/module-link-table.js";
 import { emitIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 import type {
   IrSet32ExprOp,
@@ -10,8 +11,8 @@ import type {
 import { emitFlagProducerCondition } from "#backends/wasm/codegen/conditions.js";
 import {
   emitJitConditionalJump,
-  emitJitControlExit,
   emitJitHostTrap,
+  emitJitJump,
   emitJitNext,
   emitJitNextEip
 } from "./control.js";
@@ -37,6 +38,16 @@ export type JitIrInstructionContext = Pick<JitIrBlockInstruction, "ir" | "operan
   | "preInstructionExitPointCount"
 >;
 
+export type JitLinkResolver = Readonly<{
+  moduleTable: JitModuleLinkTable;
+  slotForStaticTarget(eip: number): number;
+}>;
+
+export type JitLinkEmitContext = JitLinkResolver & Readonly<{
+  blockTypeIndex: number;
+  tableIndex: number;
+}>;
+
 export type JitIrBlockEmitContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
@@ -44,6 +55,7 @@ export type JitIrBlockEmitContext = Readonly<{
   exit: JitExitTarget;
   instructions: readonly JitIrInstructionContext[];
   exitPoints: readonly JitExitPoint[];
+  linking?: JitLinkEmitContext;
 }>;
 
 export type JitIrContext = Readonly<{
@@ -55,6 +67,7 @@ export type JitIrContext = Readonly<{
   currentExitPoint(exitReason: ExitReasonValue): JitExitPoint;
   completeExitPoint(exitPoint: JitExitPoint): void;
   advanceInstruction(): void;
+  linking?: JitLinkEmitContext;
 }>;
 
 export function emitJitIrWithContext(context: JitIrBlockEmitContext): void {
@@ -77,6 +90,7 @@ function createJitIrContext(context: JitIrBlockEmitContext): JitIrContext {
     scratch: context.scratch,
     state: context.state,
     exit: context.exit,
+    ...(context.linking === undefined ? {} : { linking: context.linking }),
     currentInstruction: () => {
       const instruction = context.instructions[instructionIndex];
 
@@ -149,7 +163,7 @@ function emitJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["i
     emitFlagProducerCondition: (condition, helpers) => emitFlagProducerCondition(jitContext.body, condition, helpers),
     emitNext: () => emitJitNext(jitContext),
     emitNextEip: () => emitJitNextEip(jitContext),
-    emitJump: (target, helpers) => emitJitControlExit(jitContext, target, ExitReason.JUMP, helpers),
+    emitJump: (target, helpers) => emitJitJump(jitContext, target, helpers),
     emitConditionalJump: (condition, taken, notTaken, helpers) =>
       emitJitConditionalJump(jitContext, condition, taken, notTaken, helpers),
     emitHostTrap: (vector, helpers) => emitJitHostTrap(jitContext, vector, helpers)

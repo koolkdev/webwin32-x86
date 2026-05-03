@@ -31,6 +31,14 @@ export function emitJitNextEip(context: JitIrContext): void {
   context.body.i32Const(i32(context.currentInstruction().nextEip));
 }
 
+export function emitJitJump(context: JitIrContext, target: IrValueExpr, helpers: WasmIrEmitHelpers): void {
+  if (emitJitLinkedStaticJump(context, target)) {
+    return;
+  }
+
+  emitJitControlExit(context, target, ExitReason.JUMP, helpers);
+}
+
 export function emitJitControlExit(
   context: JitIrContext,
   target: IrValueExpr,
@@ -92,4 +100,47 @@ export function emitJitHostTrap(context: JitIrContext, vector: IrValueExpr, help
   } finally {
     context.scratch.freeLocal(vectorLocal);
   }
+}
+
+function emitJitLinkedStaticJump(context: JitIrContext, target: IrValueExpr): boolean {
+  const linking = context.linking;
+
+  if (linking === undefined) {
+    return false;
+  }
+
+  const targetEip = finalStaticJumpTarget(context, target);
+
+  if (targetEip === undefined) {
+    return false;
+  }
+
+  const exitPoint = context.currentExitPoint(ExitReason.JUMP);
+
+  context.state.commitInstructionExit(exitPoint, () => {
+    context.body.i32Const(i32(targetEip));
+  });
+  context.exit.emitBeforeExit?.();
+  context.state.emitExitStateStores(exitPoint.exitStateIndex);
+  context.body
+    .i32Const(linking.slotForStaticTarget(targetEip))
+    .returnCallIndirect(linking.blockTypeIndex, linking.tableIndex);
+  return true;
+}
+
+function finalStaticJumpTarget(context: JitIrContext, target: IrValueExpr): number | undefined {
+  const instruction = context.currentInstruction();
+
+  if (
+    instruction.nextMode !== "exit" ||
+    (instruction.instructionId !== "jmp.rel8" && instruction.instructionId !== "jmp.rel32") ||
+    target.kind !== "src32" ||
+    target.source.kind !== "operand"
+  ) {
+    return undefined;
+  }
+
+  const binding = instruction.operands[target.source.index];
+
+  return binding?.kind === "static.relTarget" ? binding.target : undefined;
 }

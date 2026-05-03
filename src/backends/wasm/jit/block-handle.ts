@@ -3,7 +3,16 @@ import { u32 } from "#x86/state/cpu-state.js";
 import { wasmBlockExportName, wasmImport } from "#backends/wasm/abi.js";
 import { UnsupportedWasmCodegenError } from "#backends/wasm/errors.js";
 import { decodeExit, type DecodedExit } from "#backends/wasm/exit.js";
-import { buildJitIrBlock, encodeJitIrBlock } from "./block.js";
+import {
+  buildJitIrBlock,
+  encodeJitIrBlock,
+  staticJitLinkTargets,
+  type JitLinkResolver
+} from "./block.js";
+import {
+  jitModuleLinkFallbackExportName,
+  JitModuleLinkTable
+} from "./compiled-blocks/module-link-table.js";
 
 export const wasmBlockExitEncoding = {
   resultType: "i64",
@@ -31,6 +40,7 @@ export type WasmBlockHandle = Readonly<{
   module: WebAssembly.Module;
   instance: WebAssembly.Instance;
   exportedBlockFunction: () => unknown;
+  moduleLinkTable?: JitModuleLinkTable;
   compileMs: number;
   instantiateMs: number;
   metadata: WasmBlockMetadata;
@@ -53,13 +63,17 @@ export function compileWasmBlockHandle(
     throw new UnsupportedWasmCodegenError(unsupportedBlockMessage(block));
   }
 
-  const bytes = encodeJitIrBlock(buildJitIrBlock(block.instructions));
+  const jitBlock = buildJitIrBlock(block.instructions);
+  const moduleLinkTable = createModuleLinkTable(jitBlock);
+  const linkResolver = moduleLinkTable === undefined ? undefined : linkResolverForTable(moduleLinkTable);
+  const bytes = encodeJitIrBlock(jitBlock, linkResolver === undefined ? {} : { linkResolver });
   const compileStart = performance.now();
   const module = new WebAssembly.Module(bytes);
   const compileMs = performance.now() - compileStart;
   const instantiateStart = performance.now();
-  const instance = new WebAssembly.Instance(module, wasmImports(options.stateMemory, options.guestMemory));
+  const instance = new WebAssembly.Instance(module, wasmImports(options.stateMemory, options.guestMemory, moduleLinkTable));
   const instantiateMs = performance.now() - instantiateStart;
+  installModuleLocalFallbacks(instance, moduleLinkTable);
   const exportedBlockFunction = readExportedBlockFunction(instance);
 
   return {
@@ -68,6 +82,7 @@ export function compileWasmBlockHandle(
     module,
     instance,
     exportedBlockFunction,
+    ...(moduleLinkTable === undefined ? {} : { moduleLinkTable }),
     compileMs,
     instantiateMs,
     metadata: {
@@ -92,20 +107,58 @@ function runWasmBlock(exportedBlockFunction: () => unknown): WasmBlockRun {
   };
 }
 
-function wasmImports(stateMemory: WebAssembly.Memory, guestMemory: WebAssembly.Memory): WebAssembly.Imports {
+function createModuleLinkTable(jitBlock: ReturnType<typeof buildJitIrBlock>): JitModuleLinkTable | undefined {
+  const targetEips = staticJitLinkTargets(jitBlock);
+
+  return targetEips.length === 0 ? undefined : new JitModuleLinkTable({ targetEips });
+}
+
+function linkResolverForTable(moduleTable: JitModuleLinkTable): JitLinkResolver {
+  return {
+    moduleTable,
+    slotForStaticTarget: (eip) => moduleTable.slotForTargetEip(eip)
+  };
+}
+
+function installModuleLocalFallbacks(
+  instance: WebAssembly.Instance,
+  moduleLinkTable: JitModuleLinkTable | undefined
+): void {
+  if (moduleLinkTable === undefined) {
+    return;
+  }
+
+  for (const targetEip of moduleLinkTable.targetEips()) {
+    moduleLinkTable.installModuleLocalFallback(
+      targetEip,
+      readExportedFunction(instance, jitModuleLinkFallbackExportName(targetEip))
+    );
+  }
+}
+
+function wasmImports(
+  stateMemory: WebAssembly.Memory,
+  guestMemory: WebAssembly.Memory,
+  moduleLinkTable: JitModuleLinkTable | undefined
+): WebAssembly.Imports {
   return {
     [wasmImport.moduleName]: {
       [wasmImport.stateMemoryName]: stateMemory,
-      [wasmImport.guestMemoryName]: guestMemory
+      [wasmImport.guestMemoryName]: guestMemory,
+      ...(moduleLinkTable === undefined ? {} : { [wasmImport.linkTableName]: moduleLinkTable.table })
     }
   };
 }
 
 function readExportedBlockFunction(instance: WebAssembly.Instance): () => unknown {
-  const value = instance.exports[wasmBlockExportName];
+  return readExportedFunction(instance, wasmBlockExportName);
+}
+
+function readExportedFunction(instance: WebAssembly.Instance, name: string): () => unknown {
+  const value = instance.exports[name];
 
   if (typeof value !== "function") {
-    throw new Error(`expected exported function '${wasmBlockExportName}'`);
+    throw new Error(`expected exported function '${name}'`);
   }
 
   return value as () => unknown;
