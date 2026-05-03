@@ -1,4 +1,4 @@
-import { visitIrOpValueRefs } from "#x86/ir/model/value-uses.js";
+import { visitIrOpValueRefs } from "#x86/ir/model/op-semantics.js";
 import type { ValueRef } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { walkJitIrBlockOps } from "./ir-walk.js";

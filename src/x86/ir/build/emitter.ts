@@ -1,6 +1,6 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
-import { isIrTerminatorOp, type IrTerminatorOp } from "#x86/ir/model/ops.js";
+import { irOpIsTerminator, type IrTerminatorOp } from "#x86/ir/model/op-semantics.js";
 import {
   const32,
   mem32,
@@ -70,7 +70,7 @@ export class IrEmitter implements IrBuilder {
 
     this.#ops.push(op);
 
-    if (isIrTerminatorOp(op)) {
+    if (irOpIsTerminator(op)) {
       this.#terminator = op.op;
     }
   }
@@ -230,7 +230,7 @@ export class IrEmitter implements IrBuilder {
 export function irBlockTerminator(block: IrBlock): IrBlockTerminator {
   const terminator = block[block.length - 1];
 
-  if (terminator === undefined || !isIrTerminatorOp(terminator)) {
+  if (terminator === undefined || !irOpIsTerminator(terminator)) {
     throw new Error("IR block is missing a terminator");
   }
 

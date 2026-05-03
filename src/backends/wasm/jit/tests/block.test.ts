@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
-import { isIrTerminatorOp } from "#x86/ir/model/ops.js";
+import { irOpIsTerminator } from "#x86/ir/model/op-semantics.js";
 import type { IrOp, StorageRef } from "#x86/ir/model/types.js";
 import { createCpuState } from "#x86/state/cpu-state.js";
 import { stateOffset } from "#backends/wasm/abi.js";
@@ -55,8 +55,8 @@ test("JIT lowering preparation keeps instruction-local operand namespaces", () =
   strictEqual("ir" in loweringBlock, false);
   strictEqual("operands" in loweringBlock, false);
   strictEqual(loweringBlock.instructions.length, 2);
-  strictEqual(firstIr.filter(isIrTerminatorOp).length, 1);
-  strictEqual(secondIr.filter(isIrTerminatorOp).length, 1);
+  strictEqual(firstIr.filter(irOpIsTerminator).length, 1);
+  strictEqual(secondIr.filter(irOpIsTerminator).length, 1);
   deepStrictEqual([...new Set(firstIr.flatMap(irOpOperandIndexes))].sort((a, b) => a - b), [0, 1]);
   deepStrictEqual([...new Set(secondIr.flatMap(irOpOperandIndexes))].sort((a, b) => a - b), [0, 1]);
 });

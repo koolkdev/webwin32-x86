@@ -1,5 +1,9 @@
-import { visitIrOpValueRefs } from "#x86/ir/model/value-uses.js";
-import type { IrOp, VarRef } from "#x86/ir/model/types.js";
+import {
+  irOpDst,
+  irOpResult,
+  visitIrOpValueRefs
+} from "#x86/ir/model/op-semantics.js";
+import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { jitMemoryFaultReason } from "./op-effects.js";
 
@@ -39,7 +43,7 @@ function pruneInstructionDeadLocalValues(
       throw new Error(`missing JIT IR op while pruning dead local values: ${instructionIndex}:${opIndex}`);
     }
 
-    const dst = opDst(op);
+    const dst = irOpDst(op);
 
     if (dst !== undefined && !liveVars.has(dst.id) && isPureLocalDefinition(op, instruction)) {
       removedOpCount += 1;
@@ -69,38 +73,16 @@ function pruneInstructionDeadLocalValues(
 }
 
 function isPureLocalDefinition(op: IrOp, instruction: JitIrBlockInstruction): boolean {
-  switch (op.op) {
-    case "get32":
-      return jitMemoryFaultReason(op, instruction.operands) === undefined;
-    case "address32":
-    case "const32":
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-    case "aluFlags.condition":
-    case "flagProducer.condition":
-      return true;
-    default:
-      return false;
-  }
-}
+  const result = irOpResult(op);
 
-function opDst(op: IrOp): VarRef | undefined {
-  switch (op.op) {
-    case "get32":
-    case "address32":
-    case "const32":
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-    case "aluFlags.condition":
-    case "flagProducer.condition":
-      return op.dst;
-    default:
-      return undefined;
+  if (result.kind === "none") {
+    return false;
+  }
+
+  switch (result.sideEffect) {
+    case "none":
+      return true;
+    case "storageRead":
+      return jitMemoryFaultReason(op, instruction.operands) === undefined;
   }
 }

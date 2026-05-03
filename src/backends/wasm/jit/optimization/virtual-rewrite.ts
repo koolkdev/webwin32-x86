@@ -1,5 +1,6 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { IrOp, ValueRef, VarRef } from "#x86/ir/model/types.js";
+import { irOpDst } from "#x86/ir/model/op-semantics.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import type { JitVirtualValue } from "./virtual-values.js";
 
@@ -120,7 +121,7 @@ function nextInstructionVarId(instruction: JitIrBlockInstruction): number {
   let nextVarId = 0;
 
   for (const op of instruction.ir) {
-    const dst = opDst(op);
+    const dst = irOpDst(op);
 
     if (dst !== undefined) {
       nextVarId = Math.max(nextVarId, dst.id + 1);
@@ -128,22 +129,4 @@ function nextInstructionVarId(instruction: JitIrBlockInstruction): number {
   }
 
   return nextVarId;
-}
-
-function opDst(op: IrOp): VarRef | undefined {
-  switch (op.op) {
-    case "get32":
-    case "address32":
-    case "const32":
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-    case "aluFlags.condition":
-    case "flagProducer.condition":
-      return op.dst;
-    default:
-      return undefined;
-  }
 }

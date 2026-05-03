@@ -5,7 +5,8 @@ import {
   type IrFlagProducerDescriptor
 } from "#x86/ir/model/flag-conditions.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
-import type { FlagMask, IrOp, IrBlock, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
+import { irOpDst } from "#x86/ir/model/op-semantics.js";
+import type { FlagMask, IrOp, IrBlock, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 
 export type ValidateIrBlockOptions = Readonly<{
   operandCount?: number;
@@ -97,7 +98,7 @@ function validateOpUses(
 }
 
 function defineOpVar(op: IrOp, definedVars: Set<number>): void {
-  const dst = opDst(op);
+  const dst = irOpDst(op);
 
   if (dst === undefined) {
     return;
@@ -108,24 +109,6 @@ function defineOpVar(op: IrOp, definedVars: Set<number>): void {
   }
 
   definedVars.add(dst.id);
-}
-
-function opDst(op: IrOp): VarRef | undefined {
-  switch (op.op) {
-    case "get32":
-    case "address32":
-    case "const32":
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-    case "aluFlags.condition":
-    case "flagProducer.condition":
-      return op.dst;
-    default:
-      return undefined;
-  }
 }
 
 function validateStorageRef(

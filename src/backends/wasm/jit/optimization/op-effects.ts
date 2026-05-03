@@ -1,4 +1,8 @@
 import type { IrOp, StorageRef, ValueRef } from "#x86/ir/model/types.js";
+import {
+  irOpStorageReads,
+  irOpStorageWrites
+} from "#x86/ir/model/op-semantics.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
@@ -7,20 +11,21 @@ export function jitMemoryFaultReason(
   op: IrOp,
   operands: readonly JitOperandBinding[]
 ): ExitReasonValue | undefined {
-  switch (op.op) {
-    case "get32":
-      return storageMayAccessMemory(op.source, operands) ? ExitReason.MEMORY_READ_FAULT : undefined;
-    case "set32":
-      return storageMayAccessMemory(op.target, operands) ? ExitReason.MEMORY_WRITE_FAULT : undefined;
-    case "set32.if":
-      if (storageMayAccessMemory(op.target, operands)) {
-        throw new Error("JIT conditional memory writes are not supported by exit analysis");
-      }
-
-      return undefined;
-    default:
-      return undefined;
+  if (irOpStorageReads(op).some((storage) => storageMayAccessMemory(storage, operands))) {
+    return ExitReason.MEMORY_READ_FAULT;
   }
+
+  const writesMemory = irOpStorageWrites(op).some((storage) => storageMayAccessMemory(storage, operands));
+
+  if (!writesMemory) {
+    return undefined;
+  }
+
+  if (op.op === "set32.if") {
+    throw new Error("JIT conditional memory writes are not supported by exit analysis");
+  }
+
+  return ExitReason.MEMORY_WRITE_FAULT;
 }
 
 export function jitPostInstructionExitReasons(
