@@ -13,6 +13,10 @@ import {
   runJitIrOptimizationPipeline
 } from "#backends/wasm/jit/optimization/pipeline.js";
 import type { JitExitPoint } from "#backends/wasm/jit/optimization/types.js";
+import {
+  analyzeJitVirtualFlags,
+  type JitVirtualFlagOwnerMask
+} from "#backends/wasm/jit/optimization/virtual-flags.js";
 import { foldJitVirtualRegisters } from "#backends/wasm/jit/optimization/virtual-registers.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 
@@ -138,6 +142,54 @@ test("pruneDeadJitFlags keeps partial flag producers needed by later conditions"
 
   strictEqual(pruned.pruning.prunedCount, 0);
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
+});
+
+test("analyzeJitVirtualFlags keeps partial flag ownership across INC", () => {
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
+  const inc = ok(decodeBytes([0x40], add.nextEip));
+  const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
+  const analysis = analyzeJitVirtualFlags(buildJitIrBlock([add, inc, jc]));
+  const conditionRead = analysis.reads.find((read) => read.reason === "condition");
+
+  deepStrictEqual(analysis.sources.map((source) => source.producer), ["add32", "inc32"]);
+  strictEqual(conditionRead?.cc, "B");
+  strictEqual(conditionRead?.requiredMask, IR_ALU_FLAG_MASKS.CF);
+  deepStrictEqual(flagOwnerSummary(conditionRead?.owners ?? []), [
+    { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add32" }
+  ]);
+  deepStrictEqual(flagOwnerSummary(analysis.finalOwners), [
+    { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add32" },
+    { mask: IR_ALU_FLAG_MASK & ~IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 1, producer: "inc32" }
+  ]);
+});
+
+test("analyzeJitVirtualFlags records producer inputs and source clobbers", () => {
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
+  const analysis = analyzeJitVirtualFlags(buildJitIrBlock([add]));
+  const source = analysis.sources[0]!;
+  const clobber = analysis.sourceClobbers[0]!;
+
+  strictEqual(source.producer, "add32");
+  strictEqual(source.writtenMask, IR_ALU_FLAG_MASK);
+  strictEqual(source.undefMask, 0);
+  deepStrictEqual(source.inputs, {
+    left: { kind: "value", value: { kind: "reg", reg: "eax" } },
+    right: { kind: "value", value: { kind: "const32", value: 1 } },
+    result: {
+      kind: "value",
+      value: {
+        kind: "i32.add",
+        a: { kind: "reg", reg: "eax" },
+        b: { kind: "const32", value: 1 }
+      }
+    }
+  });
+  deepStrictEqual(source.readRegs, ["eax"]);
+  strictEqual(clobber.instructionIndex, 0);
+  strictEqual(clobber.reg, "eax");
+  deepStrictEqual(flagOwnerSummary(clobber.owners), [
+    { mask: IR_ALU_FLAG_MASK, kind: "producer", sourceId: 0, producer: "add32" }
+  ]);
 });
 
 test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
@@ -300,4 +352,16 @@ function set32TargetRegs(instructions: readonly JitIrBlockInstruction[]): readon
       }
     })
   );
+}
+
+function flagOwnerSummary(owners: readonly JitVirtualFlagOwnerMask[]): readonly object[] {
+  return owners.map(({ mask, owner }) => {
+    switch (owner.kind) {
+      case "producer":
+        return { mask, kind: owner.kind, sourceId: owner.source.id, producer: owner.source.producer };
+      case "incoming":
+      case "materialized":
+        return { mask, kind: owner.kind };
+    }
+  });
 }

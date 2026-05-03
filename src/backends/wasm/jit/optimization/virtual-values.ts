@@ -1,4 +1,4 @@
-import type { Reg32 } from "#x86/isa/types.js";
+import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { OperandRef, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
@@ -138,6 +138,10 @@ export function jitVirtualValueReadsReg(value: JitVirtualValue, reg: Reg32): boo
     case "i32.and":
       return jitVirtualValueReadsReg(value.a, reg) || jitVirtualValueReadsReg(value.b, reg);
   }
+}
+
+export function jitVirtualValueReadRegs(value: JitVirtualValue): readonly Reg32[] {
+  return reg32.filter((reg) => jitVirtualValueReadsReg(value, reg));
 }
 
 export function jitVirtualValueCost(value: JitVirtualValue): number {
