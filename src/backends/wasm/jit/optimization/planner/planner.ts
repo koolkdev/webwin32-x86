@@ -10,6 +10,7 @@ import {
 } from "#backends/wasm/jit/optimization/effects/effects.js";
 import { createFlagPlanner } from "#backends/wasm/jit/optimization/flags/planner.js";
 import type { JitIrOptimizationPipelineResult } from "#backends/wasm/jit/optimization/pipeline.js";
+import { recordJitPlannerFacts } from "#backends/wasm/jit/optimization/planner/decisions.js";
 import {
   emitJitFlagMaterializationPlan,
   emitJitRegisterFoldingPlan,
@@ -104,12 +105,15 @@ export function planJitOptimization(
       instruction,
       instructionIndex
     });
-    registerMaterializedSetCount += planRegisterInstructionEntry({
+    const registerEntry = planRegisterInstructionEntry({
       block,
       state,
       instruction,
       instructionIndex
-    }, records);
+    });
+
+    recordJitPlannerFacts(records, registerEntry.facts);
+    registerMaterializedSetCount += registerEntry.materializedSetCount;
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
       const op = instruction.ir[opIndex];
@@ -127,43 +131,54 @@ export function planJitOptimization(
       );
 
       if (preInstructionExitReason !== undefined) {
-        flagReadCount += flagPlanner.planPreInstructionExit({
+        const preInstructionExit = flagPlanner.planPreInstructionExit({
           block,
           state,
           instruction,
           instructionIndex,
           op,
           opIndex
-        }, flagInstruction, preInstructionExitReason, records);
+        }, flagInstruction, preInstructionExitReason);
+
+        recordJitPlannerFacts(records, preInstructionExit.facts);
+        flagReadCount += preInstructionExit.readCount;
       }
 
       if (jitOpHasPostInstructionExit(state.context.effects, instructionIndex, opIndex)) {
-        flagReadCount += flagPlanner.planPostInstructionExit({
+        const postInstructionExit = flagPlanner.planPostInstructionExit({
           block,
           state,
           instruction,
           instructionIndex,
           op,
           opIndex
-        }, records);
-        registerMaterializedSetCount += planRegisterPostInstructionExit({
+        });
+        const postInstructionRegisters = planRegisterPostInstructionExit({
           block,
           state,
           instruction,
           instructionIndex,
           op,
           opIndex
-        }, records);
+        });
+
+        recordJitPlannerFacts(records, postInstructionExit.facts);
+        recordJitPlannerFacts(records, postInstructionRegisters.facts);
+        flagReadCount += postInstructionExit.readCount;
+        registerMaterializedSetCount += postInstructionRegisters.materializedSetCount;
       }
 
-      sourceClobberCount += flagPlanner.planSourceClobberForOp({
+      const sourceClobber = flagPlanner.planSourceClobberForOp({
         block,
         state,
         instruction,
         instructionIndex,
         op,
         opIndex
-      }, records);
+      });
+
+      recordJitPlannerFacts(records, sourceClobber.facts);
+      sourceClobberCount += sourceClobber.sourceClobberCount;
 
       const registerResult = planRegisterOp({
         block,
@@ -172,8 +187,9 @@ export function planJitOptimization(
         instructionIndex,
         op,
         opIndex
-      }, records);
+      });
 
+      recordJitPlannerFacts(records, registerResult.facts);
       registerProducerCount += registerResult.producerCount;
       registerReadCount += registerResult.readCount;
       registerClobberCount += registerResult.clobberCount;
@@ -190,8 +206,9 @@ export function planJitOptimization(
         instructionIndex,
         op,
         opIndex
-      }, records);
+      });
 
+      recordJitPlannerFacts(records, flagResult.facts);
       flagSourceCount += flagResult.sourceCount;
       flagReadCount += flagResult.readCount;
 

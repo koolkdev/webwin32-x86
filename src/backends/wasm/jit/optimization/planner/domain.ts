@@ -13,7 +13,8 @@ import type {
 import type {
   PlannedClobber,
   PlannedDrop,
-  PlannedMaterialization
+  PlannedMaterialization,
+  PlannedRewrite
 } from "#backends/wasm/jit/optimization/planner/plan.js";
 
 export type JitPlannerDomainId = string;
@@ -53,7 +54,8 @@ export type JitPlannerFact =
   | JitPlannerMaterializationBoundaryFact
   | JitPlannerFoldableUseFact
   | JitPlannerDroppableProducerFact
-  | JitPlannerEmissionNeedFact;
+  | JitPlannerEmissionNeedFact
+  | JitPlannerRewriteFact;
 
 export type JitPlannerProducerFact = JitPlannerLocatedFact & Readonly<{
   kind: "producer";
@@ -71,6 +73,7 @@ export type JitPlannerReadFact = JitPlannerLocatedFact & Readonly<{
 export type JitPlannerClobberFact = JitPlannerLocatedFact & Readonly<{
   kind: "clobber";
   opIndex: number;
+  reg?: PlannedClobber["reg"];
   reason: PlannedClobber["reason"];
 }>;
 
@@ -98,6 +101,13 @@ export type JitPlannerEmissionNeedFact = JitPlannerLocatedFact & Readonly<{
   kind: "emissionNeed";
   phase: PlannedMaterialization["phase"];
   reason: PlannedMaterialization["reason"];
+}>;
+
+export type JitPlannerRewriteFact = JitPlannerLocatedFact & Readonly<{
+  kind: "rewrite";
+  opIndex: number;
+  operation: PlannedRewrite["op"];
+  rewriteKind: PlannedRewrite["rewriteKind"];
 }>;
 
 export type JitPlannerDomainFactBase = Readonly<{

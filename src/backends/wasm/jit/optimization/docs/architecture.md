@@ -25,8 +25,11 @@ order remains `["tracked-optimization"]`.
 - `planner/domain.ts`: shared domain adapter contract for reporting normalized
   producers, reads, clobbers, boundaries, foldable uses, droppable producers,
   and emission needs before shared decisions are applied.
+- `planner/decisions.ts`: shared fact-to-plan decision layer that materializes
+  normalized facts into folds, drops, clobbers, reads, rewrites, and emitted
+  materialization records.
 - `planner/planner.ts`: one forward walk over `JitTrackedState` that records
-  decisions without emitting IR.
+  normalized domain facts and applies shared decisions without emitting IR.
 - `planner/emitter.ts`: emits optimized IR from the plan.
 - `planner/policy.ts`: shared policy that coordinates register and flag
   decisions, including register writes that invalidate flag source inputs.

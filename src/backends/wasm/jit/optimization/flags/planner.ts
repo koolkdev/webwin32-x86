@@ -16,11 +16,12 @@ import {
   type JitDirectFlagConditionIndex
 } from "#backends/wasm/jit/optimization/flags/conditions.js";
 import { shouldDropFlagProducer, shouldMaterializeFlagRead } from "#backends/wasm/jit/optimization/flags/policy.js";
-import type { JitPlannerInstructionContext, JitPlannerOpContext } from "#backends/wasm/jit/optimization/planner/domain.js";
 import type {
-  JitOptimizationPlanRecord,
-  PlannedMaterialization
-} from "#backends/wasm/jit/optimization/planner/plan.js";
+  JitPlannerFact,
+  JitPlannerInstructionContext,
+  JitPlannerOpContext
+} from "#backends/wasm/jit/optimization/planner/domain.js";
+import type { PlannedMaterialization } from "#backends/wasm/jit/optimization/planner/plan.js";
 import { registerWriteInvalidatesFlagProducerInputs } from "#backends/wasm/jit/optimization/planner/policy.js";
 import { jitTrackedFlagsLocation } from "#backends/wasm/jit/optimization/tracked/state.js";
 import { jitStorageReg } from "#backends/wasm/jit/optimization/ir/values.js";
@@ -29,8 +30,19 @@ export type JitFlagPlannerInstruction = Readonly<{
   entryOwners: JitFlagOwners;
 }>;
 
+export type JitFlagPlannerReadResult = Readonly<{
+  facts: readonly JitPlannerFact[];
+  readCount: number;
+}>;
+
+export type JitFlagPlannerClobberResult = Readonly<{
+  facts: readonly JitPlannerFact[];
+  sourceClobberCount: number;
+}>;
+
 export type JitFlagPlannerResult = Readonly<{
   handled: boolean;
+  facts: readonly JitPlannerFact[];
   sourceCount: number;
   readCount: number;
 }>;
@@ -40,25 +52,22 @@ export type JitFlagPlanner = Readonly<{
   planPreInstructionExit: (
     context: JitPlannerOpContext,
     instructionPlan: JitFlagPlannerInstruction,
-    exitReason: ExitReasonValue,
-    records: JitOptimizationPlanRecord[]
-  ) => number;
+    exitReason: ExitReasonValue
+  ) => JitFlagPlannerReadResult;
   planPostInstructionExit: (
-    context: JitPlannerOpContext,
-    records: JitOptimizationPlanRecord[]
-  ) => number;
+    context: JitPlannerOpContext
+  ) => JitFlagPlannerReadResult;
   planSourceClobberForOp: (
-    context: JitPlannerOpContext,
-    records: JitOptimizationPlanRecord[]
-  ) => number;
+    context: JitPlannerOpContext
+  ) => JitFlagPlannerClobberResult;
   planOp: (
-    context: JitPlannerOpContext,
-    records: JitOptimizationPlanRecord[]
+    context: JitPlannerOpContext
   ) => JitFlagPlannerResult;
 }>;
 
 const unhandledFlagPlannerResult: JitFlagPlannerResult = {
   handled: false,
+  facts: [],
   sourceCount: 0,
   readCount: 0
 };
@@ -78,38 +87,35 @@ export function createFlagPlanner(
         entryOwners: context.state.tracked.cloneFlagOwners()
       };
     },
-    planPreInstructionExit(context, instructionPlan, exitReason, records) {
+    planPreInstructionExit(context, instructionPlan, exitReason) {
       return recordFlagRead(
         context,
-        records,
         instructionPlan.entryOwners,
         "preInstructionExit",
         IR_ALU_FLAG_MASK,
         { exitReason, materializes: true }
       );
     },
-    planPostInstructionExit(context, records) {
+    planPostInstructionExit(context) {
       return recordFlagRead(
         context,
-        records,
         undefined,
         "exit",
         IR_ALU_FLAG_MASK,
         { materializes: true }
       );
     },
-    planSourceClobberForOp(context, records) {
-      return recordFlagSourceClobberForOp(context, records);
+    planSourceClobberForOp(context) {
+      return recordFlagSourceClobberForOp(context);
     },
-    planOp(context, records) {
-      return planFlagOp(context, records, directConditionsByLocation, neededSourceIds, flagSourcesByLocation);
+    planOp(context) {
+      return planFlagOp(context, directConditionsByLocation, neededSourceIds, flagSourcesByLocation);
     }
   };
 }
 
 function planFlagOp(
   context: JitPlannerOpContext,
-  records: JitOptimizationPlanRecord[],
   directConditionsByLocation: JitDirectFlagConditionIndex,
   neededSourceIds: ReadonlySet<number>,
   flagSourcesByLocation: ReadonlyMap<number, ReadonlyMap<number, JitFlagSource>>
@@ -119,37 +125,54 @@ function planFlagOp(
   switch (op.op) {
     case "flags.set": {
       const source = plannedFlagSource(flagSourcesByLocation, context.instructionIndex, context.opIndex);
+      const location = jitTrackedFlagsLocation(source.writtenMask | source.undefMask);
 
       state.tracked.recordFlagSource(source);
-      records.push({
-        kind: "producer",
-        domain: "flags",
-        instructionIndex: context.instructionIndex,
-        opIndex: context.opIndex,
-        location: jitTrackedFlagsLocation(source.writtenMask | source.undefMask),
-        producer: { kind: "flagSource", source }
-      });
       if (shouldDropFlagProducer(source, neededSourceIds)) {
-        records.push({
-          kind: "drop",
+        return {
+          handled: true,
+          facts: [{
+            kind: "producer",
+            domain: "flags",
+            instructionIndex: context.instructionIndex,
+            opIndex: context.opIndex,
+            location,
+            producer: { kind: "flagSource", source }
+          }, {
+            kind: "droppableProducer",
+            domain: "flags",
+            instructionIndex: context.instructionIndex,
+            opIndex: context.opIndex,
+            location,
+            operation: "flags.set",
+            reason: "unusedProducer"
+          }],
+          sourceCount: 1,
+          readCount: 0
+        };
+      }
+
+      return {
+        handled: true,
+        facts: [{
+          kind: "producer",
           domain: "flags",
           instructionIndex: context.instructionIndex,
           opIndex: context.opIndex,
-          op: "flags.set",
-          reason: "unusedProducer"
-        });
-      } else {
-        records.push({
-          kind: "materialization",
+          location,
+          producer: { kind: "flagSource", source }
+        }, {
+          kind: "emissionNeed",
           domain: "flags",
           instructionIndex: context.instructionIndex,
           opIndex: context.opIndex,
-          location: jitTrackedFlagsLocation(source.writtenMask | source.undefMask),
+          location,
           phase: "atOp",
           reason: "materialize"
-        });
-      }
-      return { handled: true, sourceCount: 1, readCount: 0 };
+        }],
+        sourceCount: 1,
+        readCount: 0
+      };
     }
     case "aluFlags.condition": {
       const conditionUse = jitConditionUseAt(
@@ -159,13 +182,12 @@ function planFlagOp(
       );
 
       if (conditionUse === undefined) {
-        return { handled: true, sourceCount: 0, readCount: 0 };
+        return { handled: true, facts: [], sourceCount: 0, readCount: 0 };
       }
 
       const directCondition = directConditionsByLocation.get(context.instructionIndex)?.get(context.opIndex);
-      const readCount = recordFlagRead(
+      const read = recordFlagRead(
         context,
-        records,
         undefined,
         "condition",
         conditionFlagReadMask(op.cc),
@@ -175,22 +197,41 @@ function planFlagOp(
         }
       );
 
-      if (directCondition !== undefined) {
-        records.push({
-          kind: "fold",
-          domain: "flags",
-          instructionIndex: context.instructionIndex,
-          opIndex: context.opIndex,
-          location: jitTrackedFlagsLocation(directCondition.source.writtenMask | directCondition.source.undefMask),
-          foldKind: "flagCondition"
-        });
+      if (directCondition === undefined) {
+        return { handled: true, facts: read.facts, sourceCount: 0, readCount: read.readCount };
       }
-      return { handled: true, sourceCount: 0, readCount };
+
+      const location = jitTrackedFlagsLocation(directCondition.source.writtenMask | directCondition.source.undefMask);
+
+      return {
+        handled: true,
+        facts: [
+          ...read.facts,
+          {
+            kind: "foldableUse",
+            domain: "flags",
+            instructionIndex: context.instructionIndex,
+            opIndex: context.opIndex,
+            location,
+            useKind: "condition"
+          },
+          {
+            kind: "rewrite",
+            domain: "flags",
+            instructionIndex: context.instructionIndex,
+            opIndex: context.opIndex,
+            location,
+            rewriteKind: "replace",
+            operation: "jit.flagCondition"
+          }
+        ],
+        sourceCount: 0,
+        readCount: read.readCount
+      };
     }
     case "flags.materialize": {
-      const readCount = recordFlagRead(
+      const read = recordFlagRead(
         context,
-        records,
         undefined,
         "materialize",
         op.mask,
@@ -198,12 +239,11 @@ function planFlagOp(
       );
 
       state.tracked.recordFlagsMaterialized(op.mask);
-      return { handled: true, sourceCount: 0, readCount };
+      return { handled: true, facts: read.facts, sourceCount: 0, readCount: read.readCount };
     }
     case "flags.boundary": {
-      const readCount = recordFlagRead(
+      const read = recordFlagRead(
         context,
-        records,
         undefined,
         "boundary",
         op.mask,
@@ -211,7 +251,7 @@ function planFlagOp(
       );
 
       state.tracked.recordFlagsMaterialized(op.mask);
-      return { handled: true, sourceCount: 0, readCount };
+      return { handled: true, facts: read.facts, sourceCount: 0, readCount: read.readCount };
     }
     default:
       return unhandledFlagPlannerResult;
@@ -220,7 +260,6 @@ function planFlagOp(
 
 function recordFlagRead(
   context: JitPlannerOpContext,
-  records: JitOptimizationPlanRecord[],
   owners: JitFlagOwners | undefined,
   reason: "condition" | "materialize" | "boundary" | "preInstructionExit" | "exit",
   requiredMask: number,
@@ -229,9 +268,9 @@ function recordFlagRead(
     cc?: ConditionCode;
     materializes?: boolean;
   }> = {}
-): number {
+): JitFlagPlannerReadResult {
   if (requiredMask === 0) {
-    return 0;
+    return { facts: [], readCount: 0 };
   }
 
   const read = {
@@ -246,8 +285,7 @@ function recordFlagRead(
   const trackedRead = owners === undefined
     ? context.state.tracked.recordFlagRead(read)
     : context.state.tracked.recordFlagRead(read, owners);
-
-  records.push({
+  const facts: JitPlannerFact[] = [{
     kind: "read",
     domain: "flags",
     instructionIndex: context.instructionIndex,
@@ -255,11 +293,11 @@ function recordFlagRead(
     location: trackedRead.location,
     reason: trackedRead.reason,
     read: trackedRead
-  });
+  }];
 
   if (options.materializes === true) {
-    records.push({
-      kind: "materialization",
+    facts.push({
+      kind: "emissionNeed",
       domain: "flags",
       instructionIndex: context.instructionIndex,
       opIndex: context.opIndex,
@@ -269,47 +307,47 @@ function recordFlagRead(
     });
   }
 
-  return 1;
+  return { facts, readCount: 1 };
 }
 
 function recordFlagSourceClobberForOp(
-  context: JitPlannerOpContext,
-  records: JitOptimizationPlanRecord[]
-): number {
+  context: JitPlannerOpContext
+): JitFlagPlannerClobberResult {
   switch (context.op.op) {
     case "set32":
     case "set32.if":
-      return recordFlagSourceClobber(context, records, context.op);
+      return recordFlagSourceClobber(context, context.op);
     default:
-      return 0;
+      return { facts: [], sourceClobberCount: 0 };
   }
 }
 
 function recordFlagSourceClobber(
   context: JitPlannerOpContext,
-  records: JitOptimizationPlanRecord[],
   op: Extract<JitIrOp, { op: "set32" | "set32.if" }>
-): number {
+): JitFlagPlannerClobberResult {
   const reg = jitStorageReg(op.target, context.instruction.operands);
 
   if (reg === undefined) {
-    return 0;
+    return { facts: [], sourceClobberCount: 0 };
   }
 
   if (!registerWriteInvalidatesFlagProducerInputs(context.state.tracked, op.target, context.instruction)) {
-    return 0;
+    return { facts: [], sourceClobberCount: 0 };
   }
 
-  records.push({
-    kind: "clobber",
-    domain: "flags",
-    instructionIndex: context.instructionIndex,
-    opIndex: context.opIndex,
-    location: jitTrackedFlagsLocation(IR_ALU_FLAG_MASK),
-    reg,
-    reason: "dependency"
-  });
-  return 1;
+  return {
+    facts: [{
+      kind: "clobber",
+      domain: "flags",
+      instructionIndex: context.instructionIndex,
+      opIndex: context.opIndex,
+      location: jitTrackedFlagsLocation(IR_ALU_FLAG_MASK),
+      reg,
+      reason: "dependency"
+    }],
+    sourceClobberCount: 1
+  };
 }
 
 function flagMaterializationPhase(
