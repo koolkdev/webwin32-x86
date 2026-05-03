@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { Reg32 } from "#x86/isa/types.js";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
-import type { IrBlock, ValueRef, VarRef } from "#x86/ir/model/types.js";
+import type { ConditionCode, IrBlock, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
@@ -622,6 +622,70 @@ test("materializeJitVirtualFlags emits logic32 compound conditions from writebac
   ]);
 });
 
+test("materializeJitVirtualFlags emits supported logic32 local direct conditions", () => {
+  const cases: readonly Readonly<{ cc: ConditionCode; resultInput: boolean }>[] = [
+    { cc: "O", resultInput: false },
+    { cc: "NO", resultInput: false },
+    { cc: "B", resultInput: false },
+    { cc: "AE", resultInput: false },
+    { cc: "E", resultInput: true },
+    { cc: "NE", resultInput: true },
+    { cc: "BE", resultInput: true },
+    { cc: "A", resultInput: true },
+    { cc: "L", resultInput: true },
+    { cc: "GE", resultInput: true },
+    { cc: "LE", resultInput: true },
+    { cc: "G", resultInput: true }
+  ];
+
+  for (const { cc, resultInput } of cases) {
+    const materialized = materializeJitVirtualFlags(logic32LocalConditionBlock(cc));
+    const conditionInstruction = materialized.block.instructions[1]!;
+    const condition = conditionInstruction.ir.find((op) => op.op === "flagProducer.condition");
+    const getCount = conditionInstruction.ir.filter((op) => op.op === "get32").length;
+
+    strictEqual(materialized.flags.directConditionCount, 1, cc);
+    strictEqual(materialized.flags.removedSetCount, 1, cc);
+    strictEqual(materialized.flags.retainedSetCount, 0, cc);
+    strictEqual(conditionInstruction.ir.some((op) => op.op === "aluFlags.condition"), false, cc);
+    strictEqual(getCount, resultInput ? 1 : 0, cc);
+    deepStrictEqual(condition, {
+      op: "flagProducer.condition",
+      dst: v(0),
+      cc,
+      producer: "logic32",
+      writtenMask: createIrFlagSetOp("logic32", { result: v(1) }).writtenMask,
+      undefMask: createIrFlagSetOp("logic32", { result: v(1) }).undefMask,
+      inputs: resultInput ? { result: v(1) } : {}
+    });
+  }
+});
+
+test("materializeJitVirtualFlags keeps logic32 exit conditions materialized", () => {
+  const materialized = materializeJitVirtualFlags({
+    instructions: [
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "i32.and", dst: v(1), a: v(0), b: c32(0xff) },
+        createIrFlagSetOp("logic32", { result: v(1) }),
+        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        { op: "next" }
+      ], 0),
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "LE" },
+        { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
+      ], 1)
+    ]
+  });
+  const conditionInstruction = materialized.block.instructions[1]!;
+
+  strictEqual(materialized.flags.directConditionCount, 0);
+  strictEqual(materialized.flags.removedSetCount, 0);
+  strictEqual(materialized.flags.retainedSetCount, 1);
+  strictEqual(conditionInstruction.ir.some((op) => op.op === "aluFlags.condition"), true);
+  strictEqual(conditionInstruction.ir.some((op) => op.op === "flagProducer.condition"), false);
+});
+
 test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const xorEax = ok(decodeBytes([0x83, 0xf0, 0x02], movEaxEcx.nextEip));
@@ -760,6 +824,25 @@ function onlyExit(exits: readonly JitExitPoint[], reason: ExitReasonValue): JitE
 
   strictEqual(matches.length, 1);
   return matches[0]!;
+}
+
+function logic32LocalConditionBlock(cc: ConditionCode): JitIrBlock {
+  return {
+    instructions: [
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "i32.and", dst: v(1), a: v(0), b: c32(0xff) },
+        createIrFlagSetOp("logic32", { result: v(1) }),
+        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        { op: "next" }
+      ], 0),
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc },
+        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "next" }
+      ], 1)
+    ]
+  };
 }
 
 function syntheticInstruction(
