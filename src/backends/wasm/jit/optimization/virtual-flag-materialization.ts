@@ -5,31 +5,38 @@ import {
 } from "#x86/ir/passes/flag-analysis.js";
 import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import { analyzeJitVirtualFlags } from "./virtual-flag-analysis.js";
 import { jitMemoryFaultReason } from "./op-effects.js";
 
-export type JitFlagPruning = Readonly<{
-  prunedCount: number;
+export type JitVirtualFlagMaterialization = Readonly<{
+  removedSetCount: number;
+  retainedSetCount: number;
+  sourceClobberCount: number;
 }>;
 
-export function pruneDeadJitFlags(block: JitIrBlock): Readonly<{ block: JitIrBlock; pruning: JitFlagPruning }> {
-  let liveFlags = IR_FLAG_MASK_NONE;
-  let prunedCount = 0;
+export function materializeJitVirtualFlags(
+  block: JitIrBlock
+): Readonly<{ block: JitIrBlock; flags: JitVirtualFlagMaterialization }> {
+  const analysis = analyzeJitVirtualFlags(block);
   const instructions = new Array<JitIrBlockInstruction>(block.instructions.length);
+  let liveFlags = IR_FLAG_MASK_NONE;
+  let removedSetCount = 0;
+  let retainedSetCount = 0;
 
   for (let instructionIndex = block.instructions.length - 1; instructionIndex >= 0; instructionIndex -= 1) {
     const instruction = block.instructions[instructionIndex];
 
     if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while pruning flags: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction while materializing virtual flags: ${instructionIndex}`);
     }
 
-    const optimizedOps: IrOp[] = [];
+    const materializedOps: IrOp[] = [];
 
     for (let opIndex = instruction.ir.length - 1; opIndex >= 0; opIndex -= 1) {
       const op = instruction.ir[opIndex];
 
       if (op === undefined) {
-        throw new Error(`missing JIT IR op while pruning flags: ${instructionIndex}:${opIndex}`);
+        throw new Error(`missing JIT IR op while materializing virtual flags: ${instructionIndex}:${opIndex}`);
       }
 
       const reads = flagReads(op, instruction);
@@ -37,9 +44,13 @@ export function pruneDeadJitFlags(block: JitIrBlock): Readonly<{ block: JitIrBlo
       const neededWrites = writes & liveFlags;
 
       if (op.op === "flags.set" && neededWrites === IR_FLAG_MASK_NONE) {
-        prunedCount += 1;
+        removedSetCount += 1;
       } else {
-        optimizedOps.push(op);
+        if (op.op === "flags.set") {
+          retainedSetCount += 1;
+        }
+
+        materializedOps.push(op);
       }
 
       liveFlags = reads | (liveFlags & ~writes);
@@ -47,13 +58,17 @@ export function pruneDeadJitFlags(block: JitIrBlock): Readonly<{ block: JitIrBlo
 
     instructions[instructionIndex] = {
       ...instruction,
-      ir: optimizedOps.reverse()
+      ir: materializedOps.reverse()
     };
   }
 
   return {
     block: { instructions },
-    pruning: { prunedCount }
+    flags: {
+      removedSetCount,
+      retainedSetCount,
+      sourceClobberCount: analysis.sourceClobbers.length
+    }
   };
 }
 

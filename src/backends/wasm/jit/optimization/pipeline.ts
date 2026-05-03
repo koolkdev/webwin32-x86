@@ -1,10 +1,10 @@
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
-import { pruneDeadJitFlags, type JitFlagPruning } from "./flag-pruning.js";
+import { materializeJitVirtualFlags, type JitVirtualFlagMaterialization } from "./virtual-flags.js";
 import { foldJitVirtualRegisters, type JitVirtualRegisterFolding } from "./virtual-registers.js";
 
 export const jitIrOptimizationPassOrder = [
-  "virtual-registers",
-  "dead-flags"
+  "virtual-flags",
+  "virtual-registers"
 ] as const;
 
 export type JitIrOptimizationPassName = typeof jitIrOptimizationPassOrder[number];
@@ -12,20 +12,20 @@ export type JitIrOptimizationPassName = typeof jitIrOptimizationPassOrder[number
 export type JitIrOptimizationPipelineResult = Readonly<{
   block: JitIrBlock;
   passes: Readonly<{
+    virtualFlags: JitVirtualFlagMaterialization;
     virtualRegisters: JitVirtualRegisterFolding;
-    deadFlags: JitFlagPruning;
   }>;
 }>;
 
 export function runJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizationPipelineResult {
-  const virtualRegisters = foldJitVirtualRegisters(block);
-  const deadFlags = pruneDeadJitFlags(virtualRegisters.block);
+  const virtualFlags = materializeJitVirtualFlags(block);
+  const virtualRegisters = foldJitVirtualRegisters(virtualFlags.block);
 
   return {
-    block: deadFlags.block,
+    block: virtualRegisters.block,
     passes: {
-      virtualRegisters: virtualRegisters.folding,
-      deadFlags: deadFlags.pruning
+      virtualFlags: virtualFlags.flags,
+      virtualRegisters: virtualRegisters.folding
     }
   };
 }

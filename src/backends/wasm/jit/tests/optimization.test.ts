@@ -6,7 +6,6 @@ import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
-import { pruneDeadJitFlags } from "#backends/wasm/jit/optimization/flag-pruning.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
 import {
   jitIrOptimizationPassOrder,
@@ -15,6 +14,7 @@ import {
 import type { JitExitPoint } from "#backends/wasm/jit/optimization/types.js";
 import {
   analyzeJitVirtualFlags,
+  materializeJitVirtualFlags,
   type JitVirtualFlagOwnerMask
 } from "#backends/wasm/jit/optimization/virtual-flags.js";
 import { foldJitVirtualRegisters } from "#backends/wasm/jit/optimization/virtual-registers.js";
@@ -119,29 +119,44 @@ test("optimizeJitIrBlock records flag materialization requirements before condit
   }
 });
 
-test("pruneDeadJitFlags removes overwritten flag producers across instruction bodies", () => {
+test("materializeJitVirtualFlags removes overwritten flag producers across instruction bodies", () => {
   const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], cmp.nextEip));
-  const pruned = pruneDeadJitFlags(buildJitIrBlock([cmp, add]));
-  const flagSets = pruned.block.instructions.flatMap((instruction) =>
+  const materialized = materializeJitVirtualFlags(buildJitIrBlock([cmp, add]));
+  const flagSets = materialized.block.instructions.flatMap((instruction) =>
     instruction.ir.filter((op) => op.op === "flags.set")
   );
 
-  strictEqual(pruned.pruning.prunedCount, 1);
+  strictEqual(materialized.flags.removedSetCount, 1);
+  strictEqual(materialized.flags.retainedSetCount, 1);
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32"]);
 });
 
-test("pruneDeadJitFlags keeps partial flag producers needed by later conditions", () => {
+test("materializeJitVirtualFlags keeps partial flag producers needed by later conditions", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const inc = ok(decodeBytes([0x40], add.nextEip));
   const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
-  const pruned = pruneDeadJitFlags(buildJitIrBlock([add, inc, jc]));
-  const flagSets = pruned.block.instructions.flatMap((instruction) =>
+  const materialized = materializeJitVirtualFlags(buildJitIrBlock([add, inc, jc]));
+  const flagSets = materialized.block.instructions.flatMap((instruction) =>
     instruction.ir.filter((op) => op.op === "flags.set")
   );
 
-  strictEqual(pruned.pruning.prunedCount, 0);
+  strictEqual(materialized.flags.removedSetCount, 0);
+  strictEqual(materialized.flags.retainedSetCount, 2);
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
+});
+
+test("materializeJitVirtualFlags keeps flag producers needed by memory fault exits", () => {
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
+  const load = ok(decodeBytes([0x8b, 0x15, 0x00, 0x00, 0x01, 0x00], add.nextEip));
+  const materialized = materializeJitVirtualFlags(buildJitIrBlock([add, load]));
+  const flagSets = materialized.block.instructions.flatMap((instruction) =>
+    instruction.ir.filter((op) => op.op === "flags.set")
+  );
+
+  strictEqual(materialized.flags.removedSetCount, 0);
+  strictEqual(materialized.flags.retainedSetCount, 1);
+  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32"]);
 });
 
 test("analyzeJitVirtualFlags keeps partial flag ownership across INC", () => {
@@ -204,9 +219,9 @@ test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
     trap
   ]));
 
-  deepStrictEqual(jitIrOptimizationPassOrder, ["virtual-registers", "dead-flags"]);
+  deepStrictEqual(jitIrOptimizationPassOrder, ["virtual-flags", "virtual-registers"]);
+  strictEqual(result.passes.virtualFlags.removedSetCount, 1);
   strictEqual(result.passes.virtualRegisters.removedSetCount, 3);
-  strictEqual(result.passes.deadFlags.prunedCount, 1);
 });
 
 test("foldJitVirtualRegisters keeps transient register calculations virtual until exit", () => {
