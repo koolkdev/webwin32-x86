@@ -1,5 +1,5 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import type { IrStorageExpr, IrValueExpr } from "#x86/ir/model/expressions.js";
+import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/lowering/expressions.js";
 import type {
   IrBlock,
   StorageRef

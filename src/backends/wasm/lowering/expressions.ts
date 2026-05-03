@@ -2,7 +2,7 @@ import {
   flagProducerConditionInputNames,
   requiredFlagProducerConditionInput,
   type IrFlagProducerConditionDescriptor
-} from "./flag-conditions.js";
+} from "#x86/ir/model/flag-conditions.js";
 import type {
   ConditionCode,
   IrFlagSetOp,
@@ -12,7 +12,7 @@ import type {
   StorageRef,
   ValueRef,
   VarRef
-} from "./types.js";
+} from "#x86/ir/model/types.js";
 
 export type IrStorageExpr =
   | OperandRef

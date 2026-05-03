@@ -8,7 +8,7 @@ import {
   flagProducerConditionInputNames,
   flagProducerConditionKind
 } from "#x86/ir/model/flag-conditions.js";
-import type { IrValueExpr } from "#x86/ir/model/expressions.js";
+import type { IrValueExpr } from "#backends/wasm/lowering/expressions.js";
 import type { ConditionCode, IrFlagSetOp, ValueRef } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";

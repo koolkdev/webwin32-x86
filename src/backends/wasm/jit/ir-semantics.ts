@@ -16,7 +16,7 @@ import {
   type IrValueUseRole
 } from "#x86/ir/model/op-semantics.js";
 import type { IrOp, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
-import type { IrExpressionInputBlock, IrExpressionInputOp } from "#x86/ir/model/expressions.js";
+import type { IrExpressionInputBlock, IrExpressionInputOp } from "#backends/wasm/lowering/expressions.js";
 import type { JitIrBody, JitIrOp } from "./types.js";
 
 export function jitIrOpResult(op: JitIrOp): IrOpResult {

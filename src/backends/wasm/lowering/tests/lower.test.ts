@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { Reg32 } from "#x86/isa/types.js";
 import { buildIr } from "#x86/ir/build/builder.js";
-import type { IrExpressionOptions, IrStorageExpr, IrValueExpr } from "#x86/ir/model/expressions.js";
+import type { IrExpressionOptions, IrStorageExpr, IrValueExpr } from "#backends/wasm/lowering/expressions.js";
 import type { IrBlock } from "#x86/ir/model/types.js";
 import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";

@@ -1,5 +1,5 @@
 import { CONDITIONS, type FlagBoolExpr } from "#x86/ir/model/conditions.js";
-import type { IrValueExpr } from "#x86/ir/model/expressions.js";
+import type { IrValueExpr } from "#backends/wasm/lowering/expressions.js";
 import {
   flagProducerConditionKind,
   requiredFlagProducerConditionInput

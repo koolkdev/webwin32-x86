@@ -3,7 +3,7 @@ import type {
   IrExprBlock,
   IrStorageExpr,
   IrValueExpr
-} from "#x86/ir/model/expressions.js";
+} from "#backends/wasm/lowering/expressions.js";
 import {
   flagProducerConditionInputNames,
   requiredFlagProducerConditionInput

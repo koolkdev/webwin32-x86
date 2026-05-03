@@ -1,7 +1,7 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import type { IrValueExpr } from "#x86/ir/model/expressions.js";
+import type { IrValueExpr } from "#backends/wasm/lowering/expressions.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import type { ConditionCode, FlagProducerName, ValueRef } from "#x86/ir/model/types.js";
 import { x86ArithmeticFlagMask } from "#x86/isa/flags.js";

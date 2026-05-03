@@ -6,7 +6,7 @@ import {
   type IrExprBlock,
   type IrStorageExpr,
   type IrValueExpr
-} from "#x86/ir/model/expressions.js";
+} from "#backends/wasm/lowering/expressions.js";
 import type {
   ConditionCode,
   IrFlagSetOp,
