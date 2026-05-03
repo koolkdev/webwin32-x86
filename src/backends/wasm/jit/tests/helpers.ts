@@ -2,10 +2,10 @@ import { decodeIsaInstructionFromReader } from "#x86/isa/decoder/decode.js";
 import { ByteArrayDecodeReader } from "#x86/isa/decoder/tests/helpers.js";
 import type { IsaDecodedInstruction } from "#x86/isa/decoder/types.js";
 import type { CpuState } from "#x86/state/cpu-state.js";
-import { wasmBlockExportName, wasmImport } from "#backends/wasm/abi.js";
+import { wasmImport } from "#backends/wasm/abi.js";
 import { decodeExit, type DecodedExit } from "#backends/wasm/exit.js";
 import { readWasmCpuState, writeWasmCpuState } from "#backends/wasm/state-layout.js";
-import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
+import { buildJitIrBlock, encodeJitIrBlock, jitBlockExportName } from "#backends/wasm/jit/block.js";
 
 export type JitIrBlockRunResult = Readonly<{
   state: CpuState;
@@ -20,7 +20,7 @@ export async function runJitIrBlock(
 ): Promise<JitIrBlockRunResult> {
   const instructions = decodeInstructions(bytes, initialState.eip);
   const block = buildJitIrBlock(instructions);
-  const module = new WebAssembly.Module(encodeJitIrBlock(block));
+  const module = new WebAssembly.Module(encodeJitIrBlock([block]));
   const stateMemory = new WebAssembly.Memory({ initial: 1 });
   const guestMemory = new WebAssembly.Memory({ initial: 1 });
   const stateView = new DataView(stateMemory.buffer);
@@ -35,10 +35,11 @@ export async function runJitIrBlock(
       [wasmImport.guestMemoryName]: guestMemory
     }
   });
-  const run = instance.exports[wasmBlockExportName];
+  const exportName = jitBlockExportName(initialState.eip);
+  const run = instance.exports[exportName];
 
   if (typeof run !== "function") {
-    throw new Error(`expected exported function '${wasmBlockExportName}'`);
+    throw new Error(`expected exported function '${exportName}'`);
   }
 
   const encodedExit: unknown = run();

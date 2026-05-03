@@ -48,7 +48,7 @@ test("compiled target patches dependent module-local table", () => {
   const b = compileBlock(fixture, bEip);
   const slot = slotForTarget(a, bEip);
 
-  strictEqual(a.moduleLinkTable?.table.get(slot), b.exportedBlockFunction);
+  strictEqual(a.moduleLinkTable?.table.get(slot), b.exportedBlockFunctionForEip(bEip));
 
   fixture.memories.state.load({ eip: aEip });
 
@@ -70,7 +70,7 @@ test("final jmp rel8 can link through the module-local table", () => {
   const b = compileBlock(fixture, rel8B);
   const slot = slotForTarget(a, rel8B);
 
-  strictEqual(a.moduleLinkTable?.table.get(slot), b.exportedBlockFunction);
+  strictEqual(a.moduleLinkTable?.table.get(slot), b.exportedBlockFunctionForEip(rel8B));
 
   fixture.memories.state.load({ eip: rel8A });
 
@@ -118,8 +118,8 @@ test("target compile and invalidation patch multiple dependent module tables", (
   const aSlot = slotForTarget(a, bEip);
   const cSlot = slotForTarget(c, bEip);
 
-  strictEqual(a.moduleLinkTable?.table.get(aSlot), b.exportedBlockFunction);
-  strictEqual(c.moduleLinkTable?.table.get(cSlot), b.exportedBlockFunction);
+  strictEqual(a.moduleLinkTable?.table.get(aSlot), b.exportedBlockFunctionForEip(bEip));
+  strictEqual(c.moduleLinkTable?.table.get(cSlot), b.exportedBlockFunctionForEip(bEip));
 
   fixture.memories.state.load({ eip: aEip });
   deepStrictEqual(a.run().exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });

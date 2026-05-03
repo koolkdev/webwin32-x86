@@ -705,7 +705,7 @@ function aluFlagMemoryAccessCounts(block: ReturnType<typeof buildJitIrBlock>): R
   let loads = 0;
   let stores = 0;
 
-  for (const access of memoryAccesses(extractOnlyFunctionBody(encodeJitIrBlock(block)))) {
+  for (const access of memoryAccesses(extractOnlyFunctionBody(encodeJitIrBlock([block])))) {
     if (access.memoryIndex !== 0 || access.offset !== stateOffset.aluFlags) {
       continue;
     }
@@ -721,7 +721,7 @@ function aluFlagMemoryAccessCounts(block: ReturnType<typeof buildJitIrBlock>): R
 }
 
 function stateMemoryLoads(block: ReturnType<typeof buildJitIrBlock>): readonly number[] {
-  return memoryAccesses(extractOnlyFunctionBody(encodeJitIrBlock(block)))
+  return memoryAccesses(extractOnlyFunctionBody(encodeJitIrBlock([block])))
     .filter((access) => access.memoryIndex === 0 && access.opcode === wasmOpcode.i32Load)
     .map((access) => access.offset);
 }

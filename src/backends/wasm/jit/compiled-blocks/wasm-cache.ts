@@ -45,7 +45,7 @@ export class WasmCompiledBlockCache implements WasmCompiledBlockCacheLike {
         return undefined;
       }
 
-      const compiled = compileWasmBlockHandle(block, {
+      const compiled = compileWasmBlockHandle([block], {
         stateMemory: memories.stateMemory,
         guestMemory: memories.guestMemory,
         blockKey
@@ -53,7 +53,7 @@ export class WasmCompiledBlockCache implements WasmCompiledBlockCacheLike {
 
       this.#blocksByEip.set(blockKey, compiled);
       this.#registerDependentTable(compiled);
-      this.#installTargetInDependentTables(blockKey, compiled.exportedBlockFunction);
+      this.#installTargetInDependentTables(blockKey, compiled.exportedBlockFunctionForEip(blockKey));
       return compiled;
     } catch (error: unknown) {
       if (error instanceof UnsupportedWasmCodegenError) {
@@ -101,7 +101,7 @@ export class WasmCompiledBlockCache implements WasmCompiledBlockCacheLike {
       const target = this.#blocksByEip.get(targetEip);
 
       if (target !== undefined) {
-        table.installTarget(targetEip, target.exportedBlockFunction);
+        table.installTarget(targetEip, target.exportedBlockFunctionForEip(targetEip));
       }
     }
   }

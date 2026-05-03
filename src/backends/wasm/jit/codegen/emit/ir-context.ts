@@ -39,13 +39,14 @@ export type JitIrInstructionContext = Pick<JitIrBlockInstruction, "ir" | "operan
 >;
 
 export type JitLinkResolver = Readonly<{
-  moduleTable: JitModuleLinkTable;
-  slotForStaticTarget(eip: number): number;
+  moduleTable?: JitModuleLinkTable;
+  functionIndexForStaticTarget?: (eip: number) => number | undefined;
+  slotForStaticTarget?: (eip: number) => number;
 }>;
 
 export type JitLinkEmitContext = JitLinkResolver & Readonly<{
   blockTypeIndex: number;
-  tableIndex: number;
+  tableIndex?: number;
 }>;
 
 export type JitIrBlockEmitContext = Readonly<{

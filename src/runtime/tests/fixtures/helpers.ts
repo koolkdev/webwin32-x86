@@ -85,7 +85,7 @@ export function createFixtureCompiledBlockCache(): CompiledBlockCache {
       }
 
       try {
-        return compileWasmBlockHandle(block, {
+        return compileWasmBlockHandle([block], {
           stateMemory: memories.stateMemory,
           guestMemory: memories.guestMemory,
           blockKey: startEip

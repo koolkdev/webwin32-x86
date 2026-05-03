@@ -4,6 +4,7 @@ import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { emitWasmIrExitFromI32Stack } from "#backends/wasm/codegen/exit.js";
 import type { WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
+import type { JitExitPoint } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitIrContext } from "./ir-context.js";
 
 export function emitJitNext(context: JitIrContext): void {
@@ -115,17 +116,35 @@ function emitJitLinkedStaticJump(context: JitIrContext, target: IrValueExpr): bo
     return false;
   }
 
-  const exitPoint = context.currentExitPoint(ExitReason.JUMP);
+  const directFunctionIndex = linking.functionIndexForStaticTarget?.(targetEip);
 
+  if (directFunctionIndex !== undefined) {
+    const exitPoint = context.currentExitPoint(ExitReason.JUMP);
+
+    emitJitLinkedJumpStateStores(context, targetEip, exitPoint);
+    context.body.returnCallFunction(directFunctionIndex);
+    return true;
+  }
+
+  if (linking.tableIndex !== undefined && linking.slotForStaticTarget !== undefined) {
+    const exitPoint = context.currentExitPoint(ExitReason.JUMP);
+
+    emitJitLinkedJumpStateStores(context, targetEip, exitPoint);
+    context.body
+      .i32Const(linking.slotForStaticTarget(targetEip))
+      .returnCallIndirect(linking.blockTypeIndex, linking.tableIndex);
+    return true;
+  }
+
+  return false;
+}
+
+function emitJitLinkedJumpStateStores(context: JitIrContext, targetEip: number, exitPoint: JitExitPoint): void {
   context.state.commitInstructionExit(exitPoint, () => {
     context.body.i32Const(i32(targetEip));
   });
   context.exit.emitBeforeExit?.();
   context.state.emitExitStateStores(exitPoint.exitStateIndex);
-  context.body
-    .i32Const(linking.slotForStaticTarget(targetEip))
-    .returnCallIndirect(linking.blockTypeIndex, linking.tableIndex);
-  return true;
 }
 
 function finalStaticJumpTarget(context: JitIrContext, target: IrValueExpr): number | undefined {
