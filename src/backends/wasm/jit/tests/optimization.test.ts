@@ -165,6 +165,7 @@ test("analyzeJitVirtualFlags keeps partial flag ownership across INC", () => {
   const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
   const analysis = analyzeJitVirtualFlags(buildJitIrBlock([add, inc, jc]));
   const conditionRead = analysis.reads.find((read) => read.reason === "condition");
+  const exitRead = analysis.reads.find((read) => read.reason === "exit");
 
   deepStrictEqual(analysis.sources.map((source) => source.producer), ["add32", "inc32"]);
   strictEqual(conditionRead?.cc, "B");
@@ -172,9 +173,32 @@ test("analyzeJitVirtualFlags keeps partial flag ownership across INC", () => {
   deepStrictEqual(flagOwnerSummary(conditionRead?.owners ?? []), [
     { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add32" }
   ]);
+  deepStrictEqual(flagOwnerSummary(exitRead?.owners ?? []), [
+    { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add32" },
+    { mask: IR_ALU_FLAG_MASK & ~IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 1, producer: "inc32" }
+  ]);
   deepStrictEqual(flagOwnerSummary(analysis.finalOwners), [
     { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add32" },
     { mask: IR_ALU_FLAG_MASK & ~IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 1, producer: "inc32" }
+  ]);
+});
+
+test("analyzeJitVirtualFlags records memory-fault reads from instruction entry owners", () => {
+  const addMem = ok(decodeBytes([0x01, 0x18], startAddress));
+  const analysis = analyzeJitVirtualFlags(buildJitIrBlock([addMem]));
+  const memoryFaultReads = analysis.reads.filter((read) => read.reason === "memoryFault");
+  const exitRead = analysis.reads.find((read) => read.reason === "exit");
+
+  strictEqual(memoryFaultReads.length, 2);
+
+  for (const read of memoryFaultReads) {
+    deepStrictEqual(flagOwnerSummary(read.owners), [
+      { mask: IR_ALU_FLAG_MASK, kind: "incoming" }
+    ]);
+  }
+
+  deepStrictEqual(flagOwnerSummary(exitRead?.owners ?? []), [
+    { mask: IR_ALU_FLAG_MASK, kind: "producer", sourceId: 0, producer: "add32" }
   ]);
 });
 

@@ -13,6 +13,7 @@ import type {
   ValueRef
 } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import { jitMemoryFaultReason } from "./op-effects.js";
 import {
   jitStorageReg,
   jitVirtualValueForEffectiveAddress,
@@ -28,6 +29,8 @@ export type JitVirtualFlagInput =
 
 export type JitVirtualFlagSource = Readonly<{
   id: number;
+  instructionIndex: number;
+  opIndex: number;
   producer: IrFlagSetOp["producer"];
   writtenMask: number;
   undefMask: number;
@@ -48,7 +51,7 @@ export type JitVirtualFlagOwnerMask = Readonly<{
 export type JitVirtualFlagRead = Readonly<{
   instructionIndex: number;
   opIndex: number;
-  reason: "condition" | "materialize" | "boundary";
+  reason: "condition" | "materialize" | "boundary" | "memoryFault" | "exit";
   requiredMask: number;
   cc?: ConditionCode;
   owners: readonly JitVirtualFlagOwnerMask[];
@@ -89,6 +92,7 @@ export function analyzeJitVirtualFlags(block: JitIrBlock): JitVirtualFlagAnalysi
     }
 
     const localValues = new Map<number, JitVirtualValue>();
+    const instructionEntryOwners = new Map(ownersByFlag);
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
       const op = instruction.ir[opIndex];
@@ -97,7 +101,7 @@ export function analyzeJitVirtualFlags(block: JitIrBlock): JitVirtualFlagAnalysi
         throw new Error(`missing JIT IR op while analyzing virtual flags: ${instructionIndex}:${opIndex}`);
       }
 
-      analyzeOp(instructionIndex, opIndex, instruction, op, localValues);
+      analyzeOp(instructionIndex, opIndex, instruction, op, localValues, instructionEntryOwners);
     }
   }
 
@@ -113,8 +117,18 @@ export function analyzeJitVirtualFlags(block: JitIrBlock): JitVirtualFlagAnalysi
     opIndex: number,
     instruction: JitIrBlockInstruction,
     op: IrOp,
-    localValues: Map<number, JitVirtualValue>
+    localValues: Map<number, JitVirtualValue>,
+    instructionEntryOwners: ReadonlyMap<number, JitVirtualFlagOwner>
   ): void {
+    if (jitMemoryFaultReason(op, instruction.operands) !== undefined) {
+      recordRead({
+        instructionIndex,
+        opIndex,
+        reason: "memoryFault",
+        requiredMask: IR_ALU_FLAG_MASK
+      }, instructionEntryOwners);
+    }
+
     switch (op.op) {
       case "get32":
         recordGet32(op.dst.id, op.source, instruction, localValues);
@@ -140,7 +154,7 @@ export function analyzeJitVirtualFlags(block: JitIrBlock): JitVirtualFlagAnalysi
         recordSourceClobber(instructionIndex, opIndex, op.target, instruction);
         return;
       case "flags.set":
-        recordFlagSource(op, localValues);
+        recordFlagSource(instructionIndex, opIndex, op, localValues);
         return;
       case "aluFlags.condition":
         recordRead({
@@ -159,18 +173,32 @@ export function analyzeJitVirtualFlags(block: JitIrBlock): JitVirtualFlagAnalysi
         recordRead({ instructionIndex, opIndex, reason: "boundary", requiredMask: op.mask });
         setOwner(op.mask, materializedFlagOwner);
         return;
+      case "next":
+        if (instruction.nextMode === "exit") {
+          recordRead({ instructionIndex, opIndex, reason: "exit", requiredMask: IR_ALU_FLAG_MASK });
+        }
+        return;
+      case "jump":
+      case "conditionalJump":
+      case "hostTrap":
+        recordRead({ instructionIndex, opIndex, reason: "exit", requiredMask: IR_ALU_FLAG_MASK });
+        return;
       default:
         return;
     }
   }
 
   function recordFlagSource(
+    instructionIndex: number,
+    opIndex: number,
     op: IrFlagSetOp,
     localValues: ReadonlyMap<number, JitVirtualValue>
   ): void {
     const inputs = flagInputs(op, localValues);
     const source: JitVirtualFlagSource = {
       id: nextSourceId,
+      instructionIndex,
+      opIndex,
       producer: op.producer,
       writtenMask: op.writtenMask,
       undefMask: op.undefMask,
@@ -192,7 +220,8 @@ export function analyzeJitVirtualFlags(block: JitIrBlock): JitVirtualFlagAnalysi
   }
 
   function recordRead(
-    read: Omit<JitVirtualFlagRead, "owners">
+    read: Omit<JitVirtualFlagRead, "owners">,
+    readOwners: ReadonlyMap<number, JitVirtualFlagOwner> = ownersByFlag
   ): void {
     if (read.requiredMask === 0) {
       return;
@@ -200,7 +229,7 @@ export function analyzeJitVirtualFlags(block: JitIrBlock): JitVirtualFlagAnalysi
 
     reads.push({
       ...read,
-      owners: ownersForMask(ownersByFlag, read.requiredMask)
+      owners: ownersForMask(readOwners, read.requiredMask)
     });
   }
 
