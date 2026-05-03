@@ -10,9 +10,10 @@ export function emitJitNext(context: JitIrContext): void {
   const instruction = context.currentInstruction();
 
   if (instruction.nextMode === "exit") {
+    const exitPoint = context.currentExitPoint(ExitReason.FALLTHROUGH);
+
     context.state.commitInstructionExit(
-      instruction.postInstructionState,
-      requiredPostInstructionExitStateIndex(instruction),
+      exitPoint,
       () => {
         context.body.i32Const(i32(instruction.nextEip));
       }
@@ -42,11 +43,10 @@ export function emitJitControlExit(
   try {
     helpers.emitValue(target);
     context.body.localSet(targetLocal);
-    const instruction = context.currentInstruction();
+    const exitPoint = context.currentExitPoint(exitReason);
 
     context.state.commitInstructionExit(
-      instruction.postInstructionState,
-      requiredPostInstructionExitStateIndex(instruction),
+      exitPoint,
       () => {
         context.body.localGet(targetLocal);
       }
@@ -79,10 +79,10 @@ export function emitJitHostTrap(context: JitIrContext, vector: IrValueExpr, help
     helpers.emitValue(vector);
     context.body.localSet(vectorLocal);
     const instruction = context.currentInstruction();
+    const exitPoint = context.currentExitPoint(ExitReason.HOST_TRAP);
 
     context.state.commitInstructionExit(
-      instruction.postInstructionState,
-      requiredPostInstructionExitStateIndex(instruction),
+      exitPoint,
       () => {
         context.body.i32Const(i32(instruction.nextEip));
       }
@@ -92,12 +92,4 @@ export function emitJitHostTrap(context: JitIrContext, vector: IrValueExpr, help
   } finally {
     context.scratch.freeLocal(vectorLocal);
   }
-}
-
-function requiredPostInstructionExitStateIndex(instruction: ReturnType<JitIrContext["currentInstruction"]>): number {
-  if (instruction.postInstructionExitStateIndex === undefined) {
-    throw new Error(`missing JIT post-instruction exit state index: ${instruction.instructionId}`);
-  }
-
-  return instruction.postInstructionExitStateIndex;
 }

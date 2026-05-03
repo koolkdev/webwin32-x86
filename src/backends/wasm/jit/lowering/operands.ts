@@ -3,6 +3,7 @@ import type { IrStorageExpr, IrValueExpr } from "#x86/ir/model/expressions.js";
 import type { StorageRef } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
+import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { emitWasmIrLoadGuestU32FromStack, emitWasmIrStoreGuestU32 } from "#backends/wasm/lowering/memory.js";
 import type { WasmIrReg32Storage } from "#backends/wasm/lowering/registers.js";
 import type { WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
@@ -161,6 +162,7 @@ function emitLoadGuestU32FromStack(context: JitIrContext): void {
   const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
+    prepareMemoryFaultExit(context, ExitReason.MEMORY_READ_FAULT);
     emitWasmIrLoadGuestU32FromStack(context, addressLocal);
   } finally {
     context.scratch.freeLocal(addressLocal);
@@ -181,11 +183,20 @@ function emitStoreMem32(
     context.body.localSet(addressLocal);
     emitValue();
     context.body.localSet(valueLocal);
+    prepareMemoryFaultExit(context, ExitReason.MEMORY_WRITE_FAULT);
     emitWasmIrStoreGuestU32(context, addressLocal, valueLocal, faultExtraDepth);
   } finally {
     context.scratch.freeLocal(valueLocal);
     context.scratch.freeLocal(addressLocal);
   }
+}
+
+function prepareMemoryFaultExit(context: JitIrContext, exitReason: ExitReasonValue): void {
+  const exitPoint = context.currentExitPoint(exitReason);
+
+  context.state.prepareExitPoint(exitPoint, () => {
+    context.body.i32Const(i32(exitPoint.snapshot.eip));
+  });
 }
 
 function operandBinding(context: JitIrContext, index: number): JitOperandBinding {

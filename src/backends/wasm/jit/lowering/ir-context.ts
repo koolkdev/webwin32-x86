@@ -1,7 +1,7 @@
 import type { IrBlock } from "#x86/ir/model/types.js";
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
-import { ExitReason } from "#backends/wasm/exit.js";
+import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { lowerIrToWasm } from "#backends/wasm/lowering/lower.js";
 import { emitFlagProducerCondition } from "#backends/wasm/lowering/conditions.js";
 import {
@@ -18,7 +18,7 @@ import {
   emitJitGet32,
   emitJitSet32
 } from "./operands.js";
-import type { JitInstructionState } from "#backends/wasm/jit/optimization/optimize.js";
+import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/optimization/optimize.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
 
 export type JitIrInstructionContext = Pick<
@@ -29,8 +29,6 @@ export type JitIrInstructionContext = Pick<
   | "nextMode"
   | "preInstructionState"
   | "postInstructionState"
-  | "preInstructionExitStateIndex"
-  | "postInstructionExitStateIndex"
 >;
 
 export type JitIrBlockLoweringContext = Readonly<{
@@ -40,6 +38,7 @@ export type JitIrBlockLoweringContext = Readonly<{
   exit: JitExitTarget;
   operands: readonly JitOperandBinding[];
   instructions: readonly JitIrInstructionContext[];
+  exitPoints: readonly JitExitPoint[];
 }>;
 
 export type JitIrContext = Readonly<{
@@ -49,6 +48,7 @@ export type JitIrContext = Readonly<{
   exit: JitExitTarget;
   operands: readonly JitOperandBinding[];
   currentInstruction(): JitIrInstructionContext;
+  currentExitPoint(exitReason: ExitReasonValue): JitExitPoint;
   advanceInstruction(): void;
 }>;
 
@@ -80,6 +80,8 @@ export function lowerIrWithJitContext(block: IrBlock, context: JitIrBlockLowerin
 
 function createJitIrContext(context: JitIrBlockLoweringContext): JitIrContext {
   let instructionIndex = 0;
+  const exitPointsByKey = indexExitPoints(context.exitPoints);
+  const exitPointUseCounts = new Map<string, number>();
 
   return {
     body: context.body,
@@ -95,6 +97,19 @@ function createJitIrContext(context: JitIrBlockLoweringContext): JitIrContext {
       }
 
       return instruction;
+    },
+    currentExitPoint: (exitReason) => {
+      const key = exitPointKey(instructionIndex, exitReason);
+      const exitPoints = exitPointsByKey.get(key) ?? [];
+      const useCount = exitPointUseCounts.get(key) ?? 0;
+      const exitPoint = exitPoints[useCount];
+
+      if (exitPoint === undefined) {
+        throw new Error(`missing JIT exit point for instruction ${instructionIndex} reason ${exitReason}`);
+      }
+
+      exitPointUseCounts.set(key, useCount + 1);
+      return exitPoint;
     },
     advanceInstruction: () => {
       instructionIndex += 1;
@@ -113,9 +128,26 @@ function beginInstruction(
   exit: JitExitTarget,
   instruction: JitIrInstructionContext
 ): void {
-  context.state.beginInstruction(
-    exit,
-    instruction.preInstructionState,
-    instruction.preInstructionExitStateIndex ?? 0
-  );
+  context.state.beginInstruction(exit, instruction.preInstructionState);
+}
+
+function indexExitPoints(exitPoints: readonly JitExitPoint[]): ReadonlyMap<string, readonly JitExitPoint[]> {
+  const exitPointsByKey = new Map<string, JitExitPoint[]>();
+
+  for (const exitPoint of exitPoints) {
+    const key = exitPointKey(exitPoint.instructionIndex, exitPoint.exitReason);
+    const instructionExitPoints = exitPointsByKey.get(key);
+
+    if (instructionExitPoints === undefined) {
+      exitPointsByKey.set(key, [exitPoint]);
+    } else {
+      instructionExitPoints.push(exitPoint);
+    }
+  }
+
+  return exitPointsByKey;
+}
+
+function exitPointKey(instructionIndex: number, exitReason: ExitReasonValue): string {
+  return `${instructionIndex}:${exitReason}`;
 }

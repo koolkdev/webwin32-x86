@@ -73,7 +73,8 @@ export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
     state,
     exit,
     operands: loweringBlock.operands,
-    instructions: optimization.instructionStates
+    instructions: optimization.instructionStates,
+    exitPoints: optimization.exitPoints
   });
   emitExitStateStores(body, state, exitLocal);
   scratch.assertClear();

@@ -45,8 +45,6 @@ export type JitInstructionState = Readonly<{
   nextMode: "continue" | "exit";
   preInstructionState: JitStateSnapshot;
   postInstructionState: JitStateSnapshot;
-  preInstructionExitStateIndex: number | undefined;
-  postInstructionExitStateIndex: number | undefined;
   exitPointCount: number;
 }>;
 
@@ -116,8 +114,6 @@ export function optimizeJitIrBlock(block: JitIrBlock): JitBlockOptimization {
       throw new Error(`missing JIT instruction terminator while optimizing JIT IR block: ${instructionIndex}`);
     }
 
-    const instructionExitPoints = exitPoints.slice(exitStart);
-
     instructionStates.push({
       instructionId: instruction.instructionId,
       eip: instruction.eip,
@@ -125,8 +121,6 @@ export function optimizeJitIrBlock(block: JitIrBlock): JitBlockOptimization {
       nextMode: instruction.nextMode,
       preInstructionState: entry,
       postInstructionState: currentPostState,
-      preInstructionExitStateIndex: firstExitStateIndex(instructionExitPoints, "preInstruction"),
-      postInstructionExitStateIndex: firstExitStateIndex(instructionExitPoints, "postInstruction"),
       exitPointCount: exitPoints.length - exitStart
     });
   }
@@ -358,13 +352,6 @@ function snapshotState(
 
 function sortedRegs(regs: ReadonlySet<Reg32>): readonly Reg32[] {
   return reg32.filter((reg) => regs.has(reg));
-}
-
-function firstExitStateIndex(
-  exitPoints: readonly JitExitPoint[],
-  snapshotKind: JitExitSnapshotKind
-): number | undefined {
-  return exitPoints.find((exit) => exit.snapshot.kind === snapshotKind)?.exitStateIndex;
 }
 
 function exitStateKey(regs: readonly Reg32[]): string {

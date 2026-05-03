@@ -3,7 +3,7 @@ import { stateOffset } from "#backends/wasm/abi.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { emitLoadStateU32, emitStoreStateU32 } from "#backends/wasm/lowering/state.js";
-import type { JitExitState, JitStateSnapshot } from "#backends/wasm/jit/optimization/optimize.js";
+import type { JitExitPoint, JitExitState, JitStateSnapshot } from "#backends/wasm/jit/optimization/optimize.js";
 import { createJitFlagState, type JitFlagState } from "./flag-state.js";
 import { createJitReg32State, type JitReg32State } from "./register-state.js";
 
@@ -21,9 +21,10 @@ export type JitIrState = Readonly<{
   instructionCountLocal: number;
   maxExitStateIndex: number;
   emitLoadInstructionCount(): void;
-  beginInstruction(exit: JitExitTarget, snapshot: JitStateSnapshot, exitStateIndex: number): void;
+  beginInstruction(exit: JitExitTarget, snapshot: JitStateSnapshot): void;
+  prepareExitPoint(exitPoint: JitExitPoint, emitEip: () => void): void;
   commitInstruction(): void;
-  commitInstructionExit(snapshot: JitStateSnapshot, exitStateIndex: number, emitEip: () => void): void;
+  commitInstructionExit(exitPoint: JitExitPoint, emitEip: () => void): void;
   emitExitStateStores(index: number): void;
 }>;
 
@@ -54,25 +55,31 @@ export function createJitIrState(
       emitLoadStateU32(body, stateOffset.instructionCount);
       body.localSet(instructionCountLocal);
     },
-    beginInstruction: (exit, snapshot, exitStateIndex) => {
+    beginInstruction: (exit, snapshot) => {
       activeExit = exit;
       regs.assertNoPending();
-      useExitState(exit, exitStateIndex);
+      useExitState(exit, 0);
       useExitStateStores(exit, () => {
         body.i32Const(i32(snapshot.eip));
       }, snapshot.instructionCountDelta);
     },
+    prepareExitPoint: (exitPoint, emitEip) => {
+      const exit = requiredActiveExit();
+
+      useExitState(exit, exitPoint.exitStateIndex);
+      useExitStateStores(exit, emitEip, exitPoint.snapshot.instructionCountDelta);
+    },
     commitInstruction,
-    commitInstructionExit: (snapshot, exitStateIndex, emitEip) => {
+    commitInstructionExit: (exitPoint, emitEip) => {
       const exit = requiredActiveExit();
 
       emitEip();
       body.localSet(eipLocal);
       regs.commitPending();
-      useExitState(exit, exitStateIndex);
+      useExitState(exit, exitPoint.exitStateIndex);
       useExitStateStores(exit, () => {
         body.localGet(eipLocal);
-      }, snapshot.instructionCountDelta);
+      }, exitPoint.snapshot.instructionCountDelta);
     },
     emitExitStateStores: (index) => {
       const snapshot = exitStates[index];
