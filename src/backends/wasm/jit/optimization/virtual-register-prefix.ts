@@ -1,7 +1,7 @@
 import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import type { JitOptimizationAnalysis } from "./analysis.js";
-import { jitPreInstructionExitReasonAt } from "./boundaries.js";
+import { jitFirstOpIndexAfterPreInstructionExits } from "./boundaries.js";
 import type { JitVirtualRewrite } from "./virtual-rewrite.js";
 import {
   jitVirtualValueForEffectiveAddress,
@@ -10,19 +10,10 @@ import {
 } from "./virtual-values.js";
 
 export function firstVirtualRegisterFoldableOpIndex(
-  instruction: JitIrBlockInstruction,
   instructionIndex: number,
   analysis: JitOptimizationAnalysis
 ): number {
-  let firstFoldableOpIndex = 0;
-
-  for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
-    if (jitPreInstructionExitReasonAt(analysis.boundaries, instructionIndex, opIndex) !== undefined) {
-      firstFoldableOpIndex = opIndex + 1;
-    }
-  }
-
-  return firstFoldableOpIndex;
+  return jitFirstOpIndexAfterPreInstructionExits(analysis.boundaries, instructionIndex);
 }
 
 export function recordCopiedVirtualRegisterOp(

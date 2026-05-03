@@ -13,7 +13,9 @@ import {
   jitBoundariesAt,
   jitConditionUseAt,
   jitConditionValuesAt,
+  jitFirstOpIndexAfterPreInstructionExits,
   jitInstructionHasPreInstructionExit,
+  jitLastPreInstructionExitOpIndex,
   jitPreInstructionExitReasonAt,
   jitPostInstructionExitReasonsAt
 } from "#backends/wasm/jit/optimization/boundaries.js";
@@ -190,6 +192,9 @@ test("analyzeJitOptimization indexes shared op effects", () => {
   strictEqual(jitConditionUseAt(analysis.boundaries, 0, 0), "exitCondition");
   strictEqual(jitPreInstructionExitReasonAt(analysis.boundaries, 1, 0), ExitReason.MEMORY_READ_FAULT);
   strictEqual(jitInstructionHasPreInstructionExit(analysis.boundaries, 1), true);
+  strictEqual(jitLastPreInstructionExitOpIndex(analysis.boundaries, 1), 0);
+  strictEqual(jitFirstOpIndexAfterPreInstructionExits(analysis.boundaries, 0), 0);
+  strictEqual(jitFirstOpIndexAfterPreInstructionExits(analysis.boundaries, 1), 1);
   deepStrictEqual(jitBoundariesAt(analysis.boundaries, 0, 0), [
     { kind: "conditionRead", conditionUse: "exitCondition" }
   ]);
@@ -203,6 +208,22 @@ test("analyzeJitOptimization indexes shared op effects", () => {
   deepStrictEqual(jitBoundariesAt(analysis.boundaries, 1, 0), [
     { kind: "preInstructionExit", exitReason: ExitReason.MEMORY_READ_FAULT }
   ]);
+});
+
+test("JIT boundary helpers find the end of pre-instruction exits", () => {
+  const analysis = analyzeJitOptimization({
+    instructions: [
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
+        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        { op: "set32", target: { kind: "mem", address: c32(0x2004) }, value: v(1) },
+        { op: "next" }
+      ])
+    ]
+  });
+
+  strictEqual(jitLastPreInstructionExitOpIndex(analysis.boundaries, 0), 2);
+  strictEqual(jitFirstOpIndexAfterPreInstructionExits(analysis.boundaries, 0), 3);
 });
 
 test("virtual range utilities iterate between locations and find register writebacks", () => {

@@ -155,13 +155,31 @@ export function jitInstructionHasPreInstructionExit(
   boundaries: JitOptimizationBoundaryIndex,
   instructionIndex: number
 ): boolean {
-  for (const opBoundaries of boundaries.get(instructionIndex)?.values() ?? []) {
+  return jitLastPreInstructionExitOpIndex(boundaries, instructionIndex) !== undefined;
+}
+
+export function jitFirstOpIndexAfterPreInstructionExits(
+  boundaries: JitOptimizationBoundaryIndex,
+  instructionIndex: number
+): number {
+  const lastPreInstructionExitOpIndex = jitLastPreInstructionExitOpIndex(boundaries, instructionIndex);
+
+  return lastPreInstructionExitOpIndex === undefined ? 0 : lastPreInstructionExitOpIndex + 1;
+}
+
+export function jitLastPreInstructionExitOpIndex(
+  boundaries: JitOptimizationBoundaryIndex,
+  instructionIndex: number
+): number | undefined {
+  let lastPreInstructionExitOpIndex: number | undefined;
+
+  for (const [opIndex, opBoundaries] of boundaries.get(instructionIndex)?.entries() ?? []) {
     if (opBoundaries.some((entry) => entry.kind === "preInstructionExit")) {
-      return true;
+      lastPreInstructionExitOpIndex = Math.max(lastPreInstructionExitOpIndex ?? opIndex, opIndex);
     }
   }
 
-  return false;
+  return lastPreInstructionExitOpIndex;
 }
 
 function addConditionValueBoundaries(

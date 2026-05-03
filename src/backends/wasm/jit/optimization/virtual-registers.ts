@@ -75,7 +75,7 @@ export function foldJitVirtualRegisters(
 
     const rewrite = createJitVirtualRewrite(instruction);
     const nextInstruction = block.instructions[instructionIndex + 1];
-    const firstFoldableOpIndex = firstVirtualRegisterFoldableOpIndex(instruction, instructionIndex, analysis);
+    const firstFoldableOpIndex = firstVirtualRegisterFoldableOpIndex(instructionIndex, analysis);
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
       const op = instruction.ir[opIndex];
