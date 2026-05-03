@@ -35,7 +35,7 @@ export function buildJitIrBlock(instructions: readonly IsaDecodedInstruction[]):
 
 export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
   const plan = planJitIrBlock(block);
-  const loweringBlock = prepareJitIrBlockForLowering(block);
+  const loweringBlock = prepareJitIrBlockForLowering(block, plan);
 
   if (block.instructions.length === 0) {
     throw new Error("cannot encode empty JIT IR block");

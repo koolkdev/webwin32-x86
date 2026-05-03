@@ -2,31 +2,32 @@ import {
   IR_ALU_FLAG_MASK
 } from "#x86/ir/passes/flag-analysis.js";
 import {
-  createFlagBoundaryInsertionPass,
   createAluFlagsConditionSpecializationPass,
   createDeadFlagSetPruningPass,
-  createFlagMaterializationPass,
-  type IrFlagBoundaryPoint
+  createFlagMaterializationPass
 } from "#x86/ir/passes/flag-optimization.js";
 import { optimizeIrBlock } from "#x86/ir/passes/optimization.js";
 import { isIrTerminatorOp } from "#x86/ir/model/ops.js";
 import type { IrBlock, IrOp, OperandRef, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "./operand-bindings.js";
+import { planJitIrBlock, type JitIrBlockPlan } from "#backends/wasm/jit/planning/plan.js";
 import type {
   JitIrBlock,
   JitIrBlockInstructionMetadata,
   JitIrLoweringBlock
 } from "#backends/wasm/jit/types.js";
 
-export function prepareJitIrBlockForLowering(block: JitIrBlock): JitIrLoweringBlock {
-  return optimizeJitIrLoweringBlock(flattenJitIrBlock(block));
+const emptyBoundaryMaskByOpIndex = new Map<number, number>();
+
+export function prepareJitIrBlockForLowering(
+  block: JitIrBlock,
+  plan: JitIrBlockPlan = planJitIrBlock(block)
+): JitIrLoweringBlock {
+  return optimizeJitIrLoweringBlock(flattenJitIrBlock(insertPlannedFlagBoundaries(block, plan)));
 }
 
 function optimizeJitIrLoweringBlock(block: JitIrLoweringBlock): JitIrLoweringBlock {
   const optimized = optimizeIrBlock(block.ir, [
-    createFlagBoundaryInsertionPass({
-      points: (body) => jitFlagBoundaryPoints(body, block.operands)
-    }),
     createAluFlagsConditionSpecializationPass(),
     createDeadFlagSetPruningPass(),
     createFlagMaterializationPass()
@@ -62,6 +63,66 @@ function flattenJitIrBlock(block: JitIrBlock): JitIrLoweringBlock {
   }
 
   return { ir, operands, instructions };
+}
+
+function insertPlannedFlagBoundaries(block: JitIrBlock, plan: JitIrBlockPlan): JitIrBlock {
+  const boundaryMasks = plannedBoundaryMasks(plan);
+
+  if (boundaryMasks.size === 0) {
+    return block;
+  }
+
+  return {
+    instructions: block.instructions.map((instruction, instructionIndex) => ({
+      ...instruction,
+      ir: insertInstructionFlagBoundaries(
+        instruction.ir,
+        boundaryMasks.get(instructionIndex) ?? emptyBoundaryMaskByOpIndex
+      )
+    }))
+  };
+}
+
+function plannedBoundaryMasks(plan: JitIrBlockPlan): ReadonlyMap<number, ReadonlyMap<number, number>> {
+  const masks = new Map<number, Map<number, number>>();
+
+  for (const exit of plan.exits) {
+    let instructionMasks = masks.get(exit.instructionIndex);
+
+    if (instructionMasks === undefined) {
+      instructionMasks = new Map();
+      masks.set(exit.instructionIndex, instructionMasks);
+    }
+
+    instructionMasks.set(exit.opIndex, (instructionMasks.get(exit.opIndex) ?? 0) | IR_ALU_FLAG_MASK);
+  }
+
+  return masks;
+}
+
+function insertInstructionFlagBoundaries(
+  block: IrBlock,
+  boundaryMasks: ReadonlyMap<number, number>
+): IrBlock {
+  const ops: IrOp[] = [];
+
+  for (let index = 0; index < block.length; index += 1) {
+    const boundaryMask = boundaryMasks.get(index);
+
+    if (boundaryMask !== undefined) {
+      ops.push({ op: "flags.boundary", mask: boundaryMask });
+    }
+
+    const op = block[index];
+
+    if (op === undefined) {
+      throw new Error(`missing JIT IR op while inserting planned flag boundary: ${index}`);
+    }
+
+    ops.push(op);
+  }
+
+  return ops;
 }
 
 function remapInstructionRefs(block: IrBlock, operandBase: number, varBase: number): readonly IrOp[] {
@@ -253,56 +314,5 @@ function assertInstructionTerminatorCount(
     throw new Error(
       `optimized JIT IR instruction terminator count mismatch: ${terminatorCount} !== ${instructions.length}`
     );
-  }
-}
-
-function jitFlagBoundaryPoints(
-  block: IrBlock,
-  operands: readonly JitOperandBinding[]
-): readonly IrFlagBoundaryPoint[] {
-  const points: IrFlagBoundaryPoint[] = [];
-
-  for (let index = 0; index < block.length; index += 1) {
-    const op = block[index];
-
-    if (op === undefined) {
-      throw new Error(`missing IR op while planning JIT flag boundaries: ${index}`);
-    }
-
-    if (opMayFaultBeforeCompletion(op, operands)) {
-      points.push({ index, placement: "before", mask: IR_ALU_FLAG_MASK });
-    }
-  }
-
-  if (block.length !== 0) {
-    points.push({
-      index: block.length - 1,
-      placement: "before",
-      mask: IR_ALU_FLAG_MASK
-    });
-  }
-
-  return points;
-}
-
-function opMayFaultBeforeCompletion(op: IrOp, operands: readonly JitOperandBinding[]): boolean {
-  switch (op.op) {
-    case "get32":
-      return storageMayAccessMemory(op.source, operands);
-    case "set32":
-      return storageMayAccessMemory(op.target, operands);
-    default:
-      return false;
-  }
-}
-
-function storageMayAccessMemory(storage: StorageRef, operands: readonly JitOperandBinding[]): boolean {
-  switch (storage.kind) {
-    case "mem":
-      return true;
-    case "reg":
-      return false;
-    case "operand":
-      return operands[storage.index]?.kind === "static.mem32";
   }
 }
