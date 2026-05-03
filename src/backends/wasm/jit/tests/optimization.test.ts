@@ -8,16 +8,14 @@ import type { ConditionCode, IrBlock, ValueRef, VarRef } from "#x86/ir/model/typ
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
+import { analyzeJitOptimization } from "#backends/wasm/jit/optimization/analysis.js";
 import {
-  analyzeJitOptimization,
+  jitBoundariesAt,
   jitConditionUseAt,
+  jitConditionValuesAt,
   jitInstructionHasPreInstructionExit,
   jitPreInstructionExitReasonAt,
   jitPostInstructionExitReasonsAt
-} from "#backends/wasm/jit/optimization/analysis.js";
-import {
-  jitBoundariesAt,
-  jitConditionValuesAt
 } from "#backends/wasm/jit/optimization/boundaries.js";
 import {
   jitIrLocation,
@@ -183,15 +181,15 @@ test("analyzeJitOptimization indexes shared op effects", () => {
     ]
   });
 
-  deepStrictEqual(jitPostInstructionExitReasonsAt(analysis, 0, 2), [
+  deepStrictEqual(jitPostInstructionExitReasonsAt(analysis.boundaries, 0, 2), [
     ExitReason.BRANCH_TAKEN,
     ExitReason.BRANCH_NOT_TAKEN
   ]);
   deepStrictEqual(jitConditionValuesAt(analysis.boundaries, 0, 1, "localCondition"), [v(0)]);
   deepStrictEqual(jitConditionValuesAt(analysis.boundaries, 0, 2, "exitCondition"), [v(0)]);
-  strictEqual(jitConditionUseAt(analysis, 0, 0), "exitCondition");
-  strictEqual(jitPreInstructionExitReasonAt(analysis, 1, 0), ExitReason.MEMORY_READ_FAULT);
-  strictEqual(jitInstructionHasPreInstructionExit(analysis, 1), true);
+  strictEqual(jitConditionUseAt(analysis.boundaries, 0, 0), "exitCondition");
+  strictEqual(jitPreInstructionExitReasonAt(analysis.boundaries, 1, 0), ExitReason.MEMORY_READ_FAULT);
+  strictEqual(jitInstructionHasPreInstructionExit(analysis.boundaries, 1), true);
   deepStrictEqual(jitBoundariesAt(analysis.boundaries, 0, 0), [
     { kind: "conditionRead", conditionUse: "exitCondition" }
   ]);
