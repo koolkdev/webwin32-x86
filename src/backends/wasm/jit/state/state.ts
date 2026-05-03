@@ -27,6 +27,7 @@ export type JitIrState = Readonly<{
   emitLoadInstructionCount(): void;
   beginInstruction(exit: JitExitTarget, snapshot: JitStateSnapshot, options: JitReg32InstructionOptions): void;
   prepareExitPoint(exitPoint: JitExitPoint, emitEip: () => void): void;
+  finishPreInstructionExitPoints(): void;
   commitInstruction(): void;
   commitInstructionExit(exitPoint: JitExitPoint, emitEip: () => void): void;
   emitExitStateStores(index: number): void;
@@ -72,6 +73,9 @@ export function createJitIrState(
 
       useExitState(exit, exitPoint.exitStateIndex);
       useExitStateStores(exit, emitEip, exitPoint.snapshot.instructionCountDelta);
+    },
+    finishPreInstructionExitPoints: () => {
+      regs.commitPending();
     },
     commitInstruction,
     commitInstructionExit: (exitPoint, emitEip) => {

@@ -29,7 +29,7 @@ export type JitIrInstructionContext = Pick<
   | "nextMode"
   | "preInstructionState"
   | "postInstructionState"
-  | "hasPreInstructionExitPoint"
+  | "preInstructionExitPointCount"
 >;
 
 export type JitIrBlockLoweringContext = Readonly<{
@@ -50,6 +50,7 @@ export type JitIrContext = Readonly<{
   operands: readonly JitOperandBinding[];
   currentInstruction(): JitIrInstructionContext;
   currentExitPoint(exitReason: ExitReasonValue): JitExitPoint;
+  completeExitPoint(exitPoint: JitExitPoint): void;
   advanceInstruction(): void;
 }>;
 
@@ -81,6 +82,7 @@ export function lowerIrWithJitContext(block: IrBlock, context: JitIrBlockLowerin
 
 function createJitIrContext(context: JitIrBlockLoweringContext): JitIrContext {
   let instructionIndex = 0;
+  let completedPreInstructionExitPointCount = 0;
   const exitPointsByKey = indexExitPoints(context.exitPoints);
   const exitPointUseCounts = new Map<string, number>();
 
@@ -112,8 +114,30 @@ function createJitIrContext(context: JitIrBlockLoweringContext): JitIrContext {
       exitPointUseCounts.set(key, useCount + 1);
       return exitPoint;
     },
+    completeExitPoint: (exitPoint) => {
+      if (exitPoint.snapshot.kind !== "preInstruction") {
+        return;
+      }
+
+      completedPreInstructionExitPointCount += 1;
+
+      const instruction = context.instructions[instructionIndex];
+
+      if (instruction === undefined) {
+        throw new Error(`missing JIT IR instruction context: ${instructionIndex}`);
+      }
+
+      if (completedPreInstructionExitPointCount > instruction.preInstructionExitPointCount) {
+        throw new Error(`completed too many JIT pre-instruction exit points: ${instructionIndex}`);
+      }
+
+      if (completedPreInstructionExitPointCount === instruction.preInstructionExitPointCount) {
+        context.state.finishPreInstructionExitPoints();
+      }
+    },
     advanceInstruction: () => {
       instructionIndex += 1;
+      completedPreInstructionExitPointCount = 0;
 
       const instruction = context.instructions[instructionIndex];
 
@@ -130,7 +154,7 @@ function beginInstruction(
   instruction: JitIrInstructionContext
 ): void {
   context.state.beginInstruction(exit, instruction.preInstructionState, {
-    preserveCommittedRegs: instruction.hasPreInstructionExitPoint
+    preserveCommittedRegs: instruction.preInstructionExitPointCount !== 0
   });
 }
 

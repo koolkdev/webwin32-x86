@@ -7,6 +7,7 @@ import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/e
 import { emitWasmIrLoadGuestU32FromStack, emitWasmIrStoreGuestU32 } from "#backends/wasm/lowering/memory.js";
 import type { WasmIrReg32Storage } from "#backends/wasm/lowering/registers.js";
 import type { WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
+import type { JitExitPoint } from "#backends/wasm/jit/optimization/optimize.js";
 import type { JitOperandBinding } from "./operand-bindings.js";
 import type { JitIrContext } from "./ir-context.js";
 
@@ -162,8 +163,10 @@ function emitLoadGuestU32FromStack(context: JitIrContext): void {
   const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
-    prepareMemoryFaultExit(context, ExitReason.MEMORY_READ_FAULT);
+    const exitPoint = prepareMemoryFaultExit(context, ExitReason.MEMORY_READ_FAULT);
+
     emitWasmIrLoadGuestU32FromStack(context, addressLocal);
+    context.completeExitPoint(exitPoint);
   } finally {
     context.scratch.freeLocal(addressLocal);
   }
@@ -183,20 +186,24 @@ function emitStoreMem32(
     context.body.localSet(addressLocal);
     emitValue();
     context.body.localSet(valueLocal);
-    prepareMemoryFaultExit(context, ExitReason.MEMORY_WRITE_FAULT);
+    const exitPoint = prepareMemoryFaultExit(context, ExitReason.MEMORY_WRITE_FAULT);
+
     emitWasmIrStoreGuestU32(context, addressLocal, valueLocal, faultExtraDepth);
+    context.completeExitPoint(exitPoint);
   } finally {
     context.scratch.freeLocal(valueLocal);
     context.scratch.freeLocal(addressLocal);
   }
 }
 
-function prepareMemoryFaultExit(context: JitIrContext, exitReason: ExitReasonValue): void {
+function prepareMemoryFaultExit(context: JitIrContext, exitReason: ExitReasonValue): JitExitPoint {
   const exitPoint = context.currentExitPoint(exitReason);
 
   context.state.prepareExitPoint(exitPoint, () => {
     context.body.i32Const(i32(exitPoint.snapshot.eip));
   });
+
+  return exitPoint;
 }
 
 function operandBinding(context: JitIrContext, index: number): JitOperandBinding {

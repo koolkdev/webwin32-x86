@@ -45,7 +45,7 @@ export type JitInstructionState = Readonly<{
   nextMode: "continue" | "exit";
   preInstructionState: JitStateSnapshot;
   postInstructionState: JitStateSnapshot;
-  hasPreInstructionExitPoint: boolean;
+  preInstructionExitPointCount: number;
   exitPointCount: number;
 }>;
 
@@ -122,7 +122,7 @@ export function optimizeJitIrBlock(block: JitIrBlock): JitBlockOptimization {
       nextMode: instruction.nextMode,
       preInstructionState: entry,
       postInstructionState: currentPostState,
-      hasPreInstructionExitPoint: hasPreInstructionExitPoint(exitPoints, exitStart),
+      preInstructionExitPointCount: preInstructionExitPointCount(exitPoints, exitStart),
       exitPointCount: exitPoints.length - exitStart
     });
   }
@@ -356,16 +356,18 @@ function sortedRegs(regs: ReadonlySet<Reg32>): readonly Reg32[] {
   return reg32.filter((reg) => regs.has(reg));
 }
 
-function hasPreInstructionExitPoint(exitPoints: readonly JitExitPoint[], exitStart: number): boolean {
+function preInstructionExitPointCount(exitPoints: readonly JitExitPoint[], exitStart: number): number {
+  let count = 0;
+
   for (let index = exitStart; index < exitPoints.length; index += 1) {
     const exitPoint = exitPoints[index];
 
     if (exitPoint?.snapshot.kind === "preInstruction") {
-      return true;
+      count += 1;
     }
   }
 
-  return false;
+  return count;
 }
 
 function exitStateKey(regs: readonly Reg32[]): string {

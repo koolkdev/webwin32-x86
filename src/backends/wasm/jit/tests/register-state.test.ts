@@ -49,6 +49,24 @@ test("jit register state stages writes when pre-instruction exits need committed
   strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.localSet), 3);
 });
 
+test("jit register state returns to committed writes after pre-instruction exits", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: true });
+  regs.emitSet("eax", () => {
+    body.i32Const(1);
+  });
+  regs.commitPending();
+  regs.emitSet("eax", () => {
+    body.i32Const(2);
+  });
+  regs.commitPending();
+  body.end();
+
+  strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.localSet), 2);
+});
+
 test("jit register state feeds later instructions from committed register locals", async () => {
   const result = await runJitIrBlock(
     [
