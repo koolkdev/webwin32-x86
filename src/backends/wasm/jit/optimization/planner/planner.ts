@@ -40,7 +40,7 @@ export function runTrackedJitOptimization(
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): JitTrackedOptimizationResult {
   const plan = planJitOptimization(block, analysis);
-  const pipeline = runTrackedJitIrOptimizationPipeline(block);
+  const pipeline = runSharedJitIrOptimizationPipeline(block);
 
   return {
     ...pipeline,
@@ -49,7 +49,7 @@ export function runTrackedJitOptimization(
   };
 }
 
-export function runTrackedJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizationPipelineResult {
+export function runSharedJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizationPipelineResult {
   const initialAnalysis = analyzeJitOptimization(block);
   const flagPlan = planJitOptimization(block, initialAnalysis);
   const flagMaterialization = emitJitFlagMaterializationFromPlan(flagPlan, initialAnalysis);
@@ -70,6 +70,8 @@ export function runTrackedJitIrOptimizationPipeline(block: JitIrBlock): JitIrOpt
     }
   };
 }
+
+export const runTrackedJitIrOptimizationPipeline = runSharedJitIrOptimizationPipeline;
 
 export function planJitOptimization(
   block: JitIrBlock,

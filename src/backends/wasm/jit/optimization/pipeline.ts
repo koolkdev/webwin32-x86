@@ -1,5 +1,5 @@
 import type { JitIrBlock, JitOptimizedIrBlock } from "#backends/wasm/jit/types.js";
-import { runTrackedJitIrOptimizationPipeline } from "#backends/wasm/jit/optimization/planner/planner.js";
+import { runSharedJitIrOptimizationPipeline } from "#backends/wasm/jit/optimization/planner/planner.js";
 import type { JitDeadLocalValuePruning } from "#backends/wasm/jit/optimization/passes/dead-local-values.js";
 import type { JitFlagMaterialization } from "#backends/wasm/jit/optimization/flags/materialization.js";
 import type { JitRegisterFolding } from "#backends/wasm/jit/optimization/passes/register-folding.js";
@@ -20,5 +20,5 @@ export type JitIrOptimizationPipelineResult = Readonly<{
 }>;
 
 export function runJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizationPipelineResult {
-  return runTrackedJitIrOptimizationPipeline(block);
+  return runSharedJitIrOptimizationPipeline(block);
 }
