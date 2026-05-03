@@ -1,7 +1,7 @@
 import type { ValueRef } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitOptimizationAnalysis, JitOpIndex } from "./analysis.js";
 import type { JitConditionUse } from "./condition-uses.js";
+import type { JitOpIndex } from "./op-index.js";
 
 export type JitOptimizationBoundary =
   | Readonly<{ kind: "preInstructionExit"; exitReason: ExitReasonValue }>
@@ -12,11 +12,16 @@ export type JitOptimizationBoundary =
 
 export type JitOptimizationBoundaryIndex = JitOpIndex<readonly JitOptimizationBoundary[]>;
 
+export type JitOptimizationBoundarySources = Readonly<{
+  preInstructionExits: JitOpIndex<ExitReasonValue>;
+  postInstructionExits: JitOpIndex<readonly ExitReasonValue[]>;
+  localConditionValues: JitOpIndex<readonly ValueRef[]>;
+  exitConditionValues: JitOpIndex<readonly ValueRef[]>;
+  conditionUses: JitOpIndex<JitConditionUse>;
+}>;
+
 export function indexJitOptimizationBoundaries(
-  analysis: Pick<
-    JitOptimizationAnalysis,
-    "preInstructionExits" | "postInstructionExits" | "localConditionValues" | "exitConditionValues" | "conditionUses"
-  >
+  analysis: JitOptimizationBoundarySources
 ): JitOptimizationBoundaryIndex {
   const boundaries = new Map<number, Map<number, readonly JitOptimizationBoundary[]>>();
 

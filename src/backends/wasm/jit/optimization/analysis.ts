@@ -10,31 +10,22 @@ import {
   analyzeJitConditionUses,
   indexJitExitConditionValues,
   indexJitLocalConditionValues,
-  type JitConditionUse,
-  type JitConditionUseIndex,
-  type JitExitConditionValueIndex,
-  type JitLocalConditionValueIndex
+  type JitConditionUse
 } from "./condition-uses.js";
 import { jitMemoryFaultReason, jitPostInstructionExitReasons } from "./op-effects.js";
-
-export type JitOpIndex<T> = ReadonlyMap<number, ReadonlyMap<number, T>>;
+import { setJitOpIndexValue, type JitOpIndex } from "./op-index.js";
 
 export type JitPreInstructionExitIndex = JitOpIndex<ExitReasonValue>;
 export type JitPostInstructionExitIndex = JitOpIndex<readonly ExitReasonValue[]>;
 
 export type JitOptimizationAnalysis = Readonly<{
-  preInstructionExits: JitPreInstructionExitIndex;
-  postInstructionExits: JitPostInstructionExitIndex;
-  localConditionValues: JitLocalConditionValueIndex;
-  exitConditionValues: JitExitConditionValueIndex;
-  conditionUses: JitConditionUseIndex;
   boundaries: JitOptimizationBoundaryIndex;
 }>;
 
 export function analyzeJitOptimization(block: JitIrBlock): JitOptimizationAnalysis {
   const localConditionValues = indexJitLocalConditionValues(block);
   const exitConditionValues = indexJitExitConditionValues(block);
-  const analysisWithoutBoundaries = {
+  const boundarySources = {
     preInstructionExits: indexJitPreInstructionExits(block),
     postInstructionExits: indexJitPostInstructionExits(block),
     localConditionValues,
@@ -43,8 +34,7 @@ export function analyzeJitOptimization(block: JitIrBlock): JitOptimizationAnalys
   };
 
   return {
-    ...analysisWithoutBoundaries,
-    boundaries: indexJitOptimizationBoundaries(analysisWithoutBoundaries)
+    boundaries: indexJitOptimizationBoundaries(boundarySources)
   };
 }
 
@@ -100,7 +90,7 @@ function indexJitPreInstructionExits(block: JitIrBlock): JitPreInstructionExitIn
     const faultReason = jitMemoryFaultReason(op, instruction.operands);
 
     if (faultReason !== undefined) {
-      setIndexedOpValue(preInstructionExits, location.instructionIndex, location.opIndex, faultReason);
+      setJitOpIndexValue(preInstructionExits, location.instructionIndex, location.opIndex, faultReason);
     }
   }, "indexing pre-instruction exits");
 
@@ -114,25 +104,9 @@ function indexJitPostInstructionExits(block: JitIrBlock): JitPostInstructionExit
     const exitReasons = jitPostInstructionExitReasons(op, instruction);
 
     if (exitReasons.length !== 0) {
-      setIndexedOpValue(postInstructionExits, location.instructionIndex, location.opIndex, exitReasons);
+      setJitOpIndexValue(postInstructionExits, location.instructionIndex, location.opIndex, exitReasons);
     }
   }, "indexing post-instruction exits");
 
   return postInstructionExits;
-}
-
-function setIndexedOpValue<T>(
-  index: Map<number, Map<number, T>>,
-  instructionIndex: number,
-  opIndex: number,
-  value: T
-): void {
-  let instructionValues = index.get(instructionIndex);
-
-  if (instructionValues === undefined) {
-    instructionValues = new Map();
-    index.set(instructionIndex, instructionValues);
-  }
-
-  instructionValues.set(opIndex, value);
 }

@@ -3,12 +3,13 @@ import type { ValueRef } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { walkJitIrBlockOps } from "./ir-walk.js";
 import { jitExitConditionValues, jitLocalConditionValues } from "./op-effects.js";
+import { setJitOpIndexValue, type JitOpIndex } from "./op-index.js";
 
 export type JitConditionUse = "localCondition" | "exitCondition";
 
-export type JitConditionUseIndex = ReadonlyMap<number, ReadonlyMap<number, JitConditionUse>>;
-export type JitLocalConditionValueIndex = ReadonlyMap<number, ReadonlyMap<number, readonly ValueRef[]>>;
-export type JitExitConditionValueIndex = ReadonlyMap<number, ReadonlyMap<number, readonly ValueRef[]>>;
+export type JitConditionUseIndex = JitOpIndex<JitConditionUse>;
+export type JitLocalConditionValueIndex = JitOpIndex<readonly ValueRef[]>;
+export type JitExitConditionValueIndex = JitOpIndex<readonly ValueRef[]>;
 
 export function indexJitLocalConditionValues(block: JitIrBlock): JitLocalConditionValueIndex {
   const byLocation = new Map<number, Map<number, readonly ValueRef[]>>();
@@ -17,7 +18,7 @@ export function indexJitLocalConditionValues(block: JitIrBlock): JitLocalConditi
     const values = jitLocalConditionValues(op);
 
     if (values.length !== 0) {
-      setConditionValues(byLocation, location.instructionIndex, location.opIndex, values);
+      setJitOpIndexValue(byLocation, location.instructionIndex, location.opIndex, values);
     }
   }, "indexing local condition values");
 
@@ -31,7 +32,7 @@ export function indexJitExitConditionValues(block: JitIrBlock): JitExitCondition
     const values = jitExitConditionValues(op, instruction);
 
     if (values.length !== 0) {
-      setConditionValues(byLocation, location.instructionIndex, location.opIndex, values);
+      setJitOpIndexValue(byLocation, location.instructionIndex, location.opIndex, values);
     }
   }, "indexing exit condition values");
 
@@ -89,14 +90,7 @@ export function analyzeJitConditionUses(
         continue;
       }
 
-      let instructionUses = byLocation.get(instructionIndex);
-
-      if (instructionUses === undefined) {
-        instructionUses = new Map();
-        byLocation.set(instructionIndex, instructionUses);
-      }
-
-      instructionUses.set(opIndex, conditionUse);
+      setJitOpIndexValue(byLocation, instructionIndex, opIndex, conditionUse);
     }
   }
 
@@ -199,20 +193,4 @@ function addConditionVars(vars: Set<number>, values: readonly ValueRef[]): void 
       vars.add(value.id);
     }
   }
-}
-
-function setConditionValues(
-  byLocation: Map<number, Map<number, readonly ValueRef[]>>,
-  instructionIndex: number,
-  opIndex: number,
-  values: readonly ValueRef[]
-): void {
-  let instructionValues = byLocation.get(instructionIndex);
-
-  if (instructionValues === undefined) {
-    instructionValues = new Map();
-    byLocation.set(instructionIndex, instructionValues);
-  }
-
-  instructionValues.set(opIndex, values);
 }
