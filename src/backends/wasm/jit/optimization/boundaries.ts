@@ -119,6 +119,51 @@ export function jitConditionValuesAt(
   return jitBoundaryAt(boundaries, instructionIndex, opIndex, kind)?.values ?? [];
 }
 
+export function jitPreInstructionExitReasonAt(
+  boundaries: JitOptimizationBoundaryIndex,
+  instructionIndex: number,
+  opIndex: number
+): ExitReasonValue | undefined {
+  return jitBoundaryAt(boundaries, instructionIndex, opIndex, "preInstructionExit")?.exitReason;
+}
+
+export function jitPostInstructionExitReasonsAt(
+  boundaries: JitOptimizationBoundaryIndex,
+  instructionIndex: number,
+  opIndex: number
+): readonly ExitReasonValue[] {
+  return jitBoundaryAt(boundaries, instructionIndex, opIndex, "postInstructionExit")?.exitReasons ?? [];
+}
+
+export function jitOpHasPostInstructionExit(
+  boundaries: JitOptimizationBoundaryIndex,
+  instructionIndex: number,
+  opIndex: number
+): boolean {
+  return jitPostInstructionExitReasonsAt(boundaries, instructionIndex, opIndex).length !== 0;
+}
+
+export function jitConditionUseAt(
+  boundaries: JitOptimizationBoundaryIndex,
+  instructionIndex: number,
+  opIndex: number
+): JitConditionUse | undefined {
+  return jitBoundaryAt(boundaries, instructionIndex, opIndex, "conditionRead")?.conditionUse;
+}
+
+export function jitInstructionHasPreInstructionExit(
+  boundaries: JitOptimizationBoundaryIndex,
+  instructionIndex: number
+): boolean {
+  for (const opBoundaries of boundaries.get(instructionIndex)?.values() ?? []) {
+    if (opBoundaries.some((entry) => entry.kind === "preInstructionExit")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function addConditionValueBoundaries(
   valuesByLocation: JitOpIndex<readonly ValueRef[]>,
   boundaries: Map<number, Map<number, readonly JitOptimizationBoundary[]>>,

@@ -5,12 +5,14 @@ import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import {
-  jitOpHasPostInstructionExit,
-  jitPreInstructionExitReasonAt,
-  jitPostInstructionExitReasonsAt,
   analyzeJitOptimization,
   type JitOptimizationAnalysis
 } from "./analysis.js";
+import {
+  jitOpHasPostInstructionExit,
+  jitPreInstructionExitReasonAt,
+  jitPostInstructionExitReasonsAt
+} from "./boundaries.js";
 import {
   requiredJitOperandBinding
 } from "./op-effects.js";
@@ -68,7 +70,7 @@ export function analyzeJitBlockState(
         throw new Error(`missing JIT IR op while optimizing JIT IR block: ${instructionIndex}:${opIndex}`);
       }
 
-      const faultReason = jitPreInstructionExitReasonAt(analysis, instructionIndex, opIndex);
+      const faultReason = jitPreInstructionExitReasonAt(analysis.boundaries, instructionIndex, opIndex);
 
       if (faultReason !== undefined) {
         recordExitPoint(instructionIndex, opIndex, faultReason, entry);
@@ -142,7 +144,7 @@ export function analyzeJitBlockState(
       case "next":
         recordPostInstructionExits(instruction, instructionIndex, opIndex);
 
-        if (!jitOpHasPostInstructionExit(analysis, instructionIndex, opIndex)) {
+        if (!jitOpHasPostInstructionExit(analysis.boundaries, instructionIndex, opIndex)) {
           commitInstruction();
         }
         return;
@@ -161,7 +163,7 @@ export function analyzeJitBlockState(
     instructionIndex: number,
     opIndex: number
   ): void {
-    const exitReasons = jitPostInstructionExitReasonsAt(analysis, instructionIndex, opIndex);
+    const exitReasons = jitPostInstructionExitReasonsAt(analysis.boundaries, instructionIndex, opIndex);
     const snapshot = instructionPostState(instruction);
 
     for (const exitReason of exitReasons) {

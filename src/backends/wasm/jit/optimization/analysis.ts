@@ -2,7 +2,11 @@ import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import {
   indexJitOptimizationBoundaries,
-  jitBoundaryAt,
+  jitConditionUseAt as jitBoundaryConditionUseAt,
+  jitInstructionHasPreInstructionExit as jitBoundaryInstructionHasPreInstructionExit,
+  jitOpHasPostInstructionExit as jitBoundaryOpHasPostInstructionExit,
+  jitPostInstructionExitReasonsAt as jitBoundaryPostInstructionExitReasonsAt,
+  jitPreInstructionExitReasonAt as jitBoundaryPreInstructionExitReasonAt,
   type JitOptimizationBoundaryIndex
 } from "./boundaries.js";
 import type { JitConditionUse } from "./condition-uses.js";
@@ -22,7 +26,7 @@ export function jitPreInstructionExitReasonAt(
   instructionIndex: number,
   opIndex: number
 ): ExitReasonValue | undefined {
-  return jitBoundaryAt(analysis.boundaries, instructionIndex, opIndex, "preInstructionExit")?.exitReason;
+  return jitBoundaryPreInstructionExitReasonAt(analysis.boundaries, instructionIndex, opIndex);
 }
 
 export function jitPostInstructionExitReasonsAt(
@@ -30,7 +34,7 @@ export function jitPostInstructionExitReasonsAt(
   instructionIndex: number,
   opIndex: number
 ): readonly ExitReasonValue[] {
-  return jitBoundaryAt(analysis.boundaries, instructionIndex, opIndex, "postInstructionExit")?.exitReasons ?? [];
+  return jitBoundaryPostInstructionExitReasonsAt(analysis.boundaries, instructionIndex, opIndex);
 }
 
 export function jitOpHasPostInstructionExit(
@@ -38,7 +42,7 @@ export function jitOpHasPostInstructionExit(
   instructionIndex: number,
   opIndex: number
 ): boolean {
-  return jitPostInstructionExitReasonsAt(analysis, instructionIndex, opIndex).length !== 0;
+  return jitBoundaryOpHasPostInstructionExit(analysis.boundaries, instructionIndex, opIndex);
 }
 
 export function jitConditionUseAt(
@@ -46,18 +50,12 @@ export function jitConditionUseAt(
   instructionIndex: number,
   opIndex: number
 ): JitConditionUse | undefined {
-  return jitBoundaryAt(analysis.boundaries, instructionIndex, opIndex, "conditionRead")?.conditionUse;
+  return jitBoundaryConditionUseAt(analysis.boundaries, instructionIndex, opIndex);
 }
 
 export function jitInstructionHasPreInstructionExit(
   analysis: JitOptimizationAnalysis,
   instructionIndex: number
 ): boolean {
-  for (const boundaries of analysis.boundaries.get(instructionIndex)?.values() ?? []) {
-    if (boundaries.some((entry) => entry.kind === "preInstructionExit")) {
-      return true;
-    }
-  }
-
-  return false;
+  return jitBoundaryInstructionHasPreInstructionExit(analysis.boundaries, instructionIndex);
 }

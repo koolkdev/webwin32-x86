@@ -15,11 +15,13 @@ import type {
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import {
   analyzeJitOptimization,
-  jitConditionUseAt,
-  jitOpHasPostInstructionExit,
-  jitPreInstructionExitReasonAt,
   type JitOptimizationAnalysis
 } from "./analysis.js";
+import {
+  jitConditionUseAt,
+  jitOpHasPostInstructionExit,
+  jitPreInstructionExitReasonAt
+} from "./boundaries.js";
 import type { JitConditionUse } from "./condition-uses.js";
 import {
   jitStorageReg,
@@ -131,7 +133,7 @@ export function analyzeJitVirtualFlags(
     localValues: Map<number, JitVirtualValue>,
     instructionEntryOwners: ReadonlyMap<number, JitVirtualFlagOwner>
   ): void {
-    if (jitPreInstructionExitReasonAt(analysis, instructionIndex, opIndex) !== undefined) {
+    if (jitPreInstructionExitReasonAt(analysis.boundaries, instructionIndex, opIndex) !== undefined) {
       recordRead({
         instructionIndex,
         opIndex,
@@ -140,7 +142,7 @@ export function analyzeJitVirtualFlags(
       }, instructionEntryOwners);
     }
 
-    if (jitOpHasPostInstructionExit(analysis, instructionIndex, opIndex)) {
+    if (jitOpHasPostInstructionExit(analysis.boundaries, instructionIndex, opIndex)) {
       recordRead({ instructionIndex, opIndex, reason: "exit", requiredMask: IR_ALU_FLAG_MASK });
     }
 
@@ -173,7 +175,7 @@ export function analyzeJitVirtualFlags(
         recordFlagSource(instructionIndex, opIndex, op, localValues);
         return;
       case "aluFlags.condition": {
-        const conditionUse = jitConditionUseAt(analysis, instructionIndex, opIndex);
+        const conditionUse = jitConditionUseAt(analysis.boundaries, instructionIndex, opIndex);
 
         if (conditionUse === undefined) {
           return;
