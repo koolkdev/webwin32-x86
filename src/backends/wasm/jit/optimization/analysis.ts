@@ -57,8 +57,8 @@ export function jitConditionUseAt(
   analysis: JitOptimizationAnalysis,
   instructionIndex: number,
   opIndex: number
-): JitConditionUse {
-  return indexedOpValue(analysis.conditionUses, instructionIndex, opIndex) ?? "localCondition";
+): JitConditionUse | undefined {
+  return indexedOpValue(analysis.conditionUses, instructionIndex, opIndex);
 }
 
 export function jitInstructionMayFault(

@@ -172,16 +172,23 @@ export function analyzeJitVirtualFlags(
       case "flags.set":
         recordFlagSource(instructionIndex, opIndex, op, localValues);
         return;
-      case "aluFlags.condition":
+      case "aluFlags.condition": {
+        const conditionUse = jitConditionUseAt(analysis, instructionIndex, opIndex);
+
+        if (conditionUse === undefined) {
+          return;
+        }
+
         recordRead({
           instructionIndex,
           opIndex,
           reason: "condition",
           requiredMask: conditionFlagReadMask(op.cc),
           cc: op.cc,
-          conditionUse: jitConditionUseAt(analysis, instructionIndex, opIndex)
+          conditionUse
         });
         return;
+      }
       case "flags.materialize":
         recordRead({ instructionIndex, opIndex, reason: "materialize", requiredMask: op.mask });
         setOwner(op.mask, materializedFlagOwner);

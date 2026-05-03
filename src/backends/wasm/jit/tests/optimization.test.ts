@@ -1,4 +1,4 @@
-import { deepStrictEqual, strictEqual } from "node:assert";
+import { deepStrictEqual, strictEqual, throws } from "node:assert";
 import { test } from "node:test";
 
 import type { Reg32 } from "#x86/isa/types.js";
@@ -285,7 +285,7 @@ test("analyzeJitVirtualFlags keeps partial flag ownership across INC", () => {
   ]);
 });
 
-test("analyzeJitConditionUses classifies exit-coupled condition values", () => {
+test("analyzeJitConditionUses classifies explicit condition consumers", () => {
   const local = analyzeJitConditionUses({
     instructions: [
       syntheticInstruction([
@@ -304,9 +304,30 @@ test("analyzeJitConditionUses classifies exit-coupled condition values", () => {
       ])
     ]
   });
+  const unused = analyzeJitConditionUses({
+    instructions: [
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "next" }
+      ])
+    ]
+  });
 
   strictEqual(local.get(0)?.get(0), "localCondition");
   strictEqual(exit.get(0)?.get(0), "exitCondition");
+  strictEqual(unused.get(0)?.get(0), undefined);
+  throws(
+    () => analyzeJitConditionUses({
+      instructions: [
+        syntheticInstruction([
+          { op: "aluFlags.condition", dst: v(0), cc: "E" },
+          { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+          { op: "next" }
+        ])
+      ]
+    }),
+    /JIT condition value 0 is used as an ordinary value/
+  );
 });
 
 test("analyzeJitVirtualFlags classifies local and exit-coupled condition uses", () => {
@@ -314,7 +335,7 @@ test("analyzeJitVirtualFlags classifies local and exit-coupled condition uses", 
     instructions: [
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
-        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ])
     ]
@@ -323,14 +344,23 @@ test("analyzeJitVirtualFlags classifies local and exit-coupled condition uses", 
     instructions: [
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
-        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
+      ])
+    ]
+  });
+  const unused = analyzeJitVirtualFlags({
+    instructions: [
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "next" }
       ])
     ]
   });
 
   strictEqual(local.reads.find((read) => read.reason === "condition")?.conditionUse, "localCondition");
   strictEqual(reusedExit.reads.find((read) => read.reason === "condition")?.conditionUse, "exitCondition");
+  strictEqual(unused.reads.find((read) => read.reason === "condition"), undefined);
 });
 
 test("analyzeJitVirtualFlags records memory-fault reads from instruction entry owners", () => {
@@ -390,7 +420,7 @@ test("materializeJitVirtualFlags emits direct non-exit condition reads", () => {
         { op: "i32.sub", dst: v(2), a: v(0), b: v(1) },
         createIrFlagSetOp("sub32", { left: v(0), right: v(1), result: v(2) }),
         { op: "aluFlags.condition", dst: v(3), cc: "E" },
-        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(3) },
+        { op: "set32.if", condition: v(3), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ])
     ]
@@ -419,7 +449,7 @@ test("materializeJitVirtualFlags keeps clobbered producer inputs captured", () =
         { op: "const32", dst: v(0), value: 0 },
         { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "aluFlags.condition", dst: v(1), cc: "E" },
-        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(1) },
+        { op: "set32.if", condition: v(1), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ], 1)
     ]
@@ -453,7 +483,7 @@ test("materializeJitVirtualFlags emits result conditions from writeback register
       ], 1),
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
-        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ], 2)
     ]
@@ -492,7 +522,7 @@ test("materializeJitVirtualFlags emits sub32 equality from writeback registers",
       ], 0),
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
-        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ], 1)
     ]
@@ -568,7 +598,7 @@ test("materializeJitVirtualFlags emits logic32 compound conditions from writebac
       ], 0),
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "LE" },
-        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ], 1)
     ]

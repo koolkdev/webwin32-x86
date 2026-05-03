@@ -1,5 +1,6 @@
+import { visitIrOpValueRefs } from "#x86/ir/model/value-uses.js";
 import type { ValueRef } from "#x86/ir/model/types.js";
-import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { walkJitIrBlockOps } from "./ir-walk.js";
 import { jitExitConditionValues, jitLocalConditionValues } from "./op-effects.js";
 
@@ -53,6 +54,7 @@ export function analyzeJitConditionUses(
 
     const exitConditionVars = new Set<number>();
     const localConditionVars = new Set<number>();
+    const conditionVars = instructionConditionVars(instruction);
 
     for (const values of localConditionValues.get(instructionIndex)?.values() ?? []) {
       addConditionVars(localConditionVars, values);
@@ -61,6 +63,14 @@ export function analyzeJitConditionUses(
     for (const values of exitConditionValues.get(instructionIndex)?.values() ?? []) {
       addConditionVars(exitConditionVars, values);
     }
+
+    validateConditionConsumers(
+      instruction,
+      instructionIndex,
+      conditionVars,
+      localConditionValues.get(instructionIndex),
+      exitConditionValues.get(instructionIndex)
+    );
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
       const op = instruction.ir[opIndex];
@@ -91,6 +101,80 @@ export function analyzeJitConditionUses(
   }
 
   return byLocation;
+}
+
+function instructionConditionVars(instruction: JitIrBlockInstruction): ReadonlySet<number> {
+  const conditionVars = new Set<number>();
+
+  for (const op of instruction.ir) {
+    if (op.op === "aluFlags.condition") {
+      conditionVars.add(op.dst.id);
+    }
+  }
+
+  return conditionVars;
+}
+
+function validateConditionConsumers(
+  instruction: JitIrBlockInstruction,
+  instructionIndex: number,
+  conditionVars: ReadonlySet<number>,
+  localConditionValues: ReadonlyMap<number, readonly ValueRef[]> | undefined,
+  exitConditionValues: ReadonlyMap<number, readonly ValueRef[]> | undefined
+): void {
+  if (conditionVars.size === 0) {
+    return;
+  }
+
+  for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
+    const op = instruction.ir[opIndex];
+
+    if (op === undefined) {
+      throw new Error(`missing JIT IR op while validating condition consumers: ${instructionIndex}:${opIndex}`);
+    }
+
+    const declaredConditionVars = declaredConditionVarsAt(
+      localConditionValues?.get(opIndex),
+      exitConditionValues?.get(opIndex)
+    );
+
+    visitIrOpValueRefs(op, (value, role) => {
+      if (value.kind !== "var" || !conditionVars.has(value.id)) {
+        return;
+      }
+
+      if (role === "condition") {
+        if (!declaredConditionVars.has(value.id)) {
+          throw new Error(
+            `JIT condition value ${value.id} is consumed without a declared condition consumer at ${instructionIndex}:${opIndex}`
+          );
+        }
+
+        return;
+      }
+
+      throw new Error(
+        `JIT condition value ${value.id} is used as an ordinary value at ${instructionIndex}:${opIndex}`
+      );
+    });
+  }
+}
+
+function declaredConditionVarsAt(
+  localConditionValues: readonly ValueRef[] | undefined,
+  exitConditionValues: readonly ValueRef[] | undefined
+): ReadonlySet<number> {
+  const vars = new Set<number>();
+
+  if (localConditionValues !== undefined) {
+    addConditionVars(vars, localConditionValues);
+  }
+
+  if (exitConditionValues !== undefined) {
+    addConditionVars(vars, exitConditionValues);
+  }
+
+  return vars;
 }
 
 function conditionUseForVar(
