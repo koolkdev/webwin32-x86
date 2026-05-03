@@ -1,4 +1,5 @@
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import { analyzeJitOptimization } from "./analysis.js";
 import { materializeJitVirtualFlags, type JitVirtualFlagMaterialization } from "./virtual-flags.js";
 import { foldJitVirtualRegisters, type JitVirtualRegisterFolding } from "./virtual-registers.js";
 
@@ -18,8 +19,13 @@ export type JitIrOptimizationPipelineResult = Readonly<{
 }>;
 
 export function runJitIrOptimizationPipeline(block: JitIrBlock): JitIrOptimizationPipelineResult {
-  const virtualFlags = materializeJitVirtualFlags(block);
-  const virtualRegisters = foldJitVirtualRegisters(virtualFlags.block);
+  const initialAnalysis = analyzeJitOptimization(block);
+  const virtualFlags = materializeJitVirtualFlags(block, initialAnalysis);
+  const registerAnalysis = analyzeJitOptimization(virtualFlags.block);
+  const virtualRegisters = foldJitVirtualRegisters(
+    virtualFlags.block,
+    registerAnalysis
+  );
 
   return {
     block: virtualRegisters.block,

@@ -1,4 +1,5 @@
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import { analyzeJitOptimization } from "./analysis.js";
 import { runJitIrOptimizationPipeline } from "./pipeline.js";
 import { analyzeJitBlockState } from "./state-analysis.js";
 import type { JitBlockOptimization } from "./types.js";
@@ -16,7 +17,8 @@ export type {
 
 export function optimizeJitIrBlock(block: JitIrBlock): JitBlockOptimization {
   const pipeline = runJitIrOptimizationPipeline(block);
-  const optimized = analyzeJitBlockState(pipeline.block);
+  const optimizedAnalysis = analyzeJitOptimization(pipeline.block);
+  const optimized = analyzeJitBlockState(pipeline.block, optimizedAnalysis);
 
   return {
     ...optimized,

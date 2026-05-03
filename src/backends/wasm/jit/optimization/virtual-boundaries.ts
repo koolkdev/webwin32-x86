@@ -1,5 +1,4 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import { jitMemoryFaultReason } from "./op-effects.js";
 import { createJitVirtualRewrite, materializeJitVirtualReg, type JitVirtualRewrite } from "./virtual-rewrite.js";
 import { jitVirtualValueReadsReg, type JitVirtualValue } from "./virtual-values.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
@@ -92,12 +91,4 @@ export function materializeVirtualRegsIntoPreviousInstruction(
     ir: rewrite.ops
   };
   return virtualRegs.size;
-}
-
-export function instructionMayFault(instruction: JitIrBlockInstruction): boolean {
-  return instruction.ir.some((op) => jitMemoryFaultReason(op, instruction.operands) !== undefined);
-}
-
-export function nextInstructionMayFault(instruction: JitIrBlockInstruction | undefined): boolean {
-  return instruction !== undefined && instructionMayFault(instruction);
 }

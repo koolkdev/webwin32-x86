@@ -1,14 +1,17 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
-import { jitPostInstructionExitReasons } from "./op-effects.js";
 import {
-  instructionMayFault,
+  analyzeJitOptimization,
+  jitInstructionMayFault,
+  jitPostInstructionExitReasonsAt,
+  type JitOptimizationAnalysis
+} from "./analysis.js";
+import {
   materializeAllVirtualRegs,
   materializeVirtualRegsIntoPreviousInstruction,
   materializeVirtualRegsForRead,
-  materializeVirtualRegsReadingReg,
-  nextInstructionMayFault
+  materializeVirtualRegsReadingReg
 } from "./virtual-boundaries.js";
 import {
   createJitVirtualRewrite,
@@ -42,7 +45,8 @@ const maxRetainedVirtualValueCost = 8;
 const unchangedOpResult: RewriteResult = { removedSet: false, materializedSetCount: 0 };
 
 export function foldJitVirtualRegisters(
-  block: JitIrBlock
+  block: JitIrBlock,
+  analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): Readonly<{ block: JitIrBlock; folding: JitVirtualRegisterFolding }> {
   const virtualRegs = new Map<Reg32, JitVirtualValue>();
   const virtualRegReadCounts = new Map<Reg32, number>();
@@ -57,7 +61,7 @@ export function foldJitVirtualRegisters(
       throw new Error(`missing JIT instruction while folding virtual registers: ${instructionIndex}`);
     }
 
-    if (instructionMayFault(instruction)) {
+    if (jitInstructionMayFault(analysis, instructionIndex)) {
       materializedSetCount += materializeVirtualRegsIntoPreviousInstruction(instructions, virtualRegs);
       virtualRegs.clear();
       virtualRegReadCounts.clear();
@@ -78,7 +82,10 @@ export function foldJitVirtualRegisters(
       const result = rewriteOp(
         op,
         instruction,
+        instructionIndex,
+        opIndex,
         nextInstruction,
+        analysis,
         rewrite,
         virtualRegs,
         virtualRegReadCounts
@@ -110,7 +117,10 @@ export function foldJitVirtualRegisters(
 function rewriteOp(
   op: IrOp,
   instruction: JitIrBlockInstruction,
+  instructionIndex: number,
+  opIndex: number,
   nextInstruction: JitIrBlockInstruction | undefined,
+  analysis: JitOptimizationAnalysis,
   rewrite: JitVirtualRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>,
   virtualRegReadCounts: Map<Reg32, number>
@@ -135,8 +145,8 @@ function rewriteOp(
     case "set32":
       return rewriteSet32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "next": {
-      const shouldMaterialize = jitPostInstructionExitReasons(op, instruction).length !== 0 ||
-        nextInstructionMayFault(nextInstruction);
+      const shouldMaterialize = jitPostInstructionExitReasonsAt(analysis, instructionIndex, opIndex).length !== 0 ||
+        nextInstructionMayFault(analysis, instructionIndex, nextInstruction);
       const materializedSetCount = shouldMaterialize
         ? materializeAllVirtualRegs(rewrite, virtualRegs)
         : 0;
@@ -151,7 +161,7 @@ function rewriteOp(
     case "jump":
     case "conditionalJump":
     case "hostTrap": {
-      const materializedSetCount = jitPostInstructionExitReasons(op, instruction).length === 0
+      const materializedSetCount = jitPostInstructionExitReasonsAt(analysis, instructionIndex, opIndex).length === 0
         ? 0
         : materializeAllVirtualRegs(rewrite, virtualRegs);
 
@@ -336,4 +346,12 @@ function syncVirtualRegReadCounts(
       virtualRegReadCounts.delete(reg);
     }
   }
+}
+
+function nextInstructionMayFault(
+  analysis: JitOptimizationAnalysis,
+  instructionIndex: number,
+  nextInstruction: JitIrBlockInstruction | undefined
+): boolean {
+  return nextInstruction !== undefined && jitInstructionMayFault(analysis, instructionIndex + 1);
 }

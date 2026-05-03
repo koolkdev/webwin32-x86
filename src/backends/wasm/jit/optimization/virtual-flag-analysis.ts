@@ -14,11 +14,13 @@ import type {
 } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import {
-  analyzeJitConditionUses,
-  type JitConditionUse,
-  type JitConditionUseIndex
-} from "./condition-uses.js";
-import { jitMemoryFaultReason, jitPostInstructionExitReasons } from "./op-effects.js";
+  analyzeJitOptimization,
+  jitConditionUseAt,
+  jitMemoryFaultAt,
+  jitPostInstructionExitReasonsAt,
+  type JitOptimizationAnalysis
+} from "./analysis.js";
+import type { JitConditionUse } from "./condition-uses.js";
 import {
   jitStorageReg,
   jitVirtualValueForEffectiveAddress,
@@ -83,7 +85,7 @@ const flagBits = Object.values(IR_ALU_FLAG_MASKS);
 
 export function analyzeJitVirtualFlags(
   block: JitIrBlock,
-  conditionUses: JitConditionUseIndex = analyzeJitConditionUses(block)
+  analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): JitVirtualFlagAnalysis {
   const ownersByFlag = new Map<number, JitVirtualFlagOwner>(
     flagBits.map((flagBit) => [flagBit, incomingFlagOwner])
@@ -129,7 +131,7 @@ export function analyzeJitVirtualFlags(
     localValues: Map<number, JitVirtualValue>,
     instructionEntryOwners: ReadonlyMap<number, JitVirtualFlagOwner>
   ): void {
-    if (jitMemoryFaultReason(op, instruction.operands) !== undefined) {
+    if (jitMemoryFaultAt(analysis, instructionIndex, opIndex) !== undefined) {
       recordRead({
         instructionIndex,
         opIndex,
@@ -138,7 +140,7 @@ export function analyzeJitVirtualFlags(
       }, instructionEntryOwners);
     }
 
-    if (jitPostInstructionExitReasons(op, instruction).length !== 0) {
+    if (jitPostInstructionExitReasonsAt(analysis, instructionIndex, opIndex).length !== 0) {
       recordRead({ instructionIndex, opIndex, reason: "exit", requiredMask: IR_ALU_FLAG_MASK });
     }
 
@@ -176,7 +178,7 @@ export function analyzeJitVirtualFlags(
           reason: "condition",
           requiredMask: conditionFlagReadMask(op.cc),
           cc: op.cc,
-          conditionUse: conditionUse(conditionUses, instructionIndex, opIndex)
+          conditionUse: jitConditionUseAt(analysis, instructionIndex, opIndex)
         });
         return;
       case "flags.materialize":
@@ -262,14 +264,6 @@ export function analyzeJitVirtualFlags(
 
     sourceClobbers.push({ instructionIndex, opIndex, reg, owners });
   }
-}
-
-function conditionUse(
-  conditionUses: JitConditionUseIndex,
-  instructionIndex: number,
-  opIndex: number
-): JitConditionUse {
-  return conditionUses.get(instructionIndex)?.get(opIndex) ?? "localCondition";
 }
 
 function recordGet32(

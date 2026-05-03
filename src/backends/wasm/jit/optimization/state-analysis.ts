@@ -5,8 +5,12 @@ import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import {
-  jitMemoryFaultReason,
-  jitPostInstructionExitReasons,
+  jitMemoryFaultAt,
+  jitPostInstructionExitReasonsAt,
+  analyzeJitOptimization,
+  type JitOptimizationAnalysis
+} from "./analysis.js";
+import {
   requiredJitOperandBinding
 } from "./op-effects.js";
 import type {
@@ -27,7 +31,10 @@ type MutableJitStateTracker = {
   instructionCountDelta: number;
 };
 
-export function analyzeJitBlockState(block: JitIrBlock): Omit<JitBlockOptimization, "block"> {
+export function analyzeJitBlockState(
+  block: JitIrBlock,
+  analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
+): Omit<JitBlockOptimization, "block"> {
   const state: MutableJitStateTracker = {
     committedRegs: new Set(),
     speculativeRegs: new Set(),
@@ -60,7 +67,7 @@ export function analyzeJitBlockState(block: JitIrBlock): Omit<JitBlockOptimizati
         throw new Error(`missing JIT IR op while optimizing JIT IR block: ${instructionIndex}:${opIndex}`);
       }
 
-      const faultReason = jitMemoryFaultReason(op, instruction.operands);
+      const faultReason = jitMemoryFaultAt(analysis, instructionIndex, opIndex);
 
       if (faultReason !== undefined) {
         recordExitPoint(instructionIndex, opIndex, faultReason, entry);
@@ -131,16 +138,16 @@ export function analyzeJitBlockState(block: JitIrBlock): Omit<JitBlockOptimizati
         return;
       }
       case "next":
-        recordPostInstructionExits(op, instruction, instructionIndex, opIndex);
+        recordPostInstructionExits(instruction, instructionIndex, opIndex);
 
-        if (jitPostInstructionExitReasons(op, instruction).length === 0) {
+        if (jitPostInstructionExitReasonsAt(analysis, instructionIndex, opIndex).length === 0) {
           commitInstruction();
         }
         return;
       case "jump":
       case "conditionalJump":
       case "hostTrap":
-        recordPostInstructionExits(op, instruction, instructionIndex, opIndex);
+        recordPostInstructionExits(instruction, instructionIndex, opIndex);
         return;
       default:
         return;
@@ -148,12 +155,11 @@ export function analyzeJitBlockState(block: JitIrBlock): Omit<JitBlockOptimizati
   }
 
   function recordPostInstructionExits(
-    op: IrOp,
     instruction: JitIrBlockInstruction,
     instructionIndex: number,
     opIndex: number
   ): void {
-    const exitReasons = jitPostInstructionExitReasons(op, instruction);
+    const exitReasons = jitPostInstructionExitReasonsAt(analysis, instructionIndex, opIndex);
     const snapshot = instructionPostState(instruction);
 
     for (const exitReason of exitReasons) {

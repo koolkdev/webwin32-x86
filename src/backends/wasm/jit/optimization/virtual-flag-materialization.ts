@@ -1,5 +1,6 @@
 import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import { analyzeJitOptimization, type JitOptimizationAnalysis } from "./analysis.js";
 import {
   analyzeJitVirtualFlags,
   type JitVirtualFlagAnalysis,
@@ -20,12 +21,13 @@ export type JitVirtualFlagMaterialization = Readonly<{
 }>;
 
 export function materializeJitVirtualFlags(
-  block: JitIrBlock
+  block: JitIrBlock,
+  optimizationAnalysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): Readonly<{ block: JitIrBlock; flags: JitVirtualFlagMaterialization }> {
-  const analysis = analyzeJitVirtualFlags(block);
-  const directConditionsByLocation = indexDirectVirtualFlagConditions(block, analysis);
-  const neededSourceIds = neededVirtualFlagSourceIds(analysis, directConditionsByLocation);
-  const sourcesByLocation = indexVirtualFlagSourcesByLocation(analysis);
+  const flagAnalysis = analyzeJitVirtualFlags(block, optimizationAnalysis);
+  const directConditionsByLocation = indexDirectVirtualFlagConditions(block, flagAnalysis);
+  const neededSourceIds = neededVirtualFlagSourceIds(flagAnalysis, directConditionsByLocation);
+  const sourcesByLocation = indexVirtualFlagSourcesByLocation(flagAnalysis);
   const instructions = new Array<JitIrBlockInstruction>(block.instructions.length);
   let removedSetCount = 0;
   let retainedSetCount = 0;
@@ -76,7 +78,7 @@ export function materializeJitVirtualFlags(
       removedSetCount,
       retainedSetCount,
       directConditionCount,
-      sourceClobberCount: analysis.sourceClobbers.length
+      sourceClobberCount: flagAnalysis.sourceClobbers.length
     }
   };
 }

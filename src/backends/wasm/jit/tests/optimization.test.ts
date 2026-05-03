@@ -9,6 +9,13 @@ import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysi
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import {
+  analyzeJitOptimization,
+  jitConditionUseAt,
+  jitInstructionMayFault,
+  jitMemoryFaultAt,
+  jitPostInstructionExitReasonsAt
+} from "#backends/wasm/jit/optimization/analysis.js";
+import {
   jitExitConditionValues,
   jitPostInstructionExitReasons
 } from "#backends/wasm/jit/optimization/op-effects.js";
@@ -141,6 +148,30 @@ test("JIT op effects identify post-instruction exits and exit-coupled condition 
     ExitReason.BRANCH_NOT_TAKEN
   ]);
   deepStrictEqual(jitExitConditionValues(branchOp, branch), [v(0)]);
+});
+
+test("analyzeJitOptimization indexes shared op effects", () => {
+  const analysis = analyzeJitOptimization({
+    instructions: [
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
+      ]),
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
+        { op: "next" }
+      ], 1)
+    ]
+  });
+
+  deepStrictEqual(jitPostInstructionExitReasonsAt(analysis, 0, 1), [
+    ExitReason.BRANCH_TAKEN,
+    ExitReason.BRANCH_NOT_TAKEN
+  ]);
+  deepStrictEqual(analysis.exitConditionValues.get(0)?.get(1), [v(0)]);
+  strictEqual(jitConditionUseAt(analysis, 0, 0), "exitCondition");
+  strictEqual(jitMemoryFaultAt(analysis, 1, 0), ExitReason.MEMORY_READ_FAULT);
+  strictEqual(jitInstructionMayFault(analysis, 1), true);
 });
 
 test("materializeJitVirtualFlags removes overwritten flag producers across instruction bodies", () => {
