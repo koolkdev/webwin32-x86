@@ -53,7 +53,7 @@ export function materializeJitVirtualFlags(
       if (op.op === "flags.set" && (source === undefined || !neededSourceIds.has(source.id))) {
         removedSetCount += 1;
       } else if (op.op === "aluFlags.condition" && directCondition !== undefined) {
-        emitDirectVirtualFlagCondition(rewrite, op, directCondition.source);
+        emitDirectVirtualFlagCondition(rewrite, op, directCondition);
         directConditionCount += 1;
       } else {
         if (op.op === "flags.set") {

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { Reg32 } from "#x86/isa/types.js";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
-import type { IrBlock, VarRef } from "#x86/ir/model/types.js";
+import type { IrBlock, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
@@ -286,6 +286,88 @@ test("materializeJitVirtualFlags keeps clobbered producer inputs captured", () =
   strictEqual(ir.some((op) => op.op === "flagProducer.condition"), false);
 });
 
+test("materializeJitVirtualFlags emits result conditions from writeback registers", () => {
+  const materialized = materializeJitVirtualFlags({
+    instructions: [
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        { op: "next" }
+      ], 0),
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        createIrFlagSetOp("inc32", { left: v(0), result: v(1) }),
+        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        { op: "next" }
+      ], 1),
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "next" }
+      ], 2)
+    ]
+  });
+  const conditionInstruction = materialized.block.instructions[2]!;
+  const condition = conditionInstruction.ir.find((op) => op.op === "flagProducer.condition");
+
+  strictEqual(materialized.flags.directConditionCount, 1);
+  strictEqual(materialized.flags.removedSetCount, 2);
+  strictEqual(materialized.flags.retainedSetCount, 0);
+  strictEqual(conditionInstruction.ir.some((op) => op.op === "aluFlags.condition"), false);
+  deepStrictEqual(conditionInstruction.ir.slice(0, 2), [
+    { op: "get32", dst: v(1), source: { kind: "reg", reg: "eax" } },
+    {
+      op: "flagProducer.condition",
+      dst: v(0),
+      cc: "E",
+      producer: "inc32",
+      writtenMask: createIrFlagSetOp("inc32", { left: v(0), result: v(1) }).writtenMask,
+      undefMask: 0,
+      inputs: { result: v(1) }
+    }
+  ]);
+  strictEqual(condition?.op, "flagProducer.condition");
+});
+
+test("materializeJitVirtualFlags emits sub32 equality from writeback registers", () => {
+  const materialized = materializeJitVirtualFlags({
+    instructions: [
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "i32.sub", dst: v(1), a: v(0), b: c32(1) },
+        createIrFlagSetOp("sub32", { left: v(0), right: c32(1), result: v(1) }),
+        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        { op: "next" }
+      ], 0),
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "next" }
+      ], 1)
+    ]
+  });
+  const conditionInstruction = materialized.block.instructions[1]!;
+
+  strictEqual(materialized.flags.directConditionCount, 1);
+  strictEqual(materialized.flags.removedSetCount, 1);
+  strictEqual(materialized.flags.retainedSetCount, 0);
+  deepStrictEqual(conditionInstruction.ir.slice(0, 2), [
+    { op: "get32", dst: v(1), source: { kind: "reg", reg: "eax" } },
+    {
+      op: "flagProducer.condition",
+      dst: v(0),
+      cc: "E",
+      producer: "sub32",
+      writtenMask: createIrFlagSetOp("sub32", { left: v(0), right: c32(1), result: v(1) }).writtenMask,
+      undefMask: 0,
+      inputs: { result: v(1) }
+    }
+  ]);
+});
+
 test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const xorEax = ok(decodeBytes([0x83, 0xf0, 0x02], movEaxEcx.nextEip));
@@ -473,4 +555,8 @@ function flagOwnerSummary(owners: readonly JitVirtualFlagOwnerMask[]): readonly 
 
 function v(id: number): VarRef {
   return { kind: "var", id };
+}
+
+function c32(value: number): ValueRef {
+  return { kind: "const32", value };
 }

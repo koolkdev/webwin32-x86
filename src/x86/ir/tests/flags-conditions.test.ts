@@ -137,7 +137,7 @@ test("condition registry records flag reads and boolean formulas", () => {
   });
 });
 
-test("sub32 flag producers support direct condition emission", () => {
+test("sub32 flag producers support direct comparison condition emission", () => {
   const cases: readonly [ConditionCode, NonNullable<ReturnType<typeof flagProducerConditionKind>>][] = [
     ["E", "eq32"],
     ["NE", "ne32"],
@@ -154,7 +154,34 @@ test("sub32 flag producers support direct condition emission", () => {
     cases.map(([, kind]) => kind)
   );
   deepStrictEqual(canUseFlagProducerCondition(createDescriptor("sub32"), "E"), true);
-  deepStrictEqual(canUseFlagProducerCondition(createDescriptor("add32"), "E"), false);
+  deepStrictEqual(flagProducerConditionKind({ producer: "sub32", cc: "P" }), "parity8");
+});
+
+test("result flag producers support direct result condition emission", () => {
+  const cases: readonly [ConditionCode, NonNullable<ReturnType<typeof flagProducerConditionKind>>][] = [
+    ["E", "zero32"],
+    ["NE", "nonZero32"],
+    ["S", "sign32"],
+    ["NS", "notSign32"],
+    ["P", "parity8"],
+    ["NP", "notParity8"]
+  ];
+
+  for (const producer of ["add32", "logic32", "inc32", "dec32"] as const) {
+    deepStrictEqual(
+      cases.map(([cc]) => flagProducerConditionKind({ producer, cc })),
+      cases.map(([, kind]) => kind)
+    );
+    deepStrictEqual(canUseFlagProducerCondition(createDescriptor(producer), "E"), true);
+  }
+
+  deepStrictEqual(
+    cases.map(([cc]) => flagProducerConditionKind({ producer: "sub32", cc, inputs: { result } })),
+    cases.map(([, kind]) => kind)
+  );
+  deepStrictEqual(flagProducerConditionKind({ producer: "sub32", cc: "E" }), "eq32");
+  deepStrictEqual(flagProducerConditionKind({ producer: "sub32", cc: "E", inputs: { result } }), "zero32");
+  deepStrictEqual(canUseFlagProducerCondition(createDescriptor("inc32"), "B"), false);
 });
 
 function createDescriptor(producer: FlagProducerName): Pick<IrFlagSetOp, "producer" | "writtenMask" | "undefMask" | "inputs"> {

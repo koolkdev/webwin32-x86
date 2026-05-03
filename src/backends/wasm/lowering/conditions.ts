@@ -57,6 +57,29 @@ export function emitFlagProducerCondition(
       emitSignedInputCompare(body, condition, helpers);
       body.i32GtU();
       return;
+    case "zero32":
+      emitResultInput(body, condition, helpers);
+      body.i32Eqz();
+      return;
+    case "nonZero32":
+      emitResultInput(body, condition, helpers);
+      body.i32Eqz().i32Eqz();
+      return;
+    case "sign32":
+      emitResultSign(body, condition, helpers);
+      body.i32Eqz().i32Eqz();
+      return;
+    case "notSign32":
+      emitResultSign(body, condition, helpers);
+      body.i32Eqz();
+      return;
+    case "parity8":
+      emitResultParity(body, condition, helpers);
+      return;
+    case "notParity8":
+      emitResultParity(body, condition, helpers);
+      body.i32Eqz();
+      return;
     case undefined:
       throw new Error(`unsupported flag producer condition: ${condition.producer}/${condition.cc}`);
   }
@@ -119,4 +142,30 @@ function emitSignedCompareInput(
 ): void {
   helpers.emitValue(value);
   body.i32Const(i32(0x8000_0000)).i32Xor();
+}
+
+function emitResultInput(
+  body: WasmFunctionBodyEncoder,
+  condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>,
+  helpers: WasmIrEmitHelpers
+): void {
+  helpers.emitValue(requiredFlagProducerConditionInput(condition, "result"));
+}
+
+function emitResultSign(
+  body: WasmFunctionBodyEncoder,
+  condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>,
+  helpers: WasmIrEmitHelpers
+): void {
+  emitResultInput(body, condition, helpers);
+  body.i32Const(i32(0x8000_0000)).i32And();
+}
+
+function emitResultParity(
+  body: WasmFunctionBodyEncoder,
+  condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>,
+  helpers: WasmIrEmitHelpers
+): void {
+  emitResultInput(body, condition, helpers);
+  body.i32Const(0xff).i32And().i32Popcnt().i32Const(1).i32And().i32Eqz();
 }

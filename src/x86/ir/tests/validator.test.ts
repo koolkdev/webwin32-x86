@@ -122,9 +122,9 @@ test("validator rejects unsupported flag producer conditions", () => {
     () =>
       validateIrBlock([
         { op: "const32", dst: irVar(0), value: 1 },
-        createIrFlagProducerConditionOp(irVar(1), "E", descriptor),
+        createIrFlagProducerConditionOp(irVar(1), "B", descriptor),
         { op: "next" }
       ]),
-    /flagProducer\.condition logic32\/E is not supported/
+    /flagProducer\.condition logic32\/B is not supported/
   );
 });

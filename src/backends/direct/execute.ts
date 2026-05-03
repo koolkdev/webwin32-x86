@@ -240,29 +240,54 @@ function evalCondition(context: ExecutionContext, cc: keyof typeof CONDITIONS): 
 }
 
 function evalFlagProducerCondition(context: ExecutionContext, condition: IrFlagProducerConditionOp): boolean {
-  const left = evalValueRef(context, requiredFlagProducerConditionInput(condition, "left"));
-  const right = evalValueRef(context, requiredFlagProducerConditionInput(condition, "right"));
-
   switch (flagProducerConditionKind(condition)) {
     case "eq32":
-      return left === right;
+      return evalFlagProducerConditionLeft(context, condition) === evalFlagProducerConditionRight(context, condition);
     case "ne32":
-      return left !== right;
+      return evalFlagProducerConditionLeft(context, condition) !== evalFlagProducerConditionRight(context, condition);
     case "uLt32":
-      return left < right;
+      return evalFlagProducerConditionLeft(context, condition) < evalFlagProducerConditionRight(context, condition);
     case "uGe32":
-      return left >= right;
+      return evalFlagProducerConditionLeft(context, condition) >= evalFlagProducerConditionRight(context, condition);
     case "sLt32":
-      return i32Signed(left) < i32Signed(right);
+      return i32Signed(evalFlagProducerConditionLeft(context, condition)) <
+        i32Signed(evalFlagProducerConditionRight(context, condition));
     case "sGe32":
-      return i32Signed(left) >= i32Signed(right);
+      return i32Signed(evalFlagProducerConditionLeft(context, condition)) >=
+        i32Signed(evalFlagProducerConditionRight(context, condition));
     case "sLe32":
-      return i32Signed(left) <= i32Signed(right);
+      return i32Signed(evalFlagProducerConditionLeft(context, condition)) <=
+        i32Signed(evalFlagProducerConditionRight(context, condition));
     case "sGt32":
-      return i32Signed(left) > i32Signed(right);
+      return i32Signed(evalFlagProducerConditionLeft(context, condition)) >
+        i32Signed(evalFlagProducerConditionRight(context, condition));
+    case "zero32":
+      return evalFlagProducerConditionResult(context, condition) === 0;
+    case "nonZero32":
+      return evalFlagProducerConditionResult(context, condition) !== 0;
+    case "sign32":
+      return (evalFlagProducerConditionResult(context, condition) & 0x8000_0000) !== 0;
+    case "notSign32":
+      return (evalFlagProducerConditionResult(context, condition) & 0x8000_0000) === 0;
+    case "parity8":
+      return hasEvenParityLowByte(evalFlagProducerConditionResult(context, condition));
+    case "notParity8":
+      return !hasEvenParityLowByte(evalFlagProducerConditionResult(context, condition));
     case undefined:
       throw new Error(`unsupported flag producer condition: ${condition.producer}/${condition.cc}`);
   }
+}
+
+function evalFlagProducerConditionLeft(context: ExecutionContext, condition: IrFlagProducerConditionOp): number {
+  return evalValueRef(context, requiredFlagProducerConditionInput(condition, "left"));
+}
+
+function evalFlagProducerConditionRight(context: ExecutionContext, condition: IrFlagProducerConditionOp): number {
+  return evalValueRef(context, requiredFlagProducerConditionInput(condition, "right"));
+}
+
+function evalFlagProducerConditionResult(context: ExecutionContext, condition: IrFlagProducerConditionOp): number {
+  return evalValueRef(context, requiredFlagProducerConditionInput(condition, "result"));
 }
 
 function evalFlagBoolExpr(context: ExecutionContext, expr: FlagBoolExpr): boolean {

@@ -98,6 +98,27 @@ test("emitFlagProducerCondition evaluates producer-backed sub32 comparisons dire
   strictEqual(signedGreater(0x7fff_ffff, 0xffff_ffff), 1);
 });
 
+test("emitFlagProducerCondition evaluates producer-backed result conditions directly", async () => {
+  const incZero = await instantiateResultFlagProducerCondition("inc32", "E");
+  const logicNonZero = await instantiateResultFlagProducerCondition("logic32", "NE");
+  const decSign = await instantiateResultFlagProducerCondition("dec32", "S");
+  const addNotSign = await instantiateResultFlagProducerCondition("add32", "NS");
+  const subZero = await instantiateResultFlagProducerCondition("sub32", "E");
+  const addParity = await instantiateResultFlagProducerCondition("add32", "P");
+  const logicNotParity = await instantiateResultFlagProducerCondition("logic32", "NP");
+
+  strictEqual(incZero(0), 1);
+  strictEqual(incZero(1), 0);
+  strictEqual(logicNonZero(0), 0);
+  strictEqual(logicNonZero(1), 1);
+  strictEqual(decSign(0x8000_0000), 1);
+  strictEqual(addNotSign(0x7fff_ffff), 1);
+  strictEqual(subZero(0), 1);
+  strictEqual(subZero(1), 0);
+  strictEqual(addParity(3), 1);
+  strictEqual(logicNotParity(1), 1);
+});
+
 async function instantiateSetFlags(
   producer: FlagProducerName,
   mask?: number
@@ -209,6 +230,51 @@ function encodeFlagProducerConditionModule(cc: ConditionCode): Uint8Array<ArrayB
   return module.encode();
 }
 
+async function instantiateResultFlagProducerCondition(
+  producer: FlagProducerName,
+  cc: ConditionCode
+): Promise<(result: number) => number> {
+  const module = await WebAssembly.compile(encodeResultFlagProducerConditionModule(producer, cc));
+  const instance = await WebAssembly.instantiate(module);
+  const run = instance.exports.run;
+
+  if (typeof run !== "function") {
+    throw new Error("expected exported function 'run'");
+  }
+
+  return run as (result: number) => number;
+}
+
+function encodeResultFlagProducerConditionModule(
+  producer: FlagProducerName,
+  cc: ConditionCode
+): Uint8Array<ArrayBuffer> {
+  const module = new WasmModuleEncoder();
+  const typeIndex = module.addFunctionType({
+    params: [wasmValueType.i32],
+    results: [wasmValueType.i32]
+  });
+  const body = new WasmFunctionBodyEncoder(1);
+  const descriptor = createIrFlagSetOp(producer, flagSetInputs(producer));
+
+  emitFlagProducerCondition(body, {
+    kind: "flagProducer.condition",
+    cc,
+    producer,
+    writtenMask: descriptor.writtenMask,
+    undefMask: descriptor.undefMask,
+    inputs: { result: v(0) }
+  }, {
+    emitValue: (value) => emitValueExpr(body, value)
+  });
+  body.end();
+
+  const functionIndex = module.addFunction(typeIndex, body);
+  module.exportFunction("run", functionIndex);
+
+  return module.encode();
+}
+
 function emitValueExpr(body: WasmFunctionBodyEncoder, value: IrValueExpr): void {
   switch (value.kind) {
     case "var":
@@ -227,4 +293,17 @@ function emitValueExpr(body: WasmFunctionBodyEncoder, value: IrValueExpr): void 
 
 function v(id: number): ValueRef {
   return { kind: "var", id };
+}
+
+function flagSetInputs(producer: FlagProducerName): Readonly<Record<string, ValueRef>> {
+  switch (producer) {
+    case "logic32":
+      return { result: v(0) };
+    case "inc32":
+    case "dec32":
+      return { left: v(0), result: v(0) };
+    case "add32":
+    case "sub32":
+      return { left: v(0), right: v(0), result: v(0) };
+  }
 }
