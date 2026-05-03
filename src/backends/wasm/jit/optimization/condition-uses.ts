@@ -1,5 +1,5 @@
-import type { ValueRef } from "#x86/ir/model/types.js";
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import { jitExitConditionValues } from "./op-effects.js";
 
 export type JitConditionUse = "localCondition" | "exitCondition";
 
@@ -18,8 +18,10 @@ export function analyzeJitConditionUses(block: JitIrBlock): JitConditionUseIndex
     const exitConditionVars = new Set<number>();
 
     for (const op of instruction.ir) {
-      for (const varId of exitConditionVarReads(op)) {
-        exitConditionVars.add(varId);
+      for (const value of jitExitConditionValues(op, instruction)) {
+        if (value.kind === "var") {
+          exitConditionVars.add(value.id);
+        }
       }
     }
 
@@ -49,17 +51,4 @@ export function analyzeJitConditionUses(block: JitIrBlock): JitConditionUseIndex
   }
 
   return byLocation;
-}
-
-function exitConditionVarReads(op: JitIrBlock["instructions"][number]["ir"][number]): readonly number[] {
-  switch (op.op) {
-    case "conditionalJump":
-      return varRead(op.condition);
-    default:
-      return [];
-  }
-}
-
-function varRead(value: ValueRef): readonly number[] {
-  return value.kind === "var" ? [value.id] : [];
 }

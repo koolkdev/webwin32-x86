@@ -1,6 +1,7 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import { jitPostInstructionExitReasons } from "./op-effects.js";
 import {
   instructionMayFault,
   materializeAllVirtualRegs,
@@ -134,7 +135,9 @@ function rewriteOp(
     case "set32":
       return rewriteSet32(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "next": {
-      const materializedSetCount = instruction.nextMode === "exit" || nextInstructionMayFault(nextInstruction)
+      const shouldMaterialize = jitPostInstructionExitReasons(op, instruction).length !== 0 ||
+        nextInstructionMayFault(nextInstruction);
+      const materializedSetCount = shouldMaterialize
         ? materializeAllVirtualRegs(rewrite, virtualRegs)
         : 0;
 
@@ -148,7 +151,9 @@ function rewriteOp(
     case "jump":
     case "conditionalJump":
     case "hostTrap": {
-      const materializedSetCount = materializeAllVirtualRegs(rewrite, virtualRegs);
+      const materializedSetCount = jitPostInstructionExitReasons(op, instruction).length === 0
+        ? 0
+        : materializeAllVirtualRegs(rewrite, virtualRegs);
 
       if (materializedSetCount !== 0) {
         virtualRegReadCounts.clear();

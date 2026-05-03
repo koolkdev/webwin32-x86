@@ -1,10 +1,14 @@
 import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { conditionFlagReadMask, IR_ALU_FLAG_MASK } from "#x86/ir/passes/flag-analysis.js";
 import type { IrOp, StorageRef } from "#x86/ir/model/types.js";
-import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
+import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
-import { jitMemoryFaultReason, requiredJitOperandBinding } from "./op-effects.js";
+import {
+  jitMemoryFaultReason,
+  jitPostInstructionExitReasons,
+  requiredJitOperandBinding
+} from "./op-effects.js";
 import type {
   JitBlockOptimization,
   JitExitPoint,
@@ -127,34 +131,33 @@ export function analyzeJitBlockState(block: JitIrBlock): Omit<JitBlockOptimizati
         return;
       }
       case "next":
-        instructionPostState(instruction);
+        recordPostInstructionExits(op, instruction, instructionIndex, opIndex);
 
-        if (instruction.nextMode === "exit") {
-          recordExitPoint(
-            instructionIndex,
-            opIndex,
-            ExitReason.FALLTHROUGH,
-            instructionPostState(instruction)
-          );
-        } else {
+        if (jitPostInstructionExitReasons(op, instruction).length === 0) {
           commitInstruction();
         }
         return;
       case "jump":
-        recordExitPoint(instructionIndex, opIndex, ExitReason.JUMP, instructionPostState(instruction));
-        return;
-      case "conditionalJump": {
-        const snapshot = instructionPostState(instruction);
-
-        recordExitPoint(instructionIndex, opIndex, ExitReason.BRANCH_TAKEN, snapshot);
-        recordExitPoint(instructionIndex, opIndex, ExitReason.BRANCH_NOT_TAKEN, snapshot);
-        return;
-      }
+      case "conditionalJump":
       case "hostTrap":
-        recordExitPoint(instructionIndex, opIndex, ExitReason.HOST_TRAP, instructionPostState(instruction));
+        recordPostInstructionExits(op, instruction, instructionIndex, opIndex);
         return;
       default:
         return;
+    }
+  }
+
+  function recordPostInstructionExits(
+    op: IrOp,
+    instruction: JitIrBlockInstruction,
+    instructionIndex: number,
+    opIndex: number
+  ): void {
+    const exitReasons = jitPostInstructionExitReasons(op, instruction);
+    const snapshot = instructionPostState(instruction);
+
+    for (const exitReason of exitReasons) {
+      recordExitPoint(instructionIndex, opIndex, exitReason, snapshot);
     }
   }
 

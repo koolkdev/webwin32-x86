@@ -8,6 +8,10 @@ import type { IrBlock, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
+import {
+  jitExitConditionValues,
+  jitPostInstructionExitReasons
+} from "#backends/wasm/jit/optimization/op-effects.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
 import {
   jitIrOptimizationPassOrder,
@@ -120,6 +124,23 @@ test("optimizeJitIrBlock records flag materialization requirements before condit
     strictEqual(exit.snapshot.kind, "postInstruction");
     strictEqual(exit.requiredFlagCommitMask, IR_ALU_FLAG_MASK);
   }
+});
+
+test("JIT op effects identify post-instruction exits and exit-coupled condition values", () => {
+  const fallthrough = syntheticInstruction([{ op: "next" }], 0, "exit");
+  const localNext = syntheticInstruction([{ op: "next" }]);
+  const branch = syntheticInstruction([
+    { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
+  ]);
+  const branchOp = branch.ir[0]!;
+
+  deepStrictEqual(jitPostInstructionExitReasons(fallthrough.ir[0]!, fallthrough), [ExitReason.FALLTHROUGH]);
+  deepStrictEqual(jitPostInstructionExitReasons(localNext.ir[0]!, localNext), []);
+  deepStrictEqual(jitPostInstructionExitReasons(branchOp, branch), [
+    ExitReason.BRANCH_TAKEN,
+    ExitReason.BRANCH_NOT_TAKEN
+  ]);
+  deepStrictEqual(jitExitConditionValues(branchOp, branch), [v(0)]);
 });
 
 test("materializeJitVirtualFlags removes overwritten flag producers across instruction bodies", () => {
@@ -594,12 +615,16 @@ function onlyExit(exits: readonly JitExitPoint[], reason: ExitReasonValue): JitE
   return matches[0]!;
 }
 
-function syntheticInstruction(ir: IrBlock, index = 0): JitIrBlock["instructions"][number] {
+function syntheticInstruction(
+  ir: IrBlock,
+  index = 0,
+  nextMode: JitIrBlock["instructions"][number]["nextMode"] = "continue"
+): JitIrBlock["instructions"][number] {
   return {
     instructionId: `synthetic.${index}`,
     eip: startAddress + index,
     nextEip: startAddress + index + 1,
-    nextMode: "continue",
+    nextMode,
     operands: [],
     ir
   };

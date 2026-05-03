@@ -1,6 +1,7 @@
-import type { IrOp, StorageRef } from "#x86/ir/model/types.js";
+import type { IrOp, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
+import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 
 export function jitMemoryFaultReason(
   op: IrOp,
@@ -13,6 +14,40 @@ export function jitMemoryFaultReason(
       return storageMayAccessMemory(op.target, operands) ? ExitReason.MEMORY_WRITE_FAULT : undefined;
     default:
       return undefined;
+  }
+}
+
+export function jitPostInstructionExitReasons(
+  op: IrOp,
+  instruction: JitIrBlockInstruction
+): readonly ExitReasonValue[] {
+  switch (op.op) {
+    case "next":
+      return instruction.nextMode === "exit" ? [ExitReason.FALLTHROUGH] : [];
+    case "jump":
+      return [ExitReason.JUMP];
+    case "conditionalJump":
+      return [ExitReason.BRANCH_TAKEN, ExitReason.BRANCH_NOT_TAKEN];
+    case "hostTrap":
+      return [ExitReason.HOST_TRAP];
+    default:
+      return [];
+  }
+}
+
+export function jitExitConditionValues(
+  op: IrOp,
+  instruction: JitIrBlockInstruction
+): readonly ValueRef[] {
+  if (jitPostInstructionExitReasons(op, instruction).length === 0) {
+    return [];
+  }
+
+  switch (op.op) {
+    case "conditionalJump":
+      return [op.condition];
+    default:
+      return [];
   }
 }
 
