@@ -1,11 +1,8 @@
-import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 import type { JitOptimizationPass } from "#backends/wasm/jit/optimization/pass.js";
 import { analyzeJitReachingFlags } from "#backends/wasm/jit/optimization/analyses/reaching-flags.js";
-import {
-  emitDirectFlagCondition,
-  indexDirectFlagConditions
-} from "#backends/wasm/jit/optimization/flags/conditions.js";
+import { indexDirectFlagConditions } from "#backends/wasm/jit/optimization/analyses/direct-flag-conditions.js";
+import { emitDirectFlagCondition } from "#backends/wasm/jit/optimization/flags/conditions.js";
 import {
   createJitInstructionRewrite,
   rewriteJitIrInstructionInto
@@ -69,7 +66,7 @@ function specializeInstructionFlagConditions(
         const directCondition = directConditions.get(instructionIndex)?.get(opIndex);
 
         if (directCondition !== undefined) {
-          emitDirectFlagCondition(rewrite, op as Extract<IrOp, { op: "aluFlags.condition" }>, directCondition);
+          emitDirectFlagCondition(rewrite, op, directCondition);
           directConditionCount += 1;
           return;
         }
