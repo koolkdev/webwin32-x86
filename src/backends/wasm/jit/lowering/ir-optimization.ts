@@ -12,9 +12,9 @@ import type { IrBlock, IrOp, OperandRef, StorageRef, ValueRef, VarRef } from "#x
 import type { JitOperandBinding } from "./operand-bindings.js";
 import { optimizeJitIrBlock, type JitBlockOptimization } from "#backends/wasm/jit/optimization/optimize.js";
 import type {
+  JitFlatLoweringBlock,
   JitIrBlock,
-  JitIrBlockInstructionMetadata,
-  JitIrLoweringBlock
+  JitIrBlockInstructionMetadata
 } from "#backends/wasm/jit/types.js";
 
 const emptyBoundaryMaskByOpIndex = new Map<number, number>();
@@ -22,11 +22,11 @@ const emptyBoundaryMaskByOpIndex = new Map<number, number>();
 export function prepareJitIrBlockForLowering(
   block: JitIrBlock,
   optimization: JitBlockOptimization = optimizeJitIrBlock(block)
-): JitIrLoweringBlock {
-  return optimizeJitIrLoweringBlock(flattenJitIrBlock(insertExitFlagBoundaries(block, optimization)));
+): JitFlatLoweringBlock {
+  return optimizeJitFlatLoweringBlock(buildJitFlatLoweringBlock(insertExitFlagBoundaries(block, optimization)));
 }
 
-function optimizeJitIrLoweringBlock(block: JitIrLoweringBlock): JitIrLoweringBlock {
+function optimizeJitFlatLoweringBlock(block: JitFlatLoweringBlock): JitFlatLoweringBlock {
   const optimized = optimizeIrBlock(block.ir, [
     createAluFlagsConditionSpecializationPass(),
     createDeadFlagSetPruningPass(),
@@ -42,7 +42,7 @@ function optimizeJitIrLoweringBlock(block: JitIrLoweringBlock): JitIrLoweringBlo
   };
 }
 
-function flattenJitIrBlock(block: JitIrBlock): JitIrLoweringBlock {
+function buildJitFlatLoweringBlock(block: JitIrBlock): JitFlatLoweringBlock {
   const ir: IrOp[] = [];
   const operands: JitOperandBinding[] = [];
   const instructions: JitIrBlockInstructionMetadata[] = [];

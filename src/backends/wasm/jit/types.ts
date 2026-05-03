@@ -17,7 +17,9 @@ export type JitIrBlock = Readonly<{
   instructions: readonly JitIrBlockInstruction[];
 }>;
 
-export type JitIrLoweringBlock = Readonly<{
+// Temporary flat lowering form used while cross-instruction optimizations still
+// depend on a single operand and var namespace.
+export type JitFlatLoweringBlock = Readonly<{
   ir: IrBlock;
   operands: readonly JitOperandBinding[];
   instructions: readonly JitIrBlockInstructionMetadata[];

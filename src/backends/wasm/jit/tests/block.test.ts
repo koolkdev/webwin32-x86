@@ -43,7 +43,7 @@ test("buildJitIrBlock builds instruction-local IR bodies", () => {
   strictEqual(Math.min(...secondDefIds), 0);
 });
 
-test("JIT lowering preparation flattens instruction-local operands for the current lowering adapter", () => {
+test("JIT lowering preparation builds flat lowering IR with a global operand namespace", () => {
   const first = ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress));
   const second = ok(decodeBytes([0x83, 0xc0, 0x01], first.nextEip));
   const loweringBlock = prepareJitIrBlockForLowering(buildJitIrBlock([first, second]));
