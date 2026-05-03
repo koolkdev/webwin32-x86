@@ -125,6 +125,28 @@ test("compiled_block_handle_can_compile_multiple_blocks_into_one_module", async 
   strictEqual(state.eax, 2);
 });
 
+test("same-module static call uses direct return_call after call stack effects", async () => {
+  const { handle, moduleBytes, stateView, guestView } = await compileMultiBlockFixture([
+    { eip: startAddress, bytes: incEaxCallRel32(startAddress, linkedTargetAddress) },
+    { eip: linkedTargetAddress, bytes: incEaxHostTrap() }
+  ]);
+  const firstBlockOpcodes = wasmBodyOpcodes(extractFunctionBody(moduleBytes, 0));
+
+  strictEqual(handle.moduleLinkTable, undefined);
+  ok(firstBlockOpcodes.includes(wasmOpcode.returnCall));
+  ok(!firstBlockOpcodes.includes(wasmOpcode.returnCallIndirect));
+
+  writeJitState(stateView, createCpuState({ eip: startAddress, esp: 0x80 }));
+
+  const run = handle.run(startAddress);
+  const state = readJitState(stateView);
+
+  deepStrictEqual(run.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+  strictEqual(state.eax, 2);
+  strictEqual(state.esp, 0x7c);
+  strictEqual(guestView.getUint32(0x7c, true), startAddress + incEaxCallRel32(startAddress, linkedTargetAddress).length);
+});
+
 async function compileFixture(bytes: readonly number[]): Promise<Readonly<{
   block: ReturnType<typeof decodeIsaBlock>;
   handle: WasmBlockHandle;
@@ -218,6 +240,13 @@ function incEaxJmpRel32(blockEip: number, targetEip: number): readonly number[] 
   ];
 }
 
+function incEaxCallRel32(blockEip: number, targetEip: number): readonly number[] {
+  return [
+    0x40,
+    ...callRel32(blockEip + 1, targetEip)
+  ];
+}
+
 function incEaxHostTrap(): readonly number[] {
   return [
     0x40,
@@ -225,11 +254,19 @@ function incEaxHostTrap(): readonly number[] {
   ];
 }
 
+function callRel32(eip: number, targetEip: number): readonly number[] {
+  return rel32Instruction(0xe8, eip, targetEip);
+}
+
 function jmpRel32(eip: number, targetEip: number): readonly number[] {
+  return rel32Instruction(0xe9, eip, targetEip);
+}
+
+function rel32Instruction(opcode: number, eip: number, targetEip: number): readonly number[] {
   const displacement = targetEip - (eip + 5);
 
   return [
-    0xe9,
+    opcode,
     displacement & 0xff,
     (displacement >> 8) & 0xff,
     (displacement >> 16) & 0xff,

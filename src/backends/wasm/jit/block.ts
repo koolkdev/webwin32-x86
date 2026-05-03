@@ -1,4 +1,5 @@
 import type { IsaDecodedInstruction } from "#x86/isa/decoder/types.js";
+import type { ValueRef } from "#x86/ir/model/types.js";
 import { u32 } from "#x86/state/cpu-state.js";
 import { wasmImport, wasmMemoryIndex } from "#backends/wasm/abi.js";
 import { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
@@ -124,17 +125,42 @@ export function encodeJitIrBlock(
 export function staticJitLinkTargets(block: JitIrBlock): readonly number[] {
   const instruction = block.instructions[block.instructions.length - 1];
 
-  if (
-    instruction === undefined ||
-    instruction.nextMode !== "exit" ||
-    (instruction.instructionId !== "jmp.rel8" && instruction.instructionId !== "jmp.rel32")
-  ) {
+  if (instruction === undefined || instruction.nextMode !== "exit") {
     return [];
   }
 
-  const target = instruction.operands[0];
+  const target = finalStaticGoToEipTarget(instruction);
 
-  return target?.kind === "static.relTarget" ? [target.target] : [];
+  return target === undefined ? [] : [target];
+}
+
+function finalStaticGoToEipTarget(instruction: JitIrBlock["instructions"][number]): number | undefined {
+  const op = instruction.ir[instruction.ir.length - 1];
+
+  if (op?.op !== "jump") {
+    return undefined;
+  }
+
+  return staticRelTargetForValue(instruction, op.target);
+}
+
+function staticRelTargetForValue(
+  instruction: JitIrBlock["instructions"][number],
+  value: ValueRef
+): number | undefined {
+  if (value.kind !== "var") {
+    return undefined;
+  }
+
+  const producer = instruction.ir.find((op) => op.op === "get32" && op.dst.id === value.id);
+
+  if (producer?.op !== "get32" || producer.source.kind !== "operand") {
+    return undefined;
+  }
+
+  const binding = instruction.operands[producer.source.index];
+
+  return binding?.kind === "static.relTarget" ? binding.target : undefined;
 }
 
 export function jitBlockExportName(eip: number): string {

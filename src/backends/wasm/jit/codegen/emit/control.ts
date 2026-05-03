@@ -33,7 +33,7 @@ export function emitJitNextEip(context: JitIrContext): void {
 }
 
 export function emitJitJump(context: JitIrContext, target: IrValueExpr, helpers: WasmIrEmitHelpers): void {
-  if (emitJitLinkedStaticJump(context, target)) {
+  if (emitJitLinkedStaticGoToEip(context, target)) {
     return;
   }
 
@@ -103,14 +103,14 @@ export function emitJitHostTrap(context: JitIrContext, vector: IrValueExpr, help
   }
 }
 
-function emitJitLinkedStaticJump(context: JitIrContext, target: IrValueExpr): boolean {
+function emitJitLinkedStaticGoToEip(context: JitIrContext, target: IrValueExpr): boolean {
   const linking = context.linking;
 
   if (linking === undefined) {
     return false;
   }
 
-  const targetEip = finalStaticJumpTarget(context, target);
+  const targetEip = finalStaticGoToEipTarget(context, target);
 
   if (targetEip === undefined) {
     return false;
@@ -121,7 +121,7 @@ function emitJitLinkedStaticJump(context: JitIrContext, target: IrValueExpr): bo
   if (directFunctionIndex !== undefined) {
     const exitPoint = context.currentExitPoint(ExitReason.JUMP);
 
-    emitJitLinkedJumpStateStores(context, targetEip, exitPoint);
+    emitJitLinkedGoToEipStateStores(context, targetEip, exitPoint);
     context.body.returnCallFunction(directFunctionIndex);
     return true;
   }
@@ -129,7 +129,7 @@ function emitJitLinkedStaticJump(context: JitIrContext, target: IrValueExpr): bo
   if (linking.tableIndex !== undefined && linking.slotForStaticTarget !== undefined) {
     const exitPoint = context.currentExitPoint(ExitReason.JUMP);
 
-    emitJitLinkedJumpStateStores(context, targetEip, exitPoint);
+    emitJitLinkedGoToEipStateStores(context, targetEip, exitPoint);
     context.body
       .i32Const(linking.slotForStaticTarget(targetEip))
       .returnCallIndirect(linking.blockTypeIndex, linking.tableIndex);
@@ -139,7 +139,7 @@ function emitJitLinkedStaticJump(context: JitIrContext, target: IrValueExpr): bo
   return false;
 }
 
-function emitJitLinkedJumpStateStores(context: JitIrContext, targetEip: number, exitPoint: JitExitPoint): void {
+function emitJitLinkedGoToEipStateStores(context: JitIrContext, targetEip: number, exitPoint: JitExitPoint): void {
   context.state.commitInstructionExit(exitPoint, () => {
     context.body.i32Const(i32(targetEip));
   });
@@ -147,12 +147,11 @@ function emitJitLinkedJumpStateStores(context: JitIrContext, targetEip: number, 
   context.state.emitExitStateStores(exitPoint.exitStateIndex);
 }
 
-function finalStaticJumpTarget(context: JitIrContext, target: IrValueExpr): number | undefined {
+function finalStaticGoToEipTarget(context: JitIrContext, target: IrValueExpr): number | undefined {
   const instruction = context.currentInstruction();
 
   if (
     instruction.nextMode !== "exit" ||
-    (instruction.instructionId !== "jmp.rel8" && instruction.instructionId !== "jmp.rel32") ||
     target.kind !== "src32" ||
     target.source.kind !== "operand"
   ) {

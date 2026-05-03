@@ -59,6 +59,29 @@ test("compiled target patches dependent module-local table", () => {
   strictEqual(state.eax, 2);
 });
 
+test("compiled target patches static call through dependent module-local table", () => {
+  const fixture = createLinkingFixture([
+    block(aEip, incEaxCallRel32(aEip, bEip)),
+    block(bEip, incEaxHostTrap())
+  ]);
+  const a = compileBlock(fixture, aEip);
+  const b = compileBlock(fixture, bEip);
+  const slot = slotForTarget(a, bEip);
+
+  strictEqual(a.moduleLinkTable?.table.get(slot), b.exportedBlockFunctionForEip(bEip));
+
+  fixture.memories.state.load({ eip: aEip, esp: 0x80 });
+
+  const run = a.run();
+  const state = fixture.memories.state.snapshot();
+  const returnAddress = aEip + incEaxCallRel32(aEip, bEip).length;
+
+  deepStrictEqual(run.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+  strictEqual(state.eax, 2);
+  strictEqual(state.esp, 0x7c);
+  strictEqual(new DataView(fixture.memories.guestMemory.buffer).getUint32(0x7c, true), returnAddress);
+});
+
 test("final jmp rel8 can link through the module-local table", () => {
   const rel8A = 0x1100;
   const rel8B = 0x1108;
@@ -211,6 +234,13 @@ function incEaxJmpRel32(blockEip: number, targetEip: number): readonly number[] 
   ];
 }
 
+function incEaxCallRel32(blockEip: number, targetEip: number): readonly number[] {
+  return [
+    0x40,
+    ...callRel32(blockEip + 1, targetEip)
+  ];
+}
+
 function incEaxJmpRel8(blockEip: number, targetEip: number): readonly number[] {
   return [
     0x40,
@@ -223,6 +253,14 @@ function incEaxHostTrap(): readonly number[] {
     0x40,
     0xcd, 0x2e
   ];
+}
+
+function callRel32(eip: number, targetEip: number): readonly number[] {
+  return rel32Instruction(0xe8, eip, targetEip);
+}
+
+function jmpRel32(eip: number, targetEip: number): readonly number[] {
+  return rel32Instruction(0xe9, eip, targetEip);
 }
 
 function jmpRel8(eip: number, targetEip: number): readonly number[] {
@@ -238,11 +276,11 @@ function jmpRel8(eip: number, targetEip: number): readonly number[] {
   ];
 }
 
-function jmpRel32(eip: number, targetEip: number): readonly number[] {
+function rel32Instruction(opcode: number, eip: number, targetEip: number): readonly number[] {
   const displacement = targetEip - (eip + 5);
 
   return [
-    0xe9,
+    opcode,
     displacement & 0xff,
     (displacement >> 8) & 0xff,
     (displacement >> 16) & 0xff,
