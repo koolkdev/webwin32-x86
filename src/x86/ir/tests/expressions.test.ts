@@ -116,7 +116,7 @@ test("expression selector materializes flag inputs that still need value refs", 
   );
 });
 
-test("expression selector materializes conditional set values before the conditional write", () => {
+test("expression selector materializes conditional set values at their definition", () => {
   deepStrictEqual(
     buildIrExpressionBlock(
       [
@@ -128,8 +128,8 @@ test("expression selector materializes conditional set values before the conditi
       { canInlineGet32: () => true }
     ),
     [
-      { op: "let32", dst: v(1), value: { kind: "aluFlags.condition", cc: "E" } },
       { op: "let32", dst: v(0), value: { kind: "src32", source: op(1) } },
+      { op: "let32", dst: v(1), value: { kind: "aluFlags.condition", cc: "E" } },
       { op: "set32.if", condition: v(1), target: op(0), value: v(0) },
       { op: "next" }
     ]

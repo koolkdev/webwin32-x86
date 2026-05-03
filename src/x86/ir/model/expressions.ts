@@ -70,12 +70,14 @@ class ExpressionBuilder {
   readonly #bindings = new Map<number, IrValueExpr>();
   readonly #ops: IrExprOp[] = [];
   readonly #useCounts: ReadonlyMap<number, number>;
+  readonly #conditionalWriteValueVars: ReadonlySet<number>;
 
   constructor(
     readonly block: IrBlock,
     readonly options: IrExpressionOptions
   ) {
     this.#useCounts = countVarUses(block);
+    this.#conditionalWriteValueVars = conditionalWriteValueVars(block);
   }
 
   build(): IrExprBlock {
@@ -162,7 +164,7 @@ class ExpressionBuilder {
   }
 
   #defineValue(dst: VarRef, value: IrValueExpr, inlineable: boolean): void {
-    if (inlineable && remainingUses(this.#useCounts, dst.id) <= 1) {
+    if (inlineable && remainingUses(this.#useCounts, dst.id) <= 1 && !this.#conditionalWriteValueVars.has(dst.id)) {
       this.#bindings.set(dst.id, value);
       return;
     }
@@ -296,6 +298,18 @@ function countValueUse(counts: Map<number, number>, value: ValueRef): void {
   if (value.kind === "var") {
     counts.set(value.id, remainingUses(counts, value.id) + 1);
   }
+}
+
+function conditionalWriteValueVars(block: IrBlock): ReadonlySet<number> {
+  const vars = new Set<number>();
+
+  for (const op of block) {
+    if (op.op === "set32.if" && op.value.kind === "var") {
+      vars.add(op.value.id);
+    }
+  }
+
+  return vars;
 }
 
 function remainingUses(useCounts: ReadonlyMap<number, number>, id: number): number {
