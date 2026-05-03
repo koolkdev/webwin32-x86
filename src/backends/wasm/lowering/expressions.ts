@@ -42,8 +42,10 @@ export type IrSet32ExprOp = Readonly<{
   op: "set32";
   target: IrStorageExpr;
   value: IrValueExpr;
-  inputOp?: Extract<IrExpressionInputOp, { op: "set32" }>;
+  role?: IrSet32ExprRole;
 }>;
+
+export type IrSet32ExprRole = "registerMaterialization";
 
 export type IrExprOp =
   | Readonly<{ op: "let32"; dst: VarRef; value: IrValueExpr }>
@@ -192,11 +194,9 @@ class ExpressionBuilder {
       target: this.#storageExpr(op.target),
       value: this.#valueExpr(op.value)
     };
+    const role = set32ExprRole(op);
 
-    Object.defineProperty(expr, "inputOp", {
-      value: op
-    });
-    return expr;
+    return role === undefined ? expr : { ...expr, role };
   }
 
   #materializedValue(value: ValueRef): ValueRef {
@@ -253,6 +253,12 @@ class ExpressionBuilder {
 
     return binding;
   }
+}
+
+function set32ExprRole(op: Extract<IrExpressionInputOp, { op: "set32" }>): IrSet32ExprRole | undefined {
+  return "jitRole" in op && op.jitRole === "registerMaterialization"
+    ? "registerMaterialization"
+    : undefined;
 }
 
 function countVarUses(block: IrExpressionInputBlock): Map<number, number> {

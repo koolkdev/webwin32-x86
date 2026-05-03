@@ -21,7 +21,7 @@ import {
 import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/lowering-prep/types.js";
 import { lowerableJitIrBlock } from "#backends/wasm/jit/ir-semantics.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
-import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 
 export type JitIrInstructionContext = Pick<JitIrBlockInstruction, "ir" | "operands"> & Pick<
   JitInstructionState,
@@ -162,7 +162,7 @@ function emitJitSet32WithRole(
 ): void {
   emitJitSet32(jitContext, target, value, helpers);
 
-  if (!isRegisterMaterializationSet32(op.inputOp)) {
+  if (op.role !== "registerMaterialization") {
     return;
   }
 
@@ -171,10 +171,6 @@ function emitJitSet32WithRole(
   }
 
   jitContext.state.regs.commitPendingReg(target.reg);
-}
-
-function isRegisterMaterializationSet32(op: Extract<JitIrOp, { op: "set32" }> | undefined): boolean {
-  return op?.jitRole === "registerMaterialization";
 }
 
 function beginInstruction(

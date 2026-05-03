@@ -41,11 +41,17 @@ test("register value analysis tracks foldable register reads", () => {
     folded: read.folded,
     reason: read.reason
   })), [{ reg: "eax", folded: true, reason: "get32" }]);
+  deepStrictEqual(analysis.folds.map((fold) => ({
+    opIndex: fold.opIndex,
+    kind: fold.kind,
+    regs: fold.regs
+  })), [{ opIndex: 2, kind: "get32", regs: ["eax"] }]);
   deepStrictEqual(analysis.materializations.map((entry) => ({
+    opIndex: entry.opIndex,
     phase: entry.phase,
     reason: entry.reason,
     regs: entry.regs
-  })), [{ phase: "blockEnd", reason: "blockEnd", regs: ["eax"] }]);
+  })), [{ opIndex: 3, phase: "beforeOp", reason: "blockEnd", regs: ["eax"] }]);
 });
 
 test("register value analysis materializes dependencies before clobbers", () => {
@@ -67,11 +73,11 @@ test("register value analysis materializes dependencies before clobbers", () => 
     regs: entry.regs
   })), [
     { opIndex: 3, reason: "clobber", regs: ["ebx"] },
-    { opIndex: undefined, reason: "blockEnd", regs: ["eax"] }
+    { opIndex: 4, reason: "blockEnd", regs: ["eax"] }
   ]);
 });
 
-test("register value analysis materializes virtual registers at exits", () => {
+test("register value analysis keeps immediately exiting writes concrete", () => {
   const analysis = analyzeJitRegisterValues({
     instructions: [
       syntheticInstruction([
@@ -82,12 +88,6 @@ test("register value analysis materializes virtual registers at exits", () => {
     ]
   });
 
-  deepStrictEqual(analysis.materializations.map((entry) => ({
-    opIndex: entry.opIndex,
-    phase: entry.phase,
-    reason: entry.reason,
-    regs: entry.regs
-  })), [
-    { opIndex: 2, phase: "beforeExit", reason: "exit", regs: ["eax"] }
-  ]);
+  strictEqual(analysis.producers[0]?.retained, false);
+  deepStrictEqual(analysis.materializations, []);
 });

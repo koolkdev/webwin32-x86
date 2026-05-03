@@ -1,10 +1,6 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
-import {
-  indexJitEffects,
-  jitInstructionHasPreInstructionExit,
-  jitOpHasPostInstructionExit
-} from "#backends/wasm/jit/ir/effects.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir-semantics.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 import {
   jitStorageReg,
@@ -16,6 +12,11 @@ import {
   shouldMaterializeRepeatedRegisterRead,
   shouldRetainRegisterValue
 } from "#backends/wasm/jit/optimization/registers/policy.js";
+import {
+  analyzeJitRegisterBarriers,
+  type JitRegisterBarrierAnalysis,
+  type JitRegisterBarrierReason
+} from "#backends/wasm/jit/optimization/analyses/barriers.js";
 
 export type JitRegisterValueProducer = Readonly<{
   instructionIndex: number;
@@ -34,6 +35,14 @@ export type JitRegisterValueRead = Readonly<{
   reason: "get32" | "address32";
 }>;
 
+export type JitRegisterValueFold = Readonly<{
+  instructionIndex: number;
+  opIndex: number;
+  kind: "get32" | "address32";
+  value: JitValue;
+  regs: readonly Reg32[];
+}>;
+
 export type JitRegisterMaterializationReason =
   | "preInstructionExit"
   | "exit"
@@ -49,20 +58,30 @@ export type JitRegisterMaterialization = Readonly<{
   phase: "beforeInstruction" | "beforeOp" | "beforeExit" | "blockEnd";
   reason: JitRegisterMaterializationReason;
   regs: readonly Reg32[];
+  values: readonly JitRegisterMaterializedValue[];
+}>;
+
+export type JitRegisterMaterializedValue = Readonly<{
+  reg: Reg32;
+  value: JitValue;
 }>;
 
 export type JitRegisterValueAnalysis = Readonly<{
   producers: readonly JitRegisterValueProducer[];
   reads: readonly JitRegisterValueRead[];
+  folds: readonly JitRegisterValueFold[];
   materializations: readonly JitRegisterMaterialization[];
   finalValues: ReadonlyMap<Reg32, JitValue>;
 }>;
 
-export function analyzeJitRegisterValues(block: JitIrBlock): JitRegisterValueAnalysis {
-  const effects = indexJitEffects(block);
+export function analyzeJitRegisterValues(
+  block: JitIrBlock,
+  barriers: JitRegisterBarrierAnalysis = analyzeJitRegisterBarriers(block)
+): JitRegisterValueAnalysis {
   const registers = new JitRegisterValues();
   const producers: JitRegisterValueProducer[] = [];
   const reads: JitRegisterValueRead[] = [];
+  const folds: JitRegisterValueFold[] = [];
   const materializations: JitRegisterMaterialization[] = [];
 
   for (let instructionIndex = 0; instructionIndex < block.instructions.length; instructionIndex += 1) {
@@ -72,7 +91,7 @@ export function analyzeJitRegisterValues(block: JitIrBlock): JitRegisterValueAna
       throw new Error(`missing JIT instruction while analyzing register values: ${instructionIndex}`);
     }
 
-    if (jitInstructionHasPreInstructionExit(effects, instructionIndex)) {
+    if (hasInstructionBarrier(barriers, instructionIndex, "preInstructionExit")) {
       materializeAll(registers, materializations, {
         instructionIndex,
         phase: "beforeInstruction",
@@ -80,33 +99,28 @@ export function analyzeJitRegisterValues(block: JitIrBlock): JitRegisterValueAna
       });
     }
 
-    analyzeInstruction(instruction, instructionIndex, registers, producers, reads, materializations, effects);
-  }
-
-  if (registers.size !== 0 && block.instructions.length !== 0) {
-    materializeAll(registers, materializations, {
-      instructionIndex: block.instructions.length - 1,
-      phase: "blockEnd",
-      reason: "blockEnd"
-    });
+    analyzeInstruction(block, instruction, instructionIndex, registers, producers, reads, folds, materializations, barriers);
   }
 
   return {
     producers,
     reads,
+    folds,
     materializations,
     finalValues: new Map(registers.trackedValues)
   };
 }
 
 function analyzeInstruction(
+  block: JitIrBlock,
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
   registers: JitRegisterValues,
   producers: JitRegisterValueProducer[],
   reads: JitRegisterValueRead[],
+  folds: JitRegisterValueFold[],
   materializations: JitRegisterMaterialization[],
-  effects: ReturnType<typeof indexJitEffects>
+  barriers: JitRegisterBarrierAnalysis
 ): void {
   const values = new JitValueTracker();
 
@@ -115,6 +129,15 @@ function analyzeInstruction(
 
     if (op === undefined) {
       throw new Error(`missing JIT IR op while analyzing register values: ${instructionIndex}:${opIndex}`);
+    }
+
+    if (isFinalBlockTerminatorWithoutExit(block, barriers, instructionIndex, opIndex, op)) {
+      materializeAll(registers, materializations, {
+        instructionIndex,
+        opIndex,
+        phase: "beforeOp",
+        reason: "blockEnd"
+      });
     }
 
     switch (op.op) {
@@ -134,6 +157,7 @@ function analyzeInstruction(
           } else {
             registers.recordRead(reg);
             reads.push({ instructionIndex, opIndex, reg, value, folded: true, reason: "get32" });
+            folds.push({ instructionIndex, opIndex, kind: "get32", value, regs: [reg] });
           }
         }
 
@@ -165,6 +189,8 @@ function analyzeInstruction(
             reason: "read"
           });
         } else {
+          folds.push({ instructionIndex, opIndex, kind: "address32", value, regs: readRegs });
+
           for (const reg of readRegs) {
             const regValue = registers.get(reg);
 
@@ -179,9 +205,12 @@ function analyzeInstruction(
         break;
       }
       case "set32": {
-        const reg = jitStorageReg(op.target, instruction.operands);
+        const reg = registerBarrierReg(barriers, instructionIndex, opIndex, "write");
         const value = values.valueFor(op.value);
-        const retained = reg !== undefined && value !== undefined && shouldRetainRegisterValue(value);
+        const retained = reg !== undefined &&
+          value !== undefined &&
+          shouldRetainRegisterValue(value) &&
+          !isImmediatelyMaterializedAtExit(instruction, instructionIndex, opIndex, barriers);
 
         if (reg !== undefined) {
           materializeDependencies(registers, materializations, reg, {
@@ -204,7 +233,7 @@ function analyzeInstruction(
         break;
       }
       case "set32.if": {
-        const reg = jitStorageReg(op.target, instruction.operands);
+        const reg = registerBarrierReg(barriers, instructionIndex, opIndex, "conditionalWrite");
 
         if (reg !== undefined) {
           materializeRegs(registers, materializations, [reg], {
@@ -228,7 +257,7 @@ function analyzeInstruction(
         break;
     }
 
-    if (jitOpHasPostInstructionExit(effects, instructionIndex, opIndex)) {
+    if (hasOpBarrier(barriers, instructionIndex, opIndex, "exit")) {
       materializeAll(registers, materializations, {
         instructionIndex,
         opIndex,
@@ -242,7 +271,7 @@ function analyzeInstruction(
 function materializeAll(
   registers: JitRegisterValues,
   materializations: JitRegisterMaterialization[],
-  point: Omit<JitRegisterMaterialization, "regs">
+  point: Omit<JitRegisterMaterialization, "regs" | "values">
 ): void {
   materializeRegs(registers, materializations, [...registers.trackedValues.keys()], point);
 }
@@ -251,7 +280,7 @@ function materializeDependencies(
   registers: JitRegisterValues,
   materializations: JitRegisterMaterialization[],
   clobberedReg: Reg32,
-  point: Omit<JitRegisterMaterialization, "regs">
+  point: Omit<JitRegisterMaterialization, "regs" | "values">
 ): void {
   const regs = [...registers.trackedValues].flatMap(([reg, value]) =>
     reg !== clobberedReg && jitValueReadsReg(value, clobberedReg) ? [reg] : []
@@ -264,20 +293,93 @@ function materializeRegs(
   registers: JitRegisterValues,
   materializations: JitRegisterMaterialization[],
   regs: readonly Reg32[],
-  point: Omit<JitRegisterMaterialization, "regs">
+  point: Omit<JitRegisterMaterialization, "regs" | "values">
 ): void {
-  const materializedRegs = regs.filter((reg) => registers.has(reg));
+  const values = regs.flatMap((reg) => {
+    const value = registers.get(reg);
 
-  if (materializedRegs.length === 0) {
+    return value === undefined ? [] : [{ reg, value }];
+  });
+
+  if (values.length === 0) {
     return;
   }
 
   materializations.push({
     ...point,
-    regs: materializedRegs
+    regs: values.map(({ reg }) => reg),
+    values
   });
 
-  for (const reg of materializedRegs) {
+  for (const { reg } of values) {
     registers.delete(reg);
   }
+}
+
+function hasInstructionBarrier(
+  barriers: JitRegisterBarrierAnalysis,
+  instructionIndex: number,
+  reason: JitRegisterBarrierReason
+): boolean {
+  return barriers.barriers.some((barrier) =>
+    barrier.instructionIndex === instructionIndex &&
+    barrier.opIndex === undefined &&
+    barrier.reason === reason
+  );
+}
+
+function hasOpBarrier(
+  barriers: JitRegisterBarrierAnalysis,
+  instructionIndex: number,
+  opIndex: number,
+  reason: JitRegisterBarrierReason
+): boolean {
+  return barriers.barriers.some((barrier) =>
+    barrier.instructionIndex === instructionIndex &&
+    barrier.opIndex === opIndex &&
+    barrier.reason === reason
+  );
+}
+
+function registerBarrierReg(
+  barriers: JitRegisterBarrierAnalysis,
+  instructionIndex: number,
+  opIndex: number,
+  reason: "write" | "conditionalWrite"
+): Reg32 | undefined {
+  return barriers.barriers.find((barrier) =>
+    barrier.instructionIndex === instructionIndex &&
+    barrier.opIndex === opIndex &&
+    barrier.reason === reason
+  )?.reg;
+}
+
+function isImmediatelyMaterializedAtExit(
+  instruction: JitIrBlockInstruction,
+  instructionIndex: number,
+  opIndex: number,
+  barriers: JitRegisterBarrierAnalysis
+): boolean {
+  const nextOpIndex = opIndex + 1;
+  const nextOp = instruction.ir[nextOpIndex];
+
+  return nextOp !== undefined &&
+    jitIrOpIsTerminator(nextOp) &&
+    hasOpBarrier(barriers, instructionIndex, nextOpIndex, "exit");
+}
+
+function isFinalBlockTerminatorWithoutExit(
+  block: JitIrBlock,
+  barriers: JitRegisterBarrierAnalysis,
+  instructionIndex: number,
+  opIndex: number,
+  op: JitIrOp
+): boolean {
+  const instruction = block.instructions[instructionIndex];
+
+  return instructionIndex === block.instructions.length - 1 &&
+    instruction !== undefined &&
+    opIndex === instruction.ir.length - 1 &&
+    jitIrOpIsTerminator(op) &&
+    !hasOpBarrier(barriers, instructionIndex, opIndex, "exit");
 }
