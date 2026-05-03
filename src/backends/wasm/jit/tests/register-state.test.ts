@@ -30,7 +30,7 @@ test("jit register state feeds later instructions from committed register locals
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
-test("jit register generations store committed registers on a later memory fault", async () => {
+test("jit register exit states store committed registers on a later memory fault", async () => {
   const result = await runJitIrBlock(
     [
       0xb8, 0x11, 0x11, 0x11, 0x11, // mov eax, 0x11111111

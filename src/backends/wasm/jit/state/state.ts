@@ -1,9 +1,9 @@
-import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import { stateOffset } from "#backends/wasm/abi.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { emitLoadStateU32, emitStoreStateU32 } from "#backends/wasm/lowering/state.js";
+import type { JitExitState, JitStateSnapshot } from "#backends/wasm/jit/optimization/optimize.js";
 import { createJitFlagState, type JitFlagState } from "./flag-state.js";
 import { createJitReg32State, type JitReg32State } from "./register-state.js";
 
@@ -13,29 +13,26 @@ export type JitExitTarget = {
   emitBeforeExit?: () => void;
 };
 
-type ExitGenerationSnapshot = Readonly<{
-  dirtyRegs: ReadonlySet<Reg32>;
-}>;
-
 export type JitIrState = Readonly<{
   regs: JitReg32State;
   flags: JitFlagState;
   eipLocal: number;
   aluFlagsLocal: number;
   instructionCountLocal: number;
-  maxExitGeneration: number;
+  maxExitStateIndex: number;
   emitLoadInstructionCount(): void;
-  beginInstruction(exit: JitExitTarget, instructionEip: number): void;
+  beginInstruction(exit: JitExitTarget, snapshot: JitStateSnapshot, exitStateIndex: number): void;
   commitInstruction(): void;
-  commitInstructionExit(emitEip: () => void): void;
-  emitExitStoresForGeneration(generation: number): void;
+  commitInstructionExit(snapshot: JitStateSnapshot, exitStateIndex: number, emitEip: () => void): void;
+  emitExitStateStores(index: number): void;
 }>;
 
 export function createJitIrState(
   body: WasmFunctionBodyEncoder,
-  maxExitGeneration: number
+  exitStates: readonly JitExitState[]
 ): JitIrState {
   const regs = createJitReg32State(body);
+  const maxExitStateIndex = exitStates.length - 1;
   const eipLocal = body.addLocal(wasmValueType.i32);
   const aluFlagsLocal = body.addLocal(wasmValueType.i32);
   const flags = createJitFlagState(body, aluFlagsLocal, {
@@ -44,9 +41,7 @@ export function createJitIrState(
     emitStoreAluFlags
   });
   const instructionCountLocal = body.addLocal(wasmValueType.i32);
-  const generationState = createExitGenerationState(maxExitGeneration);
   let activeExit: JitExitTarget | undefined;
-  let committedInstructionDelta = 0;
 
   return {
     regs,
@@ -54,43 +49,39 @@ export function createJitIrState(
     eipLocal,
     aluFlagsLocal,
     instructionCountLocal,
-    maxExitGeneration,
+    maxExitStateIndex,
     emitLoadInstructionCount: () => {
       emitLoadStateU32(body, stateOffset.instructionCount);
       body.localSet(instructionCountLocal);
     },
-    beginInstruction: (exit, instructionEip) => {
+    beginInstruction: (exit, snapshot, exitStateIndex) => {
       activeExit = exit;
       regs.assertNoPending();
-      useExitGeneration(exit, generationState.currentGeneration);
+      useExitState(exit, exitStateIndex);
       useExitStateStores(exit, () => {
-        body.i32Const(i32(instructionEip));
-      }, committedInstructionDelta);
+        body.i32Const(i32(snapshot.eip));
+      }, snapshot.instructionCountDelta);
     },
     commitInstruction,
-    commitInstructionExit: (emitEip) => {
+    commitInstructionExit: (snapshot, exitStateIndex, emitEip) => {
       const exit = requiredActiveExit();
 
       emitEip();
       body.localSet(eipLocal);
       regs.commitPending();
-      useExitGeneration(exit, internCurrentRegisterGeneration());
+      useExitState(exit, exitStateIndex);
       useExitStateStores(exit, () => {
         body.localGet(eipLocal);
-      }, committedInstructionDelta + 1);
+      }, snapshot.instructionCountDelta);
     },
-    emitExitStoresForGeneration: (generation) => {
-      const snapshot = generationState.snapshot(generation);
+    emitExitStateStores: (index) => {
+      const snapshot = exitStates[index];
 
       if (snapshot === undefined) {
         return;
       }
 
-      for (const reg of reg32) {
-        if (!snapshot.dirtyRegs.has(reg)) {
-          continue;
-        }
-
+      for (const reg of snapshot.regs) {
         regs.emitCommittedStore(reg);
       }
     }
@@ -98,14 +89,6 @@ export function createJitIrState(
 
   function commitInstruction(): void {
     regs.commitPending();
-    committedInstructionDelta += 1;
-    generationState.currentGeneration = internCurrentRegisterGeneration();
-  }
-
-  function internCurrentRegisterGeneration(): number {
-    return generationState.intern({
-      dirtyRegs: regs.dirtyRegs()
-    });
   }
 
   function emitLoadAluFlags(): void {
@@ -135,8 +118,8 @@ export function createJitIrState(
     };
   }
 
-  function useExitGeneration(exit: JitExitTarget, generation: number): void {
-    exit.exitLabelDepth = maxExitGeneration - generation;
+  function useExitState(exit: JitExitTarget, index: number): void {
+    exit.exitLabelDepth = maxExitStateIndex - index;
   }
 
   function requiredActiveExit(): JitExitTarget {
@@ -146,47 +129,4 @@ export function createJitIrState(
 
     return activeExit;
   }
-}
-
-function createExitGenerationState(maxExitGeneration: number): {
-  currentGeneration: number;
-  intern(snapshot: ExitGenerationSnapshot): number;
-  snapshot(generation: number): ExitGenerationSnapshot | undefined;
-} {
-  const initialSnapshot: ExitGenerationSnapshot = {
-    dirtyRegs: new Set()
-  };
-  const snapshots: ExitGenerationSnapshot[] = [initialSnapshot];
-  const generationsByKey = new Map<string, number>([[generationKey(initialSnapshot), 0]]);
-
-  return {
-    currentGeneration: 0,
-    intern: (snapshot) => {
-      const key = generationKey(snapshot);
-      const existing = generationsByKey.get(key);
-
-      if (existing !== undefined) {
-        return existing;
-      }
-
-      const generation = snapshots.length;
-
-      if (generation > maxExitGeneration) {
-        throw new Error(`too many JIT exit generations: ${generation} > ${maxExitGeneration}`);
-      }
-
-      snapshots.push({
-        dirtyRegs: new Set(snapshot.dirtyRegs)
-      });
-      generationsByKey.set(key, generation);
-      return generation;
-    },
-    snapshot: (generation) => snapshots[generation]
-  };
-}
-
-function generationKey(snapshot: ExitGenerationSnapshot): string {
-  const regs = reg32.filter((reg) => snapshot.dirtyRegs.has(reg)).join(",");
-
-  return `regs=${regs}`;
 }

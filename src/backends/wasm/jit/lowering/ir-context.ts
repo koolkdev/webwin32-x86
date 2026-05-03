@@ -21,7 +21,17 @@ import {
 import type { JitInstructionState } from "#backends/wasm/jit/optimization/optimize.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
 
-export type JitIrInstructionContext = Pick<JitInstructionState, "eip" | "nextEip" | "nextMode">;
+export type JitIrInstructionContext = Pick<
+  JitInstructionState,
+  | "instructionId"
+  | "eip"
+  | "nextEip"
+  | "nextMode"
+  | "preInstructionState"
+  | "postInstructionState"
+  | "preInstructionExitStateIndex"
+  | "postInstructionExitStateIndex"
+>;
 
 export type JitIrBlockLoweringContext = Readonly<{
   body: WasmFunctionBodyEncoder;
@@ -45,7 +55,7 @@ export type JitIrContext = Readonly<{
 export function lowerIrWithJitContext(block: IrBlock, context: JitIrBlockLoweringContext): void {
   const jitContext = createJitIrContext(context);
 
-  context.state.beginInstruction(context.exit, jitContext.currentInstruction().eip);
+  beginInstruction(jitContext, context.exit, jitContext.currentInstruction());
   lowerIrToWasm(block, {
     body: jitContext.body,
     scratch: jitContext.scratch,
@@ -92,8 +102,20 @@ function createJitIrContext(context: JitIrBlockLoweringContext): JitIrContext {
       const instruction = context.instructions[instructionIndex];
 
       if (instruction !== undefined) {
-        context.state.beginInstruction(context.exit, instruction.eip);
+        beginInstruction(context, context.exit, instruction);
       }
     }
   };
+}
+
+function beginInstruction(
+  context: Pick<JitIrContext, "state">,
+  exit: JitExitTarget,
+  instruction: JitIrInstructionContext
+): void {
+  context.state.beginInstruction(
+    exit,
+    instruction.preInstructionState,
+    instruction.preInstructionExitStateIndex ?? 0
+  );
 }

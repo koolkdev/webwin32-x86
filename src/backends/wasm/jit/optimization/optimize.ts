@@ -26,6 +26,7 @@ export type JitExitPoint = Readonly<{
   opIndex: number;
   exitReason: ExitReasonValue;
   snapshot: JitStateSnapshot;
+  exitStateIndex: number;
   requiredFlagCommitMask: number;
 }>;
 
@@ -42,15 +43,23 @@ export type JitInstructionState = Readonly<{
   eip: number;
   nextEip: number;
   nextMode: "continue" | "exit";
-  entryState: JitStateSnapshot;
+  preInstructionState: JitStateSnapshot;
+  postInstructionState: JitStateSnapshot;
+  preInstructionExitStateIndex: number | undefined;
+  postInstructionExitStateIndex: number | undefined;
   exitPointCount: number;
+}>;
+
+export type JitExitState = Readonly<{
+  regs: readonly Reg32[];
 }>;
 
 export type JitBlockOptimization = Readonly<{
   instructionStates: readonly JitInstructionState[];
   exitPoints: readonly JitExitPoint[];
   flagMaterializationRequirements: readonly JitFlagMaterializationRequirement[];
-  maxExitGeneration: number;
+  exitStates: readonly JitExitState[];
+  maxExitStateIndex: number;
 }>;
 
 type MutableJitStateTracker = {
@@ -72,9 +81,13 @@ export function optimizeJitIrBlock(block: JitIrBlock): JitBlockOptimization {
   const instructionStates: JitInstructionState[] = [];
   const exitPoints: JitExitPoint[] = [];
   const flagMaterializationRequirements: JitFlagMaterializationRequirement[] = [];
+  const exitStates: JitExitState[] = [{ regs: [] }];
+  const exitStateIndexByKey = new Map<string, number>([[exitStateKey([]), 0]]);
+  let currentPostState: JitStateSnapshot | undefined;
 
   for (let instructionIndex = 0; instructionIndex < block.instructions.length; instructionIndex += 1) {
     const instruction = block.instructions[instructionIndex];
+    currentPostState = undefined;
 
     if (instruction === undefined) {
       throw new Error(`missing JIT instruction while optimizing JIT IR block: ${instructionIndex}`);
@@ -99,12 +112,21 @@ export function optimizeJitIrBlock(block: JitIrBlock): JitBlockOptimization {
       recordOpEffects(op, instruction, instructionIndex, opIndex);
     }
 
+    if (currentPostState === undefined) {
+      throw new Error(`missing JIT instruction terminator while optimizing JIT IR block: ${instructionIndex}`);
+    }
+
+    const instructionExitPoints = exitPoints.slice(exitStart);
+
     instructionStates.push({
       instructionId: instruction.instructionId,
       eip: instruction.eip,
       nextEip: instruction.nextEip,
       nextMode: instruction.nextMode,
-      entryState: entry,
+      preInstructionState: entry,
+      postInstructionState: currentPostState,
+      preInstructionExitStateIndex: firstExitStateIndex(instructionExitPoints, "preInstruction"),
+      postInstructionExitStateIndex: firstExitStateIndex(instructionExitPoints, "postInstruction"),
       exitPointCount: exitPoints.length - exitStart
     });
   }
@@ -113,8 +135,15 @@ export function optimizeJitIrBlock(block: JitIrBlock): JitBlockOptimization {
     instructionStates,
     exitPoints,
     flagMaterializationRequirements,
-    maxExitGeneration: block.instructions.length
+    exitStates,
+    maxExitStateIndex: exitStates.length - 1
   };
+
+  function instructionPostState(instruction: JitIrBlockInstruction): JitStateSnapshot {
+    currentPostState ??= snapshotPostInstruction(state, instruction.nextEip);
+
+    return currentPostState;
+  }
 
   function recordOpEffects(
     op: IrOp,
@@ -148,29 +177,31 @@ export function optimizeJitIrBlock(block: JitIrBlock): JitBlockOptimization {
         return;
       }
       case "next":
+        instructionPostState(instruction);
+
         if (instruction.nextMode === "exit") {
           recordExitPoint(
             instructionIndex,
             opIndex,
             ExitReason.FALLTHROUGH,
-            snapshotPostInstruction(state, instruction.nextEip)
+            instructionPostState(instruction)
           );
         } else {
           commitInstruction();
         }
         return;
       case "jump":
-        recordExitPoint(instructionIndex, opIndex, ExitReason.JUMP, snapshotPostInstruction(state, instruction.nextEip));
+        recordExitPoint(instructionIndex, opIndex, ExitReason.JUMP, instructionPostState(instruction));
         return;
       case "conditionalJump": {
-        const snapshot = snapshotPostInstruction(state, instruction.nextEip);
+        const snapshot = instructionPostState(instruction);
 
         recordExitPoint(instructionIndex, opIndex, ExitReason.BRANCH_TAKEN, snapshot);
         recordExitPoint(instructionIndex, opIndex, ExitReason.BRANCH_NOT_TAKEN, snapshot);
         return;
       }
       case "hostTrap":
-        recordExitPoint(instructionIndex, opIndex, ExitReason.HOST_TRAP, snapshotPostInstruction(state, instruction.nextEip));
+        recordExitPoint(instructionIndex, opIndex, ExitReason.HOST_TRAP, instructionPostState(instruction));
         return;
       default:
         return;
@@ -184,12 +215,14 @@ export function optimizeJitIrBlock(block: JitIrBlock): JitBlockOptimization {
     snapshot: JitStateSnapshot
   ): void {
     const requiredFlagCommitMask = snapshot.speculativeFlags.mask;
+    const exitStateIndex = internExitState(snapshot.committedRegs);
 
     exitPoints.push({
       instructionIndex,
       opIndex,
       exitReason,
       snapshot,
+      exitStateIndex,
       requiredFlagCommitMask
     });
 
@@ -242,6 +275,21 @@ export function optimizeJitIrBlock(block: JitIrBlock): JitBlockOptimization {
     state.speculativeRegs.clear();
     state.instructionCountDelta += 1;
   }
+
+  function internExitState(regs: readonly Reg32[]): number {
+    const key = exitStateKey(regs);
+    const existingIndex = exitStateIndexByKey.get(key);
+
+    if (existingIndex !== undefined) {
+      return existingIndex;
+    }
+
+    const index = exitStates.length;
+
+    exitStates.push({ regs });
+    exitStateIndexByKey.set(key, index);
+    return index;
+  }
 }
 
 function memoryFaultReason(op: IrOp, operands: readonly JitOperandBinding[]): ExitReasonValue | undefined {
@@ -277,11 +325,13 @@ function requiredOperand(operands: readonly JitOperandBinding[], index: number):
 }
 
 function snapshotPostInstruction(state: MutableJitStateTracker, eip: number): JitStateSnapshot {
+  const committedRegs = sortedRegs(new Set([...state.committedRegs, ...state.speculativeRegs]));
+
   return {
     kind: "postInstruction",
     eip,
     instructionCountDelta: state.instructionCountDelta + 1,
-    committedRegs: sortedRegs(new Set([...state.committedRegs, ...state.speculativeRegs])),
+    committedRegs,
     speculativeRegs: [],
     committedFlags: { mask: state.committedFlagsMask },
     speculativeFlags: { mask: state.speculativeFlagsMask }
@@ -293,11 +343,13 @@ function snapshotState(
   kind: JitExitSnapshotKind,
   eip: number
 ): JitStateSnapshot {
+  const committedRegs = sortedRegs(state.committedRegs);
+
   return {
     kind,
     eip,
     instructionCountDelta: state.instructionCountDelta,
-    committedRegs: sortedRegs(state.committedRegs),
+    committedRegs,
     speculativeRegs: sortedRegs(state.speculativeRegs),
     committedFlags: { mask: state.committedFlagsMask },
     speculativeFlags: { mask: state.speculativeFlagsMask }
@@ -306,4 +358,15 @@ function snapshotState(
 
 function sortedRegs(regs: ReadonlySet<Reg32>): readonly Reg32[] {
   return reg32.filter((reg) => regs.has(reg));
+}
+
+function firstExitStateIndex(
+  exitPoints: readonly JitExitPoint[],
+  snapshotKind: JitExitSnapshotKind
+): number | undefined {
+  return exitPoints.find((exit) => exit.snapshot.kind === snapshotKind)?.exitStateIndex;
+}
+
+function exitStateKey(regs: readonly Reg32[]): string {
+  return regs.join(",");
 }

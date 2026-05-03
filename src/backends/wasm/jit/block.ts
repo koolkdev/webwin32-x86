@@ -61,12 +61,12 @@ export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
   const body = new WasmFunctionBodyEncoder();
   const scratch = new WasmLocalScratchAllocator(body);
   const exitLocal = body.addLocal(wasmValueType.i64);
-  const state = createJitIrState(body, optimization.maxExitGeneration);
-  const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitGeneration };
+  const state = createJitIrState(body, optimization.exitStates);
+  const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitStateIndex };
 
   state.emitLoadInstructionCount();
 
-  emitExitGenerationBlocks(body, state.maxExitGeneration);
+  emitExitStateBlocks(body, state.maxExitStateIndex);
   lowerIrWithJitContext(loweringBlock.ir, {
     body,
     scratch,
@@ -75,7 +75,7 @@ export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
     operands: loweringBlock.operands,
     instructions: optimization.instructionStates
   });
-  emitExitGenerationStores(body, state, exitLocal);
+  emitExitStateStores(body, state, exitLocal);
   scratch.assertClear();
   body.end();
 
@@ -85,21 +85,21 @@ export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
   return module.encode();
 }
 
-function emitExitGenerationBlocks(body: WasmFunctionBodyEncoder, maxExitGeneration: number): void {
-  for (let generation = 0; generation <= maxExitGeneration; generation += 1) {
-    void generation;
+function emitExitStateBlocks(body: WasmFunctionBodyEncoder, maxExitStateIndex: number): void {
+  for (let index = 0; index <= maxExitStateIndex; index += 1) {
+    void index;
     body.block();
   }
 }
 
-function emitExitGenerationStores(
+function emitExitStateStores(
   body: WasmFunctionBodyEncoder,
   state: JitIrState,
   exitLocal: number
 ): void {
-  for (let generation = state.maxExitGeneration; generation >= 0; generation -= 1) {
+  for (let index = state.maxExitStateIndex; index >= 0; index -= 1) {
     body.endBlock();
-    state.emitExitStoresForGeneration(generation);
+    state.emitExitStateStores(index);
     body.localGet(exitLocal).returnFromFunction();
   }
 }
