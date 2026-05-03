@@ -42,7 +42,7 @@ export function foldJitRegisters(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): Readonly<{ block: JitOptimizedIrBlock; folding: JitRegisterFolding }> {
-  const state = new JitOptimizationState();
+  const state = new JitOptimizationState(analysis.context);
   const instructions: JitOptimizedIrBlockInstruction[] = [];
   let removedSetCount = 0;
   let materializedSetCount = 0;
@@ -58,13 +58,12 @@ export function foldJitRegisters(
 
     materializedSetCount += materializeRegisterValuesForPreInstructionExits(
       prelude,
-      analysis.context.effects,
       instructionIndex,
-      state.registers
+      state
     );
 
     const rewrite = state.beginInstructionRewrite(instruction);
-    const firstFoldableOpIndex = firstRegisterFoldableOpIndex(instructionIndex, analysis);
+    const firstFoldableOpIndex = firstRegisterFoldableOpIndex(instructionIndex, state);
 
     rewriteJitIrInstructionInto(
       instruction,
@@ -83,7 +82,6 @@ export function foldJitRegisters(
           instruction,
           instructionIndex,
           opIndex,
-          analysis,
           rewrite,
           state
         );
@@ -118,7 +116,6 @@ function rewriteOp(
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
   opIndex: number,
-  analysis: JitOptimizationAnalysis,
   rewrite: JitInstructionRewrite,
   state: JitOptimizationState
 ): JitRegisterRewriteResult {
@@ -149,10 +146,9 @@ function rewriteOp(
     case "hostTrap": {
       const materializedSetCount = materializeRegisterValuesForPostInstructionExit(
         rewrite,
-        analysis.context.effects,
         instructionIndex,
         opIndex,
-        state.registers
+        state
       );
 
       rewrite.ops.push(op);

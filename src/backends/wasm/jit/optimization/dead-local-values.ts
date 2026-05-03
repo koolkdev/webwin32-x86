@@ -9,6 +9,7 @@ import {
   type JitOptimizationAnalysis
 } from "./analysis.js";
 import { jitPreInstructionExitReasonAt } from "./effects.js";
+import { JitOptimizationState } from "./state.js";
 
 export type JitDeadLocalValuePruning = Readonly<{
   removedOpCount: number;
@@ -18,9 +19,10 @@ export function pruneDeadJitLocalValues(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): Readonly<{ block: JitIrBlock; deadLocalValues: JitDeadLocalValuePruning }> {
+  const state = new JitOptimizationState(analysis.context);
   let removedOpCount = 0;
   const instructions = block.instructions.map((instruction, instructionIndex) => {
-    const pruned = pruneInstructionDeadLocalValues(instruction, instructionIndex, analysis);
+    const pruned = pruneInstructionDeadLocalValues(instruction, instructionIndex, state);
 
     removedOpCount += pruned.removedOpCount;
     return pruned.instruction;
@@ -35,7 +37,7 @@ export function pruneDeadJitLocalValues(
 function pruneInstructionDeadLocalValues(
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
-  analysis: JitOptimizationAnalysis
+  state: JitOptimizationState
 ): Readonly<{ instruction: JitIrBlockInstruction; removedOpCount: number }> {
   const liveVars = new Set<number>();
   const ops: JitIrOp[] = [];
@@ -50,7 +52,7 @@ function pruneInstructionDeadLocalValues(
 
     const dst = jitIrOpDst(op);
 
-    if (dst !== undefined && !liveVars.has(dst.id) && canDropUnusedResult(op, instructionIndex, opIndex, analysis)) {
+    if (dst !== undefined && !liveVars.has(dst.id) && canDropUnusedResult(op, instructionIndex, opIndex, state)) {
       removedOpCount += 1;
       continue;
     }
@@ -81,7 +83,7 @@ function canDropUnusedResult(
   op: JitIrOp,
   instructionIndex: number,
   opIndex: number,
-  analysis: JitOptimizationAnalysis
+  state: JitOptimizationState
 ): boolean {
   const result = jitIrOpResult(op);
 
@@ -93,6 +95,6 @@ function canDropUnusedResult(
     case "none":
       return true;
     case "storageRead":
-      return jitPreInstructionExitReasonAt(analysis.context.effects, instructionIndex, opIndex) === undefined;
+      return jitPreInstructionExitReasonAt(state.context.effects, instructionIndex, opIndex) === undefined;
   }
 }

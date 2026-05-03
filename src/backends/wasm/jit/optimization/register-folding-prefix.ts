@@ -1,13 +1,13 @@
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
-import type { JitOptimizationAnalysis } from "./analysis.js";
 import { jitFirstOpIndexAfterPreInstructionExits } from "./effects.js";
 import type { JitInstructionRewrite } from "./rewrite.js";
+import type { JitOptimizationState } from "./state.js";
 
 export function firstRegisterFoldableOpIndex(
   instructionIndex: number,
-  analysis: JitOptimizationAnalysis
+  state: JitOptimizationState
 ): number {
-  return jitFirstOpIndexAfterPreInstructionExits(analysis.context.effects, instructionIndex);
+  return jitFirstOpIndexAfterPreInstructionExits(state.context.effects, instructionIndex);
 }
 
 export function recordCopiedRegisterOp(

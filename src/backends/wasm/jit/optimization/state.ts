@@ -6,11 +6,14 @@ import {
   type JitInstructionRewrite
 } from "./rewrite.js";
 import { JitValueTracker } from "./value-tracker.js";
+import type { JitOptimizationContext } from "./context.js";
 
 export class JitOptimizationState {
   readonly values = new JitValueTracker();
   readonly registers = new JitRegisterValues();
   readonly flags = JitFlagOwners.incoming();
+
+  constructor(readonly context: JitOptimizationContext) {}
 
   beginInstructionValues(): JitValueTracker {
     this.values.clear();

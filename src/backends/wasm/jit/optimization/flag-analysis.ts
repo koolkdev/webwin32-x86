@@ -73,7 +73,7 @@ export function analyzeJitFlags(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): JitFlagAnalysis {
-  const state = new JitOptimizationState();
+  const state = new JitOptimizationState(analysis.context);
   const sources: JitFlagSource[] = [];
   const reads: JitFlagRead[] = [];
   const sourceClobbers: JitFlagSourceClobber[] = [];
@@ -115,7 +115,7 @@ export function analyzeJitFlags(
     values: JitValueTracker,
     instructionEntryOwners: JitFlagOwners
   ): void {
-    const preInstructionExitReason = jitPreInstructionExitReasonAt(analysis.context.effects, instructionIndex, opIndex);
+    const preInstructionExitReason = jitPreInstructionExitReasonAt(state.context.effects, instructionIndex, opIndex);
 
     if (preInstructionExitReason !== undefined) {
       recordRead({
@@ -127,7 +127,7 @@ export function analyzeJitFlags(
       }, instructionEntryOwners);
     }
 
-    if (jitOpHasPostInstructionExit(analysis.context.effects, instructionIndex, opIndex)) {
+    if (jitOpHasPostInstructionExit(state.context.effects, instructionIndex, opIndex)) {
       recordRead({ instructionIndex, opIndex, reason: "exit", requiredMask: IR_ALU_FLAG_MASK });
     }
 
@@ -144,7 +144,7 @@ export function analyzeJitFlags(
         recordFlagSource(instructionIndex, opIndex, op, values);
         return;
       case "aluFlags.condition": {
-        const conditionUse = jitConditionUseAt(analysis.context.effects, instructionIndex, opIndex);
+        const conditionUse = jitConditionUseAt(state.context.effects, instructionIndex, opIndex);
 
         if (conditionUse === undefined) {
           return;

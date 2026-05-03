@@ -1,38 +1,36 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import { materializeJitRegisterValue, type JitInstructionRewrite } from "./rewrite.js";
-import type { JitEffectIndex } from "./effects.js";
 import {
   jitInstructionHasPreInstructionExit,
   jitOpHasPostInstructionExit
 } from "./effects.js";
 import { JitRegisterValues } from "./register-values.js";
+import type { JitOptimizationState } from "./state.js";
 import { jitValueReadsReg } from "./values.js";
 
 export function materializeRegisterValuesForPreInstructionExits(
   rewrite: JitInstructionRewrite,
-  effects: JitEffectIndex,
   instructionIndex: number,
-  registers: JitRegisterValues
+  state: JitOptimizationState
 ): number {
-  if (!jitInstructionHasPreInstructionExit(effects, instructionIndex)) {
+  if (!jitInstructionHasPreInstructionExit(state.context.effects, instructionIndex)) {
     return 0;
   }
 
-  return materializeAllRegisterValues(rewrite, registers);
+  return materializeAllRegisterValues(rewrite, state.registers);
 }
 
 export function materializeRegisterValuesForPostInstructionExit(
   rewrite: JitInstructionRewrite,
-  effects: JitEffectIndex,
   instructionIndex: number,
   opIndex: number,
-  registers: JitRegisterValues
+  state: JitOptimizationState
 ): number {
-  if (!jitOpHasPostInstructionExit(effects, instructionIndex, opIndex)) {
+  if (!jitOpHasPostInstructionExit(state.context.effects, instructionIndex, opIndex)) {
     return 0;
   }
 
-  return materializeAllRegisterValues(rewrite, registers);
+  return materializeAllRegisterValues(rewrite, state.registers);
 }
 
 export function materializeRegisterValuesReadingReg(
