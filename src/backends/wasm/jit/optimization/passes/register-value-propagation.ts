@@ -20,7 +20,7 @@ import {
   type JitRegisterValueFold,
   type JitRegisterValueProducer
 } from "#backends/wasm/jit/optimization/analyses/register-values.js";
-import { analyzeJitRegisterBarriers } from "#backends/wasm/jit/optimization/analyses/barriers.js";
+import { analyzeJitBarriers } from "#backends/wasm/jit/optimization/analyses/barriers.js";
 
 export type JitRegisterValuePropagation = Readonly<{
   removedSetCount: number;
@@ -49,7 +49,7 @@ export function propagateJitRegisterValues(block: JitIrBlock): Readonly<{
   block: JitIrBlock;
   registerValues: JitRegisterValuePropagation;
 }> {
-  const barriers = analyzeJitRegisterBarriers(block);
+  const barriers = analyzeJitBarriers(block);
   const analysis = analyzeJitRegisterValues(block, barriers);
   const indexes = indexRegisterValueAnalysis(analysis);
   const registers = new JitRegisterValues();

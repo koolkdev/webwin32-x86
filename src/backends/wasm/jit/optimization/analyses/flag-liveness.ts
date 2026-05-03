@@ -6,10 +6,10 @@ import {
 import type { FlagMask } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrOp } from "#backends/wasm/jit/types.js";
 import {
-  indexJitEffects,
-  jitOpHasPostInstructionExit,
-  jitPreInstructionExitReasonAt
-} from "#backends/wasm/jit/ir/effects.js";
+  analyzeJitBarriers,
+  jitOpHasBarrier,
+  jitOpPreInstructionExitReasonAt
+} from "#backends/wasm/jit/optimization/analyses/barriers.js";
 
 export type JitFlagLivenessOp = Readonly<{
   liveBefore: FlagMask;
@@ -31,7 +31,7 @@ export type JitFlagLiveness = Readonly<{
 }>;
 
 export function analyzeJitFlagLiveness(block: JitIrBlock): JitFlagLiveness {
-  const effects = indexJitEffects(block);
+  const barriers = analyzeJitBarriers(block);
   const instructions = new Array<JitFlagLivenessInstruction>(block.instructions.length);
   let live = IR_FLAG_MASK_NONE;
 
@@ -53,12 +53,12 @@ export function analyzeJitFlagLiveness(block: JitIrBlock): JitFlagLiveness {
         throw new Error(`missing JIT IR op while analyzing flag liveness: ${instructionIndex}:${opIndex}`);
       }
 
-      if (jitPreInstructionExitReasonAt(effects, instructionIndex, opIndex) !== undefined) {
+      if (jitOpPreInstructionExitReasonAt(barriers, instructionIndex, opIndex) !== undefined) {
         entryReadMask |= IR_ALU_FLAG_MASK;
       }
 
       const liveAfter = live;
-      const postExitReadMask = jitOpHasPostInstructionExit(effects, instructionIndex, opIndex)
+      const postExitReadMask = jitOpHasBarrier(barriers, instructionIndex, opIndex, "exit")
         ? IR_ALU_FLAG_MASK
         : IR_FLAG_MASK_NONE;
       let readMask = flagReadMask(op) | postExitReadMask;

@@ -5,10 +5,10 @@ import {
 } from "#backends/wasm/jit/ir-semantics.js";
 import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 import {
-  indexJitEffects,
-  jitPreInstructionExitReasonAt,
-  type JitEffectIndex
-} from "#backends/wasm/jit/ir/effects.js";
+  analyzeJitBarriers,
+  jitOpPreInstructionExitReasonAt,
+  type JitBarrierAnalysis
+} from "#backends/wasm/jit/optimization/analyses/barriers.js";
 import type { JitOptimizationPass } from "#backends/wasm/jit/optimization/pass.js";
 
 export type JitLocalDce = Readonly<{
@@ -32,11 +32,11 @@ export const localDcePass = {
 
 export function pruneDeadJitLocalValues(
   block: JitIrBlock,
-  effects: JitEffectIndex = indexJitEffects(block)
+  barriers: JitBarrierAnalysis = analyzeJitBarriers(block)
 ): Readonly<{ block: JitIrBlock; localDce: JitLocalDce; deadLocalValues: JitDeadLocalValuePruning }> {
   let removedOpCount = 0;
   const instructions = block.instructions.map((instruction, instructionIndex) => {
-    const pruned = pruneInstructionDeadLocalValues(instruction, instructionIndex, effects);
+    const pruned = pruneInstructionDeadLocalValues(instruction, instructionIndex, barriers);
 
     removedOpCount += pruned.removedOpCount;
     return pruned.instruction;
@@ -52,7 +52,7 @@ export function pruneDeadJitLocalValues(
 function pruneInstructionDeadLocalValues(
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
-  effects: JitEffectIndex
+  barriers: JitBarrierAnalysis
 ): Readonly<{ instruction: JitIrBlockInstruction; removedOpCount: number }> {
   const liveVars = new Set<number>();
   const ops: JitIrOp[] = [];
@@ -67,7 +67,7 @@ function pruneInstructionDeadLocalValues(
 
     const dst = jitIrOpDst(op);
 
-    if (dst !== undefined && !liveVars.has(dst.id) && canDropUnusedResult(op, instructionIndex, opIndex, effects)) {
+    if (dst !== undefined && !liveVars.has(dst.id) && canDropUnusedResult(op, instructionIndex, opIndex, barriers)) {
       removedOpCount += 1;
       continue;
     }
@@ -98,7 +98,7 @@ function canDropUnusedResult(
   op: JitIrOp,
   instructionIndex: number,
   opIndex: number,
-  effects: JitEffectIndex
+  barriers: JitBarrierAnalysis
 ): boolean {
   const result = jitIrOpResult(op);
 
@@ -110,6 +110,6 @@ function canDropUnusedResult(
     case "none":
       return true;
     case "storageRead":
-      return jitPreInstructionExitReasonAt(effects, instructionIndex, opIndex) === undefined;
+      return jitOpPreInstructionExitReasonAt(barriers, instructionIndex, opIndex) === undefined;
   }
 }

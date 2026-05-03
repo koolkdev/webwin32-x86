@@ -6,11 +6,10 @@ import type { ConditionCode, FlagMask } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 import {
-  indexJitEffects,
-  jitConditionUseAt,
-  jitOpHasPostInstructionExit,
-  jitPreInstructionExitReasonAt
-} from "#backends/wasm/jit/ir/effects.js";
+  analyzeJitBarriers,
+  jitOpBarriersAt,
+  jitOpHasBarrier
+} from "#backends/wasm/jit/optimization/analyses/barriers.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 import {
   JitFlagOwners,
@@ -18,7 +17,10 @@ import {
   type JitFlagOwnerMask
 } from "#backends/wasm/jit/optimization/flags/owners.js";
 import { buildJitFlagSource, type JitFlagSource } from "#backends/wasm/jit/optimization/flags/sources.js";
-import type { JitConditionUse } from "#backends/wasm/jit/ir/condition-uses.js";
+import {
+  analyzeJitConditionUses,
+  type JitConditionUse
+} from "#backends/wasm/jit/ir/condition-uses.js";
 
 export type {
   JitFlagOwner,
@@ -51,7 +53,8 @@ export type JitReachingFlags = Readonly<{
 }>;
 
 export function analyzeJitReachingFlags(block: JitIrBlock): JitReachingFlags {
-  const effects = indexJitEffects(block);
+  const barriers = analyzeJitBarriers(block);
+  const conditionUses = analyzeJitConditionUses(block);
   const owners = JitFlagOwners.incoming();
   const sources: JitFlagSource[] = [];
   const reads: JitReachingFlagRead[] = [];
@@ -92,16 +95,20 @@ export function analyzeJitReachingFlags(block: JitIrBlock): JitReachingFlags {
     values: JitValueTracker,
     instructionEntryOwners: JitFlagOwners
   ): void {
-    const preInstructionExitReason = jitPreInstructionExitReasonAt(effects, instructionIndex, opIndex);
+    for (const barrier of jitOpBarriersAt(barriers, instructionIndex, opIndex)) {
+      if (barrier.reason === "preInstructionExit") {
+        const read = {
+          instructionIndex,
+          opIndex,
+          reason: "preInstructionExit" as const,
+          requiredMask: IR_ALU_FLAG_MASK
+        };
 
-    if (preInstructionExitReason !== undefined) {
-      recordRead({
-        instructionIndex,
-        opIndex,
-        reason: "preInstructionExit",
-        requiredMask: IR_ALU_FLAG_MASK,
-        exitReason: preInstructionExitReason
-      }, instructionEntryOwners);
+        recordRead({
+          ...read,
+          ...(barrier.exitReason === undefined ? {} : { exitReason: barrier.exitReason })
+        }, instructionEntryOwners);
+      }
     }
 
     if (values.recordOp(op, instruction)) {
@@ -118,7 +125,7 @@ export function analyzeJitReachingFlags(block: JitIrBlock): JitReachingFlags {
         break;
       }
       case "aluFlags.condition": {
-        const conditionUse = jitConditionUseAt(effects, instructionIndex, opIndex);
+        const conditionUse = conditionUses.get(instructionIndex)?.get(opIndex);
 
         if (conditionUse !== undefined) {
           recordRead({
@@ -154,7 +161,7 @@ export function analyzeJitReachingFlags(block: JitIrBlock): JitReachingFlags {
         break;
     }
 
-    if (jitOpHasPostInstructionExit(effects, instructionIndex, opIndex)) {
+    if (jitOpHasBarrier(barriers, instructionIndex, opIndex, "exit")) {
       recordRead({
         instructionIndex,
         opIndex,

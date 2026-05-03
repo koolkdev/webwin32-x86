@@ -13,9 +13,9 @@ import {
   shouldRetainRegisterValue
 } from "#backends/wasm/jit/optimization/registers/policy.js";
 import {
-  analyzeJitRegisterBarriers,
-  type JitRegisterBarrierAnalysis,
-  type JitRegisterBarrierReason
+  analyzeJitBarriers,
+  type JitBarrierAnalysis,
+  type JitBarrierReason
 } from "#backends/wasm/jit/optimization/analyses/barriers.js";
 
 export type JitRegisterValueProducer = Readonly<{
@@ -76,7 +76,7 @@ export type JitRegisterValueAnalysis = Readonly<{
 
 export function analyzeJitRegisterValues(
   block: JitIrBlock,
-  barriers: JitRegisterBarrierAnalysis = analyzeJitRegisterBarriers(block)
+  barriers: JitBarrierAnalysis = analyzeJitBarriers(block)
 ): JitRegisterValueAnalysis {
   const registers = new JitRegisterValues();
   const producers: JitRegisterValueProducer[] = [];
@@ -120,7 +120,7 @@ function analyzeInstruction(
   reads: JitRegisterValueRead[],
   folds: JitRegisterValueFold[],
   materializations: JitRegisterMaterialization[],
-  barriers: JitRegisterBarrierAnalysis
+  barriers: JitBarrierAnalysis
 ): void {
   const values = new JitValueTracker();
 
@@ -317,22 +317,21 @@ function materializeRegs(
 }
 
 function hasInstructionBarrier(
-  barriers: JitRegisterBarrierAnalysis,
+  barriers: JitBarrierAnalysis,
   instructionIndex: number,
-  reason: JitRegisterBarrierReason
+  reason: JitBarrierReason
 ): boolean {
   return barriers.barriers.some((barrier) =>
     barrier.instructionIndex === instructionIndex &&
-    barrier.opIndex === undefined &&
     barrier.reason === reason
   );
 }
 
 function hasOpBarrier(
-  barriers: JitRegisterBarrierAnalysis,
+  barriers: JitBarrierAnalysis,
   instructionIndex: number,
   opIndex: number,
-  reason: JitRegisterBarrierReason
+  reason: JitBarrierReason
 ): boolean {
   return barriers.barriers.some((barrier) =>
     barrier.instructionIndex === instructionIndex &&
@@ -342,7 +341,7 @@ function hasOpBarrier(
 }
 
 function registerBarrierReg(
-  barriers: JitRegisterBarrierAnalysis,
+  barriers: JitBarrierAnalysis,
   instructionIndex: number,
   opIndex: number,
   reason: "write" | "conditionalWrite"
@@ -358,7 +357,7 @@ function isImmediatelyMaterializedAtExit(
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
   opIndex: number,
-  barriers: JitRegisterBarrierAnalysis
+  barriers: JitBarrierAnalysis
 ): boolean {
   const nextOpIndex = opIndex + 1;
   const nextOp = instruction.ir[nextOpIndex];
@@ -370,7 +369,7 @@ function isImmediatelyMaterializedAtExit(
 
 function isFinalBlockTerminatorWithoutExit(
   block: JitIrBlock,
-  barriers: JitRegisterBarrierAnalysis,
+  barriers: JitBarrierAnalysis,
   instructionIndex: number,
   opIndex: number,
   op: JitIrOp

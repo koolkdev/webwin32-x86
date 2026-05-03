@@ -1,12 +1,13 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { analyzeJitRegisterBarriers } from "#backends/wasm/jit/optimization/analyses/barriers.js";
+import { ExitReason } from "#backends/wasm/exit.js";
+import { analyzeJitBarriers } from "#backends/wasm/jit/optimization/analyses/barriers.js";
 import { analyzeJitRegisterValues } from "#backends/wasm/jit/optimization/analyses/register-values.js";
 import { c32, syntheticInstruction, v } from "./helpers.js";
 
 test("register barrier analysis identifies exits and register writes", () => {
-  const analysis = analyzeJitRegisterBarriers({
+  const analysis = analyzeJitBarriers({
     instructions: [
       syntheticInstruction([
         { op: "get32", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
@@ -17,9 +18,19 @@ test("register barrier analysis identifies exits and register writes", () => {
   });
 
   deepStrictEqual(analysis.barriers, [
-    { instructionIndex: 0, reason: "preInstructionExit" },
+    {
+      instructionIndex: 0,
+      opIndex: 0,
+      reason: "preInstructionExit",
+      exitReason: ExitReason.MEMORY_READ_FAULT
+    },
     { instructionIndex: 0, opIndex: 1, reason: "write", reg: "eax" },
-    { instructionIndex: 0, opIndex: 2, reason: "exit" }
+    {
+      instructionIndex: 0,
+      opIndex: 2,
+      reason: "exit",
+      exitReasons: [ExitReason.FALLTHROUGH]
+    }
   ]);
 });
 
