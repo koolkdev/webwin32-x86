@@ -6,7 +6,7 @@ import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { JitIrBlockBuilder } from "./lowering/block-builder.js";
-import { prepareJitIrBlockForLowering } from "./lowering/ir-optimization.js";
+import { buildJitLoweringBlock } from "./lowering/lowering-block.js";
 import { lowerIrWithJitContext, type JitIrInstructionContext } from "./lowering/ir-context.js";
 import { optimizeJitIrBlock, type JitBlockOptimization } from "./optimization/optimize.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
@@ -35,7 +35,7 @@ export function buildJitIrBlock(instructions: readonly IsaDecodedInstruction[]):
 
 export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
   const optimization = optimizeJitIrBlock(block);
-  const loweringBlock = prepareJitIrBlockForLowering(block, optimization);
+  const loweringBlock = buildJitLoweringBlock(optimization);
 
   if (block.instructions.length === 0) {
     throw new Error("cannot encode empty JIT IR block");

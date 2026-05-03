@@ -10,7 +10,8 @@ import { stateOffset } from "#backends/wasm/abi.js";
 import { wasmOpcode, wasmSectionId } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
-import { prepareJitIrBlockForLowering } from "#backends/wasm/jit/lowering/ir-optimization.js";
+import { buildJitLoweringBlock } from "#backends/wasm/jit/lowering/lowering-block.js";
+import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
 import { runJitIrBlock } from "./helpers.js";
 
 const startAddress = 0x1000;
@@ -45,7 +46,9 @@ test("buildJitIrBlock builds instruction-local IR bodies", () => {
 test("JIT lowering preparation keeps instruction-local operand namespaces", () => {
   const first = ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress));
   const second = ok(decodeBytes([0x83, 0xc0, 0x01], first.nextEip));
-  const loweringBlock = prepareJitIrBlockForLowering(buildJitIrBlock([first, second]));
+  const loweringBlock = buildJitLoweringBlock(
+    optimizeJitIrBlock(buildJitIrBlock([first, second]))
+  );
   const firstIr = loweringBlock.instructions[0]!.ir;
   const secondIr = loweringBlock.instructions[1]!.ir;
 
@@ -58,13 +61,13 @@ test("JIT lowering preparation keeps instruction-local operand namespaces", () =
   deepStrictEqual([...new Set(secondIr.flatMap(irOpOperandIndexes))].sort((a, b) => a - b), [0, 1]);
 });
 
-test("buildJitIrBlock keeps flag producers instruction-local before JIT flag folding", () => {
+test("buildJitIrBlock prunes flag producers overwritten inside the block", () => {
   const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], cmp.nextEip));
   const ir = loweringIr(buildJitIrBlock([cmp, add]));
   const flagSets = ir.filter((op) => op.op === "flags.set");
 
-  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["sub32", "add32"]);
+  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32"]);
 });
 
 test("buildJitIrBlock leaves condition materialization to JIT flag state", () => {
@@ -449,7 +452,9 @@ test("jit IR block keeps flags live across memory fault exits before later overw
 });
 
 function loweringIr(block: ReturnType<typeof buildJitIrBlock>): readonly IrOp[] {
-  return prepareJitIrBlockForLowering(block).instructions.flatMap((instruction) => instruction.ir);
+  return buildJitLoweringBlock(optimizeJitIrBlock(block)).instructions.flatMap(
+    (instruction) => instruction.ir
+  );
 }
 
 function irOpDstId(op: IrOp): readonly number[] {

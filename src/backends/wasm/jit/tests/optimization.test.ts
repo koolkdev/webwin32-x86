@@ -5,7 +5,11 @@ import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
-import { optimizeJitIrBlock, type JitExitPoint } from "#backends/wasm/jit/optimization/optimize.js";
+import {
+  optimizeJitIrBlock,
+  pruneDeadJitFlags,
+  type JitExitPoint
+} from "#backends/wasm/jit/optimization/optimize.js";
 
 const startAddress = 0x1000;
 
@@ -104,6 +108,31 @@ test("optimizeJitIrBlock records flag materialization requirements before condit
     strictEqual(exit.snapshot.kind, "postInstruction");
     strictEqual(exit.requiredFlagCommitMask, IR_ALU_FLAG_MASK);
   }
+});
+
+test("pruneDeadJitFlags removes overwritten flag producers across instruction bodies", () => {
+  const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], cmp.nextEip));
+  const pruned = pruneDeadJitFlags(buildJitIrBlock([cmp, add]));
+  const flagSets = pruned.block.instructions.flatMap((instruction) =>
+    instruction.ir.filter((op) => op.op === "flags.set")
+  );
+
+  strictEqual(pruned.pruning.prunedCount, 1);
+  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32"]);
+});
+
+test("pruneDeadJitFlags keeps partial flag producers needed by later conditions", () => {
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
+  const inc = ok(decodeBytes([0x40], add.nextEip));
+  const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
+  const pruned = pruneDeadJitFlags(buildJitIrBlock([add, inc, jc]));
+  const flagSets = pruned.block.instructions.flatMap((instruction) =>
+    instruction.ir.filter((op) => op.op === "flags.set")
+  );
+
+  strictEqual(pruned.pruning.prunedCount, 0);
+  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
 });
 
 function onlyExit(exits: readonly JitExitPoint[], reason: ExitReasonValue): JitExitPoint {
