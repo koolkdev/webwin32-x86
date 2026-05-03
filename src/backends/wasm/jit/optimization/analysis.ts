@@ -1,5 +1,10 @@
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import {
+  indexJitOptimizationBoundaries,
+  jitBoundariesAt,
+  type JitOptimizationBoundaryIndex
+} from "./boundaries.js";
 import { walkJitIrBlockOps } from "./ir-walk.js";
 import {
   analyzeJitConditionUses,
@@ -23,18 +28,23 @@ export type JitOptimizationAnalysis = Readonly<{
   localConditionValues: JitLocalConditionValueIndex;
   exitConditionValues: JitExitConditionValueIndex;
   conditionUses: JitConditionUseIndex;
+  boundaries: JitOptimizationBoundaryIndex;
 }>;
 
 export function analyzeJitOptimization(block: JitIrBlock): JitOptimizationAnalysis {
   const localConditionValues = indexJitLocalConditionValues(block);
   const exitConditionValues = indexJitExitConditionValues(block);
-
-  return {
+  const analysisWithoutBoundaries = {
     preInstructionExits: indexJitPreInstructionExits(block),
     postInstructionExits: indexJitPostInstructionExits(block),
     localConditionValues,
     exitConditionValues,
     conditionUses: analyzeJitConditionUses(block, localConditionValues, exitConditionValues)
+  };
+
+  return {
+    ...analysisWithoutBoundaries,
+    boundaries: indexJitOptimizationBoundaries(analysisWithoutBoundaries)
   };
 }
 
@@ -43,7 +53,11 @@ export function jitPreInstructionExitReasonAt(
   instructionIndex: number,
   opIndex: number
 ): ExitReasonValue | undefined {
-  return indexedOpValue(analysis.preInstructionExits, instructionIndex, opIndex);
+  const boundary = jitBoundariesAt(analysis.boundaries, instructionIndex, opIndex).find((entry) =>
+    entry.kind === "preInstructionExit"
+  );
+
+  return boundary?.kind === "preInstructionExit" ? boundary.exitReason : undefined;
 }
 
 export function jitPostInstructionExitReasonsAt(
@@ -51,7 +65,11 @@ export function jitPostInstructionExitReasonsAt(
   instructionIndex: number,
   opIndex: number
 ): readonly ExitReasonValue[] {
-  return indexedOpValue(analysis.postInstructionExits, instructionIndex, opIndex) ?? [];
+  const boundary = jitBoundariesAt(analysis.boundaries, instructionIndex, opIndex).find((entry) =>
+    entry.kind === "postInstructionExit"
+  );
+
+  return boundary?.kind === "postInstructionExit" ? boundary.exitReasons : [];
 }
 
 export function jitOpHasPostInstructionExit(
@@ -67,14 +85,24 @@ export function jitConditionUseAt(
   instructionIndex: number,
   opIndex: number
 ): JitConditionUse | undefined {
-  return indexedOpValue(analysis.conditionUses, instructionIndex, opIndex);
+  const boundary = jitBoundariesAt(analysis.boundaries, instructionIndex, opIndex).find((entry) =>
+    entry.kind === "conditionRead"
+  );
+
+  return boundary?.kind === "conditionRead" ? boundary.conditionUse : undefined;
 }
 
 export function jitInstructionHasPreInstructionExit(
   analysis: JitOptimizationAnalysis,
   instructionIndex: number
 ): boolean {
-  return (analysis.preInstructionExits.get(instructionIndex)?.size ?? 0) !== 0;
+  for (const boundaries of analysis.boundaries.get(instructionIndex)?.values() ?? []) {
+    if (boundaries.some((entry) => entry.kind === "preInstructionExit")) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function indexJitPreInstructionExits(block: JitIrBlock): JitPreInstructionExitIndex {
@@ -103,14 +131,6 @@ function indexJitPostInstructionExits(block: JitIrBlock): JitPostInstructionExit
   }, "indexing post-instruction exits");
 
   return postInstructionExits;
-}
-
-function indexedOpValue<T>(
-  index: JitOpIndex<T>,
-  instructionIndex: number,
-  opIndex: number
-): T | undefined {
-  return index.get(instructionIndex)?.get(opIndex);
 }
 
 function setIndexedOpValue<T>(

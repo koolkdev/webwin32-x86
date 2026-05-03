@@ -15,6 +15,7 @@ import {
   jitPreInstructionExitReasonAt,
   jitPostInstructionExitReasonsAt
 } from "#backends/wasm/jit/optimization/analysis.js";
+import { jitBoundariesAt } from "#backends/wasm/jit/optimization/boundaries.js";
 import {
   jitIrLocation,
   walkJitIrOpsBetween
@@ -188,6 +189,19 @@ test("analyzeJitOptimization indexes shared op effects", () => {
   strictEqual(jitConditionUseAt(analysis, 0, 0), "exitCondition");
   strictEqual(jitPreInstructionExitReasonAt(analysis, 1, 0), ExitReason.MEMORY_READ_FAULT);
   strictEqual(jitInstructionHasPreInstructionExit(analysis, 1), true);
+  deepStrictEqual(jitBoundariesAt(analysis.boundaries, 0, 0), [
+    { kind: "conditionRead", conditionUse: "exitCondition" }
+  ]);
+  deepStrictEqual(jitBoundariesAt(analysis.boundaries, 0, 1), [
+    { kind: "localCondition", values: [v(0)] }
+  ]);
+  deepStrictEqual(jitBoundariesAt(analysis.boundaries, 0, 2), [
+    { kind: "postInstructionExit", exitReasons: [ExitReason.BRANCH_TAKEN, ExitReason.BRANCH_NOT_TAKEN] },
+    { kind: "exitCondition", values: [v(0)] }
+  ]);
+  deepStrictEqual(jitBoundariesAt(analysis.boundaries, 1, 0), [
+    { kind: "preInstructionExit", exitReason: ExitReason.MEMORY_READ_FAULT }
+  ]);
 });
 
 test("virtual range utilities iterate between locations and find register writebacks", () => {
