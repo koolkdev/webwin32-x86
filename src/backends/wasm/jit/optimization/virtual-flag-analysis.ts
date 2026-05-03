@@ -1,8 +1,7 @@
 import { reg32, type Reg32 } from "#x86/isa/types.js";
 import {
   conditionFlagReadMask,
-  IR_ALU_FLAG_MASK,
-  IR_ALU_FLAG_MASKS
+  IR_ALU_FLAG_MASK
 } from "#x86/ir/model/flag-effects.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import type {
@@ -22,6 +21,11 @@ import {
   jitOpHasPostInstructionExit,
   jitPreInstructionExitReasonAt
 } from "./effects.js";
+import {
+  JitFlagOwners,
+  materializedJitFlagOwner,
+  type JitVirtualFlagOwnerMask
+} from "./flag-owners.js";
 import type { JitConditionUse } from "./condition-uses.js";
 import {
   jitStorageReg,
@@ -29,6 +33,11 @@ import {
   type JitValue
 } from "./values.js";
 import { JitValueTracker } from "./value-tracker.js";
+
+export type {
+  JitVirtualFlagOwner,
+  JitVirtualFlagOwnerMask
+} from "./flag-owners.js";
 
 export type JitVirtualFlagInput =
   | Readonly<{ kind: "value"; value: JitValue }>
@@ -43,16 +52,6 @@ export type JitVirtualFlagSource = Readonly<{
   undefMask: number;
   inputs: Readonly<Record<string, JitVirtualFlagInput>>;
   readRegs: readonly Reg32[];
-}>;
-
-export type JitVirtualFlagOwner =
-  | Readonly<{ kind: "incoming" }>
-  | Readonly<{ kind: "materialized" }>
-  | Readonly<{ kind: "producer"; source: JitVirtualFlagSource }>;
-
-export type JitVirtualFlagOwnerMask = Readonly<{
-  mask: number;
-  owner: JitVirtualFlagOwner;
 }>;
 
 export type JitVirtualFlagRead = Readonly<{
@@ -80,17 +79,11 @@ export type JitVirtualFlagAnalysis = Readonly<{
   finalOwners: readonly JitVirtualFlagOwnerMask[];
 }>;
 
-const incomingFlagOwner: JitVirtualFlagOwner = { kind: "incoming" };
-const materializedFlagOwner: JitVirtualFlagOwner = { kind: "materialized" };
-const flagBits = Object.values(IR_ALU_FLAG_MASKS);
-
 export function analyzeJitVirtualFlags(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): JitVirtualFlagAnalysis {
-  const ownersByFlag = new Map<number, JitVirtualFlagOwner>(
-    flagBits.map((flagBit) => [flagBit, incomingFlagOwner])
-  );
+  const owners = JitFlagOwners.incoming();
   const sources: JitVirtualFlagSource[] = [];
   const reads: JitVirtualFlagRead[] = [];
   const sourceClobbers: JitVirtualFlagSourceClobber[] = [];
@@ -104,7 +97,7 @@ export function analyzeJitVirtualFlags(
     }
 
     const values = new JitValueTracker();
-    const instructionEntryOwners = new Map(ownersByFlag);
+    const instructionEntryOwners = owners.clone();
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
       const op = instruction.ir[opIndex];
@@ -121,7 +114,7 @@ export function analyzeJitVirtualFlags(
     sources,
     reads,
     sourceClobbers,
-    finalOwners: ownersForMask(ownersByFlag, IR_ALU_FLAG_MASK)
+    finalOwners: owners.forMask(IR_ALU_FLAG_MASK)
   };
 
   function analyzeOp(
@@ -130,7 +123,7 @@ export function analyzeJitVirtualFlags(
     instruction: JitIrBlockInstruction,
     op: JitIrOp,
     values: JitValueTracker,
-    instructionEntryOwners: ReadonlyMap<number, JitVirtualFlagOwner>
+    instructionEntryOwners: JitFlagOwners
   ): void {
     const preInstructionExitReason = jitPreInstructionExitReasonAt(analysis.context.effects, instructionIndex, opIndex);
 
@@ -179,11 +172,11 @@ export function analyzeJitVirtualFlags(
       }
       case "flags.materialize":
         recordRead({ instructionIndex, opIndex, reason: "materialize", requiredMask: op.mask });
-        setOwner(op.mask, materializedFlagOwner);
+        owners.set(op.mask, materializedJitFlagOwner);
         return;
       case "flags.boundary":
         recordRead({ instructionIndex, opIndex, reason: "boundary", requiredMask: op.mask });
-        setOwner(op.mask, materializedFlagOwner);
+        owners.set(op.mask, materializedJitFlagOwner);
         return;
       case "next":
       case "jump":
@@ -215,20 +208,12 @@ export function analyzeJitVirtualFlags(
 
     nextSourceId += 1;
     sources.push(source);
-    setOwner(op.writtenMask | op.undefMask, { kind: "producer", source });
-  }
-
-  function setOwner(mask: number, owner: JitVirtualFlagOwner): void {
-    for (const flagBit of flagBits) {
-      if ((mask & flagBit) !== 0) {
-        ownersByFlag.set(flagBit, owner);
-      }
-    }
+    owners.set(op.writtenMask | op.undefMask, { kind: "producer", source });
   }
 
   function recordRead(
     read: Omit<JitVirtualFlagRead, "owners">,
-    readOwners: ReadonlyMap<number, JitVirtualFlagOwner> = ownersByFlag
+    readOwners: JitFlagOwners = owners
   ): void {
     if (read.requiredMask === 0) {
       return;
@@ -236,7 +221,7 @@ export function analyzeJitVirtualFlags(
 
     reads.push({
       ...read,
-      owners: ownersForMask(readOwners, read.requiredMask)
+      owners: readOwners.forMask(read.requiredMask)
     });
   }
 
@@ -252,13 +237,13 @@ export function analyzeJitVirtualFlags(
       return;
     }
 
-    const owners = producerOwnersReadingReg(ownersByFlag, reg);
+    const clobberedOwners = owners.producerOwnersReadingReg(reg);
 
-    if (owners.length === 0) {
+    if (clobberedOwners.length === 0) {
       return;
     }
 
-    sourceClobbers.push({ instructionIndex, opIndex, reg, owners });
+    sourceClobbers.push({ instructionIndex, opIndex, reg, owners: clobberedOwners });
   }
 }
 
@@ -301,54 +286,4 @@ function flagInputReadRegs(inputs: Readonly<Record<string, JitVirtualFlagInput>>
   }
 
   return reg32.filter((reg) => regs.has(reg));
-}
-
-function producerOwnersReadingReg(
-  ownersByFlag: ReadonlyMap<number, JitVirtualFlagOwner>,
-  reg: Reg32
-): readonly JitVirtualFlagOwnerMask[] {
-  return ownersForMask(ownersByFlag, IR_ALU_FLAG_MASK).filter((entry) =>
-    entry.owner.kind === "producer" && entry.owner.source.readRegs.includes(reg)
-  );
-}
-
-function ownersForMask(
-  ownersByFlag: ReadonlyMap<number, JitVirtualFlagOwner>,
-  mask: number
-): readonly JitVirtualFlagOwnerMask[] {
-  const owners: JitVirtualFlagOwnerMask[] = [];
-
-  for (const flagBit of flagBits) {
-    if ((mask & flagBit) === 0) {
-      continue;
-    }
-
-    const owner = ownersByFlag.get(flagBit) ?? incomingFlagOwner;
-    const existingIndex = owners.findIndex((entry) => sameOwner(entry.owner, owner));
-
-    if (existingIndex === -1) {
-      owners.push({ mask: flagBit, owner });
-    } else {
-      const existing = owners[existingIndex]!;
-
-      owners[existingIndex] = {
-        mask: existing.mask | flagBit,
-        owner: existing.owner
-      };
-    }
-  }
-
-  return owners;
-}
-
-function sameOwner(a: JitVirtualFlagOwner, b: JitVirtualFlagOwner): boolean {
-  if (a.kind !== b.kind) {
-    return false;
-  }
-
-  if (a.kind === "producer" && b.kind === "producer") {
-    return a.source === b.source;
-  }
-
-  return true;
 }
