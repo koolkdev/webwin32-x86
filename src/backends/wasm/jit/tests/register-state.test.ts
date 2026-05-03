@@ -2,10 +2,52 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { createCpuState } from "#x86/state/cpu-state.js";
+import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { wasmOpcode } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
+import { createJitReg32State } from "#backends/wasm/jit/state/register-state.js";
+import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
 import { runJitIrBlock } from "./helpers.js";
 
 const startAddress = 0x1000;
+
+test("jit register state writes register-only instructions to committed locals", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitSet("eax", () => {
+    body.i32Const(1);
+  });
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitSet("eax", () => {
+    body.i32Const(2);
+  });
+  regs.commitPending();
+  body.end();
+
+  strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.localSet), 2);
+});
+
+test("jit register state stages writes when pre-instruction exits need committed locals", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitSet("eax", () => {
+    body.i32Const(1);
+  });
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: true });
+  regs.emitSet("eax", () => {
+    body.i32Const(2);
+  });
+  regs.commitPending();
+  body.end();
+
+  strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.localSet), 3);
+});
 
 test("jit register state feeds later instructions from committed register locals", async () => {
   const result = await runJitIrBlock(
@@ -56,3 +98,7 @@ test("jit register exit states store committed registers on a later memory fault
   strictEqual(result.state.eip, startAddress + 10);
   strictEqual(result.state.instructionCount, 42);
 });
+
+function countOpcode(opcodes: readonly number[], opcode: number): number {
+  return opcodes.filter((entry) => entry === opcode).length;
+}

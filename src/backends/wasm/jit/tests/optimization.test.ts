@@ -20,6 +20,7 @@ test("optimizeJitIrBlock records post-instruction fallthrough exits", () => {
     { regs: [] },
     { regs: ["eax"] }
   ]);
+  strictEqual(instructionState.hasPreInstructionExitPoint, false);
   strictEqual(instructionState.exitPointCount, 1);
   strictEqual(exit.snapshot.kind, "postInstruction");
   strictEqual(exit.snapshot.eip, instruction.nextEip);
@@ -36,6 +37,7 @@ test("optimizeJitIrBlock keeps memory faults at pre-instruction snapshots", () =
   const optimization = optimizeJitIrBlock(buildJitIrBlock([add, load]));
   const exit = onlyExit(optimization.exitPoints, ExitReason.MEMORY_READ_FAULT);
 
+  deepStrictEqual(optimization.instructionStates.map((entry) => entry.hasPreInstructionExitPoint), [false, true]);
   strictEqual(exit.instructionIndex, 1);
   strictEqual(exit.snapshot.kind, "preInstruction");
   strictEqual(exit.snapshot.eip, load.address);
@@ -52,6 +54,7 @@ test("optimizeJitIrBlock excludes current-instruction speculative writes from me
   const optimization = optimizeJitIrBlock(buildJitIrBlock([instruction]));
   const writeFault = onlyExit(optimization.exitPoints, ExitReason.MEMORY_WRITE_FAULT);
 
+  strictEqual(optimization.instructionStates[0]!.hasPreInstructionExitPoint, true);
   strictEqual(writeFault.snapshot.kind, "preInstruction");
   strictEqual(writeFault.snapshot.eip, instruction.address);
   strictEqual(writeFault.snapshot.instructionCountDelta, 0);
@@ -73,6 +76,7 @@ test("optimizeJitIrBlock records exit states only for actual exit points", () =>
     { regs: [] },
     { regs: ["eax", "ebx"] }
   ]);
+  deepStrictEqual(optimization.instructionStates.map((entry) => entry.hasPreInstructionExitPoint), [false, false, false]);
   deepStrictEqual(optimization.instructionStates.map((entry) => entry.exitPointCount), [0, 0, 1]);
 });
 

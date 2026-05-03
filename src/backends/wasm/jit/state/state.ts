@@ -5,7 +5,11 @@ import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { emitLoadStateU32, emitStoreStateU32 } from "#backends/wasm/lowering/state.js";
 import type { JitExitPoint, JitExitState, JitStateSnapshot } from "#backends/wasm/jit/optimization/optimize.js";
 import { createJitFlagState, type JitFlagState } from "./flag-state.js";
-import { createJitReg32State, type JitReg32State } from "./register-state.js";
+import {
+  createJitReg32State,
+  type JitReg32InstructionOptions,
+  type JitReg32State
+} from "./register-state.js";
 
 export type JitExitTarget = {
   exitLocal: number;
@@ -21,7 +25,7 @@ export type JitIrState = Readonly<{
   instructionCountLocal: number;
   maxExitStateIndex: number;
   emitLoadInstructionCount(): void;
-  beginInstruction(exit: JitExitTarget, snapshot: JitStateSnapshot): void;
+  beginInstruction(exit: JitExitTarget, snapshot: JitStateSnapshot, options: JitReg32InstructionOptions): void;
   prepareExitPoint(exitPoint: JitExitPoint, emitEip: () => void): void;
   commitInstruction(): void;
   commitInstructionExit(exitPoint: JitExitPoint, emitEip: () => void): void;
@@ -55,9 +59,9 @@ export function createJitIrState(
       emitLoadStateU32(body, stateOffset.instructionCount);
       body.localSet(instructionCountLocal);
     },
-    beginInstruction: (exit, snapshot) => {
+    beginInstruction: (exit, snapshot, options) => {
       activeExit = exit;
-      regs.assertNoPending();
+      regs.beginInstruction(options);
       useExitState(exit, 0);
       useExitStateStores(exit, () => {
         body.i32Const(i32(snapshot.eip));

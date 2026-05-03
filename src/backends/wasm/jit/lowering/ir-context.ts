@@ -29,6 +29,7 @@ export type JitIrInstructionContext = Pick<
   | "nextMode"
   | "preInstructionState"
   | "postInstructionState"
+  | "hasPreInstructionExitPoint"
 >;
 
 export type JitIrBlockLoweringContext = Readonly<{
@@ -128,7 +129,9 @@ function beginInstruction(
   exit: JitExitTarget,
   instruction: JitIrInstructionContext
 ): void {
-  context.state.beginInstruction(exit, instruction.preInstructionState);
+  context.state.beginInstruction(exit, instruction.preInstructionState, {
+    preserveCommittedRegs: instruction.hasPreInstructionExitPoint
+  });
 }
 
 function indexExitPoints(exitPoints: readonly JitExitPoint[]): ReadonlyMap<string, readonly JitExitPoint[]> {
