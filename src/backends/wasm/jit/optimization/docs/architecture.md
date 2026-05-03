@@ -35,9 +35,10 @@ order remains `["tracked-optimization"]`.
 - `flags/sources.ts`, `flags/owners.ts`, `flags/conditions.ts`,
   `flags/policy.ts`, and `flags/materialization.ts`: flag source ownership,
   direct condition planning, and thin compatibility helpers.
-- `registers/values.ts`, `registers/rewrite.ts`, `registers/policy.ts`, and
-  `registers/materialization.ts`: register value tracking, rewrite support,
-  policy, and thin compatibility helpers.
+- `registers/values.ts`, `registers/planner.ts`, `registers/rewrite.ts`,
+  `registers/policy.ts`, and `registers/materialization.ts`: register value
+  tracking, normalized register fact discovery, rewrite support, policy, and
+  thin compatibility helpers.
 - `effects/`: indexed side-effect and exit metadata used by the planner.
 - `ir/`: IR walking, ranges, values, operand binding, and rewrite primitives.
 - `passes/`: compatibility wrappers for legacy public helper names that now
