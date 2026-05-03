@@ -3,12 +3,12 @@ import {
   IR_ALU_FLAG_MASK,
   IR_ALU_FLAG_MASKS
 } from "#x86/ir/model/flag-effects.js";
-import type { JitVirtualFlagSource } from "./virtual-flag-analysis.js";
+import type { JitFlagSource } from "./flag-sources.js";
 
 export type JitVirtualFlagOwner =
   | Readonly<{ kind: "incoming" }>
   | Readonly<{ kind: "materialized" }>
-  | Readonly<{ kind: "producer"; source: JitVirtualFlagSource }>;
+  | Readonly<{ kind: "producer"; source: JitFlagSource }>;
 
 export type JitVirtualFlagOwnerMask = Readonly<{
   mask: number;

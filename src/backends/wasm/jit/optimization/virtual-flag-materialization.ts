@@ -1,9 +1,9 @@
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { analyzeJitOptimization, type JitOptimizationAnalysis } from "./analysis.js";
+import type { JitFlagSource } from "./flag-sources.js";
 import {
   analyzeJitVirtualFlags,
-  type JitVirtualFlagAnalysis,
-  type JitVirtualFlagSource
+  type JitVirtualFlagAnalysis
 } from "./virtual-flag-analysis.js";
 import {
   emitDirectVirtualFlagCondition,
@@ -97,8 +97,8 @@ function neededVirtualFlagSourceIds(
 
 function indexVirtualFlagSourcesByLocation(
   analysis: JitVirtualFlagAnalysis
-): ReadonlyMap<number, ReadonlyMap<number, JitVirtualFlagSource>> {
-  const sourcesByLocation = new Map<number, Map<number, JitVirtualFlagSource>>();
+): ReadonlyMap<number, ReadonlyMap<number, JitFlagSource>> {
+  const sourcesByLocation = new Map<number, Map<number, JitFlagSource>>();
 
   for (const source of analysis.sources) {
     let instructionSources = sourcesByLocation.get(source.instructionIndex);

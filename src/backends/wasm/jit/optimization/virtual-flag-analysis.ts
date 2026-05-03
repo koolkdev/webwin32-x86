@@ -1,14 +1,11 @@
-import { reg32, type Reg32 } from "#x86/isa/types.js";
+import type { Reg32 } from "#x86/isa/types.js";
 import {
   conditionFlagReadMask,
   IR_ALU_FLAG_MASK
 } from "#x86/ir/model/flag-effects.js";
-import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import type {
   ConditionCode,
-  IrFlagSetOp,
-  StorageRef,
-  ValueRef
+  StorageRef
 } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
@@ -28,31 +25,27 @@ import {
 } from "./flag-owners.js";
 import type { JitConditionUse } from "./condition-uses.js";
 import {
-  jitStorageReg,
-  jitValueReadRegs,
-  type JitValue
+  jitStorageReg
 } from "./values.js";
 import { JitValueTracker } from "./value-tracker.js";
+import {
+  buildJitFlagSource,
+  type JitFlagInput,
+  type JitFlagSource
+} from "./flag-sources.js";
 
 export type {
   JitVirtualFlagOwner,
   JitVirtualFlagOwnerMask
 } from "./flag-owners.js";
 
-export type JitVirtualFlagInput =
-  | Readonly<{ kind: "value"; value: JitValue }>
-  | Readonly<{ kind: "unmodeled" }>;
+export type {
+  JitFlagInput,
+  JitFlagSource
+} from "./flag-sources.js";
 
-export type JitVirtualFlagSource = Readonly<{
-  id: number;
-  instructionIndex: number;
-  opIndex: number;
-  producer: IrFlagSetOp["producer"];
-  writtenMask: number;
-  undefMask: number;
-  inputs: Readonly<Record<string, JitVirtualFlagInput>>;
-  readRegs: readonly Reg32[];
-}>;
+export type JitVirtualFlagInput = JitFlagInput;
+export type JitVirtualFlagSource = JitFlagSource;
 
 export type JitVirtualFlagRead = Readonly<{
   instructionIndex: number;
@@ -73,7 +66,7 @@ export type JitVirtualFlagSourceClobber = Readonly<{
 }>;
 
 export type JitVirtualFlagAnalysis = Readonly<{
-  sources: readonly JitVirtualFlagSource[];
+  sources: readonly JitFlagSource[];
   reads: readonly JitVirtualFlagRead[];
   sourceClobbers: readonly JitVirtualFlagSourceClobber[];
   finalOwners: readonly JitVirtualFlagOwnerMask[];
@@ -84,7 +77,7 @@ export function analyzeJitVirtualFlags(
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): JitVirtualFlagAnalysis {
   const owners = JitFlagOwners.incoming();
-  const sources: JitVirtualFlagSource[] = [];
+  const sources: JitFlagSource[] = [];
   const reads: JitVirtualFlagRead[] = [];
   const sourceClobbers: JitVirtualFlagSourceClobber[] = [];
   let nextSourceId = 0;
@@ -191,20 +184,10 @@ export function analyzeJitVirtualFlags(
   function recordFlagSource(
     instructionIndex: number,
     opIndex: number,
-    op: IrFlagSetOp,
+    op: Extract<JitIrOp, { op: "flags.set" }>,
     values: JitValueTracker
   ): void {
-    const inputs = flagInputs(op, values);
-    const source: JitVirtualFlagSource = {
-      id: nextSourceId,
-      instructionIndex,
-      opIndex,
-      producer: op.producer,
-      writtenMask: op.writtenMask,
-      undefMask: op.undefMask,
-      inputs,
-      readRegs: flagInputReadRegs(inputs)
-    };
+    const source = buildJitFlagSource(nextSourceId, instructionIndex, opIndex, op, values);
 
     nextSourceId += 1;
     sources.push(source);
@@ -245,45 +228,4 @@ export function analyzeJitVirtualFlags(
 
     sourceClobbers.push({ instructionIndex, opIndex, reg, owners: clobberedOwners });
   }
-}
-
-function flagInputs(
-  op: IrFlagSetOp,
-  values: JitValueTracker
-): Readonly<Record<string, JitVirtualFlagInput>> {
-  return Object.fromEntries(
-    FLAG_PRODUCERS[op.producer].inputs.map((inputName) => [
-      inputName,
-      flagInput(op.inputs[inputName], values)
-    ])
-  );
-}
-
-function flagInput(
-  value: ValueRef | undefined,
-  values: JitValueTracker
-): JitVirtualFlagInput {
-  if (value === undefined) {
-    return { kind: "unmodeled" };
-  }
-
-  const jitValue = values.valueFor(value);
-
-  return jitValue === undefined
-    ? { kind: "unmodeled" }
-    : { kind: "value", value: jitValue };
-}
-
-function flagInputReadRegs(inputs: Readonly<Record<string, JitVirtualFlagInput>>): readonly Reg32[] {
-  const regs = new Set<Reg32>();
-
-  for (const input of Object.values(inputs)) {
-    if (input.kind === "value") {
-      for (const reg of jitValueReadRegs(input.value)) {
-        regs.add(reg);
-      }
-    }
-  }
-
-  return reg32.filter((reg) => regs.has(reg));
 }
