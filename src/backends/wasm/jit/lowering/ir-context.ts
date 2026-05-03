@@ -1,4 +1,3 @@
-import type { IrBlock } from "#x86/ir/model/types.js";
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
@@ -11,7 +10,6 @@ import {
   emitJitNext,
   emitJitNextEip
 } from "./control.js";
-import type { JitOperandBinding } from "./operand-bindings.js";
 import {
   canInlineJitGet32,
   emitJitAddress32,
@@ -20,8 +18,9 @@ import {
 } from "./operands.js";
 import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/optimization/optimize.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
+import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 
-export type JitIrInstructionContext = Pick<
+export type JitIrInstructionContext = Pick<JitIrBlockInstruction, "ir" | "operands"> & Pick<
   JitInstructionState,
   | "instructionId"
   | "eip"
@@ -37,7 +36,6 @@ export type JitIrBlockLoweringContext = Readonly<{
   scratch: WasmLocalScratchAllocator;
   state: JitIrState;
   exit: JitExitTarget;
-  operands: readonly JitOperandBinding[];
   instructions: readonly JitIrInstructionContext[];
   exitPoints: readonly JitExitPoint[];
 }>;
@@ -47,37 +45,20 @@ export type JitIrContext = Readonly<{
   scratch: WasmLocalScratchAllocator;
   state: JitIrState;
   exit: JitExitTarget;
-  operands: readonly JitOperandBinding[];
   currentInstruction(): JitIrInstructionContext;
   currentExitPoint(exitReason: ExitReasonValue): JitExitPoint;
   completeExitPoint(exitPoint: JitExitPoint): void;
   advanceInstruction(): void;
 }>;
 
-export function lowerIrWithJitContext(block: IrBlock, context: JitIrBlockLoweringContext): void {
+export function lowerIrWithJitContext(context: JitIrBlockLoweringContext): void {
   const jitContext = createJitIrContext(context);
 
   beginInstruction(jitContext, context.exit, jitContext.currentInstruction());
-  lowerIrToWasm(block, {
-    body: jitContext.body,
-    scratch: jitContext.scratch,
-    expression: { canInlineGet32: (source) => canInlineJitGet32(jitContext, source) },
-    emitGet32: (source, helpers) => emitJitGet32(jitContext, source, helpers),
-    emitSet32: (target, value, helpers) => emitJitSet32(jitContext, target, value, helpers),
-    emitAddress32: (source) => emitJitAddress32(jitContext, source),
-    emitSetFlags: (descriptor, helpers) =>
-      jitContext.state.flags.emitSet(descriptor, helpers),
-    emitMaterializeFlags: (mask) => jitContext.state.flags.emitMaterialize(mask),
-    emitBoundaryFlags: (mask) => jitContext.state.flags.emitBoundary(mask),
-    emitAluFlagsCondition: (cc) => jitContext.state.flags.emitAluFlagsCondition(cc),
-    emitFlagProducerCondition: (condition, helpers) => emitFlagProducerCondition(jitContext.body, condition, helpers),
-    emitNext: () => emitJitNext(jitContext),
-    emitNextEip: () => emitJitNextEip(jitContext),
-    emitJump: (target, helpers) => emitJitControlExit(jitContext, target, ExitReason.JUMP, helpers),
-    emitConditionalJump: (condition, taken, notTaken, helpers) =>
-      emitJitConditionalJump(jitContext, condition, taken, notTaken, helpers),
-    emitHostTrap: (vector, helpers) => emitJitHostTrap(jitContext, vector, helpers)
-  });
+
+  for (let index = 0; index < context.instructions.length; index += 1) {
+    lowerCurrentInstruction(jitContext);
+  }
 }
 
 function createJitIrContext(context: JitIrBlockLoweringContext): JitIrContext {
@@ -91,7 +72,6 @@ function createJitIrContext(context: JitIrBlockLoweringContext): JitIrContext {
     scratch: context.scratch,
     state: context.state,
     exit: context.exit,
-    operands: context.operands,
     currentInstruction: () => {
       const instruction = context.instructions[instructionIndex];
 
@@ -146,6 +126,29 @@ function createJitIrContext(context: JitIrBlockLoweringContext): JitIrContext {
       }
     }
   };
+}
+
+function lowerCurrentInstruction(jitContext: JitIrContext): void {
+  lowerIrToWasm(jitContext.currentInstruction().ir, {
+    body: jitContext.body,
+    scratch: jitContext.scratch,
+    expression: { canInlineGet32: (source) => canInlineJitGet32(jitContext, source) },
+    emitGet32: (source, helpers) => emitJitGet32(jitContext, source, helpers),
+    emitSet32: (target, value, helpers) => emitJitSet32(jitContext, target, value, helpers),
+    emitAddress32: (source) => emitJitAddress32(jitContext, source),
+    emitSetFlags: (descriptor, helpers) =>
+      jitContext.state.flags.emitSet(descriptor, helpers),
+    emitMaterializeFlags: (mask) => jitContext.state.flags.emitMaterialize(mask),
+    emitBoundaryFlags: (mask) => jitContext.state.flags.emitBoundary(mask),
+    emitAluFlagsCondition: (cc) => jitContext.state.flags.emitAluFlagsCondition(cc),
+    emitFlagProducerCondition: (condition, helpers) => emitFlagProducerCondition(jitContext.body, condition, helpers),
+    emitNext: () => emitJitNext(jitContext),
+    emitNextEip: () => emitJitNextEip(jitContext),
+    emitJump: (target, helpers) => emitJitControlExit(jitContext, target, ExitReason.JUMP, helpers),
+    emitConditionalJump: (condition, taken, notTaken, helpers) =>
+      emitJitConditionalJump(jitContext, condition, taken, notTaken, helpers),
+    emitHostTrap: (vector, helpers) => emitJitHostTrap(jitContext, vector, helpers)
+  });
 }
 
 function beginInstruction(

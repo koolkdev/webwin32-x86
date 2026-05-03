@@ -7,8 +7,8 @@ import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { JitIrBlockBuilder } from "./lowering/block-builder.js";
 import { prepareJitIrBlockForLowering } from "./lowering/ir-optimization.js";
-import { lowerIrWithJitContext } from "./lowering/ir-context.js";
-import { optimizeJitIrBlock } from "./optimization/optimize.js";
+import { lowerIrWithJitContext, type JitIrInstructionContext } from "./lowering/ir-context.js";
+import { optimizeJitIrBlock, type JitBlockOptimization } from "./optimization/optimize.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
 import type { JitIrBlock } from "./types.js";
 
@@ -41,10 +41,7 @@ export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
     throw new Error("cannot encode empty JIT IR block");
   }
 
-  validateIrBlock(loweringBlock.ir, {
-    operandCount: loweringBlock.operands.length,
-    terminatorMode: "multi"
-  });
+  validateLoweringBlock(loweringBlock);
 
   const module = new WasmModuleEncoder();
   const stateMemoryIndex = module.importMemory(wasmImport.moduleName, wasmImport.stateMemoryName, { minPages: 1 });
@@ -67,13 +64,12 @@ export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
   state.emitLoadInstructionCount();
 
   emitExitStateBlocks(body, state.maxExitStateIndex);
-  lowerIrWithJitContext(loweringBlock.ir, {
+  lowerIrWithJitContext({
     body,
     scratch,
     state,
     exit,
-    operands: loweringBlock.operands,
-    instructions: optimization.instructionStates,
+    instructions: loweringInstructions(loweringBlock, optimization),
     exitPoints: optimization.exitPoints
   });
   emitExitStateStores(body, state, exitLocal);
@@ -91,6 +87,46 @@ function emitExitStateBlocks(body: WasmFunctionBodyEncoder, maxExitStateIndex: n
     void index;
     body.block();
   }
+}
+
+function validateLoweringBlock(block: JitIrBlock): void {
+  for (let index = 0; index < block.instructions.length; index += 1) {
+    const instruction = block.instructions[index];
+
+    if (instruction === undefined) {
+      throw new Error(`missing JIT lowering instruction: ${index}`);
+    }
+
+    validateIrBlock(instruction.ir, {
+      operandCount: instruction.operands.length,
+      terminatorMode: "single"
+    });
+  }
+}
+
+function loweringInstructions(
+  block: JitIrBlock,
+  optimization: JitBlockOptimization
+): readonly JitIrInstructionContext[] {
+  if (block.instructions.length !== optimization.instructionStates.length) {
+    throw new Error(
+      `JIT lowering instruction count mismatch: ${block.instructions.length} !== ${optimization.instructionStates.length}`
+    );
+  }
+
+  return block.instructions.map((instruction, index) => {
+    const state = optimization.instructionStates[index];
+
+    if (state === undefined) {
+      throw new Error(`missing JIT instruction state for lowering: ${index}`);
+    }
+
+    return {
+      ...state,
+      ir: instruction.ir,
+      operands: instruction.operands
+    };
+  });
 }
 
 function emitExitStateStores(

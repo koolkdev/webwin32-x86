@@ -207,7 +207,7 @@ function prepareMemoryFaultExit(context: JitIrContext, exitReason: ExitReasonVal
 }
 
 function operandBinding(context: JitIrContext, index: number): JitOperandBinding {
-  const binding = context.operands[index];
+  const binding = context.currentInstruction().operands[index];
 
   if (binding === undefined) {
     throw new Error(`missing JIT operand binding: ${index}`);
