@@ -20,9 +20,11 @@ import {
 } from "./virtual-boundaries.js";
 import { recordJitVirtualLocalValue } from "./virtual-local-values.js";
 import {
-  createJitVirtualRewrite,
-  type JitVirtualRewrite
-} from "./virtual-rewrite.js";
+  createJitInstructionRewrite,
+  createJitPreludeRewrite,
+  rewriteJitIrInstructionInto,
+  type JitInstructionRewrite
+} from "./rewrite.js";
 import {
   rewriteVirtualRegisterAddress32,
   rewriteVirtualRegisterGet32,
@@ -59,46 +61,46 @@ export function foldJitVirtualRegisters(
       throw new Error(`missing JIT instruction while folding virtual registers: ${instructionIndex}`);
     }
 
-    const prelude = createJitVirtualRewrite({ ...instruction, ir: [] });
+    const prelude = createJitPreludeRewrite();
 
     if (jitInstructionHasPreInstructionExit(analysis.boundaries, instructionIndex)) {
       materializedSetCount += materializeAllVirtualRegs(prelude, virtualRegs);
       virtualRegReadCounts.clear();
     }
 
-    const rewrite = createJitVirtualRewrite(instruction);
+    const rewrite = createJitInstructionRewrite(instruction);
     const firstFoldableOpIndex = firstVirtualRegisterFoldableOpIndex(instructionIndex, analysis);
 
-    for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
-      const op = instruction.ir[opIndex];
+    rewriteJitIrInstructionInto(
+      instruction,
+      instructionIndex,
+      "folding virtual registers",
+      rewrite,
+      ({ op, opIndex }) => {
+        if (opIndex < firstFoldableOpIndex) {
+          recordCopiedVirtualRegisterOp(op, instruction, rewrite);
+          rewrite.ops.push(op);
+          return;
+        }
 
-      if (op === undefined) {
-        throw new Error(`missing JIT IR op while folding virtual registers: ${instructionIndex}:${opIndex}`);
+        const result = rewriteOp(
+          op,
+          instruction,
+          instructionIndex,
+          opIndex,
+          analysis,
+          rewrite,
+          virtualRegs,
+          virtualRegReadCounts
+        );
+
+        if (result.removedSet) {
+          removedSetCount += 1;
+        }
+
+        materializedSetCount += result.materializedSetCount;
       }
-
-      if (opIndex < firstFoldableOpIndex) {
-        recordCopiedVirtualRegisterOp(op, instruction, rewrite);
-        rewrite.ops.push(op);
-        continue;
-      }
-
-      const result = rewriteOp(
-        op,
-        instruction,
-        instructionIndex,
-        opIndex,
-        analysis,
-        rewrite,
-        virtualRegs,
-        virtualRegReadCounts
-      );
-
-      if (result.removedSet) {
-        removedSetCount += 1;
-      }
-
-      materializedSetCount += result.materializedSetCount;
-    }
+    );
 
     instructions.push({
       ...instruction,
@@ -123,7 +125,7 @@ function rewriteOp(
   instructionIndex: number,
   opIndex: number,
   analysis: JitOptimizationAnalysis,
-  rewrite: JitVirtualRewrite,
+  rewrite: JitInstructionRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>,
   virtualRegReadCounts: Map<Reg32, number>
 ): JitVirtualRegisterRewriteResult {

@@ -10,7 +10,7 @@ import {
   indexDirectVirtualFlagConditions,
   type JitDirectVirtualFlagConditionIndex
 } from "./virtual-flag-conditions.js";
-import { createJitVirtualRewrite } from "./virtual-rewrite.js";
+import { rewriteJitIrInstruction } from "./rewrite.js";
 
 export type JitVirtualFlagMaterialization = Readonly<{
   removedSetCount: number;
@@ -39,36 +39,28 @@ export function materializeJitVirtualFlags(
       throw new Error(`missing JIT instruction while materializing virtual flags: ${instructionIndex}`);
     }
 
-    const rewrite = createJitVirtualRewrite(instruction);
+    instructions[instructionIndex] = rewriteJitIrInstruction(
+      instruction,
+      instructionIndex,
+      "materializing virtual flags",
+      ({ op, opIndex, rewrite }) => {
+        const source = sourcesByLocation.get(instructionIndex)?.get(opIndex);
+        const directCondition = directConditionsByLocation.get(instructionIndex)?.get(opIndex);
 
-    for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
-      const op = instruction.ir[opIndex];
+        if (op.op === "flags.set" && (source === undefined || !neededSourceIds.has(source.id))) {
+          removedSetCount += 1;
+        } else if (op.op === "aluFlags.condition" && directCondition !== undefined) {
+          emitDirectVirtualFlagCondition(rewrite, op, directCondition);
+          directConditionCount += 1;
+        } else {
+          if (op.op === "flags.set") {
+            retainedSetCount += 1;
+          }
 
-      if (op === undefined) {
-        throw new Error(`missing JIT IR op while materializing virtual flags: ${instructionIndex}:${opIndex}`);
-      }
-
-      const source = sourcesByLocation.get(instructionIndex)?.get(opIndex);
-      const directCondition = directConditionsByLocation.get(instructionIndex)?.get(opIndex);
-
-      if (op.op === "flags.set" && (source === undefined || !neededSourceIds.has(source.id))) {
-        removedSetCount += 1;
-      } else if (op.op === "aluFlags.condition" && directCondition !== undefined) {
-        emitDirectVirtualFlagCondition(rewrite, op, directCondition);
-        directConditionCount += 1;
-      } else {
-        if (op.op === "flags.set") {
-          retainedSetCount += 1;
+          rewrite.ops.push(op);
         }
-
-        rewrite.ops.push(op);
       }
-    }
-
-    instructions[instructionIndex] = {
-      ...instruction,
-      ir: rewrite.ops
-    };
+    );
   }
 
   return {

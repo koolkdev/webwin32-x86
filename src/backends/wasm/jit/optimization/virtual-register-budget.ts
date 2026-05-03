@@ -1,7 +1,7 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { IrOp } from "#x86/ir/model/types.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
-import { materializeJitVirtualReg, type JitVirtualRewrite } from "./virtual-rewrite.js";
+import { materializeJitVirtualReg, type JitInstructionRewrite } from "./rewrite.js";
 import {
   jitVirtualRegsReadByEffectiveAddress,
   jitVirtualValueCost,
@@ -29,7 +29,7 @@ export function shouldMaterializeRepeatedVirtualRegisterRead(
 export function materializeRepeatedEffectiveAddressReads(
   op: Extract<IrOp, { op: "address32" }>,
   instruction: JitIrBlockInstruction,
-  rewrite: JitVirtualRewrite,
+  rewrite: JitInstructionRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>,
   virtualRegReadCounts: Map<Reg32, number>
 ): number {

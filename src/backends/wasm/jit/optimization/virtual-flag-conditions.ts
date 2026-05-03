@@ -13,9 +13,9 @@ import {
 } from "./virtual-flag-analysis.js";
 import { jitVirtualValueReadRegs } from "./virtual-values.js";
 import {
-  emitJitVirtualValue,
-  type JitVirtualRewrite
-} from "./virtual-rewrite.js";
+  emitJitValueRef,
+  type JitInstructionRewrite
+} from "./rewrite.js";
 import {
   jitIrLocation,
   requiredJitIrInstruction,
@@ -69,7 +69,7 @@ export function indexDirectVirtualFlagConditions(
 }
 
 export function emitDirectVirtualFlagCondition(
-  rewrite: JitVirtualRewrite,
+  rewrite: JitInstructionRewrite,
   op: Extract<IrOp, { op: "aluFlags.condition" }>,
   condition: JitDirectVirtualFlagCondition
 ): void {
@@ -82,7 +82,7 @@ export function emitDirectVirtualFlagCondition(
       throw new Error(`missing modeled virtual flag condition input '${inputName}' for ${condition.source.producer}/${op.cc}`);
     }
 
-    inputs[inputName] = emitJitVirtualValue(rewrite, input.value);
+    inputs[inputName] = emitJitValueRef(rewrite, input.value);
   }
 
   rewrite.ops.push({

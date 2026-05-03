@@ -7,9 +7,9 @@ import {
 } from "./virtual-boundaries.js";
 import { recordJitVirtualLocalValue } from "./virtual-local-values.js";
 import {
-  emitJitVirtualValueToVar,
-  type JitVirtualRewrite
-} from "./virtual-rewrite.js";
+  assignJitValue,
+  type JitInstructionRewrite
+} from "./rewrite.js";
 import {
   materializeRepeatedEffectiveAddressReads,
   shouldMaterializeRepeatedVirtualRegisterRead,
@@ -39,7 +39,7 @@ export const unchangedJitVirtualRegisterRewriteResult: JitVirtualRegisterRewrite
 export function rewriteVirtualRegisterAddress32(
   op: Extract<IrOp, { op: "address32" }>,
   instruction: JitIrBlockInstruction,
-  rewrite: JitVirtualRewrite,
+  rewrite: JitInstructionRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>,
   virtualRegReadCounts: Map<Reg32, number>
 ): JitVirtualRegisterRewriteResult {
@@ -75,7 +75,7 @@ export function rewriteVirtualRegisterAddress32(
 export function rewriteVirtualRegisterGet32(
   op: Extract<IrOp, { op: "get32" }>,
   instruction: JitIrBlockInstruction,
-  rewrite: JitVirtualRewrite,
+  rewrite: JitInstructionRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>,
   virtualRegReadCounts: Map<Reg32, number>
 ): JitVirtualRegisterRewriteResult {
@@ -101,7 +101,7 @@ export function rewriteVirtualRegisterGet32(
       virtualRegReadCounts.set(sourceReg, (virtualRegReadCounts.get(sourceReg) ?? 0) + 1);
     }
 
-    emitJitVirtualValueToVar(rewrite, op.dst, value);
+    assignJitValue(rewrite, op.dst, value);
   }
 
   recordJitVirtualLocalValue(op, instruction, rewrite.localValues, virtualRegs);
@@ -112,7 +112,7 @@ export function rewriteVirtualRegisterGet32(
 export function rewriteVirtualRegisterSet32If(
   op: Extract<IrOp, { op: "set32.if" }>,
   instruction: JitIrBlockInstruction,
-  rewrite: JitVirtualRewrite,
+  rewrite: JitInstructionRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>,
   virtualRegReadCounts: Map<Reg32, number>
 ): JitVirtualRegisterRewriteResult {
@@ -135,7 +135,7 @@ export function rewriteVirtualRegisterSet32If(
 export function rewriteVirtualRegisterSet32(
   op: Extract<IrOp, { op: "set32" }>,
   instruction: JitIrBlockInstruction,
-  rewrite: JitVirtualRewrite,
+  rewrite: JitInstructionRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>,
   virtualRegReadCounts: Map<Reg32, number>
 ): JitVirtualRegisterRewriteResult {

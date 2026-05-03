@@ -1,9 +1,9 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import { materializeJitVirtualReg, type JitVirtualRewrite } from "./virtual-rewrite.js";
+import { materializeJitVirtualReg, type JitInstructionRewrite } from "./rewrite.js";
 import { jitVirtualValueReadsReg, type JitVirtualValue } from "./virtual-values.js";
 
 export function materializeVirtualRegsReadingReg(
-  rewrite: JitVirtualRewrite,
+  rewrite: JitInstructionRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>,
   readReg: Reg32
 ): number {
@@ -21,7 +21,7 @@ export function materializeVirtualRegsReadingReg(
 }
 
 export function materializeAllVirtualRegs(
-  rewrite: JitVirtualRewrite,
+  rewrite: JitInstructionRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>
 ): number {
   const materializedSetCount = virtualRegs.size;
@@ -35,7 +35,7 @@ export function materializeAllVirtualRegs(
 }
 
 export function materializeVirtualRegsForRead(
-  rewrite: JitVirtualRewrite,
+  rewrite: JitInstructionRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>,
   readRegs: readonly Reg32[]
 ): number {
