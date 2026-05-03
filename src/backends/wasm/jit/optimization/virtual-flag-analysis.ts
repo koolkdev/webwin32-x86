@@ -18,7 +18,7 @@ import {
   type JitConditionUse,
   type JitConditionUseIndex
 } from "./condition-uses.js";
-import { jitMemoryFaultReason } from "./op-effects.js";
+import { jitMemoryFaultReason, jitPostInstructionExitReasons } from "./op-effects.js";
 import {
   jitStorageReg,
   jitVirtualValueForEffectiveAddress,
@@ -138,6 +138,10 @@ export function analyzeJitVirtualFlags(
       }, instructionEntryOwners);
     }
 
+    if (jitPostInstructionExitReasons(op, instruction).length !== 0) {
+      recordRead({ instructionIndex, opIndex, reason: "exit", requiredMask: IR_ALU_FLAG_MASK });
+    }
+
     switch (op.op) {
       case "get32":
         recordGet32(op.dst.id, op.source, instruction, localValues);
@@ -184,14 +188,9 @@ export function analyzeJitVirtualFlags(
         setOwner(op.mask, materializedFlagOwner);
         return;
       case "next":
-        if (instruction.nextMode === "exit") {
-          recordRead({ instructionIndex, opIndex, reason: "exit", requiredMask: IR_ALU_FLAG_MASK });
-        }
-        return;
       case "jump":
       case "conditionalJump":
       case "hostTrap":
-        recordRead({ instructionIndex, opIndex, reason: "exit", requiredMask: IR_ALU_FLAG_MASK });
         return;
       default:
         return;
