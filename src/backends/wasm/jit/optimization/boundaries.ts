@@ -1,7 +1,15 @@
 import type { ValueRef } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitConditionUse } from "./condition-uses.js";
-import type { JitOpIndex } from "./op-index.js";
+import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import {
+  analyzeJitConditionUses,
+  indexJitExitConditionValues,
+  indexJitLocalConditionValues,
+  type JitConditionUse
+} from "./condition-uses.js";
+import { walkJitIrBlockOps } from "./ir-walk.js";
+import { jitMemoryFaultReason, jitPostInstructionExitReasons } from "./op-effects.js";
+import { setJitOpIndexValue, type JitOpIndex } from "./op-index.js";
 
 export type JitOptimizationBoundary =
   | Readonly<{ kind: "preInstructionExit"; exitReason: ExitReasonValue }>
@@ -12,7 +20,7 @@ export type JitOptimizationBoundary =
 
 export type JitOptimizationBoundaryIndex = JitOpIndex<readonly JitOptimizationBoundary[]>;
 
-export type JitOptimizationBoundarySources = Readonly<{
+type JitOptimizationBoundarySources = Readonly<{
   preInstructionExits: JitOpIndex<ExitReasonValue>;
   postInstructionExits: JitOpIndex<readonly ExitReasonValue[]>;
   localConditionValues: JitOpIndex<readonly ValueRef[]>;
@@ -21,6 +29,21 @@ export type JitOptimizationBoundarySources = Readonly<{
 }>;
 
 export function indexJitOptimizationBoundaries(
+  block: JitIrBlock
+): JitOptimizationBoundaryIndex {
+  const localConditionValues = indexJitLocalConditionValues(block);
+  const exitConditionValues = indexJitExitConditionValues(block);
+
+  return indexJitOptimizationBoundariesFromSources({
+    preInstructionExits: indexJitPreInstructionExits(block),
+    postInstructionExits: indexJitPostInstructionExits(block),
+    localConditionValues,
+    exitConditionValues,
+    conditionUses: analyzeJitConditionUses(block, localConditionValues, exitConditionValues)
+  });
+}
+
+function indexJitOptimizationBoundariesFromSources(
   analysis: JitOptimizationBoundarySources
 ): JitOptimizationBoundaryIndex {
   const boundaries = new Map<number, Map<number, readonly JitOptimizationBoundary[]>>();
@@ -38,6 +61,34 @@ export function indexJitOptimizationBoundaries(
   addConditionReadBoundaries(analysis.conditionUses, boundaries);
 
   return boundaries;
+}
+
+function indexJitPreInstructionExits(block: JitIrBlock): JitOpIndex<ExitReasonValue> {
+  const preInstructionExits = new Map<number, Map<number, ExitReasonValue>>();
+
+  walkJitIrBlockOps(block, (instruction, op, location) => {
+    const faultReason = jitMemoryFaultReason(op, instruction.operands);
+
+    if (faultReason !== undefined) {
+      setJitOpIndexValue(preInstructionExits, location.instructionIndex, location.opIndex, faultReason);
+    }
+  }, "indexing pre-instruction exits");
+
+  return preInstructionExits;
+}
+
+function indexJitPostInstructionExits(block: JitIrBlock): JitOpIndex<readonly ExitReasonValue[]> {
+  const postInstructionExits = new Map<number, Map<number, readonly ExitReasonValue[]>>();
+
+  walkJitIrBlockOps(block, (instruction, op, location) => {
+    const exitReasons = jitPostInstructionExitReasons(op, instruction);
+
+    if (exitReasons.length !== 0) {
+      setJitOpIndexValue(postInstructionExits, location.instructionIndex, location.opIndex, exitReasons);
+    }
+  }, "indexing post-instruction exits");
+
+  return postInstructionExits;
 }
 
 export function jitBoundariesAt(
