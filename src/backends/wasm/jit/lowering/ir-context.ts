@@ -1,4 +1,4 @@
-import type { IrProgram } from "#x86/ir/model/types.js";
+import type { IrBlock } from "#x86/ir/model/types.js";
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { ExitReason } from "#backends/wasm/exit.js";
@@ -45,11 +45,11 @@ export type JitIrContext = Readonly<{
   advanceInstruction(): void;
 }>;
 
-export function lowerIrWithJitContext(program: IrProgram, context: JitIrBlockLoweringContext): void {
+export function lowerIrWithJitContext(block: IrBlock, context: JitIrBlockLoweringContext): void {
   const jitContext = createJitIrContext(context);
 
   context.state.beginInstruction(context.exit, jitContext.currentInstruction().eip);
-  lowerIrToWasm(program, {
+  lowerIrToWasm(block, {
     body: jitContext.body,
     scratch: jitContext.scratch,
     expression: { canInlineGet32: (source) => canInlineJitGet32(jitContext, source) },

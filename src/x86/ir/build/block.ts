@@ -1,38 +1,38 @@
-import { IrEmitter, type IrProgramTerminator } from "./emitter.js";
+import { IrEmitter, type IrBlockTerminator } from "./emitter.js";
 import { irVar } from "#x86/ir/model/refs.js";
 import type {
   OperandRef,
   SemanticTemplate,
   IrOp,
-  IrProgram,
+  IrBlock,
   VarRef
 } from "#x86/ir/model/types.js";
 
-export type IrProgramInstruction = Readonly<{
+export type IrBlockInstruction = Readonly<{
   semantics: SemanticTemplate;
   operands: readonly OperandRef[];
 }>;
 
-export type IrProgramAppendResult = Readonly<{
-  terminator: IrProgramTerminator;
+export type IrBlockAppendResult = Readonly<{
+  terminator: IrBlockTerminator;
 }>;
 
-export class IrProgramBuilder {
+export class IrBlockBuilder {
   readonly #ops: IrOp[] = [];
   #nextVarId = 0;
 
-  appendInstruction(instruction: IrProgramInstruction): IrProgramAppendResult {
+  appendInstruction(instruction: IrBlockInstruction): IrBlockAppendResult {
     const emitter = new IrEmitter({
       ops: this.#ops,
       allocateVar: () => this.#allocVar(),
-      resolveOperand: (index) => programOperand(instruction.operands, index)
+      resolveOperand: (index) => blockOperand(instruction.operands, index)
     });
 
     instruction.semantics(emitter);
     return { terminator: emitter.finish() };
   }
 
-  build(): IrProgram {
+  build(): IrBlock {
     return [...this.#ops];
   }
 
@@ -44,11 +44,11 @@ export class IrProgramBuilder {
   }
 }
 
-function programOperand(operands: readonly OperandRef[], index: number): OperandRef {
+function blockOperand(operands: readonly OperandRef[], index: number): OperandRef {
   const operandRef = operands[index];
 
   if (operandRef === undefined) {
-    throw new Error(`IR program operand ${index} is not provided`);
+    throw new Error(`IR block operand ${index} is not provided`);
   }
 
   return operandRef;

@@ -8,9 +8,9 @@ import {
   createFlagMaterializationPass,
   type IrFlagBoundaryPoint
 } from "#x86/ir/passes/flag-optimization.js";
-import { optimizeIrProgram } from "#x86/ir/passes/optimization.js";
+import { optimizeIrBlock } from "#x86/ir/passes/optimization.js";
 import { isIrTerminatorOp } from "#x86/ir/model/ops.js";
-import type { IrBody, IrOp, OperandRef, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
+import type { IrBlock, IrOp, OperandRef, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "./operand-bindings.js";
 import type {
   JitIrBlock,
@@ -23,19 +23,19 @@ export function prepareJitIrBlockForLowering(block: JitIrBlock): JitIrLoweringBl
 }
 
 function optimizeJitIrLoweringBlock(block: JitIrLoweringBlock): JitIrLoweringBlock {
-  const optimized = optimizeIrProgram(block.ir, [
+  const optimized = optimizeIrBlock(block.ir, [
     createFlagBoundaryInsertionPass({
-      points: (program) => jitFlagBoundaryPoints(program, block.operands)
+      points: (body) => jitFlagBoundaryPoints(body, block.operands)
     }),
     createAluFlagsConditionSpecializationPass(),
     createDeadFlagSetPruningPass(),
     createFlagMaterializationPass()
   ]);
 
-  assertInstructionTerminatorCount(optimized.program, block.instructions);
+  assertInstructionTerminatorCount(optimized.block, block.instructions);
 
   return {
-    ir: optimized.program,
+    ir: optimized.block,
     operands: block.operands,
     instructions: block.instructions
   };
@@ -64,12 +64,12 @@ function flattenJitIrBlock(block: JitIrBlock): JitIrLoweringBlock {
   return { ir, operands, instructions };
 }
 
-function remapInstructionRefs(body: IrBody, operandBase: number, varBase: number): readonly IrOp[] {
+function remapInstructionRefs(block: IrBlock, operandBase: number, varBase: number): readonly IrOp[] {
   if (operandBase === 0 && varBase === 0) {
-    return body;
+    return block;
   }
 
-  return body.map((op) => remapOpRefs(op, operandBase, varBase));
+  return block.map((op) => remapOpRefs(op, operandBase, varBase));
 }
 
 function remapOpRefs(op: IrOp, operandBase: number, varBase: number): IrOp {
@@ -182,10 +182,10 @@ function remapVarRef(value: VarRef, varBase: number): VarRef {
   };
 }
 
-function instructionVarCount(body: IrBody): number {
+function instructionVarCount(block: IrBlock): number {
   let maxId = -1;
 
-  for (const op of body) {
+  for (const op of block) {
     maxId = Math.max(maxId, maxIrOpVarId(op));
   }
 
@@ -244,10 +244,10 @@ function maxValueVarId(value: ValueRef): number {
 }
 
 function assertInstructionTerminatorCount(
-  program: IrBody,
+  block: IrBlock,
   instructions: readonly JitIrBlockInstructionMetadata[]
 ): void {
-  const terminatorCount = program.filter(isIrTerminatorOp).length;
+  const terminatorCount = block.filter(isIrTerminatorOp).length;
 
   if (terminatorCount !== instructions.length) {
     throw new Error(
@@ -257,13 +257,13 @@ function assertInstructionTerminatorCount(
 }
 
 function jitFlagBoundaryPoints(
-  program: IrBody,
+  block: IrBlock,
   operands: readonly JitOperandBinding[]
 ): readonly IrFlagBoundaryPoint[] {
   const points: IrFlagBoundaryPoint[] = [];
 
-  for (let index = 0; index < program.length; index += 1) {
-    const op = program[index];
+  for (let index = 0; index < block.length; index += 1) {
+    const op = block[index];
 
     if (op === undefined) {
       throw new Error(`missing IR op while planning JIT flag boundaries: ${index}`);
@@ -274,9 +274,9 @@ function jitFlagBoundaryPoints(
     }
   }
 
-  if (program.length !== 0) {
+  if (block.length !== 0) {
     points.push({
-      index: program.length - 1,
+      index: block.length - 1,
       placement: "before",
       mask: IR_ALU_FLAG_MASK
     });

@@ -1,15 +1,15 @@
 import {
-  buildIrExpressionProgram,
+  buildIrExpressionBlock,
   type IrExpressionOptions,
   type IrExprOp,
-  type IrExprProgram,
+  type IrExprBlock,
   type IrStorageExpr,
   type IrValueExpr
 } from "#x86/ir/model/expressions.js";
 import type {
   ConditionCode,
   IrFlagSetOp,
-  IrProgram,
+  IrBlock,
 } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
@@ -40,12 +40,12 @@ export type WasmIrEmitHelpers = Readonly<{
   emitValue(value: IrValueExpr): void;
 }>;
 
-export function lowerIrToWasm(program: IrProgram, context: WasmIrLoweringContext): void {
-  lowerIrExpressionProgramToWasm(buildIrExpressionProgram(program, context.expression), context);
+export function lowerIrToWasm(block: IrBlock, context: WasmIrLoweringContext): void {
+  lowerIrExpressionBlockToWasm(buildIrExpressionBlock(block, context.expression), context);
 }
 
-function lowerIrExpressionProgramToWasm(program: IrExprProgram, context: WasmIrLoweringContext): void {
-  new IrExprWasmLowerer(program, context).lower();
+function lowerIrExpressionBlockToWasm(block: IrExprBlock, context: WasmIrLoweringContext): void {
+  new IrExprWasmLowerer(block, context).lower();
 }
 
 function allocateWasmLocalsForIrExprSlots(
@@ -59,7 +59,7 @@ function allocateWasmLocalsForIrExprSlots(
 }
 
 class IrExprWasmLowerer {
-  readonly #program: IrExprProgram;
+  readonly #block: IrExprBlock;
   readonly #context: WasmIrLoweringContext;
   readonly #slots: IrExprVarSlotAssignment;
   readonly #slotLocals: readonly number[];
@@ -67,16 +67,16 @@ class IrExprWasmLowerer {
     emitValue: (value) => this.#emitValue(value)
   };
 
-  constructor(program: IrExprProgram, context: WasmIrLoweringContext) {
-    this.#program = program;
+  constructor(block: IrExprBlock, context: WasmIrLoweringContext) {
+    this.#block = block;
     this.#context = context;
-    this.#slots = assignIrExprVarSlots(this.#program);
+    this.#slots = assignIrExprVarSlots(this.#block);
     this.#slotLocals = allocateWasmLocalsForIrExprSlots(this.#context, this.#slots.slotCount);
   }
 
   lower(): void {
     try {
-      for (const op of this.#program) {
+      for (const op of this.#block) {
         this.#lowerOp(op);
       }
     } finally {

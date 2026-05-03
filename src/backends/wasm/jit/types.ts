@@ -1,4 +1,4 @@
-import type { IrBody } from "#x86/ir/model/types.js";
+import type { IrBlock } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "./lowering/operand-bindings.js";
 
 export type JitIrBlockInstructionMetadata = Readonly<{
@@ -10,7 +10,7 @@ export type JitIrBlockInstructionMetadata = Readonly<{
 
 export type JitIrBlockInstruction = JitIrBlockInstructionMetadata & Readonly<{
   operands: readonly JitOperandBinding[];
-  ir: IrBody;
+  ir: IrBlock;
 }>;
 
 export type JitIrBlock = Readonly<{
@@ -18,7 +18,7 @@ export type JitIrBlock = Readonly<{
 }>;
 
 export type JitIrLoweringBlock = Readonly<{
-  ir: IrBody;
+  ir: IrBlock;
   operands: readonly JitOperandBinding[];
   instructions: readonly JitIrBlockInstructionMetadata[];
 }>;

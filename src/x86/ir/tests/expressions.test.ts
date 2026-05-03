@@ -1,7 +1,7 @@
 import { deepStrictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { buildIrExpressionProgram } from "#x86/ir/model/expressions.js";
+import { buildIrExpressionBlock } from "#x86/ir/model/expressions.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 
@@ -12,7 +12,7 @@ const c32 = (value: number) => ({ kind: "const32" as const, value });
 
 test("expression selector inlines allowed single-use get32 into set32", () => {
   deepStrictEqual(
-    buildIrExpressionProgram(
+    buildIrExpressionBlock(
       [
         { op: "get32", dst: v(0), source: op(1) },
         { op: "set32", target: op(0), value: v(0) },
@@ -29,7 +29,7 @@ test("expression selector inlines allowed single-use get32 into set32", () => {
 
 test("expression selector materializes get32 when the source cannot be inlined", () => {
   deepStrictEqual(
-    buildIrExpressionProgram(
+    buildIrExpressionBlock(
       [
         { op: "get32", dst: v(0), source: op(1) },
         { op: "set32", target: op(0), value: v(0) },
@@ -47,7 +47,7 @@ test("expression selector materializes get32 when the source cannot be inlined",
 
 test("expression selector folds simple register arithmetic into destination values", () => {
   deepStrictEqual(
-    buildIrExpressionProgram(
+    buildIrExpressionBlock(
       [
         { op: "get32", dst: v(0), source: reg("eax") },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
@@ -73,7 +73,7 @@ test("expression selector folds simple register arithmetic into destination valu
 
 test("expression selector can reuse constant bindings without a temporary", () => {
   deepStrictEqual(
-    buildIrExpressionProgram([
+    buildIrExpressionBlock([
       { op: "const32", dst: v(0), value: 7 },
       { op: "i32.add", dst: v(1), a: v(0), b: v(0) },
       { op: "set32", target: reg("ebx"), value: v(1) },
@@ -96,7 +96,7 @@ test("expression selector can reuse constant bindings without a temporary", () =
 
 test("expression selector materializes flag inputs that still need value refs", () => {
   deepStrictEqual(
-    buildIrExpressionProgram(
+    buildIrExpressionBlock(
       [
         { op: "get32", dst: v(0), source: op(0) },
         { op: "get32", dst: v(1), source: op(1) },
@@ -118,7 +118,7 @@ test("expression selector materializes flag inputs that still need value refs", 
 
 test("expression selector keeps condition reads before later flag boundaries", () => {
   deepStrictEqual(
-    buildIrExpressionProgram([
+    buildIrExpressionBlock([
       { op: "flags.materialize", mask: IR_ALU_FLAG_MASKS.ZF },
       { op: "aluFlags.condition", dst: v(0), cc: "E" },
       { op: "flags.boundary", mask: IR_ALU_FLAG_MASK },

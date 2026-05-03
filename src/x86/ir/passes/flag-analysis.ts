@@ -5,7 +5,7 @@ import type {
   ConditionCode,
   FlagProducerName,
   IrOp,
-  IrProgram
+  IrBlock
 } from "#x86/ir/model/types.js";
 
 export type IrFlagMask = number;
@@ -123,24 +123,24 @@ export function irOpFlagEffect(op: IrOp): IrFlagOpEffect {
   }
 }
 
-export function analyzeIrFlagEffects(program: IrProgram): readonly IrFlagOpEffect[] {
-  return program.map(irOpFlagEffect);
+export function analyzeIrFlagEffects(block: IrBlock): readonly IrFlagOpEffect[] {
+  return block.map(irOpFlagEffect);
 }
 
 export function analyzeIrFlagLiveness(
-  program: IrProgram,
+  block: IrBlock,
   options: IrFlagLivenessOptions = {}
 ): readonly IrFlagOpLiveness[] {
-  const effects = analyzeIrFlagEffects(program);
-  const barriers = flagBarriersByIndex(program, options.barriers ?? []);
-  const liveness: IrFlagOpLiveness[] = new Array(program.length);
+  const effects = analyzeIrFlagEffects(block);
+  const barriers = flagBarriersByIndex(block, options.barriers ?? []);
+  const liveness: IrFlagOpLiveness[] = new Array(block.length);
   const liveOutOption = options.liveOut ?? IR_FLAG_MASK_NONE;
 
   assertIrAluFlagMask(liveOutOption, "IR flag liveness liveOut");
 
   let live = liveOutOption;
 
-  for (let index = program.length - 1; index >= 0; index -= 1) {
+  for (let index = block.length - 1; index >= 0; index -= 1) {
     const effect = effects[index];
 
     if (effect === undefined) {
@@ -161,22 +161,22 @@ export function analyzeIrFlagLiveness(
 }
 
 function flagBarriersByIndex(
-  program: IrProgram,
+  block: IrBlock,
   barriers: readonly IrFlagLivenessBarrier[]
 ): IrIndexedFlagPointMasks {
-  return irIndexedFlagPointMasks(program, barriers, "IR flag liveness barrier");
+  return irIndexedFlagPointMasks(block, barriers, "IR flag liveness barrier");
 }
 
 export function irIndexedFlagPointMasks(
-  program: IrProgram,
+  block: IrBlock,
   points: readonly IrIndexedFlagPoint[],
   label: string
 ): IrIndexedFlagPointMasks {
-  const before = Array.from({ length: program.length }, () => IR_FLAG_MASK_NONE);
-  const after = Array.from({ length: program.length }, () => IR_FLAG_MASK_NONE);
+  const before = Array.from({ length: block.length }, () => IR_FLAG_MASK_NONE);
+  const after = Array.from({ length: block.length }, () => IR_FLAG_MASK_NONE);
 
   for (const point of points) {
-    if (!Number.isInteger(point.index) || point.index < 0 || point.index >= program.length) {
+    if (!Number.isInteger(point.index) || point.index < 0 || point.index >= block.length) {
       throw new Error(`${label} index out of range: ${point.index}`);
     }
 

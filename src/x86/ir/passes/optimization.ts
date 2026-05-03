@@ -1,22 +1,22 @@
-import type { IrProgram } from "#x86/ir/model/types.js";
+import type { IrBlock } from "#x86/ir/model/types.js";
 
-export type IrOptimizationResult = Readonly<{
-  program: IrProgram;
+export type IrBlockOptimizationResult = Readonly<{
+  block: IrBlock;
 }>;
 
-export type IrOptimizationPass = (program: IrProgram) => IrOptimizationResult;
+export type IrBlockOptimizationPass = (block: IrBlock) => IrBlockOptimizationResult;
 
-export function optimizeIrProgram(
-  program: IrProgram,
-  passes: readonly IrOptimizationPass[]
-): IrOptimizationResult {
-  let optimizedProgram = program;
+export function optimizeIrBlock(
+  block: IrBlock,
+  passes: readonly IrBlockOptimizationPass[]
+): IrBlockOptimizationResult {
+  let optimizedBlock = block;
 
   for (const pass of passes) {
-    const result = pass(optimizedProgram);
+    const result = pass(optimizedBlock);
 
-    optimizedProgram = result.program;
+    optimizedBlock = result.block;
   }
 
-  return { program: optimizedProgram };
+  return { block: optimizedBlock };
 }

@@ -9,7 +9,7 @@ import type {
   IrFlagSetOp,
   OperandRef,
   RegRef,
-  IrProgram,
+  IrBlock,
   StorageRef,
   ValueRef,
   VarRef
@@ -50,17 +50,17 @@ export type IrExprOp =
   | Readonly<{ op: "conditionalJump"; condition: IrValueExpr; taken: IrValueExpr; notTaken: IrValueExpr }>
   | Readonly<{ op: "hostTrap"; vector: IrValueExpr }>;
 
-export type IrExprProgram = readonly IrExprOp[];
+export type IrExprBlock = readonly IrExprOp[];
 
 export type IrExpressionOptions = Readonly<{
   canInlineGet32?: (source: StorageRef) => boolean;
 }>;
 
-export function buildIrExpressionProgram(
-  program: IrProgram,
+export function buildIrExpressionBlock(
+  block: IrBlock,
   options: IrExpressionOptions = {}
-): IrExprProgram {
-  const builder = new ExpressionBuilder(program, options);
+): IrExprBlock {
+  const builder = new ExpressionBuilder(block, options);
 
   return builder.build();
 }
@@ -71,14 +71,14 @@ class ExpressionBuilder {
   readonly #useCounts: ReadonlyMap<number, number>;
 
   constructor(
-    readonly program: IrProgram,
+    readonly block: IrBlock,
     readonly options: IrExpressionOptions
   ) {
-    this.#useCounts = countVarUses(program);
+    this.#useCounts = countVarUses(block);
   }
 
-  build(): IrExprProgram {
-    for (const op of this.program) {
+  build(): IrExprBlock {
+    for (const op of this.block) {
       switch (op.op) {
         case "get32":
           this.#defineValue(op.dst, { kind: "src32", source: this.#storageExpr(op.source) }, this.options.canInlineGet32?.(op.source) === true);
@@ -217,10 +217,10 @@ class ExpressionBuilder {
   }
 }
 
-function countVarUses(program: IrProgram): Map<number, number> {
+function countVarUses(block: IrBlock): Map<number, number> {
   const counts = new Map<number, number>();
 
-  for (const op of program) {
+  for (const op of block) {
     switch (op.op) {
       case "get32":
         countStorageUses(counts, op.source);

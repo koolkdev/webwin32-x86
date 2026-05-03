@@ -1,6 +1,6 @@
 import type { IsaDecodedInstruction } from "#x86/isa/decoder/types.js";
 import { operand } from "#x86/ir/build/builder.js";
-import { IrProgramBuilder } from "#x86/ir/build/program.js";
+import { IrBlockBuilder } from "#x86/ir/build/block.js";
 import { jitBindingsFromIsaInstruction, type JitOperandBinding } from "./operand-bindings.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 
@@ -8,7 +8,7 @@ export type AppendJitIrInstructionOptions = Readonly<{
   nextMode: "continue" | "exit";
 }>;
 
-export class JitIrProgramBuilder {
+export class JitIrBlockBuilder {
   readonly #instructions: JitIrBlockInstruction[] = [];
 
   appendInstruction(
@@ -16,7 +16,7 @@ export class JitIrProgramBuilder {
     options: AppendJitIrInstructionOptions
   ): void {
     const instructionOperands = jitBindingsFromIsaInstruction(instruction);
-    const irBuilder = new IrProgramBuilder();
+    const irBuilder = new IrBlockBuilder();
     const appended = irBuilder.appendInstruction({
       semantics: instruction.spec.semantics,
       operands: instructionOperands.map((_, index) => operand(index))

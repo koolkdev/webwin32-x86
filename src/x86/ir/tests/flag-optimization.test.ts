@@ -19,9 +19,9 @@ test("flag optimization prunes flag producers with no live writes", () => {
   const optimized = pruneDeadFlagSets(program, { liveOut: IR_ALU_FLAG_MASK });
 
   strictEqual(optimized.prunedCount, 1);
-  strictEqual(optimized.program.filter((op) => op.op === "flags.set").length, 1);
+  strictEqual(optimized.block.filter((op) => op.op === "flags.set").length, 1);
   deepStrictEqual(
-    optimized.program.at(-2),
+    optimized.block.at(-2),
     createIrFlagSetOp("add32", {
       left: { kind: "var", id: 0 },
       right: { kind: "var", id: 1 },
@@ -46,7 +46,7 @@ test("flag optimization keeps producers live at barriers", () => {
   });
 
   strictEqual(optimized.prunedCount, 0);
-  strictEqual(optimized.program.filter((op) => op.op === "flags.set").length, 2);
+  strictEqual(optimized.block.filter((op) => op.op === "flags.set").length, 2);
 });
 
 test("flag optimization tracks partial flag producers independently", () => {
@@ -62,7 +62,7 @@ test("flag optimization tracks partial flag producers independently", () => {
     s.boundaryFlags(IR_ALU_FLAG_MASK);
   });
   const optimized = pruneDeadFlagSets(program);
-  const flagSets = optimized.program.filter((op) => op.op === "flags.set");
+  const flagSets = optimized.block.filter((op) => op.op === "flags.set");
 
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
 });
@@ -79,7 +79,7 @@ test("flag optimization keeps producers live for explicit materialization", () =
   const optimized = pruneDeadFlagSets(program);
 
   strictEqual(optimized.prunedCount, 0);
-  strictEqual(optimized.program.filter((op) => op.op === "flags.set").length, 1);
+  strictEqual(optimized.block.filter((op) => op.op === "flags.set").length, 1);
 });
 
 test("flag optimization inserts materialization before flag consumers", () => {
@@ -94,7 +94,7 @@ test("flag optimization inserts materialization before flag consumers", () => {
   const optimized = insertFlagMaterializations(program);
 
   strictEqual(optimized.insertedCount, 1);
-  deepStrictEqual(optimized.program[4], { op: "flags.materialize", mask: IR_ALU_FLAG_MASKS.ZF });
+  deepStrictEqual(optimized.block[4], { op: "flags.materialize", mask: IR_ALU_FLAG_MASKS.ZF });
 });
 
 test("flag optimization does not duplicate explicit materialization", () => {
@@ -109,7 +109,7 @@ test("flag optimization does not duplicate explicit materialization", () => {
   const optimized = insertFlagMaterializations(program);
 
   strictEqual(optimized.insertedCount, 0);
-  deepStrictEqual(optimized.program, program);
+  deepStrictEqual(optimized.block, program);
 });
 
 test("flag optimization inserts materialization before requested exits", () => {
@@ -125,7 +125,7 @@ test("flag optimization inserts materialization before requested exits", () => {
   });
 
   strictEqual(optimized.insertedCount, 1);
-  deepStrictEqual(optimized.program.at(-2), {
+  deepStrictEqual(optimized.block.at(-2), {
     op: "flags.materialize",
     mask: IR_ALU_FLAG_MASK
   });
@@ -142,7 +142,7 @@ test("flag optimization specializes sub32 conditions into direct flag conditions
   });
   const optimized = specializeAluFlagsConditions(program);
   const flagSet = program.find((op) => op.op === "flags.set");
-  const conditionIndex = optimized.program.findIndex((op) => op.op === "flagProducer.condition");
+  const conditionIndex = optimized.block.findIndex((op) => op.op === "flagProducer.condition");
 
   if (flagSet === undefined || flagSet.op !== "flags.set") {
     throw new Error("missing test flags.set");
@@ -150,7 +150,7 @@ test("flag optimization specializes sub32 conditions into direct flag conditions
 
   strictEqual(optimized.specializedCount, 1);
   deepStrictEqual(
-    optimized.program[conditionIndex],
+    optimized.block[conditionIndex],
     createIrFlagProducerConditionOp({ kind: "var", id: 3 }, "E", flagSet)
   );
 });
@@ -168,7 +168,7 @@ test("flag optimization specializes all supported sub32 condition codes", () => 
       s.conditionalJump(s.condition(cc), s.get32(s.operand(0)), s.nextEip());
     });
     const optimized = specializeAluFlagsConditions(program);
-    const condition = optimized.program.find((op) => op.op === "flagProducer.condition");
+    const condition = optimized.block.find((op) => op.op === "flagProducer.condition");
 
     strictEqual(optimized.specializedCount, 1);
     strictEqual(condition?.op, "flagProducer.condition");
@@ -191,7 +191,7 @@ test("flag optimization specializes conditions from the per-flag current produce
   });
   const optimized = specializeAluFlagsConditions(program);
   const subFlags = program.find((op) => op.op === "flags.set" && op.producer === "sub32");
-  const flagProducerCondition = optimized.program.find((op) => op.op === "flagProducer.condition");
+  const flagProducerCondition = optimized.block.find((op) => op.op === "flagProducer.condition");
 
   if (subFlags === undefined || subFlags.op !== "flags.set") {
     throw new Error("missing test sub32 flags.set");
@@ -215,7 +215,7 @@ test("flag optimization does not specialize CF conditions from INC alone", () =>
   const optimized = specializeAluFlagsConditions(program);
 
   strictEqual(optimized.specializedCount, 0);
-  strictEqual(optimized.program.some((op) => op.op === "flagProducer.condition"), false);
+  strictEqual(optimized.block.some((op) => op.op === "flagProducer.condition"), false);
 });
 
 test("flag optimization does not specialize conditions from overwritten compare flags", () => {
@@ -233,7 +233,7 @@ test("flag optimization does not specialize conditions from overwritten compare 
   const optimized = specializeAluFlagsConditions(program);
 
   strictEqual(optimized.specializedCount, 0);
-  strictEqual(optimized.program.some((op) => op.op === "flagProducer.condition"), false);
+  strictEqual(optimized.block.some((op) => op.op === "flagProducer.condition"), false);
 });
 
 test("flag optimization keeps specialized conditions independent of pruned flag producers", () => {
@@ -246,10 +246,10 @@ test("flag optimization keeps specialized conditions independent of pruned flag 
     s.conditionalJump(s.condition("E"), s.get32(s.operand(0)), s.nextEip());
   });
   const specialized = specializeAluFlagsConditions(program);
-  const pruned = pruneDeadFlagSets(specialized.program);
+  const pruned = pruneDeadFlagSets(specialized.block);
 
-  strictEqual(pruned.program.some((op) => op.op === "flags.set"), false);
-  strictEqual(pruned.program.some((op) => op.op === "flagProducer.condition"), true);
+  strictEqual(pruned.block.some((op) => op.op === "flags.set"), false);
+  strictEqual(pruned.block.some((op) => op.op === "flagProducer.condition"), true);
 });
 
 test("flag optimization inserts explicit boundary operations before requested points", () => {
@@ -261,7 +261,7 @@ test("flag optimization inserts explicit boundary operations before requested po
   });
 
   strictEqual(optimized.insertedCount, 1);
-  deepStrictEqual(optimized.program, [
+  deepStrictEqual(optimized.block, [
     { op: "flags.boundary", mask: IR_ALU_FLAG_MASK },
     { op: "hostTrap", vector: { kind: "const32", value: 0x2e } }
   ]);
@@ -279,5 +279,5 @@ test("flag optimization leaves boundary publication to explicit boundary operati
   const optimized = insertFlagMaterializations(program);
 
   strictEqual(optimized.insertedCount, 0);
-  deepStrictEqual(optimized.program, program);
+  deepStrictEqual(optimized.block, program);
 });

@@ -1,6 +1,6 @@
 import type {
   IrExprOp,
-  IrExprProgram,
+  IrExprBlock,
   IrStorageExpr,
   IrValueExpr
 } from "#x86/ir/model/expressions.js";
@@ -25,8 +25,8 @@ type ActiveSlot = Readonly<{
   slot: number;
 }>;
 
-export function assignIrExprVarSlots(program: IrExprProgram): IrExprVarSlotAssignment {
-  const lifetimes = collectVarLifetimes(program);
+export function assignIrExprVarSlots(block: IrExprBlock): IrExprVarSlotAssignment {
+  const lifetimes = collectVarLifetimes(block);
   const slotByVar = new Map<number, number>();
   const freeSlots: number[] = [];
   let activeSlots: ActiveSlot[] = [];
@@ -60,10 +60,10 @@ export function assignIrExprVarSlots(program: IrExprProgram): IrExprVarSlotAssig
   return { slotCount, slotByVar };
 }
 
-function collectVarLifetimes(program: IrExprProgram): MutableVarLifetime[] {
+function collectVarLifetimes(block: IrExprBlock): MutableVarLifetime[] {
   const lifetimes = new Map<number, MutableVarLifetime>();
 
-  program.forEach((op, opIndex) => {
+  block.forEach((op, opIndex) => {
     const usePosition = opIndex * 2;
 
     collectOpVarUses(op, (id) => {

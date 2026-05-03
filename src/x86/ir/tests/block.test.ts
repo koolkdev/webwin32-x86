@@ -2,10 +2,10 @@ import { deepStrictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { operand } from "#x86/ir/build/builder.js";
-import { IrProgramBuilder } from "#x86/ir/build/program.js";
+import { IrBlockBuilder } from "#x86/ir/build/block.js";
 
-test("IrProgramBuilder appends instructions with one var namespace", () => {
-  const builder = new IrProgramBuilder();
+test("IrBlockBuilder appends instructions with one var namespace", () => {
+  const builder = new IrBlockBuilder();
   const first = builder.appendInstruction({
     semantics: (s) => {
       const value = s.get32(s.operand(0));

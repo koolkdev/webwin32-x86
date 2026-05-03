@@ -9,23 +9,23 @@ import { intSemantic } from "#x86/isa/semantics/misc.js";
 import { movSemantic } from "#x86/isa/semantics/mov.js";
 import { buildIr, const32, operand, irVar } from "#x86/ir/build/builder.js";
 import { createIrFlagProducerConditionOp, createIrFlagSetOp } from "#x86/ir/model/flags.js";
-import { validateIrProgram } from "#x86/ir/passes/validator.js";
+import { validateIrBlock } from "#x86/ir/passes/validator.js";
 
 test("validator accepts representative generated semantic templates", () => {
-  doesNotThrow(() => validateIrProgram(buildIr(movSemantic()), { operandCount: 2 }));
-  doesNotThrow(() => validateIrProgram(buildIr(leaSemantic()), { operandCount: 2 }));
-  doesNotThrow(() => validateIrProgram(buildIr(aluSemantic("add", 32)), { operandCount: 2 }));
-  doesNotThrow(() => validateIrProgram(buildIr(cmpSemantic()), { operandCount: 2 }));
-  doesNotThrow(() => validateIrProgram(buildIr(jccSemantic("NE")), { operandCount: 1 }));
-  doesNotThrow(() => validateIrProgram(buildIr(intSemantic()), { operandCount: 1 }));
+  doesNotThrow(() => validateIrBlock(buildIr(movSemantic()), { operandCount: 2 }));
+  doesNotThrow(() => validateIrBlock(buildIr(leaSemantic()), { operandCount: 2 }));
+  doesNotThrow(() => validateIrBlock(buildIr(aluSemantic("add", 32)), { operandCount: 2 }));
+  doesNotThrow(() => validateIrBlock(buildIr(cmpSemantic()), { operandCount: 2 }));
+  doesNotThrow(() => validateIrBlock(buildIr(jccSemantic("NE")), { operandCount: 1 }));
+  doesNotThrow(() => validateIrBlock(buildIr(intSemantic()), { operandCount: 1 }));
 });
 
 test("validator rejects missing terminator and ops after terminator", () => {
-  throws(() => validateIrProgram([{ op: "get32", dst: irVar(0), source: operand(0) }]), /exactly one terminator/);
+  throws(() => validateIrBlock([{ op: "get32", dst: irVar(0), source: operand(0) }]), /exactly one terminator/);
 
   throws(
     () =>
-      validateIrProgram([
+      validateIrBlock([
         { op: "next" },
         { op: "jump", target: const32(0) }
       ]),
@@ -36,7 +36,7 @@ test("validator rejects missing terminator and ops after terminator", () => {
 test("validator rejects duplicate vars, use before definition, and missing operands", () => {
   throws(
     () =>
-      validateIrProgram([
+      validateIrBlock([
         { op: "get32", dst: irVar(0), source: operand(0) },
         { op: "i32.add", dst: irVar(0), a: irVar(0), b: const32(1) },
         { op: "next" }
@@ -46,7 +46,7 @@ test("validator rejects duplicate vars, use before definition, and missing opera
 
   throws(
     () =>
-      validateIrProgram([
+      validateIrBlock([
         { op: "i32.add", dst: irVar(0), a: irVar(1), b: const32(1) },
         { op: "next" }
       ]),
@@ -54,19 +54,19 @@ test("validator rejects duplicate vars, use before definition, and missing opera
   );
 
   throws(
-    () => validateIrProgram([{ op: "get32", dst: irVar(0), source: operand(1) }, { op: "next" }], { operandCount: 1 }),
+    () => validateIrBlock([{ op: "get32", dst: irVar(0), source: operand(1) }, { op: "next" }], { operandCount: 1 }),
     /operand 1 does not exist/
   );
 });
 
 test("validator rejects invalid aluFlags operation masks", () => {
   throws(
-    () => validateIrProgram([{ op: "flags.materialize", mask: 0 }, { op: "next" }]),
+    () => validateIrBlock([{ op: "flags.materialize", mask: 0 }, { op: "next" }]),
     /flags\.materialize requires a nonzero aluFlags mask/
   );
 
   throws(
-    () => validateIrProgram([{ op: "flags.boundary", mask: 1 << 6 }, { op: "next" }]),
+    () => validateIrBlock([{ op: "flags.boundary", mask: 1 << 6 }, { op: "next" }]),
     /flags\.boundary mask must contain only IR aluFlags bits/
   );
 });
@@ -74,7 +74,7 @@ test("validator rejects invalid aluFlags operation masks", () => {
 test("validator rejects malformed flag producer inputs", () => {
   throws(
     () =>
-      validateIrProgram([
+      validateIrBlock([
         { op: "const32", dst: irVar(0), value: 1 },
         createIrFlagSetOp("logic32", {}),
         { op: "next" }
@@ -84,7 +84,7 @@ test("validator rejects malformed flag producer inputs", () => {
 
   throws(
     () =>
-      validateIrProgram([
+      validateIrBlock([
         { op: "const32", dst: irVar(0), value: 1 },
         createIrFlagSetOp("logic32", { result: irVar(0), extra: irVar(0) }),
         { op: "next" }
@@ -96,7 +96,7 @@ test("validator rejects malformed flag producer inputs", () => {
 test("validator rejects flag descriptors that disagree with producer metadata", () => {
   throws(
     () =>
-      validateIrProgram([
+      validateIrBlock([
         { op: "const32", dst: irVar(0), value: 1 },
         { ...createIrFlagSetOp("logic32", { result: irVar(0) }), writtenMask: 1 },
         { op: "next" }
@@ -106,7 +106,7 @@ test("validator rejects flag descriptors that disagree with producer metadata", 
 
   throws(
     () =>
-      validateIrProgram([
+      validateIrBlock([
         { op: "const32", dst: irVar(0), value: 1 },
         { ...createIrFlagSetOp("add32", { left: irVar(0), right: const32(1), result: irVar(0) }), undefMask: 1 },
         { op: "next" }
@@ -120,7 +120,7 @@ test("validator rejects unsupported flag producer conditions", () => {
 
   throws(
     () =>
-      validateIrProgram([
+      validateIrBlock([
         { op: "const32", dst: irVar(0), value: 1 },
         createIrFlagProducerConditionOp(irVar(1), "E", descriptor),
         { op: "next" }

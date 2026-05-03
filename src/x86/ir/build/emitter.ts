@@ -24,14 +24,14 @@ import type {
   RegRef,
   IrBuilder,
   IrOp,
-  IrProgram,
+  IrBlock,
   StorageInput,
   TargetInput,
   VarRef,
   ValueInput
 } from "#x86/ir/model/types.js";
 
-export type IrProgramTerminator = IrTerminatorOp["op"];
+export type IrBlockTerminator = IrTerminatorOp["op"];
 
 export type IrEmitterOptions = Readonly<{
   ops?: IrOp[];
@@ -44,7 +44,7 @@ export class IrEmitter implements IrBuilder {
   readonly #allocateVarOverride: (() => VarRef) | undefined;
   readonly #resolveOperand: (index: number) => OperandRef;
   #nextVarId = 0;
-  #terminator: IrProgramTerminator | undefined;
+  #terminator: IrBlockTerminator | undefined;
 
   constructor(options: IrEmitterOptions = {}) {
     this.#ops = options.ops ?? [];
@@ -200,29 +200,29 @@ export class IrEmitter implements IrBuilder {
     this.#push({ op: "hostTrap", vector: toValueRef(vector) });
   }
 
-  finish(): IrProgramTerminator {
+  finish(): IrBlockTerminator {
     if (this.#terminator === undefined) {
       this.next();
     }
 
     if (this.#terminator === undefined) {
-      throw new Error("IR program is missing a terminator");
+      throw new Error("IR block is missing a terminator");
     }
 
     return this.#terminator;
   }
 
-  program(): IrProgram {
+  block(): IrBlock {
     this.finish();
     return [...this.#ops];
   }
 }
 
-export function irProgramTerminator(program: IrProgram): IrProgramTerminator {
-  const terminator = program[program.length - 1];
+export function irBlockTerminator(block: IrBlock): IrBlockTerminator {
+  const terminator = block[block.length - 1];
 
   if (terminator === undefined || !isIrTerminatorOp(terminator)) {
-    throw new Error("IR program is missing a terminator");
+    throw new Error("IR block is missing a terminator");
   }
 
   return terminator.op;

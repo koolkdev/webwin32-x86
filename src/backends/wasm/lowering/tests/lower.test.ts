@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { Reg32 } from "#x86/isa/types.js";
 import { buildIr } from "#x86/ir/build/builder.js";
 import type { IrExpressionOptions, IrStorageExpr, IrValueExpr } from "#x86/ir/model/expressions.js";
-import type { IrProgram } from "#x86/ir/model/types.js";
+import type { IrBlock } from "#x86/ir/model/types.js";
 import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
@@ -77,7 +77,7 @@ test("lowerIrToWasm uses a reused input slot for a materialized let destination"
   strictEqual(scratch.maxLive, 1);
 });
 
-async function instantiateLoweredBinary(program: IrProgram): Promise<(left: number, right: number) => number> {
+async function instantiateLoweredBinary(program: IrBlock): Promise<(left: number, right: number) => number> {
   const module = await WebAssembly.compile(encodeLoweredBinaryModule(program));
   const instance = await WebAssembly.instantiate(module);
   const run = instance.exports.run;
@@ -89,7 +89,7 @@ async function instantiateLoweredBinary(program: IrProgram): Promise<(left: numb
   return run as (left: number, right: number) => number;
 }
 
-function encodeLoweredBinaryModule(program: IrProgram): Uint8Array<ArrayBuffer> {
+function encodeLoweredBinaryModule(program: IrBlock): Uint8Array<ArrayBuffer> {
   const module = new WasmModuleEncoder();
   const typeIndex = module.addFunctionType({
     params: [wasmValueType.i32, wasmValueType.i32],
@@ -150,7 +150,7 @@ function encodeLoweredBinaryModule(program: IrProgram): Uint8Array<ArrayBuffer> 
 }
 
 function lowerWithTrackingScratch(
-  program: IrProgram,
+  program: IrBlock,
   expression: IrExpressionOptions
 ): TrackingScratchAllocator {
   const body = new WasmFunctionBodyEncoder(2);

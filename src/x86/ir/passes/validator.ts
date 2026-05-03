@@ -1,20 +1,20 @@
 import { assertIrAluFlagMask, IR_FLAG_MASK_NONE } from "./flag-analysis.js";
 import { canUseFlagProducerCondition, type IrFlagProducerDescriptor } from "#x86/ir/model/flag-conditions.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
-import type { FlagMask, IrOp, IrProgram, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
+import type { FlagMask, IrOp, IrBlock, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
 
-export type ValidateIrOptions = Readonly<{
+export type ValidateIrBlockOptions = Readonly<{
   operandCount?: number;
   terminatorMode?: "single" | "multi";
 }>;
 
-export function validateIrProgram(program: IrProgram, options: ValidateIrOptions = {}): void {
+export function validateIrBlock(block: IrBlock, options: ValidateIrBlockOptions = {}): void {
   const definedVars = new Set<number>();
   const terminatorMode = options.terminatorMode ?? "single";
   let terminatorCount = 0;
   let sawTerminator = false;
 
-  for (const op of program) {
+  for (const op of block) {
     if (sawTerminator && terminatorMode === "single") {
       throw new Error(`IR op ${op.op} appears after terminator`);
     }
@@ -29,18 +29,18 @@ export function validateIrProgram(program: IrProgram, options: ValidateIrOptions
   }
 
   if (terminatorMode === "single" && terminatorCount !== 1) {
-    throw new Error(`IR program must contain exactly one terminator, got ${terminatorCount}`);
+    throw new Error(`IR block must contain exactly one terminator, got ${terminatorCount}`);
   }
 
   if (terminatorMode === "multi" && terminatorCount === 0) {
-    throw new Error("IR program must contain at least one terminator");
+    throw new Error("IR block must contain at least one terminator");
   }
 }
 
 function validateOpUses(
   op: IrOp,
   definedVars: ReadonlySet<number>,
-  options: ValidateIrOptions
+  options: ValidateIrBlockOptions
 ): void {
   switch (op.op) {
     case "get32":
@@ -123,7 +123,7 @@ function opDst(op: IrOp): VarRef | undefined {
 function validateStorageRef(
   storage: StorageRef,
   definedVars: ReadonlySet<number>,
-  options: ValidateIrOptions
+  options: ValidateIrBlockOptions
 ): void {
   if (storage.kind === "operand") {
     validateOperandIndex(storage.index, options);
@@ -195,7 +195,7 @@ function validateFlagProducerCondition(op: Extract<IrOp, { op: "flagProducer.con
   }
 }
 
-function validateOperandIndex(index: number, options: ValidateIrOptions): void {
+function validateOperandIndex(index: number, options: ValidateIrBlockOptions): void {
   if (options.operandCount === undefined) {
     return;
   }

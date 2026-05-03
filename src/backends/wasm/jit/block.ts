@@ -1,11 +1,11 @@
 import type { IsaDecodedInstruction } from "#x86/isa/decoder/types.js";
-import { validateIrProgram } from "#x86/ir/passes/validator.js";
+import { validateIrBlock } from "#x86/ir/passes/validator.js";
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "#backends/wasm/abi.js";
 import { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
-import { JitIrProgramBuilder } from "./lowering/program-builder.js";
+import { JitIrBlockBuilder } from "./lowering/block-builder.js";
 import { prepareJitIrBlockForLowering } from "./lowering/ir-optimization.js";
 import { lowerIrWithJitContext } from "./lowering/ir-context.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
@@ -18,7 +18,7 @@ export function buildJitIrBlock(instructions: readonly IsaDecodedInstruction[]):
     throw new Error("cannot build empty JIT IR block");
   }
 
-  const builder = new JitIrProgramBuilder();
+  const builder = new JitIrBlockBuilder();
 
   for (let index = 0; index < instructions.length; index += 1) {
     const instruction = instructions[index]!;
@@ -39,7 +39,7 @@ export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
     throw new Error("cannot encode empty JIT IR block");
   }
 
-  validateIrProgram(loweringBlock.ir, {
+  validateIrBlock(loweringBlock.ir, {
     operandCount: loweringBlock.operands.length,
     terminatorMode: "multi"
   });

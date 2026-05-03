@@ -9,12 +9,12 @@ import {
 } from "./flag-analysis.js";
 import { canUseFlagProducerCondition } from "#x86/ir/model/flag-conditions.js";
 import { createIrFlagProducerConditionOp } from "#x86/ir/model/flags.js";
-import type { IrOptimizationPass, IrOptimizationResult } from "./optimization.js";
-import type { FlagMask, IrFlagSetOp, IrOp, IrProgram } from "#x86/ir/model/types.js";
+import type { IrBlockOptimizationPass, IrBlockOptimizationResult } from "./optimization.js";
+import type { FlagMask, IrFlagSetOp, IrOp, IrBlock } from "#x86/ir/model/types.js";
 
 export type DeadFlagSetPruningOptions = IrFlagLivenessOptions;
 
-export type IrFlagPruneResult = IrOptimizationResult & Readonly<{
+export type IrFlagPruneResult = IrBlockOptimizationResult & Readonly<{
   prunedCount: number;
 }>;
 
@@ -32,7 +32,7 @@ export type IrFlagBoundaryPoint = Readonly<{
 
 export type IrFlagPointSource<Point> =
   | readonly Point[]
-  | ((program: IrProgram) => readonly Point[]);
+  | ((block: IrBlock) => readonly Point[]);
 
 export type IrFlagMaterializationOptions = Readonly<{
   points?: IrFlagPointSource<IrFlagMaterializationPoint>;
@@ -42,15 +42,15 @@ export type IrFlagBoundaryInsertionOptions = Readonly<{
   points?: IrFlagPointSource<IrFlagBoundaryPoint>;
 }>;
 
-export type IrFlagMaterializationResult = IrOptimizationResult & Readonly<{
+export type IrFlagMaterializationResult = IrBlockOptimizationResult & Readonly<{
   insertedCount: number;
 }>;
 
-export type IrFlagBoundaryInsertionResult = IrOptimizationResult & Readonly<{
+export type IrFlagBoundaryInsertionResult = IrBlockOptimizationResult & Readonly<{
   insertedCount: number;
 }>;
 
-export type IrAluFlagsConditionSpecializationResult = IrOptimizationResult & Readonly<{
+export type IrAluFlagsConditionSpecializationResult = IrBlockOptimizationResult & Readonly<{
   specializedCount: number;
 }>;
 
@@ -60,36 +60,36 @@ type FlagSource =
 
 export function createDeadFlagSetPruningPass(
   options: DeadFlagSetPruningOptions = {}
-): IrOptimizationPass {
-  return (program) => pruneDeadFlagSets(program, options);
+): IrBlockOptimizationPass {
+  return (block) => pruneDeadFlagSets(block, options);
 }
 
 export function createFlagMaterializationPass(
   options: IrFlagMaterializationOptions = {}
-): IrOptimizationPass {
-  return (program) => insertFlagMaterializations(program, options);
+): IrBlockOptimizationPass {
+  return (block) => insertFlagMaterializations(block, options);
 }
 
 export function createFlagBoundaryInsertionPass(
   options: IrFlagBoundaryInsertionOptions = {}
-): IrOptimizationPass {
-  return (program) => insertFlagBoundaries(program, options);
+): IrBlockOptimizationPass {
+  return (block) => insertFlagBoundaries(block, options);
 }
 
-export function createAluFlagsConditionSpecializationPass(): IrOptimizationPass {
+export function createAluFlagsConditionSpecializationPass(): IrBlockOptimizationPass {
   return specializeAluFlagsConditions;
 }
 
 export function pruneDeadFlagSets(
-  program: IrProgram,
+  block: IrBlock,
   options: DeadFlagSetPruningOptions = {}
 ): IrFlagPruneResult {
-  const liveness = analyzeIrFlagLiveness(program, options);
+  const liveness = analyzeIrFlagLiveness(block, options);
   const optimized: IrOp[] = [];
   let prunedCount = 0;
 
-  for (let index = 0; index < program.length; index += 1) {
-    const op = program[index];
+  for (let index = 0; index < block.length; index += 1) {
+    const op = block[index];
     const flags = liveness[index];
 
     if (op === undefined || flags === undefined) {
@@ -104,21 +104,21 @@ export function pruneDeadFlagSets(
     optimized.push(op);
   }
 
-  return { program: optimized, prunedCount };
+  return { block: optimized, prunedCount };
 }
 
 export function insertFlagMaterializations(
-  program: IrProgram,
+  block: IrBlock,
   options: IrFlagMaterializationOptions = {}
 ): IrFlagMaterializationResult {
-  const pointMasks = flagMaterializationPointMasks(program, resolveFlagPoints(program, options.points));
+  const pointMasks = flagMaterializationPointMasks(block, resolveFlagPoints(block, options.points));
   const optimized: IrOp[] = [];
   let pendingFlags = false;
   let availableFlags = IR_FLAG_MASK_NONE;
   let insertedCount = 0;
 
-  for (let index = 0; index < program.length; index += 1) {
-    const op = program[index];
+  for (let index = 0; index < block.length; index += 1) {
+    const op = block[index];
 
     if (op === undefined) {
       throw new Error(`missing IR op while inserting flag materializations: ${index}`);
@@ -148,18 +148,18 @@ export function insertFlagMaterializations(
     }
   }
 
-  return { program: optimized, insertedCount };
+  return { block: optimized, insertedCount };
 }
 
 export function insertFlagBoundaries(
-  program: IrProgram,
+  block: IrBlock,
   options: IrFlagBoundaryInsertionOptions = {}
 ): IrFlagBoundaryInsertionResult {
-  const pointMasks = flagBoundaryPointMasks(program, resolveFlagPoints(program, options.points));
+  const pointMasks = flagBoundaryPointMasks(block, resolveFlagPoints(block, options.points));
   const optimized: IrOp[] = [];
   let insertedCount = 0;
 
-  for (let index = 0; index < program.length; index += 1) {
+  for (let index = 0; index < block.length; index += 1) {
     const boundaryMask = pointMasks[index]!;
 
     if (boundaryMask !== IR_FLAG_MASK_NONE) {
@@ -167,7 +167,7 @@ export function insertFlagBoundaries(
       insertedCount += 1;
     }
 
-    const op = program[index];
+    const op = block[index];
 
     if (op === undefined) {
       throw new Error(`missing IR op while inserting flag boundaries: ${index}`);
@@ -176,18 +176,18 @@ export function insertFlagBoundaries(
     optimized.push(op);
   }
 
-  return { program: optimized, insertedCount };
+  return { block: optimized, insertedCount };
 }
 
-export function specializeAluFlagsConditions(program: IrProgram): IrAluFlagsConditionSpecializationResult {
+export function specializeAluFlagsConditions(block: IrBlock): IrAluFlagsConditionSpecializationResult {
   const optimized: IrOp[] = [];
   const flagSources = new Map<number, FlagSource>(
     aluFlagMasks.map((mask) => [mask, incomingFlagSource])
   );
   let specializedCount = 0;
 
-  for (let index = 0; index < program.length; index += 1) {
-    const op = program[index];
+  for (let index = 0; index < block.length; index += 1) {
+    const op = block[index];
 
     if (op === undefined) {
       throw new Error(`missing IR op while specializing flag conditions: ${index}`);
@@ -210,21 +210,21 @@ export function specializeAluFlagsConditions(program: IrProgram): IrAluFlagsCond
     }
   }
 
-  return { program: optimized, specializedCount };
+  return { block: optimized, specializedCount };
 }
 
 function flagMaterializationPointMasks(
-  program: IrProgram,
+  block: IrBlock,
   points: readonly IrFlagMaterializationPoint[]
 ): readonly FlagMask[] {
-  return irIndexedFlagPointMasks(program, points, "IR flag materialization point").before;
+  return irIndexedFlagPointMasks(block, points, "IR flag materialization point").before;
 }
 
 function flagBoundaryPointMasks(
-  program: IrProgram,
+  block: IrBlock,
   points: readonly IrFlagBoundaryPoint[]
 ): readonly FlagMask[] {
-  return irIndexedFlagPointMasks(program, points, "IR flag boundary point").before;
+  return irIndexedFlagPointMasks(block, points, "IR flag boundary point").before;
 }
 
 function implicitMaterializationReadMask(op: IrOp): FlagMask {
@@ -234,10 +234,10 @@ function implicitMaterializationReadMask(op: IrOp): FlagMask {
 }
 
 function resolveFlagPoints<Point>(
-  program: IrProgram,
+  block: IrBlock,
   points: IrFlagPointSource<Point> | undefined
 ): readonly Point[] {
-  return typeof points === "function" ? points(program) : points ?? [];
+  return typeof points === "function" ? points(block) : points ?? [];
 }
 
 function commonProducerSource(

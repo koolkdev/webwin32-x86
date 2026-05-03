@@ -1,7 +1,7 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { IrStorageExpr, IrValueExpr } from "#x86/ir/model/expressions.js";
 import type {
-  IrProgram,
+  IrBlock,
   StorageRef
 } from "#x86/ir/model/types.js";
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
@@ -52,11 +52,11 @@ export type InterpreterIrContext = Readonly<{
   instructionDoneLabelDepth: number;
 }>;
 
-export function lowerIrWithInterpreterContext(program: IrProgram, context: InterpreterIrContext): void {
+export function lowerIrWithInterpreterContext(block: IrBlock, context: InterpreterIrContext): void {
   const aluFlags = wasmIrLocalAluFlagsStorage(context.body, context.state.aluFlagsLocal);
   const regs = wasmIrLocalReg32Storage(context.body, context.state.regs);
 
-  lowerIrToWasm(program, {
+  lowerIrToWasm(block, {
     body: context.body,
     scratch: context.scratch,
     expression: { canInlineGet32: (source) => canInlineGet32(context, source) },

@@ -1,5 +1,5 @@
-import { IrEmitter, irProgramTerminator } from "./emitter.js";
-import type { SemanticTemplate, IrProgram } from "#x86/ir/model/types.js";
+import { IrEmitter, irBlockTerminator } from "./emitter.js";
+import type { SemanticTemplate, IrBlock } from "#x86/ir/model/types.js";
 
 export {
   const32,
@@ -9,12 +9,12 @@ export {
   reg32,
   irVar
 } from "#x86/ir/model/refs.js";
-export { irProgramTerminator };
-export type { IrProgramTerminator } from "./emitter.js";
+export { irBlockTerminator };
+export type { IrBlockTerminator } from "./emitter.js";
 
-export function buildIr(template: SemanticTemplate): IrProgram {
+export function buildIr(template: SemanticTemplate): IrBlock {
   const builder = new IrEmitter();
 
   template(builder);
-  return builder.program();
+  return builder.block();
 }

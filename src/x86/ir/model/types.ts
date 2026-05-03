@@ -79,8 +79,7 @@ export type IrOp =
   | Readonly<{ op: "conditionalJump"; condition: ValueRef; taken: TargetRef; notTaken: TargetRef }>
   | Readonly<{ op: "hostTrap"; vector: ValueRef }>;
 
-export type IrBody = readonly IrOp[];
-export type IrProgram = IrBody;
+export type IrBlock = readonly IrOp[];
 export type SemanticTemplate = (builder: IrBuilder) => void;
 
 export interface IrBuilder {

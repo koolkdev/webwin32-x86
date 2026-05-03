@@ -1,26 +1,26 @@
 import { deepStrictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { optimizeIrProgram } from "#x86/ir/passes/optimization.js";
-import type { IrOptimizationPass } from "#x86/ir/passes/optimization.js";
-import type { IrProgram } from "#x86/ir/model/types.js";
+import { optimizeIrBlock } from "#x86/ir/passes/optimization.js";
+import type { IrBlockOptimizationPass } from "#x86/ir/passes/optimization.js";
+import type { IrBlock } from "#x86/ir/model/types.js";
 
 const program = [
   { op: "get32", dst: { kind: "var", id: 0 }, source: { kind: "reg", reg: "eax" } },
   { op: "get32", dst: { kind: "var", id: 1 }, source: { kind: "reg", reg: "ebx" } },
   { op: "set32", target: { kind: "reg", reg: "ecx" }, value: { kind: "var", id: 0 } },
   { op: "next" }
-] as const satisfies IrProgram;
+] as const satisfies IrBlock;
 
 test("IR optimization pipeline applies passes in order", () => {
-  const removeSecondOp: IrOptimizationPass = (input) => ({
-    program: [input[0]!, input[2]!, input[3]!]
+  const removeSecondOp: IrBlockOptimizationPass = (input) => ({
+    block: [input[0]!, input[2]!, input[3]!]
   });
-  const removeNewSecondOp: IrOptimizationPass = (input) => ({
-    program: [input[0]!, input[2]!]
+  const removeNewSecondOp: IrBlockOptimizationPass = (input) => ({
+    block: [input[0]!, input[2]!]
   });
 
-  deepStrictEqual(optimizeIrProgram(program, [removeSecondOp, removeNewSecondOp]), {
-    program: [program[0], program[3]]
+  deepStrictEqual(optimizeIrBlock(program, [removeSecondOp, removeNewSecondOp]), {
+    block: [program[0], program[3]]
   });
 });
