@@ -116,7 +116,7 @@ test("validator rejects flag descriptors that disagree with producer metadata", 
 });
 
 test("validator rejects unsupported flag producer conditions", () => {
-  const descriptor = createIrFlagSetOp("logic32", { result: irVar(0) });
+  const descriptor = createIrFlagSetOp("inc32", { left: irVar(0), result: irVar(0) });
 
   throws(
     () =>
@@ -125,6 +125,6 @@ test("validator rejects unsupported flag producer conditions", () => {
         createIrFlagProducerConditionOp(irVar(1), "B", descriptor),
         { op: "next" }
       ]),
-    /flagProducer\.condition logic32\/B is not supported/
+    /flagProducer\.condition inc32\/B is not supported/
   );
 });

@@ -273,6 +273,20 @@ function evalFlagProducerCondition(context: ExecutionContext, condition: IrFlagP
       return hasEvenParityLowByte(evalFlagProducerConditionResult(context, condition));
     case "notParity8":
       return !hasEvenParityLowByte(evalFlagProducerConditionResult(context, condition));
+    case "constTrue":
+      return true;
+    case "constFalse":
+      return false;
+    case "zeroOrSign32": {
+      const result = evalFlagProducerConditionResult(context, condition);
+
+      return result === 0 || (result & 0x8000_0000) !== 0;
+    }
+    case "nonZeroAndNotSign32": {
+      const result = evalFlagProducerConditionResult(context, condition);
+
+      return result !== 0 && (result & 0x8000_0000) === 0;
+    }
     case undefined:
       throw new Error(`unsupported flag producer condition: ${condition.producer}/${condition.cc}`);
   }

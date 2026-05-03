@@ -3,7 +3,11 @@ import { test } from "node:test";
 
 import { irVar } from "#x86/ir/build/builder.js";
 import { CONDITIONS } from "#x86/ir/model/conditions.js";
-import { canUseFlagProducerCondition, flagProducerConditionKind } from "#x86/ir/model/flag-conditions.js";
+import {
+  canUseFlagProducerCondition,
+  flagProducerConditionInputNames,
+  flagProducerConditionKind
+} from "#x86/ir/model/flag-conditions.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS, maskIrAluFlags } from "#x86/ir/passes/flag-analysis.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import type { ConditionCode, FlagProducerName, IrFlagSetOp } from "#x86/ir/model/types.js";
@@ -182,6 +186,29 @@ test("result flag producers support direct result condition emission", () => {
   deepStrictEqual(flagProducerConditionKind({ producer: "sub32", cc: "E" }), "eq32");
   deepStrictEqual(flagProducerConditionKind({ producer: "sub32", cc: "E", inputs: { result } }), "zero32");
   deepStrictEqual(canUseFlagProducerCondition(createDescriptor("inc32"), "B"), false);
+});
+
+test("logic32 producer folds conditions that depend on cleared carry and overflow", () => {
+  const cases: readonly [ConditionCode, NonNullable<ReturnType<typeof flagProducerConditionKind>>][] = [
+    ["O", "constFalse"],
+    ["B", "constFalse"],
+    ["NO", "constTrue"],
+    ["AE", "constTrue"],
+    ["BE", "zero32"],
+    ["A", "nonZero32"],
+    ["L", "sign32"],
+    ["GE", "notSign32"],
+    ["LE", "zeroOrSign32"],
+    ["G", "nonZeroAndNotSign32"]
+  ];
+
+  deepStrictEqual(
+    cases.map(([cc]) => flagProducerConditionKind({ producer: "logic32", cc })),
+    cases.map(([, kind]) => kind)
+  );
+  deepStrictEqual(flagProducerConditionInputNames({ producer: "logic32", cc: "B" }), []);
+  deepStrictEqual(flagProducerConditionInputNames({ producer: "logic32", cc: "LE" }), ["result"]);
+  deepStrictEqual(canUseFlagProducerCondition(createDescriptor("logic32"), "B"), true);
 });
 
 function createDescriptor(producer: FlagProducerName): Pick<IrFlagSetOp, "producer" | "writtenMask" | "undefMask" | "inputs"> {

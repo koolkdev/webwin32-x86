@@ -97,7 +97,7 @@ function directVirtualFlagCondition(
   block: JitIrBlock,
   read: JitVirtualFlagRead
 ): JitDirectVirtualFlagCondition | undefined {
-  if (read.reason !== "condition" || read.cc === undefined || read.conditionConsumer !== "ordinaryCondition") {
+  if (read.reason !== "condition" || read.cc === undefined || read.conditionUse !== "localCondition") {
     return undefined;
   }
 

@@ -48,7 +48,7 @@ export type JitVirtualFlagOwnerMask = Readonly<{
   owner: JitVirtualFlagOwner;
 }>;
 
-export type JitVirtualFlagConditionConsumer = "ordinaryCondition" | "branchCondition";
+export type JitVirtualFlagConditionUse = "localCondition" | "exitCondition";
 
 export type JitVirtualFlagRead = Readonly<{
   instructionIndex: number;
@@ -56,7 +56,7 @@ export type JitVirtualFlagRead = Readonly<{
   reason: "condition" | "materialize" | "boundary" | "memoryFault" | "exit";
   requiredMask: number;
   cc?: ConditionCode;
-  conditionConsumer?: JitVirtualFlagConditionConsumer;
+  conditionUse?: JitVirtualFlagConditionUse;
   owners: readonly JitVirtualFlagOwnerMask[];
 }>;
 
@@ -166,7 +166,7 @@ export function analyzeJitVirtualFlags(block: JitIrBlock): JitVirtualFlagAnalysi
           reason: "condition",
           requiredMask: conditionFlagReadMask(op.cc),
           cc: op.cc,
-          conditionConsumer: conditionConsumer(instruction, op)
+          conditionUse: conditionUse(instruction, op)
         });
         return;
       case "flags.materialize":
@@ -259,17 +259,17 @@ export function analyzeJitVirtualFlags(block: JitIrBlock): JitVirtualFlagAnalysi
   }
 }
 
-function conditionConsumer(
+function conditionUse(
   instruction: JitIrBlockInstruction,
   op: Extract<IrOp, { op: "aluFlags.condition" }>
-): JitVirtualFlagConditionConsumer {
+): JitVirtualFlagConditionUse {
   return instruction.ir.some((entry) =>
     entry.op === "conditionalJump" &&
     entry.condition.kind === "var" &&
     entry.condition.id === op.dst.id
   )
-    ? "branchCondition"
-    : "ordinaryCondition";
+    ? "exitCondition"
+    : "localCondition";
 }
 
 function recordGet32(

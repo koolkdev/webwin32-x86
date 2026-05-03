@@ -14,7 +14,11 @@ export type IrFlagProducerConditionKind =
   | "sign32"
   | "notSign32"
   | "parity8"
-  | "notParity8";
+  | "notParity8"
+  | "constTrue"
+  | "constFalse"
+  | "zeroOrSign32"
+  | "nonZeroAndNotSign32";
 
 export type IrFlagProducerConditionDescriptor = Pick<
   IrFlagProducerConditionOp,
@@ -29,6 +33,37 @@ export type IrFlagProducerDescriptor = Pick<
 export function flagProducerConditionKind(
   condition: Pick<IrFlagProducerConditionOp, "cc" | "producer"> & Partial<Pick<IrFlagProducerConditionOp, "inputs">>
 ): IrFlagProducerConditionKind | undefined {
+  if (condition.producer === "logic32") {
+    switch (condition.cc) {
+      case "O":
+      case "B":
+        return "constFalse";
+      case "NO":
+      case "AE":
+        return "constTrue";
+      case "E":
+      case "BE":
+        return "zero32";
+      case "NE":
+      case "A":
+        return "nonZero32";
+      case "S":
+      case "L":
+        return "sign32";
+      case "NS":
+      case "GE":
+        return "notSign32";
+      case "P":
+        return "parity8";
+      case "NP":
+        return "notParity8";
+      case "LE":
+        return "zeroOrSign32";
+      case "G":
+        return "nonZeroAndNotSign32";
+    }
+  }
+
   if (condition.producer === "sub32" && !conditionUsesOnlyResultInput(condition)) {
     switch (condition.cc) {
       case "E":
@@ -76,11 +111,11 @@ export function canUseFlagProducerCondition(
   descriptor: IrFlagProducerDescriptor,
   cc: ConditionCode
 ): boolean {
-  return flagProducerConditionKind({ producer: descriptor.producer, cc }) !== undefined;
+  return flagProducerConditionKind({ producer: descriptor.producer, cc, inputs: descriptor.inputs }) !== undefined;
 }
 
 export function flagProducerConditionInputNames(
-  condition: Pick<IrFlagProducerConditionOp, "cc" | "producer">
+  condition: Pick<IrFlagProducerConditionOp, "cc" | "producer"> & Partial<Pick<IrFlagProducerConditionOp, "inputs">>
 ): readonly string[] {
   switch (flagProducerConditionKind(condition)) {
     case "eq32":
@@ -98,7 +133,12 @@ export function flagProducerConditionInputNames(
     case "notSign32":
     case "parity8":
     case "notParity8":
+    case "zeroOrSign32":
+    case "nonZeroAndNotSign32":
       return ["result"];
+    case "constTrue":
+    case "constFalse":
+      return [];
     case undefined:
       throw new Error(`unsupported flag producer condition: ${condition.producer}/${condition.cc}`);
   }

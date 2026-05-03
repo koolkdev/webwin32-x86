@@ -171,7 +171,7 @@ test("analyzeJitVirtualFlags keeps partial flag ownership across INC", () => {
 
   deepStrictEqual(analysis.sources.map((source) => source.producer), ["add32", "inc32"]);
   strictEqual(conditionRead?.cc, "B");
-  strictEqual(conditionRead?.conditionConsumer, "branchCondition");
+  strictEqual(conditionRead?.conditionUse, "exitCondition");
   strictEqual(conditionRead?.requiredMask, IR_ALU_FLAG_MASKS.CF);
   deepStrictEqual(flagOwnerSummary(conditionRead?.owners ?? []), [
     { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add32" }
@@ -186,8 +186,8 @@ test("analyzeJitVirtualFlags keeps partial flag ownership across INC", () => {
   ]);
 });
 
-test("analyzeJitVirtualFlags classifies ordinary and branch condition consumers", () => {
-  const ordinary = analyzeJitVirtualFlags({
+test("analyzeJitVirtualFlags classifies local and exit-coupled condition uses", () => {
+  const local = analyzeJitVirtualFlags({
     instructions: [
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
@@ -196,7 +196,7 @@ test("analyzeJitVirtualFlags classifies ordinary and branch condition consumers"
       ])
     ]
   });
-  const reusedBranch = analyzeJitVirtualFlags({
+  const reusedExit = analyzeJitVirtualFlags({
     instructions: [
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
@@ -206,8 +206,8 @@ test("analyzeJitVirtualFlags classifies ordinary and branch condition consumers"
     ]
   });
 
-  strictEqual(ordinary.reads.find((read) => read.reason === "condition")?.conditionConsumer, "ordinaryCondition");
-  strictEqual(reusedBranch.reads.find((read) => read.reason === "condition")?.conditionConsumer, "branchCondition");
+  strictEqual(local.reads.find((read) => read.reason === "condition")?.conditionUse, "localCondition");
+  strictEqual(reusedExit.reads.find((read) => read.reason === "condition")?.conditionUse, "exitCondition");
 });
 
 test("analyzeJitVirtualFlags records memory-fault reads from instruction entry owners", () => {
@@ -388,6 +388,42 @@ test("materializeJitVirtualFlags emits sub32 equality from writeback registers",
       producer: "sub32",
       writtenMask: createIrFlagSetOp("sub32", { left: v(0), right: c32(1), result: v(1) }).writtenMask,
       undefMask: 0,
+      inputs: { result: v(1) }
+    }
+  ]);
+});
+
+test("materializeJitVirtualFlags emits logic32 compound conditions from writeback registers", () => {
+  const materialized = materializeJitVirtualFlags({
+    instructions: [
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "i32.and", dst: v(1), a: v(0), b: c32(0xff) },
+        createIrFlagSetOp("logic32", { result: v(1) }),
+        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        { op: "next" }
+      ], 0),
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "LE" },
+        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+        { op: "next" }
+      ], 1)
+    ]
+  });
+  const conditionInstruction = materialized.block.instructions[1]!;
+
+  strictEqual(materialized.flags.directConditionCount, 1);
+  strictEqual(materialized.flags.removedSetCount, 1);
+  strictEqual(materialized.flags.retainedSetCount, 0);
+  deepStrictEqual(conditionInstruction.ir.slice(0, 2), [
+    { op: "get32", dst: v(1), source: { kind: "reg", reg: "eax" } },
+    {
+      op: "flagProducer.condition",
+      dst: v(0),
+      cc: "LE",
+      producer: "logic32",
+      writtenMask: createIrFlagSetOp("logic32", { result: v(1) }).writtenMask,
+      undefMask: createIrFlagSetOp("logic32", { result: v(1) }).undefMask,
       inputs: { result: v(1) }
     }
   ]);

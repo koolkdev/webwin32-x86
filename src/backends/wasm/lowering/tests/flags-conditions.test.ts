@@ -106,6 +106,10 @@ test("emitFlagProducerCondition evaluates producer-backed result conditions dire
   const subZero = await instantiateResultFlagProducerCondition("sub32", "E");
   const addParity = await instantiateResultFlagProducerCondition("add32", "P");
   const logicNotParity = await instantiateResultFlagProducerCondition("logic32", "NP");
+  const logicBelow = await instantiateResultFlagProducerCondition("logic32", "B");
+  const logicAboveEqual = await instantiateResultFlagProducerCondition("logic32", "AE");
+  const logicLessEqual = await instantiateResultFlagProducerCondition("logic32", "LE");
+  const logicGreater = await instantiateResultFlagProducerCondition("logic32", "G");
 
   strictEqual(incZero(0), 1);
   strictEqual(incZero(1), 0);
@@ -117,6 +121,14 @@ test("emitFlagProducerCondition evaluates producer-backed result conditions dire
   strictEqual(subZero(1), 0);
   strictEqual(addParity(3), 1);
   strictEqual(logicNotParity(1), 1);
+  strictEqual(logicBelow(0), 0);
+  strictEqual(logicAboveEqual(0), 1);
+  strictEqual(logicLessEqual(0), 1);
+  strictEqual(logicLessEqual(0x8000_0000), 1);
+  strictEqual(logicLessEqual(1), 0);
+  strictEqual(logicGreater(1), 1);
+  strictEqual(logicGreater(0), 0);
+  strictEqual(logicGreater(0x8000_0000), 0);
 });
 
 async function instantiateSetFlags(

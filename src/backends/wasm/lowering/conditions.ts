@@ -80,6 +80,26 @@ export function emitFlagProducerCondition(
       emitResultParity(body, condition, helpers);
       body.i32Eqz();
       return;
+    case "constTrue":
+      body.i32Const(1);
+      return;
+    case "constFalse":
+      body.i32Const(0);
+      return;
+    case "zeroOrSign32":
+      emitResultInput(body, condition, helpers);
+      body.i32Eqz();
+      emitResultSign(body, condition, helpers);
+      body.i32Eqz().i32Eqz();
+      body.i32Or();
+      return;
+    case "nonZeroAndNotSign32":
+      emitResultInput(body, condition, helpers);
+      body.i32Eqz().i32Eqz();
+      emitResultSign(body, condition, helpers);
+      body.i32Eqz();
+      body.i32And();
+      return;
     case undefined:
       throw new Error(`unsupported flag producer condition: ${condition.producer}/${condition.cc}`);
   }
