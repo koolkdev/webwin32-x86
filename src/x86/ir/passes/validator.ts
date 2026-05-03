@@ -10,7 +10,7 @@ import type { FlagMask, IrOp, IrBlock, StorageRef, ValueRef } from "#x86/ir/mode
 
 export type ValidateIrBlockOptions = Readonly<{
   operandCount?: number;
-  terminatorMode?: "single" | "multi";
+  terminatorMode?: "none" | "single" | "multi";
 }>;
 
 export function validateIrBlock(block: IrBlock, options: ValidateIrBlockOptions = {}): void {
@@ -28,17 +28,28 @@ export function validateIrBlock(block: IrBlock, options: ValidateIrBlockOptions 
     defineOpVar(op, definedVars);
 
     if (isTerminator(op)) {
+      if (terminatorMode === "none") {
+        throw new Error(`IR block must not contain a terminator, got ${op.op}`);
+      }
+
       terminatorCount += 1;
       sawTerminator = true;
     }
   }
 
-  if (terminatorMode === "single" && terminatorCount !== 1) {
-    throw new Error(`IR block must contain exactly one terminator, got ${terminatorCount}`);
-  }
-
-  if (terminatorMode === "multi" && terminatorCount === 0) {
-    throw new Error("IR block must contain at least one terminator");
+  switch (terminatorMode) {
+    case "none":
+      return;
+    case "single":
+      if (terminatorCount !== 1) {
+        throw new Error(`IR block must contain exactly one terminator, got ${terminatorCount}`);
+      }
+      return;
+    case "multi":
+      if (terminatorCount === 0) {
+        throw new Error("IR block must contain at least one terminator");
+      }
+      return;
   }
 }
 

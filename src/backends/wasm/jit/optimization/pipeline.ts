@@ -1,4 +1,4 @@
-import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitOptimizedIrBlock } from "#backends/wasm/jit/types.js";
 import { analyzeJitOptimization } from "./analysis.js";
 import { pruneDeadJitLocalValues, type JitDeadLocalValuePruning } from "./dead-local-values.js";
 import { materializeJitVirtualFlags, type JitVirtualFlagMaterialization } from "./virtual-flags.js";
@@ -13,7 +13,7 @@ export const jitIrOptimizationPassOrder = [
 export type JitIrOptimizationPassName = typeof jitIrOptimizationPassOrder[number];
 
 export type JitIrOptimizationPipelineResult = Readonly<{
-  block: JitIrBlock;
+  block: JitOptimizedIrBlock;
   passes: Readonly<{
     virtualFlags: JitVirtualFlagMaterialization;
     deadLocalValues: JitDeadLocalValuePruning;

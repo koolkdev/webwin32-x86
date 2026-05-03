@@ -1,14 +1,14 @@
 import type { IrBlock, IrOp } from "#x86/ir/model/types.js";
 import type { JitBlockOptimization } from "#backends/wasm/jit/optimization/types.js";
-import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import type { JitOptimizedIrBlock } from "#backends/wasm/jit/types.js";
 
 const emptyBoundaryMaskByOpIndex = new Map<number, number>();
 
-export function buildJitLoweringBlock(optimization: JitBlockOptimization): JitIrBlock {
+export function buildJitLoweringBlock(optimization: JitBlockOptimization): JitOptimizedIrBlock {
   return insertFlagBoundaries(optimization.block, optimization);
 }
 
-function insertFlagBoundaries(block: JitIrBlock, optimization: JitBlockOptimization): JitIrBlock {
+function insertFlagBoundaries(block: JitOptimizedIrBlock, optimization: JitBlockOptimization): JitOptimizedIrBlock {
   const boundaryMasks = flagBoundaryMasks(optimization);
 
   if (boundaryMasks.size === 0) {

@@ -5,7 +5,7 @@ import type { Reg32 } from "#x86/isa/types.js";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import { foldJitVirtualRegisters } from "#backends/wasm/jit/optimization/virtual-registers.js";
-import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitIrBlockInstruction, JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import { set32TargetRegs, startAddress } from "./helpers.js";
 
 test("foldJitVirtualRegisters keeps transient register calculations virtual until exit", () => {
@@ -137,7 +137,8 @@ test("foldJitVirtualRegisters materializes address registers before faultable me
 
   strictEqual(folded.folding.removedSetCount, 1);
   strictEqual(folded.folding.materializedSetCount, 1);
-  strictEqual(hasSet32Reg(folded.block.instructions[0]!, "eax"), true);
+  strictEqual(hasSet32Reg(folded.block.instructions[0]!, "eax"), false);
+  strictEqual(hasPreludeSet32Reg(loadInstruction, "eax"), true);
   deepStrictEqual(loadInstruction.ir.map((op) => op.op), ["get32", "set32", "next"]);
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
@@ -155,7 +156,8 @@ test("foldJitVirtualRegisters materializes address registers before faultable me
 
   strictEqual(folded.folding.removedSetCount, 1);
   strictEqual(folded.folding.materializedSetCount, 1);
-  strictEqual(hasSet32Reg(folded.block.instructions[0]!, "eax"), true);
+  strictEqual(hasSet32Reg(folded.block.instructions[0]!, "eax"), false);
+  strictEqual(hasPreludeSet32Reg(storeInstruction, "eax"), true);
   strictEqual(storeInstruction.ir.some((op) => op.op === "set32" && op.target.kind === "operand"), true);
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
 });
@@ -179,4 +181,11 @@ function hasSet32Reg(
   reg: Reg32
 ): boolean {
   return instruction.ir.some((op) => op.op === "set32" && op.target.kind === "reg" && op.target.reg === reg);
+}
+
+function hasPreludeSet32Reg(
+  instruction: JitOptimizedIrBlockInstruction,
+  reg: Reg32
+): boolean {
+  return instruction.prelude.some((op) => op.op === "set32" && op.target.kind === "reg" && op.target.reg === reg);
 }

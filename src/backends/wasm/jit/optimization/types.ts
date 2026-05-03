@@ -1,6 +1,6 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import type { JitOptimizedIrBlock } from "#backends/wasm/jit/types.js";
 
 export type JitExitSnapshotKind = "preInstruction" | "postInstruction";
 
@@ -51,7 +51,7 @@ export type JitExitState = Readonly<{
 }>;
 
 export type JitBlockOptimization = Readonly<{
-  block: JitIrBlock;
+  block: JitOptimizedIrBlock;
   instructionStates: readonly JitInstructionState[];
   exitPoints: readonly JitExitPoint[];
   flagMaterializationRequirements: readonly JitFlagMaterializationRequirement[];

@@ -6,7 +6,11 @@ import type { ConditionCode, IrBlock, ValueRef, VarRef } from "#x86/ir/model/typ
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitExitPoint } from "#backends/wasm/jit/optimization/types.js";
 import type { JitVirtualFlagOwnerMask } from "#backends/wasm/jit/optimization/virtual-flags.js";
-import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type {
+  JitIrBlock,
+  JitIrBlockInstruction,
+  JitOptimizedIrBlockInstruction
+} from "#backends/wasm/jit/types.js";
 
 export const startAddress = 0x1000;
 
@@ -51,9 +55,11 @@ export function syntheticInstruction(
   };
 }
 
-export function set32TargetRegs(instructions: readonly JitIrBlockInstruction[]): readonly Reg32[] {
+export function set32TargetRegs(
+  instructions: readonly (JitIrBlockInstruction | JitOptimizedIrBlockInstruction)[]
+): readonly Reg32[] {
   return instructions.flatMap((instruction) =>
-    instruction.ir.flatMap((op) => {
+    instructionOps(instruction).flatMap((op) => {
       if (op.op !== "set32") {
         return [];
       }
@@ -71,6 +77,12 @@ export function set32TargetRegs(instructions: readonly JitIrBlockInstruction[]):
       }
     })
   );
+}
+
+function instructionOps(instruction: JitIrBlockInstruction | JitOptimizedIrBlockInstruction): IrBlock {
+  return "prelude" in instruction
+    ? [...instruction.prelude, ...instruction.ir]
+    : instruction.ir;
 }
 
 export function flagOwnerSummary(owners: readonly JitVirtualFlagOwnerMask[]): readonly object[] {

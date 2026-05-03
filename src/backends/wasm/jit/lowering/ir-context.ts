@@ -19,9 +19,9 @@ import {
 } from "./operands.js";
 import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/optimization/types.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
-import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
 
-export type JitIrInstructionContext = Pick<JitIrBlockInstruction, "ir" | "operands"> & Pick<
+export type JitIrInstructionContext = Pick<JitOptimizedIrBlockInstruction, "prelude" | "ir" | "operands"> & Pick<
   JitInstructionState,
   | "instructionId"
   | "eip"
@@ -55,9 +55,9 @@ export type JitIrContext = Readonly<{
 export function lowerIrWithJitContext(context: JitIrBlockLoweringContext): void {
   const jitContext = createJitIrContext(context);
 
-  beginInstruction(jitContext, context.exit, jitContext.currentInstruction());
-
   for (let index = 0; index < context.instructions.length; index += 1) {
+    lowerCurrentPrelude(jitContext);
+    beginInstruction(jitContext, context.exit, jitContext.currentInstruction());
     lowerCurrentInstruction(jitContext);
   }
 }
@@ -119,18 +119,20 @@ function createJitIrContext(context: JitIrBlockLoweringContext): JitIrContext {
     advanceInstruction: () => {
       instructionIndex += 1;
       completedPreInstructionExitPointCount = 0;
-
-      const instruction = context.instructions[instructionIndex];
-
-      if (instruction !== undefined) {
-        beginInstruction(context, context.exit, instruction);
-      }
     }
   };
 }
 
+function lowerCurrentPrelude(jitContext: JitIrContext): void {
+  lowerJitIrBlock(jitContext, jitContext.currentInstruction().prelude);
+}
+
 function lowerCurrentInstruction(jitContext: JitIrContext): void {
-  lowerIrToWasm(jitContext.currentInstruction().ir, {
+  lowerJitIrBlock(jitContext, jitContext.currentInstruction().ir);
+}
+
+function lowerJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["ir"]): void {
+  lowerIrToWasm(ir, {
     body: jitContext.body,
     scratch: jitContext.scratch,
     expression: { canInlineGet32: (source) => canInlineJitGet32(jitContext, source) },

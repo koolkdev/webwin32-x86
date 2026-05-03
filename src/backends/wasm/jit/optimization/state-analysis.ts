@@ -1,9 +1,10 @@
 import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { conditionFlagReadMask, IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
+import { irOpStorageWrites } from "#x86/ir/model/op-semantics.js";
 import type { IrOp, StorageRef } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
-import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitOptimizedIrBlock, JitOptimizedIrBlockInstruction } from "#backends/wasm/jit/types.js";
 import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
@@ -35,7 +36,7 @@ type MutableJitStateTracker = {
 };
 
 export function analyzeJitBlockState(
-  block: JitIrBlock,
+  block: JitOptimizedIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
 ): Omit<JitBlockOptimization, "block"> {
   const state: MutableJitStateTracker = {
@@ -58,6 +59,16 @@ export function analyzeJitBlockState(
 
     if (instruction === undefined) {
       throw new Error(`missing JIT instruction while optimizing JIT IR block: ${instructionIndex}`);
+    }
+
+    for (let opIndex = 0; opIndex < instruction.prelude.length; opIndex += 1) {
+      const op = instruction.prelude[opIndex];
+
+      if (op === undefined) {
+        throw new Error(`missing JIT prelude op while optimizing JIT IR block: ${instructionIndex}:${opIndex}`);
+      }
+
+      recordPreludeOpEffects(op, instruction);
     }
 
     const entry = snapshotState(state, "preInstruction", instruction.eip);
@@ -103,15 +114,24 @@ export function analyzeJitBlockState(
     maxExitStateIndex: exitStates.length - 1
   };
 
-  function instructionPostState(instruction: JitIrBlockInstruction): JitStateSnapshot {
+  function instructionPostState(instruction: JitOptimizedIrBlockInstruction): JitStateSnapshot {
     currentPostState ??= snapshotPostInstruction(state, instruction.nextEip);
 
     return currentPostState;
   }
 
+  function recordPreludeOpEffects(
+    op: IrOp,
+    instruction: JitOptimizedIrBlockInstruction
+  ): void {
+    for (const storage of irOpStorageWrites(op)) {
+      recordCommittedStorageWriteEffects(storage, instruction.operands);
+    }
+  }
+
   function recordOpEffects(
     op: IrOp,
-    instruction: JitIrBlockInstruction,
+    instruction: JitOptimizedIrBlockInstruction,
     instructionIndex: number,
     opIndex: number
   ): void {
@@ -159,7 +179,7 @@ export function analyzeJitBlockState(
   }
 
   function recordPostInstructionExits(
-    instruction: JitIrBlockInstruction,
+    instruction: JitOptimizedIrBlockInstruction,
     instructionIndex: number,
     opIndex: number
   ): void {
@@ -210,6 +230,24 @@ export function analyzeJitBlockState(
 
         if (binding.kind === "static.reg32") {
           state.speculativeRegs.add(binding.reg);
+        }
+        return;
+      }
+      case "mem":
+        return;
+    }
+  }
+
+  function recordCommittedStorageWriteEffects(storage: StorageRef, operands: readonly JitOperandBinding[]): void {
+    switch (storage.kind) {
+      case "reg":
+        state.committedRegs.add(storage.reg);
+        return;
+      case "operand": {
+        const binding = requiredJitOperandBinding(operands, storage.index);
+
+        if (binding.kind === "static.reg32") {
+          state.committedRegs.add(binding.reg);
         }
         return;
       }

@@ -1,6 +1,12 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { IrOp } from "#x86/ir/model/types.js";
-import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type {
+  JitIrBlock,
+  JitIrBlockInstruction,
+  JitOptimizedIrBlock,
+  JitOptimizedIrBlockInstruction
+} from "#backends/wasm/jit/types.js";
+import { toJitOptimizedIrPreludeOp } from "#backends/wasm/jit/prelude.js";
 import {
   analyzeJitOptimization,
   type JitOptimizationAnalysis
@@ -10,8 +16,7 @@ import {
   jitOpHasPostInstructionExit
 } from "./boundaries.js";
 import {
-  materializeAllVirtualRegs,
-  materializeVirtualRegsIntoPreviousInstruction
+  materializeAllVirtualRegs
 } from "./virtual-boundaries.js";
 import { recordJitVirtualLocalValue } from "./virtual-local-values.js";
 import {
@@ -40,10 +45,10 @@ export type JitVirtualRegisterFolding = Readonly<{
 export function foldJitVirtualRegisters(
   block: JitIrBlock,
   analysis: JitOptimizationAnalysis = analyzeJitOptimization(block)
-): Readonly<{ block: JitIrBlock; folding: JitVirtualRegisterFolding }> {
+): Readonly<{ block: JitOptimizedIrBlock; folding: JitVirtualRegisterFolding }> {
   const virtualRegs = new Map<Reg32, JitVirtualValue>();
   const virtualRegReadCounts = new Map<Reg32, number>();
-  const instructions: JitIrBlockInstruction[] = [];
+  const instructions: JitOptimizedIrBlockInstruction[] = [];
   let removedSetCount = 0;
   let materializedSetCount = 0;
 
@@ -54,14 +59,14 @@ export function foldJitVirtualRegisters(
       throw new Error(`missing JIT instruction while folding virtual registers: ${instructionIndex}`);
     }
 
+    const prelude = createJitVirtualRewrite({ ...instruction, ir: [] });
+
     if (jitInstructionHasPreInstructionExit(analysis.boundaries, instructionIndex)) {
-      materializedSetCount += materializeVirtualRegsIntoPreviousInstruction(instructions, virtualRegs);
-      virtualRegs.clear();
+      materializedSetCount += materializeAllVirtualRegs(prelude, virtualRegs);
       virtualRegReadCounts.clear();
     }
 
     const rewrite = createJitVirtualRewrite(instruction);
-    const nextInstruction = block.instructions[instructionIndex + 1];
     const firstFoldableOpIndex = firstVirtualRegisterFoldableOpIndex(instructionIndex, analysis);
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
@@ -82,7 +87,6 @@ export function foldJitVirtualRegisters(
         instruction,
         instructionIndex,
         opIndex,
-        nextInstruction,
         analysis,
         rewrite,
         virtualRegs,
@@ -98,6 +102,7 @@ export function foldJitVirtualRegisters(
 
     instructions.push({
       ...instruction,
+      prelude: prelude.ops.map(toJitOptimizedIrPreludeOp),
       ir: rewrite.ops
     });
   }
@@ -117,7 +122,6 @@ function rewriteOp(
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
   opIndex: number,
-  nextInstruction: JitIrBlockInstruction | undefined,
   analysis: JitOptimizationAnalysis,
   rewrite: JitVirtualRewrite,
   virtualRegs: Map<Reg32, JitVirtualValue>,
@@ -145,8 +149,7 @@ function rewriteOp(
     case "set32.if":
       return rewriteVirtualRegisterSet32If(op, instruction, rewrite, virtualRegs, virtualRegReadCounts);
     case "next": {
-      const shouldMaterialize = jitOpHasPostInstructionExit(analysis.boundaries, instructionIndex, opIndex) ||
-        nextInstructionHasPreInstructionExit(analysis, instructionIndex, nextInstruction);
+      const shouldMaterialize = jitOpHasPostInstructionExit(analysis.boundaries, instructionIndex, opIndex);
       const materializedSetCount = shouldMaterialize
         ? materializeAllVirtualRegs(rewrite, virtualRegs)
         : 0;
@@ -176,12 +179,4 @@ function rewriteOp(
       rewrite.ops.push(op);
       return unchangedJitVirtualRegisterRewriteResult;
   }
-}
-
-function nextInstructionHasPreInstructionExit(
-  analysis: JitOptimizationAnalysis,
-  instructionIndex: number,
-  nextInstruction: JitIrBlockInstruction | undefined
-): boolean {
-  return nextInstruction !== undefined && jitInstructionHasPreInstructionExit(analysis.boundaries, instructionIndex + 1);
 }
