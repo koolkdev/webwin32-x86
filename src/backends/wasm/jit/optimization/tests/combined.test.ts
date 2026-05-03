@@ -4,8 +4,13 @@ import { test } from "node:test";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
+import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import { analyzeJitOptimization } from "#backends/wasm/jit/optimization/analysis.js";
 import { runDraftCombinedJitOptimization } from "#backends/wasm/jit/optimization/combined.js";
-import { runJitIrOptimizationPipeline } from "#backends/wasm/jit/optimization/pipeline.js";
+import { pruneDeadJitLocalValues } from "#backends/wasm/jit/optimization/dead-local-values.js";
+import { materializeJitFlags } from "#backends/wasm/jit/optimization/flags.js";
+import type { JitIrOptimizationPipelineResult } from "#backends/wasm/jit/optimization/pipeline.js";
+import { foldJitRegisters } from "#backends/wasm/jit/optimization/register-folding.js";
 import {
   c32,
   startAddress,
@@ -21,10 +26,10 @@ test("draft combined optimizer matches the production pipeline for direct flag a
   const trap = ok(decodeBytes([0xcd, 0x2e], xorEax.nextEip));
   const block = buildJitIrBlock([cmp, cmove, movEaxEcx, xorEax, trap]);
   const draft = runDraftCombinedJitOptimization(block);
-  const production = runJitIrOptimizationPipeline(block);
+  const separate = runSeparateOptimizationPasses(block);
 
-  deepStrictEqual(draft.block, production.block);
-  deepStrictEqual(draft.passes, production.passes);
+  deepStrictEqual(draft.block, separate.block);
+  deepStrictEqual(draft.passes, separate.passes);
   strictEqual(draft.combinedTracking.instructionsWalked, block.instructions.length);
   strictEqual(draft.combinedTracking.flagSourceCount > 0, true);
   strictEqual(draft.combinedTracking.registerProducerCount > 0, true);
@@ -53,10 +58,27 @@ test("draft combined optimizer matches the production pipeline for flag/register
     ]
   };
   const draft = runDraftCombinedJitOptimization(block);
-  const production = runJitIrOptimizationPipeline(block);
+  const separate = runSeparateOptimizationPasses(block);
 
-  deepStrictEqual(draft.block, production.block);
-  deepStrictEqual(draft.passes, production.passes);
+  deepStrictEqual(draft.block, separate.block);
+  deepStrictEqual(draft.passes, separate.passes);
   strictEqual(draft.combinedTracking.instructionsWalked, block.instructions.length);
   strictEqual(draft.combinedTracking.sourceClobberCount, 1);
 });
+
+function runSeparateOptimizationPasses(block: JitIrBlock): JitIrOptimizationPipelineResult {
+  const initialAnalysis = analyzeJitOptimization(block);
+  const flagMaterialization = materializeJitFlags(block, initialAnalysis);
+  const deadLocalValues = pruneDeadJitLocalValues(flagMaterialization.block);
+  const registerAnalysis = analyzeJitOptimization(deadLocalValues.block);
+  const registerFolding = foldJitRegisters(deadLocalValues.block, registerAnalysis);
+
+  return {
+    block: registerFolding.block,
+    passes: {
+      flagMaterialization: flagMaterialization.flags,
+      deadLocalValues: deadLocalValues.deadLocalValues,
+      registerFolding: registerFolding.folding
+    }
+  };
+}
