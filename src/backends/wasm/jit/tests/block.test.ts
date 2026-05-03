@@ -44,8 +44,8 @@ test("buildJitIrBlock builds instruction-local IR bodies", () => {
 });
 
 test("JIT lowering preparation keeps instruction-local operand namespaces", () => {
-  const first = ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress));
-  const second = ok(decodeBytes([0x83, 0xc0, 0x01], first.nextEip));
+  const first = ok(decodeBytes([0x01, 0xd8], startAddress));
+  const second = ok(decodeBytes([0x01, 0xd1], first.nextEip));
   const loweringBlock = buildJitLoweringBlock(
     optimizeJitIrBlock(buildJitIrBlock([first, second]))
   );
@@ -285,6 +285,69 @@ test("jit IR block materializes the latest deferred flags on exit", async () => 
   strictEqual(result.state.eflags, preservedEflags);
   strictEqual(result.state.eip, startAddress + 8);
   strictEqual(result.state.instructionCount, 3);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
+test("jit IR block folds transient virtual register calculations", async () => {
+  const result = await runJitIrBlock([
+    0x89, 0xc8, // mov eax, ecx
+    0x83, 0xf0, 0x02, // xor eax, 2
+    0x01, 0xc3, // add ebx, eax
+    0xb8, 0x00, 0x00, 0x00, 0x00, // mov eax, 0
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eax: 0xaaaa_aaaa,
+    ebx: 10,
+    ecx: 5,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0);
+  strictEqual(result.state.ebx, 17);
+  strictEqual(result.state.ecx, 5);
+  strictEqual(result.state.eip, startAddress + 14);
+  strictEqual(result.state.instructionCount, 5);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
+test("jit IR block materializes virtual registers before memory fault exits", async () => {
+  const load = 0x10000;
+  const result = await runJitIrBlock([
+    0x89, 0xc8, // mov eax, ecx
+    0x8b, 0x15, 0x00, 0x00, 0x01, 0x00 // mov edx, [0x10000]
+  ], createCpuState({
+    eax: 0xaaaa_aaaa,
+    ecx: 0x1234_5678,
+    edx: 0xeeee_eeee,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0x1234_5678);
+  strictEqual(result.state.ecx, 0x1234_5678);
+  strictEqual(result.state.edx, 0xeeee_eeee);
+  strictEqual(result.state.eip, startAddress + 2);
+  strictEqual(result.state.instructionCount, 1);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: load });
+});
+
+test("jit IR block preserves virtual register values before source clobbers", async () => {
+  const result = await runJitIrBlock([
+    0x89, 0xc8, // mov eax, ecx
+    0xb9, 0x00, 0x00, 0x00, 0x00, // mov ecx, 0
+    0x01, 0xc3, // add ebx, eax
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eax: 0xaaaa_aaaa,
+    ebx: 10,
+    ecx: 7,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 7);
+  strictEqual(result.state.ebx, 17);
+  strictEqual(result.state.ecx, 0);
+  strictEqual(result.state.eip, startAddress + 11);
+  strictEqual(result.state.instructionCount, 4);
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 

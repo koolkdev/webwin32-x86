@@ -1,6 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
+import type { Reg32 } from "#x86/isa/types.js";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/passes/flag-analysis.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
@@ -8,6 +9,8 @@ import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import { pruneDeadJitFlags } from "#backends/wasm/jit/optimization/flag-pruning.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
 import type { JitExitPoint } from "#backends/wasm/jit/optimization/types.js";
+import { foldJitVirtualRegisters } from "#backends/wasm/jit/optimization/virtual-registers.js";
+import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
 
 const startAddress = 0x1000;
 
@@ -133,9 +136,50 @@ test("pruneDeadJitFlags keeps partial flag producers needed by later conditions"
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
 });
 
+test("foldJitVirtualRegisters keeps transient register calculations virtual until exit", () => {
+  const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
+  const xorEax = ok(decodeBytes([0x83, 0xf0, 0x02], movEaxEcx.nextEip));
+  const addEbxEax = ok(decodeBytes([0x01, 0xc3], xorEax.nextEip));
+  const movEaxZero = ok(decodeBytes([0xb8, 0x00, 0x00, 0x00, 0x00], addEbxEax.nextEip));
+  const trap = ok(decodeBytes([0xcd, 0x2e], movEaxZero.nextEip));
+  const folded = foldJitVirtualRegisters(buildJitIrBlock([
+    movEaxEcx,
+    xorEax,
+    addEbxEax,
+    movEaxZero,
+    trap
+  ]));
+
+  strictEqual(folded.folding.removedSetCount, 4);
+  strictEqual(folded.folding.flushSetCount, 2);
+  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
+});
+
 function onlyExit(exits: readonly JitExitPoint[], reason: ExitReasonValue): JitExitPoint {
   const matches = exits.filter((entry) => entry.exitReason === reason);
 
   strictEqual(matches.length, 1);
   return matches[0]!;
+}
+
+function set32TargetRegs(instructions: readonly JitIrBlockInstruction[]): readonly Reg32[] {
+  return instructions.flatMap((instruction) =>
+    instruction.ir.flatMap((op) => {
+      if (op.op !== "set32") {
+        return [];
+      }
+
+      switch (op.target.kind) {
+        case "reg":
+          return [op.target.reg];
+        case "operand": {
+          const binding = instruction.operands[op.target.index];
+
+          return binding?.kind === "static.reg32" ? [binding.reg] : [];
+        }
+        case "mem":
+          return [];
+      }
+    })
+  );
 }
