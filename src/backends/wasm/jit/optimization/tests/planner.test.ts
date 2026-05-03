@@ -7,12 +7,11 @@ import { IR_ALU_FLAG_MASKS } from "#x86/ir/model/flag-effects.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import { analyzeJitOptimization } from "#backends/wasm/jit/optimization/tracked/analysis.js";
-import {
-  planJitFlagMaterialization,
-  planJitRegisterFolding
-} from "#backends/wasm/jit/optimization/planner/emitter.js";
 import type { JitOptimizationPlanRecord, PlannedMaterialization } from "#backends/wasm/jit/optimization/planner/plan.js";
-import { runTrackedJitOptimization } from "#backends/wasm/jit/optimization/planner/planner.js";
+import {
+  planJitOptimization,
+  runTrackedJitOptimization
+} from "#backends/wasm/jit/optimization/planner/planner.js";
 import { pruneDeadJitLocalValues } from "#backends/wasm/jit/optimization/passes/dead-local-values.js";
 import { materializeJitFlags } from "#backends/wasm/jit/optimization/flags/materialization.js";
 import type { JitIrOptimizationPipelineResult } from "#backends/wasm/jit/optimization/pipeline.js";
@@ -146,6 +145,87 @@ test("planner records flag materialization reasons explicitly", () => {
   strictEqual(conditionFallback.has("condition"), true);
 });
 
+test("shared planner records folding and drop decisions for both domains", () => {
+  const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
+  const cmove = ok(decodeBytes([0x0f, 0x44, 0xca], cmp.nextEip));
+  const flagRecords = sharedPlannerRecords(buildJitIrBlock([cmp, cmove]));
+  const unusedFlagRecords = sharedPlannerRecords({
+    instructions: [
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        { op: "next" }
+      ])
+    ]
+  });
+  const registerRecords = sharedPlannerRecords({
+    instructions: [
+      syntheticInstruction([
+        { op: "const32", dst: v(0), value: 1 },
+        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "get32", dst: v(1), source: { kind: "reg", reg: "eax" } },
+        { op: "next" }
+      ])
+    ]
+  });
+
+  strictEqual(flagRecords.some((record) =>
+    record.kind === "fold" && record.domain === "flags" && record.foldKind === "flagCondition"
+  ), true);
+  strictEqual(unusedFlagRecords.some((record) =>
+    record.kind === "drop" && record.domain === "flags" && record.op === "flags.set"
+  ), true);
+  strictEqual(registerRecords.some((record) =>
+    record.kind === "fold" && record.domain === "registers" && record.foldKind === "registerValue"
+  ), true);
+  strictEqual(registerRecords.some((record) =>
+    record.kind === "drop" && record.domain === "registers" && record.op === "set32"
+  ), true);
+});
+
+test("shared planner represents retained and emitted producers as materializations", () => {
+  const flagRecords = sharedPlannerRecords({
+    instructions: [
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        { op: "flags.materialize", mask: IR_ALU_FLAG_MASKS.ZF },
+        { op: "next" }
+      ])
+    ]
+  });
+  const registerRecords = sharedPlannerRecords({
+    instructions: [
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get32", dst: v(1), source: { kind: "reg", reg: "ebx" } },
+        { op: "i32.add", dst: v(2), a: v(0), b: v(1) },
+        { op: "i32.add", dst: v(3), a: v(2), b: v(2) },
+        { op: "i32.add", dst: v(4), a: v(3), b: v(3) },
+        { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(4) },
+        { op: "next" }
+      ])
+    ]
+  });
+
+  strictEqual(flagRecords.some((record) =>
+    record.kind === "materialization" &&
+    record.domain === "flags" &&
+    record.opIndex === 2 &&
+    record.phase === "atOp" &&
+    record.reason === "materialize"
+  ), true);
+  strictEqual(registerRecords.some((record) =>
+    record.kind === "materialization" &&
+    record.domain === "registers" &&
+    record.opIndex === 5 &&
+    record.phase === "atOp" &&
+    record.reason === "policy"
+  ), true);
+});
+
 function runSeparateOptimizationPasses(block: JitIrBlock): JitIrOptimizationPipelineResult {
   const initialAnalysis = analyzeJitOptimization(block);
   const flagMaterialization = materializeJitFlags(block, initialAnalysis);
@@ -172,7 +252,7 @@ function registerMaterializationPhases(block: JitIrBlock): ReadonlySet<string> {
 }
 
 function registerMaterializations(block: JitIrBlock) {
-  return planJitRegisterFolding(block, analyzeJitOptimization(block)).records.filter(isRegisterMaterialization);
+  return sharedPlannerRecords(block).filter(isRegisterMaterialization);
 }
 
 function flagMaterializationReasons(block: JitIrBlock): ReadonlySet<string> {
@@ -184,7 +264,11 @@ function flagMaterializationPhases(block: JitIrBlock): ReadonlySet<string> {
 }
 
 function flagMaterializations(block: JitIrBlock) {
-  return planJitFlagMaterialization(block, analyzeJitOptimization(block)).records.filter(isFlagMaterialization);
+  return sharedPlannerRecords(block).filter(isFlagMaterialization);
+}
+
+function sharedPlannerRecords(block: JitIrBlock): readonly JitOptimizationPlanRecord[] {
+  return planJitOptimization(block, analyzeJitOptimization(block)).records;
 }
 
 function isRegisterMaterialization(record: JitOptimizationPlanRecord): record is PlannedMaterialization {

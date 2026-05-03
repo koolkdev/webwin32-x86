@@ -191,6 +191,46 @@ export class JitTrackedState {
     return this.flags.producerOwnersReadingReg(reg);
   }
 
+  recordRequiredMaterializations(
+    request: JitTrackedMaterializationRequest
+  ): readonly JitTrackedLocation[] {
+    switch (request.kind) {
+      case "allRegisters":
+        return this.recordAllRegistersMaterialized();
+      case "registerDependencies":
+        return this.recordRegistersReadingRegMaterialized(request.reg);
+      case "locations":
+        return this.recordLocationsMaterialized(request.locations);
+    }
+  }
+
+  recordRegistersForPreInstructionExits(
+    instructionIndex: number
+  ): readonly JitTrackedLocation[] {
+    if (!jitInstructionHasPreInstructionExit(this.context.effects, instructionIndex)) {
+      return [];
+    }
+
+    return this.recordRequiredMaterializations({
+      kind: "allRegisters",
+      reason: "preInstructionExit"
+    });
+  }
+
+  recordRegistersForPostInstructionExit(
+    instructionIndex: number,
+    opIndex: number
+  ): readonly JitTrackedLocation[] {
+    if (!jitOpHasPostInstructionExit(this.context.effects, instructionIndex, opIndex)) {
+      return [];
+    }
+
+    return this.recordRequiredMaterializations({
+      kind: "allRegisters",
+      reason: "exit"
+    });
+  }
+
   materializeRequiredLocations(
     rewrite: JitInstructionRewrite,
     request: JitTrackedMaterializationRequest
@@ -307,6 +347,55 @@ export class JitTrackedState {
 
     this.registers.clear();
     return materializedSetCount;
+  }
+
+  private recordLocationsMaterialized(
+    locations: readonly JitTrackedLocation[]
+  ): readonly JitTrackedLocation[] {
+    const materializedLocations: JitTrackedLocation[] = [];
+
+    for (const location of locations) {
+      switch (location.kind) {
+        case "register":
+          if (!this.registers.has(location.reg)) {
+            break;
+          }
+
+          this.registers.delete(location.reg);
+          materializedLocations.push(location);
+          break;
+        case "flags":
+          this.flags.recordMaterialized(location.mask);
+          materializedLocations.push(location);
+          break;
+      }
+    }
+
+    return materializedLocations;
+  }
+
+  private recordRegistersReadingRegMaterialized(
+    readReg: Reg32
+  ): readonly JitTrackedLocation[] {
+    const materializedLocations: JitTrackedLocation[] = [];
+
+    for (const [reg, value] of [...this.registers.entries()]) {
+      if (reg !== readReg && jitValueReadsReg(value, readReg)) {
+        this.registers.delete(reg);
+        materializedLocations.push(jitTrackedRegisterLocation(reg));
+      }
+    }
+
+    return materializedLocations;
+  }
+
+  private recordAllRegistersMaterialized(): readonly JitTrackedLocation[] {
+    const materializedLocations = [...this.registers.entries()].map(([reg]) =>
+      jitTrackedRegisterLocation(reg)
+    );
+
+    this.registers.clear();
+    return materializedLocations;
   }
 }
 
