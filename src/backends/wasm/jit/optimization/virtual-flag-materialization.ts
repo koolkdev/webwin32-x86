@@ -5,10 +5,17 @@ import {
   type JitVirtualFlagAnalysis,
   type JitVirtualFlagSource
 } from "./virtual-flag-analysis.js";
+import {
+  emitDirectVirtualFlagCondition,
+  indexDirectVirtualFlagConditions,
+  type JitDirectVirtualFlagConditionIndex
+} from "./virtual-flag-conditions.js";
+import { createJitVirtualRewrite } from "./virtual-rewrite.js";
 
 export type JitVirtualFlagMaterialization = Readonly<{
   removedSetCount: number;
   retainedSetCount: number;
+  directConditionCount: number;
   sourceClobberCount: number;
 }>;
 
@@ -16,11 +23,13 @@ export function materializeJitVirtualFlags(
   block: JitIrBlock
 ): Readonly<{ block: JitIrBlock; flags: JitVirtualFlagMaterialization }> {
   const analysis = analyzeJitVirtualFlags(block);
-  const neededSourceIds = neededVirtualFlagSourceIds(analysis);
+  const directConditionsByLocation = indexDirectVirtualFlagConditions(block, analysis);
+  const neededSourceIds = neededVirtualFlagSourceIds(analysis, directConditionsByLocation);
   const sourcesByLocation = indexVirtualFlagSourcesByLocation(analysis);
   const instructions = new Array<JitIrBlockInstruction>(block.instructions.length);
   let removedSetCount = 0;
   let retainedSetCount = 0;
+  let directConditionCount = 0;
 
   for (let instructionIndex = 0; instructionIndex < block.instructions.length; instructionIndex += 1) {
     const instruction = block.instructions[instructionIndex];
@@ -29,7 +38,7 @@ export function materializeJitVirtualFlags(
       throw new Error(`missing JIT instruction while materializing virtual flags: ${instructionIndex}`);
     }
 
-    const materializedOps: IrOp[] = [];
+    const rewrite = createJitVirtualRewrite(instruction);
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
       const op = instruction.ir[opIndex];
@@ -39,21 +48,25 @@ export function materializeJitVirtualFlags(
       }
 
       const source = sourcesByLocation.get(instructionIndex)?.get(opIndex);
+      const directCondition = directConditionsByLocation.get(instructionIndex)?.get(opIndex);
 
       if (op.op === "flags.set" && (source === undefined || !neededSourceIds.has(source.id))) {
         removedSetCount += 1;
+      } else if (op.op === "aluFlags.condition" && directCondition !== undefined) {
+        emitDirectVirtualFlagCondition(rewrite, op, directCondition.source);
+        directConditionCount += 1;
       } else {
         if (op.op === "flags.set") {
           retainedSetCount += 1;
         }
 
-        materializedOps.push(op);
+        rewrite.ops.push(op);
       }
     }
 
     instructions[instructionIndex] = {
       ...instruction,
-      ir: materializedOps
+      ir: rewrite.ops
     };
   }
 
@@ -62,15 +75,23 @@ export function materializeJitVirtualFlags(
     flags: {
       removedSetCount,
       retainedSetCount,
+      directConditionCount,
       sourceClobberCount: analysis.sourceClobbers.length
     }
   };
 }
 
-function neededVirtualFlagSourceIds(analysis: JitVirtualFlagAnalysis): ReadonlySet<number> {
+function neededVirtualFlagSourceIds(
+  analysis: JitVirtualFlagAnalysis,
+  directConditionsByLocation: JitDirectVirtualFlagConditionIndex
+): ReadonlySet<number> {
   const neededSourceIds = new Set<number>();
 
   for (const read of analysis.reads) {
+    if (directConditionsByLocation.get(read.instructionIndex)?.has(read.opIndex) === true) {
+      continue;
+    }
+
     for (const { owner } of read.owners) {
       if (owner.kind === "producer") {
         neededSourceIds.add(owner.source.id);

@@ -1,5 +1,9 @@
 import { assertIrAluFlagMask, IR_FLAG_MASK_NONE } from "./flag-analysis.js";
-import { canUseFlagProducerCondition, type IrFlagProducerDescriptor } from "#x86/ir/model/flag-conditions.js";
+import {
+  canUseFlagProducerCondition,
+  flagProducerConditionInputNames,
+  type IrFlagProducerDescriptor
+} from "#x86/ir/model/flag-conditions.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import type { FlagMask, IrOp, IrBlock, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
 
@@ -62,11 +66,10 @@ function validateOpUses(
       validateValueRef(op.b, definedVars);
       break;
     case "flags.set":
-      validateFlagDescriptor(op, definedVars, "flags.set");
+      validateFlagSetDescriptor(op, definedVars);
       break;
     case "flagProducer.condition":
-      validateFlagDescriptor(op, definedVars, "flagProducer.condition");
-      validateFlagProducerCondition(op);
+      validateFlagProducerConditionDescriptor(op, definedVars);
       break;
     case "aluFlags.condition":
       break;
@@ -149,13 +152,37 @@ function validateAluFlagOpMask(mask: FlagMask, op: "flags.materialize" | "flags.
   }
 }
 
-function validateFlagDescriptor(
+function validateFlagSetDescriptor(op: IrFlagProducerDescriptor, definedVars: ReadonlySet<number>): void {
+  const producer = FLAG_PRODUCERS[op.producer];
+
+  validateFlagDescriptorMasks(op, "flags.set");
+  validateFlagInputs(op, definedVars, {
+    label: "flags.set",
+    requiredInputs: producer.inputs,
+    allowedInputs: producer.inputs
+  });
+}
+
+function validateFlagProducerConditionDescriptor(
+  op: Extract<IrOp, { op: "flagProducer.condition" }>,
+  definedVars: ReadonlySet<number>
+): void {
+  const producer = FLAG_PRODUCERS[op.producer];
+
+  validateFlagDescriptorMasks(op, "flagProducer.condition");
+  validateFlagProducerCondition(op);
+  validateFlagInputs(op, definedVars, {
+    label: "flagProducer.condition",
+    requiredInputs: flagProducerConditionInputNames(op),
+    allowedInputs: producer.inputs
+  });
+}
+
+function validateFlagDescriptorMasks(
   op: IrFlagProducerDescriptor,
-  definedVars: ReadonlySet<number>,
   label: "flags.set" | "flagProducer.condition"
 ): void {
   const producer = FLAG_PRODUCERS[op.producer];
-  const expectedInputs: ReadonlySet<string> = new Set(producer.inputs);
 
   assertIrAluFlagMask(op.writtenMask, `${label} writtenMask`);
   assertIrAluFlagMask(op.undefMask, `${label} undefMask`);
@@ -171,20 +198,38 @@ function validateFlagDescriptor(
   if ((op.undefMask & ~op.writtenMask) !== 0) {
     throw new Error(`${label} ${op.producer} undefMask must be contained in writtenMask`);
   }
+}
 
-  for (const inputName of producer.inputs) {
+function validateFlagInputs(
+  op: IrFlagProducerDescriptor,
+  definedVars: ReadonlySet<number>,
+  options: Readonly<{
+    label: "flags.set" | "flagProducer.condition";
+    requiredInputs: readonly string[];
+    allowedInputs: readonly string[];
+  }>
+): void {
+  const allowedInputs: ReadonlySet<string> = new Set(options.allowedInputs);
+
+  for (const inputName of options.requiredInputs) {
     const value = op.inputs[inputName];
 
     if (value === undefined) {
-      throw new Error(`${label} ${op.producer} is missing input '${inputName}'`);
+      throw new Error(`${options.label} ${op.producer} is missing input '${inputName}'`);
     }
 
     validateValueRef(value, definedVars);
   }
 
   for (const inputName of Object.keys(op.inputs)) {
-    if (!expectedInputs.has(inputName)) {
-      throw new Error(`${label} ${op.producer} has unexpected input '${inputName}'`);
+    if (!allowedInputs.has(inputName)) {
+      throw new Error(`${options.label} ${op.producer} has unexpected input '${inputName}'`);
+    }
+
+    const value = op.inputs[inputName];
+
+    if (value !== undefined) {
+      validateValueRef(value, definedVars);
     }
   }
 }

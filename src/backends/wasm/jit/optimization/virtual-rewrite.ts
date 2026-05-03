@@ -29,34 +29,7 @@ export function materializeJitVirtualReg(
   });
 }
 
-export function emitJitVirtualValueToVar(
-  rewrite: JitVirtualRewrite,
-  dst: VarRef,
-  value: JitVirtualValue
-): void {
-  switch (value.kind) {
-    case "const32":
-      rewrite.ops.push({ op: "const32", dst, value: value.value });
-      return;
-    case "reg":
-      rewrite.ops.push({ op: "get32", dst, source: { kind: "reg", reg: value.reg } });
-      return;
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-      rewrite.ops.push({
-        op: value.kind,
-        dst,
-        a: emitJitVirtualValue(rewrite, value.a),
-        b: emitJitVirtualValue(rewrite, value.b)
-      });
-      return;
-  }
-}
-
-function emitJitVirtualValue(rewrite: JitVirtualRewrite, value: JitVirtualValue): ValueRef {
+export function emitJitVirtualValue(rewrite: JitVirtualRewrite, value: JitVirtualValue): ValueRef {
   const existingValue = existingJitVirtualValueRef(rewrite, value);
 
   if (existingValue !== undefined) {
@@ -89,6 +62,33 @@ function emitJitVirtualValue(rewrite: JitVirtualRewrite, value: JitVirtualValue)
       rewrite.localValues.set(dst.id, value);
       return dst;
     }
+  }
+}
+
+export function emitJitVirtualValueToVar(
+  rewrite: JitVirtualRewrite,
+  dst: VarRef,
+  value: JitVirtualValue
+): void {
+  switch (value.kind) {
+    case "const32":
+      rewrite.ops.push({ op: "const32", dst, value: value.value });
+      return;
+    case "reg":
+      rewrite.ops.push({ op: "get32", dst, source: { kind: "reg", reg: value.reg } });
+      return;
+    case "i32.add":
+    case "i32.sub":
+    case "i32.xor":
+    case "i32.or":
+    case "i32.and":
+      rewrite.ops.push({
+        op: value.kind,
+        dst,
+        a: emitJitVirtualValue(rewrite, value.a),
+        b: emitJitVirtualValue(rewrite, value.b)
+      });
+      return;
   }
 }
 
