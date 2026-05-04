@@ -1,9 +1,14 @@
-import { deepStrictEqual, strictEqual } from "node:assert";
+import { deepStrictEqual, strictEqual, throws } from "node:assert";
 import { test } from "node:test";
 
 import { ExitReason } from "#backends/wasm/exit.js";
 import { analyzeJitBarriers } from "#backends/wasm/jit/optimization/analyses/barriers.js";
-import { analyzeJitRegisterValues } from "#backends/wasm/jit/optimization/analyses/register-values.js";
+import {
+  analyzeJitRegisterValues,
+  validateJitRegisterValueAnalysis,
+  type JitRegisterMaterialization,
+  type JitRegisterValueAnalysis
+} from "#backends/wasm/jit/optimization/analyses/register-values.js";
 import { c32, syntheticInstruction, v } from "./helpers.js";
 
 test("register barrier analysis identifies exits and register writes", () => {
@@ -102,3 +107,37 @@ test("register value analysis keeps immediately exiting writes concrete", () => 
   strictEqual(analysis.producers[0]?.retained, false);
   deepStrictEqual(analysis.materializations, []);
 });
+
+test("register value analysis validation rejects missing materialization values", () => {
+  throws(() => validateJitRegisterValueAnalysis(analysisWithMaterialization({
+    instructionIndex: 0,
+    opIndex: 1,
+    phase: "beforeOp",
+    reason: "clobber",
+    regs: ["eax"],
+    values: []
+  })), /missing values for eax/);
+});
+
+test("register value analysis validation rejects mismatched materialization values", () => {
+  throws(() => validateJitRegisterValueAnalysis(analysisWithMaterialization({
+    instructionIndex: 0,
+    opIndex: 1,
+    phase: "beforeOp",
+    reason: "clobber",
+    regs: ["eax"],
+    values: [{ reg: "ebx", value: { kind: "const32", value: 1 } }]
+  })), /unexpected value for ebx/);
+});
+
+function analysisWithMaterialization(
+  materialization: JitRegisterMaterialization
+): JitRegisterValueAnalysis {
+  return {
+    producers: [],
+    reads: [],
+    folds: [],
+    materializations: [materialization],
+    finalValues: new Map()
+  };
+}

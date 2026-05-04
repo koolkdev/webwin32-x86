@@ -144,6 +144,28 @@ export function jitValueReadRegs(value: JitValue): readonly Reg32[] {
   return reg32.filter((reg) => jitValueReadsReg(value, reg));
 }
 
+export function jitValuesEqual(a: JitValue, b: JitValue): boolean {
+  if (a.kind !== b.kind) {
+    return false;
+  }
+
+  switch (a.kind) {
+    case "const32":
+      return a.value === (b as Extract<JitValue, { kind: "const32" }>).value;
+    case "reg":
+      return a.reg === (b as Extract<JitValue, { kind: "reg" }>).reg;
+    case "i32.add":
+    case "i32.sub":
+    case "i32.xor":
+    case "i32.or":
+    case "i32.and": {
+      const binary = b as Extract<JitValue, { kind: typeof a.kind }>;
+
+      return jitValuesEqual(a.a, binary.a) && jitValuesEqual(a.b, binary.b);
+    }
+  }
+}
+
 export function jitValueCost(value: JitValue): number {
   switch (value.kind) {
     case "const32":

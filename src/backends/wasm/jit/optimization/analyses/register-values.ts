@@ -111,6 +111,22 @@ export function analyzeJitRegisterValues(
   };
 }
 
+export function validateJitRegisterValueAnalysis(analysis: JitRegisterValueAnalysis): void {
+  for (const materialization of analysis.materializations) {
+    const remainingRegs = new Set(materialization.regs);
+
+    for (const { reg } of materialization.values) {
+      if (!remainingRegs.delete(reg)) {
+        throw new Error(`register materialization has unexpected value for ${reg}`);
+      }
+    }
+
+    if (remainingRegs.size !== 0) {
+      throw new Error(`register materialization is missing values for ${[...remainingRegs].join(", ")}`);
+    }
+  }
+}
+
 function analyzeInstruction(
   block: JitIrBlock,
   instruction: JitIrBlockInstruction,

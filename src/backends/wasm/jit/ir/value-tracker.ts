@@ -5,6 +5,7 @@ import {
   jitValueForEffectiveAddress,
   jitValueForStorage,
   jitValueForValue,
+  jitValuesEqual,
   type JitValue
 } from "#backends/wasm/jit/ir/values.js";
 
@@ -66,7 +67,7 @@ export class JitValueTracker {
     }
 
     for (const [id, localValue] of this.locals) {
-      if (localValue === value) {
+      if (jitValuesEqual(localValue, value)) {
         return { kind: "var", id };
       }
     }

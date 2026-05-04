@@ -26,8 +26,6 @@ test("flag-condition-specialization emits direct cmp branch conditions", () => {
     "get32",
     "i32.sub",
     "flags.set",
-    "get32",
-    "get32",
     "flagProducer.condition",
     "conditionalJump"
   ]);

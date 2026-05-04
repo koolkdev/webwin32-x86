@@ -8,13 +8,10 @@ import {
   rewriteJitIrInstructionInto,
   type JitInstructionRewrite
 } from "#backends/wasm/jit/ir/rewrite.js";
-import {
-  jitStorageReg,
-  type JitValue
-} from "#backends/wasm/jit/ir/values.js";
-import { JitRegisterValues } from "#backends/wasm/jit/optimization/registers/values.js";
+import type { JitValue } from "#backends/wasm/jit/ir/values.js";
 import {
   analyzeJitRegisterValues,
+  validateJitRegisterValueAnalysis,
   type JitRegisterMaterialization,
   type JitRegisterValueAnalysis,
   type JitRegisterValueFold,
@@ -51,11 +48,11 @@ export function propagateJitRegisterValues(block: JitIrBlock): Readonly<{
 }> {
   const barriers = analyzeJitBarriers(block);
   const analysis = analyzeJitRegisterValues(block, barriers);
+  validateJitRegisterValueAnalysis(analysis);
   const indexes = indexRegisterValueAnalysis(analysis);
-  const registers = new JitRegisterValues();
   const stats = mutableStats();
   const instructions = block.instructions.map((instruction, instructionIndex) =>
-    propagateInstructionRegisterValues(instruction, instructionIndex, indexes, registers, stats)
+    propagateInstructionRegisterValues(instruction, instructionIndex, indexes, stats)
   );
 
   return {
@@ -68,13 +65,11 @@ function propagateInstructionRegisterValues(
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
   indexes: JitRegisterValuePropagationIndexes,
-  registers: JitRegisterValues,
   stats: MutableJitRegisterValuePropagation
 ): JitIrBlockInstruction {
   const rewrite = createJitInstructionRewrite(instruction);
   stats.materializedSetCount += emitMaterializations(
     rewrite,
-    registers,
     indexes.materializationsBeforeInstruction.get(instructionIndex) ?? []
   );
 
@@ -90,18 +85,17 @@ function propagateInstructionRegisterValues(
 
       stats.materializedSetCount += emitMaterializations(
         rewrite,
-        registers,
         indexes.materializationsBeforeOp.get(key) ?? []
       );
 
       if (isTerminator) {
-        stats.materializedSetCount += emitMaterializations(rewrite, registers, beforeExit);
+        stats.materializedSetCount += emitMaterializations(rewrite, beforeExit);
       }
 
-      propagateOp(instruction, instructionIndex, op, opIndex, indexes, rewrite, registers, stats);
+      propagateOp(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
 
       if (!isTerminator) {
-        stats.materializedSetCount += emitMaterializations(rewrite, registers, beforeExit);
+        stats.materializedSetCount += emitMaterializations(rewrite, beforeExit);
       }
     }
   );
@@ -119,24 +113,23 @@ function propagateOp(
   opIndex: number,
   indexes: JitRegisterValuePropagationIndexes,
   rewrite: JitInstructionRewrite,
-  registers: JitRegisterValues,
   stats: MutableJitRegisterValuePropagation
 ): void {
   switch (op.op) {
     case "get32":
-      propagateGet32(instruction, instructionIndex, op, opIndex, indexes, rewrite, registers, stats);
+      propagateGet32(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
       break;
     case "address32":
-      propagateAddress32(instruction, instructionIndex, op, opIndex, indexes, rewrite, registers, stats);
+      propagateAddress32(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
       break;
     case "set32":
-      propagateSet32(instruction, instructionIndex, op, opIndex, indexes, rewrite, registers, stats);
+      propagateSet32(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
       break;
     case "set32.if":
-      propagateSet32If(instruction, op, rewrite, registers);
+      copyOp(instruction, op, rewrite);
       break;
     default:
-      copyOp(instruction, op, rewrite, registers);
+      copyOp(instruction, op, rewrite);
       break;
   }
 }
@@ -148,23 +141,16 @@ function propagateGet32(
   opIndex: number,
   indexes: JitRegisterValuePropagationIndexes,
   rewrite: JitInstructionRewrite,
-  registers: JitRegisterValues,
   stats: MutableJitRegisterValuePropagation
 ): void {
   const fold = indexes.folds.get(registerValueAnalysisKey(instructionIndex, opIndex));
 
   if (fold?.kind !== "get32") {
-    copyOp(instruction, op, rewrite, registers);
+    copyOp(instruction, op, rewrite);
     return;
   }
 
-  const value = registers.valueForStorage(op.source, instruction.operands) ?? fold.value;
-
-  for (const reg of fold.regs) {
-    registers.recordRead(reg);
-  }
-
-  assignTrackedValue(rewrite, op.dst.id, op.dst, value);
+  assignTrackedValue(rewrite, op.dst.id, op.dst, fold.value);
   stats.foldedReadCount += 1;
 }
 
@@ -175,23 +161,16 @@ function propagateAddress32(
   opIndex: number,
   indexes: JitRegisterValuePropagationIndexes,
   rewrite: JitInstructionRewrite,
-  registers: JitRegisterValues,
   stats: MutableJitRegisterValuePropagation
 ): void {
   const fold = indexes.folds.get(registerValueAnalysisKey(instructionIndex, opIndex));
 
   if (fold?.kind !== "address32") {
-    copyOp(instruction, op, rewrite, registers);
+    copyOp(instruction, op, rewrite);
     return;
   }
 
-  const value = registers.valueForEffectiveAddress(op.operand, instruction.operands) ?? fold.value;
-
-  for (const reg of fold.regs) {
-    registers.recordRead(reg);
-  }
-
-  assignTrackedValue(rewrite, op.dst.id, op.dst, value);
+  assignTrackedValue(rewrite, op.dst.id, op.dst, fold.value);
   stats.foldedAddressCount += 1;
 }
 
@@ -202,52 +181,25 @@ function propagateSet32(
   opIndex: number,
   indexes: JitRegisterValuePropagationIndexes,
   rewrite: JitInstructionRewrite,
-  registers: JitRegisterValues,
   stats: MutableJitRegisterValuePropagation
 ): void {
   const producer = indexes.producers.get(registerValueAnalysisKey(instructionIndex, opIndex));
-  const reg = producer?.reg ?? jitStorageReg(op.target, instruction.operands);
 
   if (producer?.retained === true) {
-    const value = rewrite.values.valueFor(op.value) ?? producer.value;
-    registers.set(producer.reg, value);
-    registers.syncReadCounts();
     stats.removedSetCount += 1;
     return;
   }
 
-  if (reg !== undefined) {
-    registers.delete(reg);
-    registers.syncReadCounts();
-  }
-
-  copyOp(instruction, op, rewrite, registers);
-}
-
-function propagateSet32If(
-  instruction: JitIrBlockInstruction,
-  op: Extract<JitIrOp, { op: "set32.if" }>,
-  rewrite: JitInstructionRewrite,
-  registers: JitRegisterValues
-): void {
-  const reg = jitStorageReg(op.target, instruction.operands);
-
-  if (reg !== undefined) {
-    registers.delete(reg);
-    registers.syncReadCounts();
-  }
-
-  copyOp(instruction, op, rewrite, registers);
+  copyOp(instruction, op, rewrite);
 }
 
 function copyOp(
   instruction: JitIrBlockInstruction,
   op: JitIrOp,
-  rewrite: JitInstructionRewrite,
-  registers: JitRegisterValues
+  rewrite: JitInstructionRewrite
 ): void {
   rewrite.ops.push(op);
-  rewrite.values.recordOp(op, instruction, registers.trackedValues);
+  rewrite.values.recordOp(op, instruction);
 }
 
 function assignTrackedValue(
@@ -262,26 +214,17 @@ function assignTrackedValue(
 
 function emitMaterializations(
   rewrite: JitInstructionRewrite,
-  registers: JitRegisterValues,
   materializations: readonly JitRegisterMaterialization[]
 ): number {
   let materializedSetCount = 0;
 
   for (const materialization of materializations) {
-    for (const { reg } of materialization.values) {
-      const value = registers.get(reg);
-
-      if (value === undefined) {
-        throw new Error(`missing virtual register value for materialization: ${reg}`);
-      }
-
+    for (const { reg, value } of materialization.values) {
       materializeJitRegisterValue(rewrite, reg, value, { jitRole: "registerMaterialization" });
-      registers.delete(reg);
       materializedSetCount += 1;
     }
   }
 
-  registers.syncReadCounts();
   return materializedSetCount;
 }
 
