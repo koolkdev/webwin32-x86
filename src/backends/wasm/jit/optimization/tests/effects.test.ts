@@ -1,7 +1,8 @@
-import { deepStrictEqual, strictEqual } from "node:assert";
+import { deepStrictEqual, strictEqual, throws } from "node:assert";
 import { test } from "node:test";
 
 import { ExitReason } from "#backends/wasm/exit.js";
+import { analyzeJitConditionUses } from "#backends/wasm/jit/ir/condition-uses.js";
 import {
   indexJitEffects,
   jitConditionUseAt,
@@ -89,4 +90,19 @@ test("JIT effect helpers find the end of pre-instruction exits", () => {
 
   strictEqual(jitLastPreInstructionExitOpIndex(effects, 0), 2);
   strictEqual(jitFirstOpIndexAfterPreInstructionExits(effects, 0), 3);
+});
+
+test("JIT condition use analysis rejects ordinary condition value uses", () => {
+  throws(
+    () => analyzeJitConditionUses({
+      instructions: [
+        syntheticInstruction([
+          { op: "aluFlags.condition", dst: v(0), cc: "E" },
+          { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+          { op: "next" }
+        ])
+      ]
+    }),
+    /JIT condition value 0 is used as an ordinary value/
+  );
 });

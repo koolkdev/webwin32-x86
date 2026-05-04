@@ -1,13 +1,16 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
+import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/model/flag-effects.js";
+import { ExitReason } from "#backends/wasm/exit.js";
+import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import {
   analyzeJitReachingFlags,
   singleReachingFlagProducer
 } from "#backends/wasm/jit/optimization/analyses/reaching-flags.js";
-import { c32, flagOwnerSummary, syntheticInstruction, v } from "./helpers.js";
+import { c32, flagOwnerSummary, startAddress, syntheticInstruction, v } from "./helpers.js";
 
 test("reaching flags tracks partial flag producer ownership", () => {
   const analysis = analyzeJitReachingFlags({
@@ -86,4 +89,82 @@ test("reaching flags records materialized owners and pre-instruction exit entry 
     { mask: IR_ALU_FLAG_MASK & ~IR_ALU_FLAG_MASKS.ZF, kind: "producer", sourceId: 0, producer: "add32" },
     { mask: IR_ALU_FLAG_MASKS.ZF, kind: "materialized" }
   ]);
+});
+
+test("reaching flags classifies local, exit-coupled, and unused condition reads", () => {
+  const local = analyzeJitReachingFlags({
+    instructions: [
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "next" }
+      ])
+    ]
+  });
+  const reusedExit = analyzeJitReachingFlags({
+    instructions: [
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
+      ])
+    ]
+  });
+  const unused = analyzeJitReachingFlags({
+    instructions: [
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "next" }
+      ])
+    ]
+  });
+
+  strictEqual(local.reads.find((read) => read.reason === "condition")?.conditionUse, "localCondition");
+  strictEqual(reusedExit.reads.find((read) => read.reason === "condition")?.conditionUse, "exitCondition");
+  strictEqual(unused.reads.find((read) => read.reason === "condition"), undefined);
+});
+
+test("reaching flags records pre-instruction memory fault reads from instruction entry owners", () => {
+  const addMem = ok(decodeBytes([0x01, 0x18], startAddress));
+  const analysis = analyzeJitReachingFlags(buildJitIrBlock([addMem]));
+  const preInstructionExitReads = analysis.reads.filter((read) => read.reason === "preInstructionExit");
+  const exitRead = analysis.reads.find((read) => read.reason === "exit");
+
+  deepStrictEqual(preInstructionExitReads.map((read) => read.exitReason), [
+    ExitReason.MEMORY_READ_FAULT,
+    ExitReason.MEMORY_WRITE_FAULT
+  ]);
+
+  for (const read of preInstructionExitReads) {
+    deepStrictEqual(flagOwnerSummary(read.owners), [
+      { mask: IR_ALU_FLAG_MASK, kind: "incoming" }
+    ]);
+  }
+
+  deepStrictEqual(flagOwnerSummary(exitRead?.owners ?? []), [
+    { mask: IR_ALU_FLAG_MASK, kind: "producer", sourceId: 0, producer: "add32" }
+  ]);
+});
+
+test("reaching flags records producer input values", () => {
+  const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
+  const analysis = analyzeJitReachingFlags(buildJitIrBlock([add]));
+  const source = analysis.sources[0]!;
+
+  strictEqual(source.producer, "add32");
+  strictEqual(source.writtenMask, IR_ALU_FLAG_MASK);
+  strictEqual(source.undefMask, 0);
+  deepStrictEqual(source.inputs, {
+    left: { kind: "value", value: { kind: "reg", reg: "eax" } },
+    right: { kind: "value", value: { kind: "const32", value: 1 } },
+    result: {
+      kind: "value",
+      value: {
+        kind: "i32.add",
+        a: { kind: "reg", reg: "eax" },
+        b: { kind: "const32", value: 1 }
+      }
+    }
+  });
+  deepStrictEqual(source.readRegs, ["eax"]);
 });

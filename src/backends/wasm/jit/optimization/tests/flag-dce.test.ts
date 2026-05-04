@@ -104,6 +104,24 @@ test("flag-dce keeps undefined bits needed by explicit boundaries", () => {
   strictEqual(result.flagDce.retainedSetCount, 1);
 });
 
+test("flag-dce keeps producers needed by explicit flag materialization", () => {
+  const result = pruneDeadJitFlagSets({
+    instructions: [
+      syntheticInstruction([
+        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        { op: "flags.materialize", mask: IR_ALU_FLAG_MASKS.ZF },
+        { op: "next" }
+      ])
+    ]
+  });
+
+  strictEqual(result.flagDce.removedSetCount, 0);
+  strictEqual(result.flagDce.retainedSetCount, 1);
+  deepStrictEqual(flagProducerNames(result.block), ["add32"]);
+});
+
 test("flag-dce is a validating repeatable optimization pass", () => {
   const first = runJitOptimizationPasses({
     instructions: [
