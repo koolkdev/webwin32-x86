@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
+import { planJitLowering } from "#backends/wasm/jit/lowering-plan/lowering-plan.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
 import {
   jitIrOptimizationPassOrder,
@@ -126,21 +127,21 @@ test("runJitIrOptimizationPipeline exposes the new pass pipeline as plain JIT IR
   ), true);
 });
 
-test("optimizeJitIrBlock keeps branch exit flag materialization separate from direct conditions", () => {
+test("planJitLowering keeps branch exit flag materialization separate from direct conditions", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const inc = ok(decodeBytes([0x40], add.nextEip));
   const je = ok(decodeBytes([0x74, 0x05], inc.nextEip));
-  const optimization = optimizeJitIrBlock(buildJitIrBlock([add, inc, je]));
-  const branchIr = optimization.block.instructions[2]!.ir;
+  const loweringPlan = planJitLowering(optimizeJitIrBlock(buildJitIrBlock([add, inc, je])));
+  const branchIr = loweringPlan.block.instructions[2]!.ir;
 
   strictEqual(branchIr.some((op) => op.op === "aluFlags.condition"), false);
   strictEqual(branchIr.some((op) => op.op === "flagProducer.condition"), true);
   strictEqual(
-    optimization.flagMaterializationRequirements.some((requirement) => requirement.reason === "condition"),
+    loweringPlan.flagMaterializationRequirements.some((requirement) => requirement.reason === "condition"),
     false
   );
   deepStrictEqual(
-    optimization.flagMaterializationRequirements.map((requirement) => ({
+    loweringPlan.flagMaterializationRequirements.map((requirement) => ({
       reason: requirement.reason,
       requiredMask: requirement.requiredMask,
       pendingMask: requirement.pendingMask

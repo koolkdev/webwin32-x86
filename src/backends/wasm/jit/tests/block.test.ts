@@ -11,6 +11,7 @@ import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
 import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir-semantics.js";
 import { buildJitLoweringIr } from "#backends/wasm/jit/lowering-plan/lowering-block.js";
+import { planJitLowering } from "#backends/wasm/jit/lowering-plan/lowering-plan.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
 import type { JitIrOp } from "#backends/wasm/jit/types.js";
 import { runJitIrBlock } from "./helpers.js";
@@ -48,7 +49,7 @@ test("JIT lowering plan keeps instruction-local operand namespaces", () => {
   const first = ok(decodeBytes([0x89, 0x18], startAddress));
   const second = ok(decodeBytes([0x89, 0x11], first.nextEip));
   const loweringBlock = buildJitLoweringIr(
-    optimizeJitIrBlock(buildJitIrBlock([first, second]))
+    planJitLowering(optimizeJitIrBlock(buildJitIrBlock([first, second])))
   );
   const firstIr = loweringBlock.instructions[0]!.ir;
   const secondIr = loweringBlock.instructions[1]!.ir;
@@ -663,7 +664,7 @@ test("jit IR block keeps flags live across memory fault exits before later overw
 });
 
 function loweringIr(block: ReturnType<typeof buildJitIrBlock>): readonly JitIrOp[] {
-  return buildJitLoweringIr(optimizeJitIrBlock(block)).instructions.flatMap(
+  return buildJitLoweringIr(planJitLowering(optimizeJitIrBlock(block))).instructions.flatMap(
     (instruction) => instruction.ir
   );
 }

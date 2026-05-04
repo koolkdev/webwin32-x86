@@ -6,9 +6,10 @@ import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { validateJitIrBlock } from "./ir/validate.js";
 import { JitIrBlockBuilder } from "./lowering/block-builder.js";
-import { buildJitLoweringIr, planJitLowering } from "./lowering-plan/lowering-block.js";
+import { buildJitLoweringIr } from "./lowering-plan/lowering-block.js";
+import { planJitLowering } from "./lowering-plan/lowering-plan.js";
 import { lowerIrWithJitContext, type JitIrInstructionContext } from "./lowering/ir-context.js";
-import { optimizeJitIrBlockOnly } from "./optimization/optimize.js";
+import { optimizeJitIrBlock } from "./optimization/optimize.js";
 import type { JitLoweringPlan } from "#backends/wasm/jit/lowering-plan/types.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
 import type { JitIrBlock } from "./types.js";
@@ -38,7 +39,7 @@ export function buildJitIrBlock(instructions: readonly IsaDecodedInstruction[]):
 }
 
 export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
-  const optimizedBlock = optimizeJitIrBlockOnly(block);
+  const optimizedBlock = optimizeJitIrBlock(block);
   const loweringPlan = planJitLowering(optimizedBlock);
   const loweringIr = buildJitLoweringIr(loweringPlan);
 

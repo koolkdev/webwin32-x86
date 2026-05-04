@@ -458,6 +458,7 @@ Acceptance criteria:
 
 Create:
 
+- `lowering-plan/lowering-plan.ts`,
 - `lowering-plan/exit-state-analysis.ts`,
 - `lowering-plan/lowering-block.ts`.
 
