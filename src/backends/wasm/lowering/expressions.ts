@@ -66,7 +66,14 @@ export type IrExpressionFlagProducerConditionOp = IrFlagProducerConditionDescrip
   dst: VarRef;
 }>;
 
-export type IrExpressionInputOp = IrOp | IrExpressionFlagProducerConditionOp;
+export type IrExpressionSet32InputOp = Extract<IrOp, { op: "set32" }> & Readonly<{
+  role?: IrSet32ExprRole;
+}>;
+
+export type IrExpressionInputOp =
+  | Exclude<IrOp, Extract<IrOp, { op: "set32" }>>
+  | IrExpressionSet32InputOp
+  | IrExpressionFlagProducerConditionOp;
 export type IrExpressionInputBlock = readonly IrExpressionInputOp[];
 
 export type IrExpressionOptions = Readonly<{
@@ -194,9 +201,8 @@ class ExpressionBuilder {
       target: this.#storageExpr(op.target),
       value: this.#valueExpr(op.value)
     };
-    const role = set32ExprRole(op);
 
-    return role === undefined ? expr : { ...expr, role };
+    return op.role === undefined ? expr : { ...expr, role: op.role };
   }
 
   #materializedValue(value: ValueRef): ValueRef {
@@ -253,12 +259,6 @@ class ExpressionBuilder {
 
     return binding;
   }
-}
-
-function set32ExprRole(op: Extract<IrExpressionInputOp, { op: "set32" }>): IrSet32ExprRole | undefined {
-  return "jitRole" in op && op.jitRole === "registerMaterialization"
-    ? "registerMaterialization"
-    : undefined;
 }
 
 function countVarUses(block: IrExpressionInputBlock): Map<number, number> {

@@ -16,7 +16,7 @@ import {
   type IrValueUseRole
 } from "#x86/ir/model/op-semantics.js";
 import type { StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
-import type { IrExpressionInputBlock } from "#backends/wasm/lowering/expressions.js";
+import type { IrExpressionInputBlock, IrExpressionInputOp } from "#backends/wasm/lowering/expressions.js";
 import type { JitIrBody, JitIrOp } from "./types.js";
 
 export function jitIrOpResult(op: JitIrOp): IrOpResult {
@@ -96,5 +96,16 @@ export function jitIrOpStorageWrites(op: JitIrOp): readonly StorageRef[] {
 }
 
 export function lowerableJitIrBlock(block: JitIrBody): IrExpressionInputBlock {
-  return block;
+  return block.map(lowerableJitIrOp);
+}
+
+function lowerableJitIrOp(op: JitIrOp): IrExpressionInputOp {
+  switch (op.op) {
+    case "set32":
+      return op.jitRole === "registerMaterialization"
+        ? { op: "set32", target: op.target, value: op.value, role: "registerMaterialization" }
+        : { op: "set32", target: op.target, value: op.value };
+    default:
+      return op;
+  }
 }
