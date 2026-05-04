@@ -1,7 +1,7 @@
 import type { Reg3 } from "#x86/isa/schema/types.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { ExitReason } from "#backends/wasm/exit.js";
-import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "#backends/wasm/lowering/exit.js";
+import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "#backends/wasm/codegen/exit.js";
 import { emitModRmRegIndex } from "#backends/wasm/interpreter/decode/modrm-bits.js";
 
 export type ModRmDispatchCase = Readonly<{

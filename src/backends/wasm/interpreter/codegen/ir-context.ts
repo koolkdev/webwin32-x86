@@ -1,5 +1,5 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/lowering/expressions.js";
+import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import type {
   IrBlock,
   StorageRef
@@ -7,10 +7,10 @@ import type {
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
-import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/lowering/alu-flags.js";
-import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "#backends/wasm/lowering/exit.js";
-import { emitWasmIrLoadGuestU32, emitWasmIrLoadGuestU32FromStack, emitWasmIrStoreGuestU32 } from "#backends/wasm/lowering/memory.js";
-import { wasmIrLocalReg32Storage, type WasmIrReg32Storage } from "#backends/wasm/lowering/registers.js";
+import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/codegen/alu-flags.js";
+import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "#backends/wasm/codegen/exit.js";
+import { emitWasmIrLoadGuestU32, emitWasmIrLoadGuestU32FromStack, emitWasmIrStoreGuestU32 } from "#backends/wasm/codegen/memory.js";
+import { wasmIrLocalReg32Storage, type WasmIrReg32Storage } from "#backends/wasm/codegen/registers.js";
 import {
   emitCompleteInstruction,
   emitCompleteInstructionWithTarget
@@ -23,9 +23,9 @@ import {
 } from "#backends/wasm/interpreter/dispatch/register-dispatch.js";
 import type { InterpreterStateCache } from "./state-cache.js";
 import { emitIfModRmMemory, emitIfModRmRegister, emitModRmIsRegister, emitModRmRegIndex } from "#backends/wasm/interpreter/decode/modrm-bits.js";
-import { lowerIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
-import { emitSetFlags } from "#backends/wasm/lowering/flags.js";
-import { emitAluFlagsCondition, emitFlagProducerCondition } from "#backends/wasm/lowering/conditions.js";
+import { emitIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
+import { emitSetFlags } from "#backends/wasm/codegen/flags.js";
+import { emitAluFlagsCondition, emitFlagProducerCondition } from "#backends/wasm/codegen/conditions.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 
 export type InterpreterOperandBinding =
@@ -41,7 +41,7 @@ export type InterpreterInstructionLength =
   | number
   | Readonly<{ kind: "local"; local: number }>;
 
-export type InterpreterIrContext = Readonly<{
+export type InterpreterIrEmitContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
   state: InterpreterStateCache;
@@ -52,11 +52,11 @@ export type InterpreterIrContext = Readonly<{
   instructionDoneLabelDepth: number;
 }>;
 
-export function lowerIrWithInterpreterContext(block: IrBlock, context: InterpreterIrContext): void {
+export function emitInterpreterIrWithContext(block: IrBlock, context: InterpreterIrEmitContext): void {
   const aluFlags = wasmIrLocalAluFlagsStorage(context.body, context.state.aluFlagsLocal);
   const regs = wasmIrLocalReg32Storage(context.body, context.state.regs);
 
-  lowerIrToWasm(block, {
+  emitIrToWasm(block, {
     body: context.body,
     scratch: context.scratch,
     expression: { canInlineGet32: (source) => canInlineGet32(context, source) },
@@ -81,7 +81,7 @@ export function lowerIrWithInterpreterContext(block: IrBlock, context: Interpret
 }
 
 function emitGet32(
-  context: InterpreterIrContext,
+  context: InterpreterIrEmitContext,
   regs: WasmIrReg32Storage,
   source: IrStorageExpr,
   helpers: WasmIrEmitHelpers
@@ -100,7 +100,7 @@ function emitGet32(
   }
 }
 
-function canInlineGet32(context: InterpreterIrContext, source: StorageRef): boolean {
+function canInlineGet32(context: InterpreterIrEmitContext, source: StorageRef): boolean {
   switch (source.kind) {
     case "reg":
       return true;
@@ -121,7 +121,7 @@ function canInlineGet32(context: InterpreterIrContext, source: StorageRef): bool
 }
 
 function emitSet32(
-  context: InterpreterIrContext,
+  context: InterpreterIrEmitContext,
   regs: WasmIrReg32Storage,
   target: IrStorageExpr,
   value: IrValueExpr,
@@ -141,7 +141,7 @@ function emitSet32(
 }
 
 function emitSet32If(
-  context: InterpreterIrContext,
+  context: InterpreterIrEmitContext,
   regs: WasmIrReg32Storage,
   condition: IrValueExpr,
   target: IrStorageExpr,
@@ -154,7 +154,7 @@ function emitSet32If(
   context.body.endBlock();
 }
 
-function emitAddress32(context: InterpreterIrContext, source: IrStorageExpr): void {
+function emitAddress32(context: InterpreterIrEmitContext, source: IrStorageExpr): void {
   if (source.kind !== "operand") {
     throw new Error(`unsupported address32 source for Wasm interpreter: ${source.kind}`);
   }
@@ -168,7 +168,7 @@ function emitAddress32(context: InterpreterIrContext, source: IrStorageExpr): vo
   context.body.localGet(binding.addressLocal);
 }
 
-function emitGetOperand32(context: InterpreterIrContext, regs: WasmIrReg32Storage, index: number): void {
+function emitGetOperand32(context: InterpreterIrEmitContext, regs: WasmIrReg32Storage, index: number): void {
   const binding = operandBinding(context, index);
 
   switch (binding.kind) {
@@ -195,7 +195,7 @@ function emitGetOperand32(context: InterpreterIrContext, regs: WasmIrReg32Storag
 }
 
 function emitSetOperand32(
-  context: InterpreterIrContext,
+  context: InterpreterIrEmitContext,
   regs: WasmIrReg32Storage,
   index: number,
   value: IrValueExpr,
@@ -225,7 +225,7 @@ function emitSetOperand32(
   }
 }
 
-function emitNext(context: InterpreterIrContext): void {
+function emitNext(context: InterpreterIrEmitContext): void {
   if (typeof context.instructionLength === "number") {
     emitCompleteInstruction(context.body, context.state, context.instructionLength);
   } else {
@@ -234,7 +234,7 @@ function emitNext(context: InterpreterIrContext): void {
   emitContinue(context);
 }
 
-function emitNextEip(context: InterpreterIrContext): void {
+function emitNextEip(context: InterpreterIrEmitContext): void {
   context.body.localGet(context.eipLocal);
 
   if (typeof context.instructionLength === "number") {
@@ -246,13 +246,13 @@ function emitNextEip(context: InterpreterIrContext): void {
   context.body.i32Add();
 }
 
-function emitJump(context: InterpreterIrContext, target: IrValueExpr, helpers: WasmIrEmitHelpers): void {
+function emitJump(context: InterpreterIrEmitContext, target: IrValueExpr, helpers: WasmIrEmitHelpers): void {
   emitCompleteInstructionWithTarget(context.body, context.state, () => helpers.emitValue(target));
   emitContinue(context);
 }
 
 function emitConditionalJump(
-  context: InterpreterIrContext,
+  context: InterpreterIrEmitContext,
   condition: IrValueExpr,
   taken: IrValueExpr,
   notTaken: IrValueExpr,
@@ -267,7 +267,7 @@ function emitConditionalJump(
   emitContinue(context);
 }
 
-function emitHostTrap(context: InterpreterIrContext, vector: IrValueExpr, helpers: WasmIrEmitHelpers): void {
+function emitHostTrap(context: InterpreterIrEmitContext, vector: IrValueExpr, helpers: WasmIrEmitHelpers): void {
   if (typeof context.instructionLength === "number") {
     emitCompleteInstruction(context.body, context.state, context.instructionLength);
   } else {
@@ -278,12 +278,12 @@ function emitHostTrap(context: InterpreterIrContext, vector: IrValueExpr, helper
   emitWasmIrExitFromI32Stack(context.body, context.exit, ExitReason.HOST_TRAP);
 }
 
-function emitContinue(context: InterpreterIrContext, extraDepth = 0): void {
+function emitContinue(context: InterpreterIrEmitContext, extraDepth = 0): void {
   context.body.br(context.instructionDoneLabelDepth + extraDepth);
 }
 
 function emitGetRm32(
-  context: InterpreterIrContext,
+  context: InterpreterIrEmitContext,
   binding: Extract<InterpreterOperandBinding, { kind: "rm32" }>
 ): void {
   emitModRmIsRegister(context.body, binding.modRmLocal);
@@ -296,7 +296,7 @@ function emitGetRm32(
   context.body.endBlock();
 }
 
-function emitLoadGuestU32FromStack(context: InterpreterIrContext): void {
+function emitLoadGuestU32FromStack(context: InterpreterIrEmitContext): void {
   const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
@@ -307,7 +307,7 @@ function emitLoadGuestU32FromStack(context: InterpreterIrContext): void {
 }
 
 function emitSetRm32(
-  context: InterpreterIrContext,
+  context: InterpreterIrEmitContext,
   binding: Extract<InterpreterOperandBinding, { kind: "rm32" }>,
   value: IrValueExpr,
   helpers: WasmIrEmitHelpers
@@ -336,7 +336,7 @@ function emitSetRm32(
 }
 
 function emitStoreMem32(
-  context: InterpreterIrContext,
+  context: InterpreterIrEmitContext,
   emitAddress: () => void,
   emitValue: () => void,
   faultExtraDepth = 1
@@ -356,7 +356,7 @@ function emitStoreMem32(
   }
 }
 
-function operandBinding(context: InterpreterIrContext, index: number): InterpreterOperandBinding {
+function operandBinding(context: InterpreterIrEmitContext, index: number): InterpreterOperandBinding {
   const binding = context.operands[index];
 
   if (binding === undefined) {
@@ -366,12 +366,12 @@ function operandBinding(context: InterpreterIrContext, index: number): Interpret
   return binding;
 }
 
-function emitLoadDynamicReg32(context: InterpreterIrContext, emitIndex: () => void): void {
+function emitLoadDynamicReg32(context: InterpreterIrEmitContext, emitIndex: () => void): void {
   emitLoadReg32ByIndex(context.body, context.state.regs, emitIndex);
 }
 
 function emitStoreDynamicReg32(
-  context: InterpreterIrContext,
+  context: InterpreterIrEmitContext,
   emitIndex: () => void,
   value: IrValueExpr,
   helpers: WasmIrEmitHelpers

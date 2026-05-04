@@ -5,14 +5,14 @@ import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { encodeExit } from "#backends/wasm/exit.js";
-import { emitWasmIrExitConstPayload, type WasmIrExitTarget } from "#backends/wasm/lowering/exit.js";
+import { emitWasmIrExitConstPayload, type WasmIrExitTarget } from "#backends/wasm/codegen/exit.js";
 import { emitLoadGuestByte } from "./decode/guest-bytes.js";
 import { emitOpcodeDispatch } from "./dispatch/opcode-dispatch.js";
 import {
   createInterpreterStateCache,
   emitFlushInterpreterStateCache,
   emitLoadInterpreterStateCache
-} from "./lowering/state-cache.js";
+} from "./codegen/state-cache.js";
 
 const fuelParam = 0;
 

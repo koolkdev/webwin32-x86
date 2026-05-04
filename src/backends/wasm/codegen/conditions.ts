@@ -1,5 +1,5 @@
 import { CONDITIONS, type FlagBoolExpr } from "#x86/ir/model/conditions.js";
-import type { IrValueExpr } from "#backends/wasm/lowering/expressions.js";
+import type { IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import {
   flagProducerConditionKind,
   requiredFlagProducerConditionInput
@@ -9,7 +9,7 @@ import { x86ArithmeticFlagMask } from "#x86/isa/flags.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import type { WasmIrAluFlagsStorage } from "./alu-flags.js";
-import type { WasmIrEmitHelpers } from "./lower.js";
+import type { WasmIrEmitHelpers } from "./emit.js";
 
 export function emitAluFlagsCondition(
   body: WasmFunctionBodyEncoder,

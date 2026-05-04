@@ -45,7 +45,7 @@ test("buildJitIrBlock builds instruction-local IR bodies", () => {
   strictEqual(Math.min(...secondDefIds), 0);
 });
 
-test("JIT lowering plan keeps instruction-local operand namespaces", () => {
+test("JIT codegen plan keeps instruction-local operand namespaces", () => {
   const first = ok(decodeBytes([0x89, 0x18], startAddress));
   const second = ok(decodeBytes([0x89, 0x11], first.nextEip));
   const codegenBlock = buildJitCodegenIr(
@@ -148,7 +148,7 @@ test("buildJitIrBlock only emits exit flag boundaries for speculative flags", ()
   strictEqual(jzIr.some((op) => op.op === "flags.boundary"), false);
 });
 
-test("jit IR block lowering uses explicit flag boundaries for aluFlags memory traffic", () => {
+test("jit IR block emit uses explicit flag boundaries for aluFlags memory traffic", () => {
   const flagFreeBlock = buildJitIrBlock([
     ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress)),
     ok(decodeBytes([0xbb, 0x02, 0x00, 0x00, 0x00], startAddress + 5)),
@@ -167,7 +167,7 @@ test("jit IR block lowering uses explicit flag boundaries for aluFlags memory tr
   deepStrictEqual(aluFlagMemoryAccessCounts(addTrapBlock), { loads: 0, stores: 1 });
 });
 
-test("jit IR block lowers mov r32, imm32 with static operands", async () => {
+test("jit IR block emits mov r32, imm32 with static operands", async () => {
   const result = await runJitIrBlock([0xb8, 0x78, 0x56, 0x34, 0x12], createCpuState({ eip: startAddress }));
 
   strictEqual(result.state.eax, 0x1234_5678);
@@ -193,7 +193,7 @@ test("jit IR block continues through fallthrough instructions until a control ex
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
-test("jit IR block lowers memory mov with static effective addresses", async () => {
+test("jit IR block emits memory mov with static effective addresses", async () => {
   const load = await runJitIrBlock(
     [0x8b, 0x43, 0x04],
     createCpuState({ ebx: 0x2000, eip: startAddress }),
@@ -217,7 +217,7 @@ test("jit IR block lowers memory mov with static effective addresses", async () 
   strictEqual(storeImmediate.guestView.getUint32(0x200c, true), 0x1234_5678);
 });
 
-test("jit IR block lowers cmovcc as a conditional register write", async () => {
+test("jit IR block emits cmovcc as a conditional register write", async () => {
   const taken = await runJitIrBlock(
     [0x0f, 0x44, 0xd1], // cmove edx, ecx
     createCpuState({
@@ -262,7 +262,7 @@ test("jit IR block keeps cmovcc source memory faults unconditional", async () =>
   deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000 });
 });
 
-test("jit IR block lowers leave", async () => {
+test("jit IR block emits leave", async () => {
   const result = await runJitIrBlock(
     [0xc9],
     createCpuState({ ebp: 0x20, esp: 0x100, eip: startAddress }),
@@ -309,7 +309,7 @@ test("jit IR block keeps deferred flags live after memory-store fault branch emi
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
-test("jit IR block lowers add and materializes flags", async () => {
+test("jit IR block emits add and materializes flags", async () => {
   const result = await runJitIrBlock([0x83, 0xc0, 0x01], createCpuState({
     eax: 0xffff_ffff,
     eflags: preservedEflags,
@@ -322,7 +322,7 @@ test("jit IR block lowers add and materializes flags", async () => {
   strictEqual(result.state.instructionCount, 1);
 });
 
-test("jit IR block lowers or and materializes logic flags", async () => {
+test("jit IR block emits or and materializes logic flags", async () => {
   const result = await runJitIrBlock([0x0d, 0x00, 0x01, 0x00, 0x00], createCpuState({
     eax: 0x8000_0000,
     eflags: preservedEflags,
@@ -549,7 +549,7 @@ test("jit IR block branches on incoming CF after INC", async () => {
   deepStrictEqual(notTaken.exit, { exitReason: ExitReason.BRANCH_NOT_TAKEN, payload: startAddress + 3 });
 });
 
-test("jit IR block lowers cmp without writing operands", async () => {
+test("jit IR block emits cmp without writing operands", async () => {
   const result = await runJitIrBlock([0x39, 0xd8], createCpuState({
     eax: 5,
     ebx: 5,
@@ -609,7 +609,7 @@ test("jit IR block materializes deferred flags before condition consumers", asyn
   deepStrictEqual(result.exit, { exitReason: ExitReason.BRANCH_TAKEN, payload: startAddress + 10 });
 });
 
-test("jit IR block lowers conditional branches", async () => {
+test("jit IR block emits conditional branches", async () => {
   const taken = await runJitIrBlock([0x75, 0x05], createCpuState({
     eip: startAddress,
     instructionCount: 10

@@ -1,9 +1,9 @@
-import type { IrValueExpr } from "#backends/wasm/lowering/expressions.js";
+import type { IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
-import { emitWasmIrExitFromI32Stack } from "#backends/wasm/lowering/exit.js";
-import type { WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
+import { emitWasmIrExitFromI32Stack } from "#backends/wasm/codegen/exit.js";
+import type { WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 import type { JitIrContext } from "./ir-context.js";
 
 export function emitJitNext(context: JitIrContext): void {

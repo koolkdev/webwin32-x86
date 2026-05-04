@@ -13,7 +13,7 @@ import type { IrFlagSetOp } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import type { WasmIrAluFlagsStorage } from "./alu-flags.js";
-import type { WasmIrEmitHelpers } from "./lower.js";
+import type { WasmIrEmitHelpers } from "./emit.js";
 
 const flagOrder = x86ArithmeticFlags satisfies readonly FlagName[];
 

@@ -1,7 +1,7 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import { assignIrExprVarSlots } from "#backends/wasm/lowering/var-slots.js";
+import { assignIrExprVarSlots } from "#backends/wasm/codegen/var-slots.js";
 
 const v = (id: number) => ({ kind: "var" as const, id });
 const reg = (reg: "eax" | "ebx") => ({ kind: "reg" as const, reg });

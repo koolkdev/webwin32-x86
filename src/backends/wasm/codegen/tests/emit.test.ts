@@ -3,19 +3,19 @@ import { test } from "node:test";
 
 import type { Reg32 } from "#x86/isa/types.js";
 import { buildIr } from "#x86/ir/build/builder.js";
-import type { IrExpressionOptions, IrStorageExpr, IrValueExpr } from "#backends/wasm/lowering/expressions.js";
+import type { IrExpressionOptions, IrStorageExpr, IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import type { IrBlock } from "#x86/ir/model/types.js";
 import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmOpcode, wasmValueType, type WasmValueType } from "#backends/wasm/encoder/types.js";
-import { lowerIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
+import { emitIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
 
 const nextEipValue = 0x1234_5678;
 
-test("lowerIrToWasm lowers arithmetic through storage callbacks", async () => {
-  const run = await instantiateLoweredBinary(
+test("emitIrToWasm emits arithmetic through storage callbacks", async () => {
+  const run = await instantiateEmittedBinary(
     buildIr((s) => {
       const left = s.get32(s.operand(0));
       const right = s.get32(s.operand(1));
@@ -29,8 +29,8 @@ test("lowerIrToWasm lowers arithmetic through storage callbacks", async () => {
   strictEqual(run(0, 0), 0x89);
 });
 
-test("lowerIrToWasm lowers conditional control values with nested emitValue", async () => {
-  const run = await instantiateLoweredBinary(
+test("emitIrToWasm emits conditional control values with nested emitValue", async () => {
+  const run = await instantiateEmittedBinary(
     buildIr((s) => {
       const left = s.get32(s.operand(0));
       const right = s.get32(s.operand(1));
@@ -44,7 +44,7 @@ test("lowerIrToWasm lowers conditional control values with nested emitValue", as
   strictEqual(run(2, 2), nextEipValue);
 });
 
-test("lowerIrToWasm lowers set32.if as a conditional write", async () => {
+test("emitIrToWasm emits set32.if as a conditional write", async () => {
   const program = buildIr((s) => {
     const value = s.get32(s.operand(0));
     const condition = s.get32(s.operand(1));
@@ -52,16 +52,16 @@ test("lowerIrToWasm lowers set32.if as a conditional write", async () => {
     s.set32(s.reg32("eax"), 0x55);
     s.set32If(condition, s.reg32("eax"), value);
   });
-  const run = await instantiateLoweredBinary(program);
-  const opcodes = loweredBodyOpcodes(program);
+  const run = await instantiateEmittedBinary(program);
+  const opcodes = emittedBodyOpcodes(program);
 
   strictEqual(run(0x33, 1), 0x33);
   strictEqual(run(0x33, 0), 0x55);
   strictEqual(opcodes.includes(wasmOpcode.if), true);
 });
 
-test("lowerIrToWasm uses planned slots for non-overlapping IR locals", () => {
-  const scratch = lowerWithTrackingScratch(
+test("emitIrToWasm uses planned slots for non-overlapping IR locals", () => {
+  const scratch = emitWithTrackingScratch(
     buildIr((s) => {
       const first = s.get32(s.operand(0));
 
@@ -78,8 +78,8 @@ test("lowerIrToWasm uses planned slots for non-overlapping IR locals", () => {
   strictEqual(scratch.maxLive, 1);
 });
 
-test("lowerIrToWasm uses a reused input slot for a materialized let destination", () => {
-  const scratch = lowerWithTrackingScratch(
+test("emitIrToWasm uses a reused input slot for a materialized let destination", () => {
+  const scratch = emitWithTrackingScratch(
     buildIr((s) => {
       const input = s.get32(s.operand(0));
       const sum = s.i32Add(input, 1);
@@ -94,8 +94,8 @@ test("lowerIrToWasm uses a reused input slot for a materialized let destination"
   strictEqual(scratch.maxLive, 1);
 });
 
-async function instantiateLoweredBinary(program: IrBlock): Promise<(left: number, right: number) => number> {
-  const module = await WebAssembly.compile(encodeLoweredBinaryModule(program));
+async function instantiateEmittedBinary(program: IrBlock): Promise<(left: number, right: number) => number> {
+  const module = await WebAssembly.compile(encodeEmittedBinaryModule(program));
   const instance = await WebAssembly.instantiate(module);
   const run = instance.exports.run;
 
@@ -106,13 +106,13 @@ async function instantiateLoweredBinary(program: IrBlock): Promise<(left: number
   return run as (left: number, right: number) => number;
 }
 
-function encodeLoweredBinaryModule(program: IrBlock): Uint8Array<ArrayBuffer> {
+function encodeEmittedBinaryModule(program: IrBlock): Uint8Array<ArrayBuffer> {
   const module = new WasmModuleEncoder();
   const typeIndex = module.addFunctionType({
     params: [wasmValueType.i32, wasmValueType.i32],
     results: [wasmValueType.i32]
   });
-  const body = lowerTestProgram(program);
+  const body = emitTestProgram(program);
 
   body.end();
 
@@ -122,21 +122,21 @@ function encodeLoweredBinaryModule(program: IrBlock): Uint8Array<ArrayBuffer> {
   return module.encode();
 }
 
-function loweredBodyOpcodes(program: IrBlock): readonly number[] {
-  const body = lowerTestProgram(program);
+function emittedBodyOpcodes(program: IrBlock): readonly number[] {
+  const body = emitTestProgram(program);
 
   body.end();
   return wasmBodyOpcodes(body.encode());
 }
 
-function lowerTestProgram(program: IrBlock): WasmFunctionBodyEncoder {
+function emitTestProgram(program: IrBlock): WasmFunctionBodyEncoder {
   const body = new WasmFunctionBodyEncoder(2);
   const scratch = new WasmLocalScratchAllocator(body);
   const regLocals: Partial<Record<Reg32, number>> = {
     eax: body.addLocal(wasmValueType.i32)
   };
 
-  lowerIrToWasm(program, {
+  emitIrToWasm(program, {
     body,
     scratch,
     expression: { canInlineGet32: () => true },
@@ -180,7 +180,7 @@ function lowerTestProgram(program: IrBlock): WasmFunctionBodyEncoder {
   return body;
 }
 
-function lowerWithTrackingScratch(
+function emitWithTrackingScratch(
   program: IrBlock,
   expression: IrExpressionOptions
 ): TrackingScratchAllocator {
@@ -191,7 +191,7 @@ function lowerWithTrackingScratch(
     ebx: body.addLocal(wasmValueType.i32)
   };
 
-  lowerIrToWasm(program, {
+  emitIrToWasm(program, {
     body,
     scratch,
     expression,
@@ -285,7 +285,7 @@ function requireRegLocal(regLocals: Partial<Record<Reg32, number>>, reg: Reg32):
 }
 
 function unsupported(message: string): never {
-  throw new Error(`unsupported lower test hook: ${message}`);
+  throw new Error(`unsupported emit test hook: ${message}`);
 }
 
 class TrackingScratchAllocator extends WasmLocalScratchAllocator {

@@ -1,8 +1,8 @@
 import type { OperandSpec } from "#x86/isa/schema/types.js";
-import type { InterpreterOperandBinding } from "#backends/wasm/interpreter/lowering/ir-context.js";
+import type { InterpreterOperandBinding } from "#backends/wasm/interpreter/codegen/ir-context.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
-import { emitWasmIrExitFromI32Stack } from "#backends/wasm/lowering/exit.js";
+import { emitWasmIrExitFromI32Stack } from "#backends/wasm/codegen/exit.js";
 import {
   advanceDecodeReader,
   emitReadGuestByte,
@@ -11,7 +11,7 @@ import {
   materializeDecodeReader,
   type DecodeReader
 } from "./decode-reader.js";
-import type { InterpreterHandlerContext } from "#backends/wasm/interpreter/lowering/handler-context.js";
+import type { InterpreterHandlerContext } from "#backends/wasm/interpreter/codegen/handler-context.js";
 import { emitIfModRmMemory, emitIfModRmRegister } from "./modrm-bits.js";
 import { emitCopyReg32FromIndexLocal } from "#backends/wasm/interpreter/dispatch/register-dispatch.js";
 

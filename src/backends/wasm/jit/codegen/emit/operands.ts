@@ -1,12 +1,12 @@
 import type { Mem32Operand } from "#x86/isa/types.js";
-import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/lowering/expressions.js";
+import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import type { StorageRef } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import { emitWasmIrLoadGuestU32FromStack, emitWasmIrStoreGuestU32 } from "#backends/wasm/lowering/memory.js";
-import type { WasmIrReg32Storage } from "#backends/wasm/lowering/registers.js";
-import type { WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
+import { emitWasmIrLoadGuestU32FromStack, emitWasmIrStoreGuestU32 } from "#backends/wasm/codegen/memory.js";
+import type { WasmIrReg32Storage } from "#backends/wasm/codegen/registers.js";
+import type { WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 import type { JitExitPoint } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
 import type { JitIrContext } from "./ir-context.js";

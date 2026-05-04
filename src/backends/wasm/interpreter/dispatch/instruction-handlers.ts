@@ -3,9 +3,9 @@ import type { ExpandedInstructionSpec, ModRmMatch, Reg3 } from "#x86/isa/schema/
 import type { OpcodeDispatchLeaf } from "#x86/isa/decoder/opcode-dispatch.js";
 import type { SemanticTemplate } from "#x86/ir/model/types.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
-import { lowerIrWithInterpreterContext } from "#backends/wasm/interpreter/lowering/ir-context.js";
+import { emitInterpreterIrWithContext } from "#backends/wasm/interpreter/codegen/ir-context.js";
 import { emitLoadGuestByte } from "#backends/wasm/interpreter/decode/guest-bytes.js";
-import type { InterpreterHandlerContext } from "#backends/wasm/interpreter/lowering/handler-context.js";
+import type { InterpreterHandlerContext } from "#backends/wasm/interpreter/codegen/handler-context.js";
 import { emitModRmDispatch, type ModRmDispatchCase } from "./modrm-dispatch.js";
 import { decodeInstructionOperands } from "#backends/wasm/interpreter/decode/operand-decode.js";
 
@@ -59,7 +59,7 @@ function emitInstructionHandler(
   const program = buildIr(instruction.spec.semantics);
 
   try {
-    lowerIrWithInterpreterContext(program, {
+    emitInterpreterIrWithContext(program, {
       body: context.body,
       scratch: context.scratch,
       state: context.state,

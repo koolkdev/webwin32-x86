@@ -2,7 +2,7 @@ import type { ExpandedInstructionSpec, OperandSpec } from "#x86/isa/schema/types
 import type {
   InterpreterInstructionLength,
   InterpreterOperandBinding
-} from "#backends/wasm/interpreter/lowering/ir-context.js";
+} from "#backends/wasm/interpreter/codegen/ir-context.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { decodeModRmRmOperand } from "./address-decode.js";
 import {
@@ -14,7 +14,7 @@ import {
   staticDecodeReader,
   type DecodeReader
 } from "./decode-reader.js";
-import type { InterpreterHandlerContext } from "#backends/wasm/interpreter/lowering/handler-context.js";
+import type { InterpreterHandlerContext } from "#backends/wasm/interpreter/codegen/handler-context.js";
 
 export type DecodedInterpreterOperands = Readonly<{
   instructionLength: InterpreterInstructionLength;

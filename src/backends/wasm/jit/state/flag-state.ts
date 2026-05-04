@@ -8,7 +8,7 @@ import {
   flagProducerConditionInputNames,
   flagProducerConditionKind
 } from "#x86/ir/model/flag-conditions.js";
-import type { IrValueExpr } from "#backends/wasm/lowering/expressions.js";
+import type { IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import type { ConditionCode, IrFlagSetOp, ValueRef } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
@@ -16,10 +16,10 @@ import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import {
   emitAluFlagsCondition,
   emitFlagProducerCondition
-} from "#backends/wasm/lowering/conditions.js";
-import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/lowering/alu-flags.js";
-import { emitSetFlags } from "#backends/wasm/lowering/flags.js";
-import type { WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
+} from "#backends/wasm/codegen/conditions.js";
+import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/codegen/alu-flags.js";
+import { emitSetFlags } from "#backends/wasm/codegen/flags.js";
+import type { WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 
 type PendingFlags = Readonly<{
   producer: IrFlagSetOp["producer"];

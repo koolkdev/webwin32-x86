@@ -6,12 +6,12 @@ import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { decodeExit, ExitReason } from "#backends/wasm/exit.js";
-import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "#backends/wasm/lowering/exit.js";
+import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "#backends/wasm/codegen/exit.js";
 import {
   emitWasmIrLoadGuestU32,
   emitWasmIrLoadGuestU32FromStack,
   emitWasmIrStoreGuestU32
-} from "#backends/wasm/lowering/memory.js";
+} from "#backends/wasm/codegen/memory.js";
 
 test("guest u32 load helpers return values and fault before out-of-bounds reads", async () => {
   for (const mode of ["local", "stack"] as const) {

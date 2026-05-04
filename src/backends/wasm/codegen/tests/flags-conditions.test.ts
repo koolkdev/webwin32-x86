@@ -1,7 +1,7 @@
 import { strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import type { IrValueExpr } from "#backends/wasm/lowering/expressions.js";
+import type { IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import type { ConditionCode, FlagProducerName, ValueRef } from "#x86/ir/model/types.js";
 import { x86ArithmeticFlagMask } from "#x86/isa/flags.js";
@@ -10,9 +10,9 @@ import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmOpcode, wasmValueType } from "#backends/wasm/encoder/types.js";
 import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
-import { emitAluFlagsCondition, emitFlagProducerCondition } from "#backends/wasm/lowering/conditions.js";
-import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/lowering/alu-flags.js";
-import { emitSetFlags } from "#backends/wasm/lowering/flags.js";
+import { emitAluFlagsCondition, emitFlagProducerCondition } from "#backends/wasm/codegen/conditions.js";
+import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/codegen/alu-flags.js";
+import { emitSetFlags } from "#backends/wasm/codegen/flags.js";
 
 const unmodeledStorageBit = 1 << 9;
 

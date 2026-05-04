@@ -1,13 +1,13 @@
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import { lowerIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
+import { emitIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 import type {
   IrSet32ExprOp,
   IrStorageExpr,
   IrValueExpr
-} from "#backends/wasm/lowering/expressions.js";
-import { emitFlagProducerCondition } from "#backends/wasm/lowering/conditions.js";
+} from "#backends/wasm/codegen/expressions.js";
+import { emitFlagProducerCondition } from "#backends/wasm/codegen/conditions.js";
 import {
   emitJitConditionalJump,
   emitJitControlExit,
@@ -132,7 +132,7 @@ function emitCurrentInstruction(jitContext: JitIrContext): void {
 }
 
 function emitJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["ir"]): void {
-  lowerIrToWasm(ir, {
+  emitIrToWasm(ir, {
     body: jitContext.body,
     scratch: jitContext.scratch,
     expression: { canInlineGet32: (source) => canInlineJitGet32(jitContext, source) },

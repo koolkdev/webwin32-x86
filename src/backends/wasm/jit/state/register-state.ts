@@ -2,8 +2,8 @@ import type { Reg32 } from "#x86/isa/types.js";
 import { stateOffset } from "#backends/wasm/abi.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
-import type { WasmIrReg32Storage } from "#backends/wasm/lowering/registers.js";
-import { emitLoadStateU32, emitStoreStateU32 } from "#backends/wasm/lowering/state.js";
+import type { WasmIrReg32Storage } from "#backends/wasm/codegen/registers.js";
+import { emitLoadStateU32, emitStoreStateU32 } from "#backends/wasm/codegen/state.js";
 
 export type JitReg32InstructionOptions = Readonly<{
   preserveCommittedRegs: boolean;

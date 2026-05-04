@@ -7,7 +7,7 @@ import {
   type IrSet32ExprOp,
   type IrStorageExpr,
   type IrValueExpr
-} from "#backends/wasm/lowering/expressions.js";
+} from "#backends/wasm/codegen/expressions.js";
 import type {
   ConditionCode,
   IrFlagSetOp,
@@ -18,7 +18,7 @@ import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-bo
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { assignIrExprVarSlots, type IrExprVarSlotAssignment } from "./var-slots.js";
 
-export type WasmIrLoweringContext = Readonly<{
+export type WasmIrEmitContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
   expression?: IrExpressionOptions;
@@ -42,16 +42,16 @@ export type WasmIrEmitHelpers = Readonly<{
   emitValue(value: IrValueExpr): void;
 }>;
 
-export function lowerIrToWasm(block: IrExpressionInputBlock, context: WasmIrLoweringContext): void {
-  lowerIrExpressionBlockToWasm(buildIrExpressionBlock(block, context.expression), context);
+export function emitIrToWasm(block: IrExpressionInputBlock, context: WasmIrEmitContext): void {
+  emitIrExpressionBlockToWasm(buildIrExpressionBlock(block, context.expression), context);
 }
 
-function lowerIrExpressionBlockToWasm(block: IrExprBlock, context: WasmIrLoweringContext): void {
-  new IrExprWasmLowerer(block, context).lower();
+function emitIrExpressionBlockToWasm(block: IrExprBlock, context: WasmIrEmitContext): void {
+  new IrExprWasmEmitter(block, context).emit();
 }
 
 function allocateWasmLocalsForIrExprSlots(
-  context: WasmIrLoweringContext,
+  context: WasmIrEmitContext,
   slotCount: number
 ): number[] {
   return Array.from(
@@ -60,33 +60,33 @@ function allocateWasmLocalsForIrExprSlots(
   );
 }
 
-class IrExprWasmLowerer {
+class IrExprWasmEmitter {
   readonly #block: IrExprBlock;
-  readonly #context: WasmIrLoweringContext;
+  readonly #context: WasmIrEmitContext;
   readonly #slots: IrExprVarSlotAssignment;
   readonly #slotLocals: readonly number[];
   readonly #helpers: WasmIrEmitHelpers = {
     emitValue: (value) => this.#emitValue(value)
   };
 
-  constructor(block: IrExprBlock, context: WasmIrLoweringContext) {
+  constructor(block: IrExprBlock, context: WasmIrEmitContext) {
     this.#block = block;
     this.#context = context;
     this.#slots = assignIrExprVarSlots(this.#block);
     this.#slotLocals = allocateWasmLocalsForIrExprSlots(this.#context, this.#slots.slotCount);
   }
 
-  lower(): void {
+  emit(): void {
     try {
       for (const op of this.#block) {
-        this.#lowerOp(op);
+        this.#emitOp(op);
       }
     } finally {
       this.#freeSlotLocals();
     }
   }
 
-  #lowerOp(op: IrExprOp): void {
+  #emitOp(op: IrExprOp): void {
     switch (op.op) {
       case "let32":
         this.#emitValue(op.value);
