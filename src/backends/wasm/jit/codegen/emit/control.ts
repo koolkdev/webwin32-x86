@@ -1,7 +1,7 @@
 import type { IrValueExpr } from "#backends/wasm/codegen/expressions.js";
-import { i32 } from "#x86/state/cpu-state.js";
+import { i32, u32 } from "#x86/state/cpu-state.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
-import { ExitReason } from "#backends/wasm/exit.js";
+import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { emitWasmIrExitFromI32Stack } from "#backends/wasm/codegen/exit.js";
 import type { WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 import type { JitExitPoint } from "#backends/wasm/jit/codegen/plan/types.js";
@@ -11,16 +11,7 @@ export function emitJitNext(context: JitIrContext): void {
   const instruction = context.currentInstruction();
 
   if (instruction.nextMode === "exit") {
-    const exitPoint = context.currentExitPoint(ExitReason.FALLTHROUGH);
-
-    context.state.commitInstructionExit(
-      exitPoint,
-      () => {
-        context.body.i32Const(i32(instruction.nextEip));
-      }
-    );
-    context.body.i32Const(i32(instruction.nextEip));
-    emitWasmIrExitFromI32Stack(context.body, context.exit, ExitReason.FALLTHROUGH);
+    emitJitStaticControlTransfer(context, instruction.nextEip, ExitReason.FALLTHROUGH);
     return;
   }
 
@@ -33,11 +24,9 @@ export function emitJitNextEip(context: JitIrContext): void {
 }
 
 export function emitJitJump(context: JitIrContext, target: IrValueExpr, helpers: WasmIrEmitHelpers): void {
-  if (emitJitLinkedStaticGoToEip(context, target)) {
+  if (emitJitControlTransfer(context, target, ExitReason.JUMP, helpers)) {
     return;
   }
-
-  emitJitControlExit(context, target, ExitReason.JUMP, helpers);
 }
 
 export function emitJitControlExit(
@@ -76,9 +65,9 @@ export function emitJitConditionalJump(
 ): void {
   helpers.emitValue(condition);
   context.body.ifBlock();
-  emitJitControlExit(context, taken, ExitReason.BRANCH_TAKEN, helpers, 1);
+  emitJitControlTransfer(context, taken, ExitReason.BRANCH_TAKEN, helpers, 1);
   context.body.endBlock();
-  emitJitControlExit(context, notTaken, ExitReason.BRANCH_NOT_TAKEN, helpers);
+  emitJitControlTransfer(context, notTaken, ExitReason.BRANCH_NOT_TAKEN, helpers);
 }
 
 export function emitJitHostTrap(context: JitIrContext, vector: IrValueExpr, helpers: WasmIrEmitHelpers): void {
@@ -103,33 +92,65 @@ export function emitJitHostTrap(context: JitIrContext, vector: IrValueExpr, help
   }
 }
 
-function emitJitLinkedStaticGoToEip(context: JitIrContext, target: IrValueExpr): boolean {
+function emitJitControlTransfer(
+  context: JitIrContext,
+  target: IrValueExpr,
+  exitReason: ExitReasonValue,
+  helpers: WasmIrEmitHelpers,
+  extraDepth = 0
+): boolean {
+  const targetEip = staticControlTarget(context, target);
+
+  if (targetEip === undefined) {
+    emitJitControlExit(context, target, exitReason, helpers, extraDepth);
+    return false;
+  }
+
+  emitJitStaticControlTransfer(context, targetEip, exitReason, extraDepth);
+  return true;
+}
+
+function emitJitStaticControlTransfer(
+  context: JitIrContext,
+  targetEip: number,
+  exitReason: ExitReasonValue,
+  extraDepth = 0
+): void {
+  const exitPoint = context.currentExitPoint(exitReason);
+
+  context.state.commitInstructionExit(exitPoint, () => {
+    context.body.i32Const(i32(targetEip));
+  });
+
+  if (emitJitLinkedStaticControlTransfer(context, targetEip, exitPoint)) {
+    return;
+  }
+
+  context.body.i32Const(i32(targetEip));
+  emitWasmIrExitFromI32Stack(context.body, context.exit, exitReason, extraDepth);
+}
+
+function emitJitLinkedStaticControlTransfer(
+  context: JitIrContext,
+  targetEip: number,
+  exitPoint: JitExitPoint
+): boolean {
   const linking = context.linking;
 
   if (linking === undefined) {
     return false;
   }
 
-  const targetEip = finalStaticGoToEipTarget(context, target);
-
-  if (targetEip === undefined) {
-    return false;
-  }
-
   const directFunctionIndex = linking.functionIndexForStaticTarget?.(targetEip);
 
   if (directFunctionIndex !== undefined) {
-    const exitPoint = context.currentExitPoint(ExitReason.JUMP);
-
-    emitJitLinkedGoToEipStateStores(context, targetEip, exitPoint);
+    emitJitLinkedControlTransferStateStores(context, exitPoint);
     context.body.returnCallFunction(directFunctionIndex);
     return true;
   }
 
   if (linking.tableIndex !== undefined && linking.slotForStaticTarget !== undefined) {
-    const exitPoint = context.currentExitPoint(ExitReason.JUMP);
-
-    emitJitLinkedGoToEipStateStores(context, targetEip, exitPoint);
+    emitJitLinkedControlTransferStateStores(context, exitPoint);
     context.body
       .i32Const(linking.slotForStaticTarget(targetEip))
       .returnCallIndirect(linking.blockTypeIndex, linking.tableIndex);
@@ -139,26 +160,36 @@ function emitJitLinkedStaticGoToEip(context: JitIrContext, target: IrValueExpr):
   return false;
 }
 
-function emitJitLinkedGoToEipStateStores(context: JitIrContext, targetEip: number, exitPoint: JitExitPoint): void {
-  context.state.commitInstructionExit(exitPoint, () => {
-    context.body.i32Const(i32(targetEip));
-  });
+function emitJitLinkedControlTransferStateStores(
+  context: JitIrContext,
+  exitPoint: JitExitPoint
+): void {
   context.exit.emitBeforeExit?.();
   context.state.emitExitStateStores(exitPoint.exitStateIndex);
 }
 
-function finalStaticGoToEipTarget(context: JitIrContext, target: IrValueExpr): number | undefined {
+function staticControlTarget(context: JitIrContext, target: IrValueExpr): number | undefined {
   const instruction = context.currentInstruction();
 
-  if (
-    instruction.nextMode !== "exit" ||
-    target.kind !== "src32" ||
-    target.source.kind !== "operand"
-  ) {
+  if (instruction.nextMode !== "exit") {
     return undefined;
   }
 
-  const binding = instruction.operands[target.source.index];
+  switch (target.kind) {
+    case "const32":
+      return u32(target.value);
+    case "nextEip":
+      return u32(instruction.nextEip);
+    case "src32": {
+      if (target.source.kind !== "operand") {
+        return undefined;
+      }
 
-  return binding?.kind === "static.relTarget" ? binding.target : undefined;
+      const binding = instruction.operands[target.source.index];
+
+      return binding?.kind === "static.relTarget" ? binding.target : undefined;
+    }
+    default:
+      return undefined;
+  }
 }

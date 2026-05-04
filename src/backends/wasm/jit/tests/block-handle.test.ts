@@ -34,6 +34,7 @@ const movStoreJumpFixture = [
 ] as const;
 
 const linkedTargetAddress = 0x2000;
+const zeroFlag = 0x40;
 
 test("compiled_block_handle_can_invoke_simple_block", async () => {
   const { handle, stateView } = await compileFixture(movAddJumpFixture);
@@ -123,6 +124,72 @@ test("compiled_block_handle_can_compile_multiple_blocks_into_one_module", async 
 
   deepStrictEqual(run.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
   strictEqual(state.eax, 2);
+});
+
+test("same-module final fallthrough uses direct return_call", () => {
+  const stateMemory = new WebAssembly.Memory({ initial: 1 });
+  const guestMemory = createGuestMemory();
+  const guestView = new DataView(guestMemory.buffer);
+  const bytes = [
+    0x40,
+    ...incEaxHostTrap()
+  ];
+
+  writeGuestCode(guestView, bytes);
+
+  const regions = [{ kind: "guest-memory" as const, baseAddress: startAddress, byteLength: bytes.length }];
+  const reader = new GuestMemoryDecodeReader(new ArrayBufferGuestMemory(guestMemory.buffer), regions);
+  const firstBlock = decodeIsaBlock(reader, startAddress, { maxInstructions: 1 });
+  const secondBlock = decodeIsaBlock(reader, startAddress + 1);
+  const moduleBytes = encodeJitIrBlock([firstBlock, secondBlock].map((block) => buildJitIrBlock(block.instructions)));
+  const firstBlockOpcodes = wasmBodyOpcodes(extractFunctionBody(moduleBytes, 0));
+  const handle = compileWasmBlockHandle([firstBlock, secondBlock], { stateMemory, guestMemory });
+  const stateView = new DataView(stateMemory.buffer);
+
+  deepStrictEqual(firstBlock.terminator, { kind: "fallthrough", nextEip: startAddress + 1 });
+  strictEqual(handle.moduleLinkTable, undefined);
+  ok(firstBlockOpcodes.includes(wasmOpcode.returnCall));
+  ok(!firstBlockOpcodes.includes(wasmOpcode.returnCallIndirect));
+
+  writeJitState(stateView, createCpuState({ eip: startAddress }));
+
+  const run = handle.run(startAddress);
+  const state = readJitState(stateView);
+
+  deepStrictEqual(run.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+  strictEqual(state.eax, 2);
+});
+
+test("same-module conditional branches can link both static targets", async () => {
+  const takenEip = startAddress + 0x20;
+  const branchBytes = incEaxJnzRel8(startAddress, takenEip);
+  const notTakenEip = startAddress + branchBytes.length;
+  const { handle, moduleBytes, stateView } = await compileMultiBlockFixture([
+    { eip: startAddress, bytes: branchBytes },
+    { eip: notTakenEip, bytes: incEaxHostTrap() },
+    { eip: takenEip, bytes: incEaxHostTrap() }
+  ]);
+  const firstBlockOpcodes = wasmBodyOpcodes(extractFunctionBody(moduleBytes, 0));
+
+  strictEqual(handle.moduleLinkTable, undefined);
+  ok(firstBlockOpcodes.includes(wasmOpcode.returnCall));
+  ok(!firstBlockOpcodes.includes(wasmOpcode.returnCallIndirect));
+
+  writeJitState(stateView, createCpuState({ eip: startAddress }));
+
+  const taken = handle.run(startAddress);
+  const takenState = readJitState(stateView);
+
+  deepStrictEqual(taken.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+  strictEqual(takenState.eax, 2);
+
+  writeJitState(stateView, createCpuState({ eip: startAddress, eflags: zeroFlag }));
+
+  const notTaken = handle.run(startAddress);
+  const notTakenState = readJitState(stateView);
+
+  deepStrictEqual(notTaken.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+  strictEqual(notTakenState.eax, 2);
 });
 
 test("same-module static call uses direct return_call after call stack effects", async () => {
@@ -247,6 +314,13 @@ function incEaxCallRel32(blockEip: number, targetEip: number): readonly number[]
   ];
 }
 
+function incEaxJnzRel8(blockEip: number, targetEip: number): readonly number[] {
+  return [
+    0x40,
+    ...jnzRel8(blockEip + 1, targetEip)
+  ];
+}
+
 function incEaxHostTrap(): readonly number[] {
   return [
     0x40,
@@ -260,6 +334,23 @@ function callRel32(eip: number, targetEip: number): readonly number[] {
 
 function jmpRel32(eip: number, targetEip: number): readonly number[] {
   return rel32Instruction(0xe9, eip, targetEip);
+}
+
+function jnzRel8(eip: number, targetEip: number): readonly number[] {
+  return rel8Instruction(0x75, eip, targetEip);
+}
+
+function rel8Instruction(opcode: number, eip: number, targetEip: number): readonly number[] {
+  const displacement = targetEip - (eip + 2);
+
+  if (displacement < -128 || displacement > 127) {
+    throw new RangeError(`rel8 displacement out of range: ${displacement}`);
+  }
+
+  return [
+    opcode,
+    displacement & 0xff
+  ];
 }
 
 function rel32Instruction(opcode: number, eip: number, targetEip: number): readonly number[] {

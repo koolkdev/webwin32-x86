@@ -15,6 +15,7 @@ import {
 const aEip = 0x1000;
 const bEip = 0x2000;
 const cEip = 0x3000;
+const zeroFlag = 0x40;
 
 test("cold final static jmp uses module-local fallback stub", () => {
   const fixture = createLinkingFixture([
@@ -102,6 +103,42 @@ test("final jmp rel8 can link through the module-local table", () => {
 
   deepStrictEqual(run.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
   strictEqual(state.eax, 2);
+});
+
+test("compiled conditional targets patch both branch slots", () => {
+  const takenEip = aEip + 0x20;
+  const branchBytes = incEaxJnzRel8(aEip, takenEip);
+  const notTakenEip = aEip + branchBytes.length;
+  const fixture = createLinkingFixture([
+    block(aEip, branchBytes),
+    block(notTakenEip, incEaxHostTrap()),
+    block(takenEip, incEaxHostTrap())
+  ]);
+  const branch = compileBlock(fixture, aEip);
+  const notTaken = compileBlock(fixture, notTakenEip);
+  const taken = compileBlock(fixture, takenEip);
+  const notTakenSlot = slotForTarget(branch, notTakenEip);
+  const takenSlot = slotForTarget(branch, takenEip);
+
+  strictEqual(branch.moduleLinkTable?.table.length, 2);
+  strictEqual(branch.moduleLinkTable?.table.get(notTakenSlot), notTaken.exportedBlockFunctionForEip(notTakenEip));
+  strictEqual(branch.moduleLinkTable?.table.get(takenSlot), taken.exportedBlockFunctionForEip(takenEip));
+
+  fixture.memories.state.load({ eip: aEip });
+
+  const takenRun = branch.run();
+  const takenState = fixture.memories.state.snapshot();
+
+  deepStrictEqual(takenRun.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+  strictEqual(takenState.eax, 2);
+
+  fixture.memories.state.load({ eip: aEip, eflags: zeroFlag });
+
+  const notTakenRun = branch.run();
+  const notTakenState = fixture.memories.state.snapshot();
+
+  deepStrictEqual(notTakenRun.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+  strictEqual(notTakenState.eax, 2);
 });
 
 test("invalidating compiled target restores dependent module-local fallback", () => {
@@ -248,6 +285,13 @@ function incEaxJmpRel8(blockEip: number, targetEip: number): readonly number[] {
   ];
 }
 
+function incEaxJnzRel8(blockEip: number, targetEip: number): readonly number[] {
+  return [
+    0x40,
+    ...jnzRel8(blockEip + 1, targetEip)
+  ];
+}
+
 function incEaxHostTrap(): readonly number[] {
   return [
     0x40,
@@ -264,6 +308,14 @@ function jmpRel32(eip: number, targetEip: number): readonly number[] {
 }
 
 function jmpRel8(eip: number, targetEip: number): readonly number[] {
+  return rel8Instruction(0xeb, eip, targetEip);
+}
+
+function jnzRel8(eip: number, targetEip: number): readonly number[] {
+  return rel8Instruction(0x75, eip, targetEip);
+}
+
+function rel8Instruction(opcode: number, eip: number, targetEip: number): readonly number[] {
   const displacement = targetEip - (eip + 2);
 
   if (displacement < -128 || displacement > 127) {
@@ -271,7 +323,7 @@ function jmpRel8(eip: number, targetEip: number): readonly number[] {
   }
 
   return [
-    0xeb,
+    opcode,
     displacement & 0xff
   ];
 }
