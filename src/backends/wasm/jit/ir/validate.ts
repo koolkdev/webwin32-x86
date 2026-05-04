@@ -60,6 +60,10 @@ function jitValidationIrBlock(block: JitIrBody): IrBlock {
       return { op: "aluFlags.condition", dst: op.dst, cc: op.cc };
     }
 
+    if (op.op === "set32.materialize") {
+      return { op: "set32", target: op.target, value: op.value };
+    }
+
     return op;
   });
 }
@@ -198,7 +202,7 @@ function validateJitRegisterMaterializations(
   for (let opIndex = 0; opIndex < block.length; opIndex += 1) {
     const op = block[opIndex];
 
-    if (op?.op !== "set32" || op.jitRole !== "registerMaterialization") {
+    if (op?.op !== "set32.materialize") {
       continue;
     }
 

@@ -692,6 +692,7 @@ function irOpOperandIndexes(op: JitIrOp): readonly number[] {
     case "get32":
       return storageOperandIndexes(op.source);
     case "set32":
+    case "set32.materialize":
       return storageOperandIndexes(op.target);
     case "set32.if":
       return storageOperandIndexes(op.target);

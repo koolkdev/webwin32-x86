@@ -220,7 +220,7 @@ function emitMaterializations(
 
   for (const materialization of materializations) {
     for (const { reg, value } of materialization.values) {
-      materializeJitRegisterValue(rewrite, reg, value, { jitRole: "registerMaterialization" });
+      materializeJitRegisterValue(rewrite, reg, value);
       materializedSetCount += 1;
     }
   }

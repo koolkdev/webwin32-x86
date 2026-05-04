@@ -214,7 +214,7 @@ function jitRegisterWriteEffect(
   op: JitIrOp,
   operands: JitIrBlockInstruction["operands"]
 ): JitRegisterWriteEffect | undefined {
-  if (op.op !== "set32" && op.op !== "set32.if") {
+  if (op.op !== "set32" && op.op !== "set32.if" && op.op !== "set32.materialize") {
     return undefined;
   }
 
@@ -224,6 +224,6 @@ function jitRegisterWriteEffect(
     ? undefined
     : {
       reg,
-      kind: op.op === "set32" ? "write" : "conditionalWrite"
+      kind: op.op === "set32.if" ? "conditionalWrite" : "write"
     };
 }

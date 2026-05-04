@@ -60,7 +60,7 @@ export function set32TargetRegs(
 ): readonly Reg32[] {
   return instructions.flatMap((instruction) =>
     instructionOps(instruction).flatMap((op) => {
-      if (op.op !== "set32") {
+      if (op.op !== "set32" && op.op !== "set32.materialize") {
         return [];
       }
 

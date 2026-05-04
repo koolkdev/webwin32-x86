@@ -100,12 +100,10 @@ export function analyzeJitLoweringState(
     opIndex: number
   ): void {
     switch (op.op) {
+      case "set32.materialize":
+        state.recordCommittedStorageWrite(op.target, instruction.operands);
+        return;
       case "set32":
-        if (op.jitRole === "registerMaterialization") {
-          state.recordCommittedStorageWrite(op.target, instruction.operands);
-          return;
-        }
-
         state.recordStorageWrite(op.target, instruction.operands);
         return;
       case "set32.if":

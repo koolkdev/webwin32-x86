@@ -101,7 +101,7 @@ test("runRegisterValuePass folds register values into indirect jump targets", ()
   strictEqual(folded.registerValues.materializedSetCount, 1);
   deepStrictEqual(
     jumpInstruction.ir.slice(0, jumpIndex).map((op) => op.op),
-    ["get32", "i32.xor", "set32"]
+    ["get32", "i32.xor", "set32.materialize"]
   );
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
 });
@@ -157,7 +157,7 @@ test("runRegisterValuePass materializes address registers before faultable memor
   strictEqual(folded.registerValues.materializedSetCount, 1);
   strictEqual(hasSet32Reg(folded.block.instructions[0]!, "eax"), false);
   strictEqual(hasSet32Reg(loadInstruction, "eax"), true);
-  deepStrictEqual(loadInstruction.ir.map((op) => op.op), ["get32", "set32", "get32", "set32", "next"]);
+  deepStrictEqual(loadInstruction.ir.map((op) => op.op), ["get32", "set32.materialize", "get32", "set32", "next"]);
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
 
@@ -198,5 +198,9 @@ function hasSet32Reg(
   instruction: JitIrBlockInstruction,
   reg: Reg32
 ): boolean {
-  return instruction.ir.some((op) => op.op === "set32" && op.target.kind === "reg" && op.target.reg === reg);
+  return instruction.ir.some((op) =>
+    (op.op === "set32" || op.op === "set32.materialize") &&
+    op.target.kind === "reg" &&
+    op.target.reg === reg
+  );
 }

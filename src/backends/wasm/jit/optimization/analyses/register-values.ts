@@ -270,6 +270,20 @@ function analyzeInstruction(
         }
         break;
       }
+      case "set32.materialize": {
+        const reg = registerBarrierReg(barriers, instructionIndex, opIndex, "write");
+
+        if (reg !== undefined) {
+          materializeDependencies(registers, materializations, reg, {
+            instructionIndex,
+            opIndex,
+            phase: "beforeOp",
+            reason: "clobber"
+          });
+          registers.delete(reg);
+        }
+        break;
+      }
       default:
         values.recordOp(op, instruction, registers.trackedValues);
         break;

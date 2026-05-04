@@ -56,8 +56,7 @@ test("verifyJitIrBlock rejects unexpected JIT flag condition inputs", () => {
 test("verifyJitIrBlock rejects non-register materialization targets", () => {
   throws(() => verifyJitIrBlock(jitBlock([
     {
-      op: "set32",
-      jitRole: "registerMaterialization",
+      op: "set32.materialize",
       target: { kind: "mem", address: c32(0x2000) },
       value: c32(1)
     },

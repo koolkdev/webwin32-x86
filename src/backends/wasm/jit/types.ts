@@ -1,5 +1,7 @@
 import type {
   IrOp,
+  StorageRef,
+  ValueRef,
   VarRef
 } from "#x86/ir/model/types.js";
 import type { IrFlagProducerConditionDescriptor } from "#x86/ir/model/flag-conditions.js";
@@ -17,12 +19,14 @@ export type JitFlagProducerConditionOp = IrFlagProducerConditionDescriptor & Rea
   dst: VarRef;
 }>;
 
-export type JitRegisterMaterializationOp = Extract<IrOp, { op: "set32" }> & Readonly<{
-  jitRole?: "registerMaterialization";
+export type JitRegisterMaterializationOp = Readonly<{
+  op: "set32.materialize";
+  target: StorageRef;
+  value: ValueRef;
 }>;
 
 export type JitIrOp =
-  | Exclude<IrOp, Extract<IrOp, { op: "set32" }>>
+  | IrOp
   | JitRegisterMaterializationOp
   | JitFlagProducerConditionOp;
 export type JitIrBody = readonly JitIrOp[];

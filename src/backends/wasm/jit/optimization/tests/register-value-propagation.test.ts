@@ -26,7 +26,7 @@ test("register-value-propagation folds register reads and materializes before ex
     foldedAddressCount: 0,
     materializedSetCount: 1
   });
-  deepStrictEqual(opNames(result.block), ["const32", "const32", "set32", "next"]);
+  deepStrictEqual(opNames(result.block), ["const32", "const32", "set32.materialize", "next"]);
 });
 
 test("register-value-propagation inserts materialization before pre-instruction fault points", () => {
@@ -44,7 +44,7 @@ test("register-value-propagation inserts materialization before pre-instruction 
     ]
   });
 
-  deepStrictEqual(result.block.instructions[1]?.ir.map((op) => op.op), ["set32", "get32", "next"]);
+  deepStrictEqual(result.block.instructions[1]?.ir.map((op) => op.op), ["set32.materialize", "get32", "next"]);
   strictEqual(result.registerValues.materializedSetCount, 1);
 });
 
@@ -61,7 +61,7 @@ test("register-value-propagation materializes dependencies before clobbers", () 
     ]
   });
 
-  deepStrictEqual(opNames(result.block), ["get32", "const32", "set32", "set32", "next"]);
+  deepStrictEqual(opNames(result.block), ["get32", "const32", "set32.materialize", "set32", "next"]);
   deepStrictEqual(set32Regs(result.block), ["ebx", "eax"]);
   strictEqual(result.registerValues.removedSetCount, 1);
   strictEqual(result.registerValues.materializedSetCount, 1);
@@ -102,6 +102,10 @@ function opNames(block: { instructions: readonly { ir: readonly { op: string }[]
 
 function set32Regs(block: { instructions: readonly { ir: readonly { op: string; target?: { kind: string; reg?: string } }[] }[] }): readonly string[] {
   return block.instructions.flatMap((instruction) =>
-    instruction.ir.flatMap((op) => op.op === "set32" && op.target?.kind === "reg" ? [op.target.reg ?? ""] : [])
+    instruction.ir.flatMap((op) =>
+      (op.op === "set32" || op.op === "set32.materialize") && op.target?.kind === "reg"
+        ? [op.target.reg ?? ""]
+        : []
+    )
   );
 }

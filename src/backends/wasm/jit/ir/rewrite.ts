@@ -66,16 +66,13 @@ export function createJitInstructionRewrite(
 export function materializeJitRegisterValue(
   rewrite: JitInstructionRewrite,
   reg: Reg32,
-  value: JitValue,
-  options: Readonly<{ jitRole?: "registerMaterialization" }> = {}
+  value: JitValue
 ): void {
-  const op: JitIrOp = {
-    op: "set32",
+  rewrite.ops.push({
+    op: "set32.materialize",
     target: { kind: "reg", reg },
     value: emitJitValueRef(rewrite, value)
-  };
-
-  rewrite.ops.push(options.jitRole === undefined ? op : { ...op, jitRole: options.jitRole });
+  });
 }
 
 export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitValue): ValueRef {
