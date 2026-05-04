@@ -35,13 +35,13 @@ export class JitValueTracker {
     registerValues: ReadonlyMap<Reg32, JitValue> = new Map()
   ): boolean {
     switch (op.op) {
-      case "get32":
+      case "get":
         this.record(
           op.dst.id,
           jitValueForStorage(op.source, instruction.operands, registerValues)
         );
         return true;
-      case "address32":
+      case "address":
         this.record(
           op.dst.id,
           jitValueForEffectiveAddress(op.operand, instruction.operands, registerValues)

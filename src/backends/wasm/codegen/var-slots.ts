@@ -95,11 +95,11 @@ function collectOpVarUses(op: IrExprOp, visit: (id: number) => void): void {
     case "let32":
       collectValueVarUses(op.value, visit);
       return;
-    case "set32":
+    case "set":
       collectStorageVarUses(op.target, visit);
       collectValueVarUses(op.value, visit);
       return;
-    case "set32.if":
+    case "set.if":
       collectValueVarUses(op.condition, visit);
       collectStorageVarUses(op.target, visit);
       collectValueVarUses(op.value, visit);
@@ -141,7 +141,7 @@ function collectValueVarUses(value: IrValueExpr, visit: (id: number) => void): v
       return;
     case "const32":
     case "nextEip":
-    case "address32":
+    case "address":
     case "aluFlags.condition":
       return;
     case "flagProducer.condition":

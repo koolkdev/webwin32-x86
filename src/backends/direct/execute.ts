@@ -3,11 +3,14 @@ import { runResultFromState, StopReason } from "#x86/execution/run-result.js";
 import type { GuestMemory, MemoryFault } from "#x86/memory/guest-memory.js";
 import {
   getFlag,
+  getRegisterAlias,
   getReg32,
   hasEvenParityLowByte,
   setFlag,
+  setRegisterAlias,
   setReg32,
   u32,
+  widthMask,
   type CpuState
 } from "#x86/state/cpu-state.js";
 import { buildIr } from "#x86/ir/build/builder.js";
@@ -15,7 +18,7 @@ import { CONDITIONS, type FlagBoolExpr } from "#x86/ir/model/conditions.js";
 import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "#x86/ir/model/flags.js";
 import type { MemRef, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import type { IsaDecodedInstruction, IsaOperandBinding } from "#x86/isa/decoder/types.js";
-import type { MemOperand, OperandWidth, RegisterAlias } from "#x86/isa/types.js";
+import type { MemOperand, OperandWidth, Reg32 } from "#x86/isa/types.js";
 
 export type DirectExecutionOptions = Readonly<{
   memory?: GuestMemory;
@@ -59,8 +62,8 @@ export function executeDirectInstruction(
 
 function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
   switch (op.op) {
-    case "get32": {
-      const read = readStorage(context, op.source);
+    case "get": {
+      const read = readStorage(context, op.source, op.accessWidth ?? 32);
 
       if (read.kind !== "value") {
         return stopFromAccess(context.state, read);
@@ -69,23 +72,23 @@ function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
       setVar(context, op.dst, read.value);
       return undefined;
     }
-    case "set32": {
+    case "set": {
       const value = evalValueRef(context, op.value);
-      const write = writeStorage(context, op.target, value);
+      const write = writeStorage(context, op.target, value, op.accessWidth ?? 32);
 
       return write.kind === "ok" ? undefined : stopFromAccess(context.state, write);
     }
-    case "set32.if": {
+    case "set.if": {
       if (evalValueRef(context, op.condition) === 0) {
         return undefined;
       }
 
       const value = evalValueRef(context, op.value);
-      const write = writeStorage(context, op.target, value);
+      const write = writeStorage(context, op.target, value, op.accessWidth ?? 32);
 
       return write.kind === "ok" ? undefined : stopFromAccess(context.state, write);
     }
-    case "address32": {
+    case "address": {
       const binding = context.instruction.operands[op.operand.index];
 
       if (binding?.kind !== "mem") {
@@ -136,67 +139,74 @@ function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
   }
 }
 
-function readStorage(context: ExecutionContext, storage: StorageRef): ValueResult {
+function readStorage(context: ExecutionContext, storage: StorageRef, accessWidth: OperandWidth): ValueResult {
   switch (storage.kind) {
     case "operand": {
       const binding = context.instruction.operands[storage.index];
 
-      return binding === undefined ? { kind: "unsupported" } : readOperandBinding(context, binding);
+      return binding === undefined ? { kind: "unsupported" } : readOperandBinding(context, binding, accessWidth);
     }
     case "reg":
-      return { kind: "value", value: getReg32(context.state, storage.reg) };
+      return { kind: "value", value: readReg32Access(context.state, storage.reg, accessWidth) };
     case "mem":
-      return readMemory(context, storage);
+      return readMemory(context, storage, accessWidth);
   }
 }
 
-function writeStorage(context: ExecutionContext, storage: StorageRef, value: number): WriteResult {
+function writeStorage(context: ExecutionContext, storage: StorageRef, value: number, accessWidth: OperandWidth): WriteResult {
+  const maskedValue = maskValue(value, accessWidth);
+
   switch (storage.kind) {
     case "operand": {
       const binding = context.instruction.operands[storage.index];
 
-      return binding === undefined ? { kind: "unsupported" } : writeOperandBinding(context, binding, value);
+      return binding === undefined ? { kind: "unsupported" } : writeOperandBinding(context, binding, accessWidth, maskedValue);
     }
     case "reg":
-      setReg32(context.state, storage.reg, value);
+      writeReg32Access(context.state, storage.reg, accessWidth, maskedValue);
       return { kind: "ok" };
     case "mem":
-      return writeMemory(context, storage, value);
+      return writeMemory(context, storage, accessWidth, maskedValue);
   }
 }
 
-function readOperandBinding(context: ExecutionContext, binding: IsaOperandBinding): ValueResult {
+function readOperandBinding(context: ExecutionContext, binding: IsaOperandBinding, accessWidth: OperandWidth): ValueResult {
   switch (binding.kind) {
     case "reg":
-      return { kind: "value", value: readRegisterAlias(context.state, binding.alias) };
+      return { kind: "value", value: maskValue(getRegisterAlias(context.state, binding.alias), accessWidth) };
     case "imm":
-      return { kind: "value", value: binding.value };
+      return { kind: "value", value: maskValue(binding.value, accessWidth) };
     case "relTarget":
       return { kind: "value", value: binding.target };
     case "mem":
-      return readGuest(context, effectiveAddress(context.state, binding), binding.accessWidth);
+      return readGuest(context, effectiveAddress(context.state, binding), accessWidth);
   }
 }
 
-function writeOperandBinding(context: ExecutionContext, binding: IsaOperandBinding, value: number): WriteResult {
+function writeOperandBinding(
+  context: ExecutionContext,
+  binding: IsaOperandBinding,
+  accessWidth: OperandWidth,
+  value: number
+): WriteResult {
   switch (binding.kind) {
     case "reg":
-      writeRegisterAlias(context.state, binding.alias, value);
+      setRegisterAlias(context.state, binding.alias, maskValue(value, accessWidth));
       return { kind: "ok" };
     case "mem":
-      return writeGuest(context, effectiveAddress(context.state, binding), binding.accessWidth, value);
+      return writeGuest(context, effectiveAddress(context.state, binding), accessWidth, value);
     case "imm":
     case "relTarget":
       return { kind: "unsupported" };
   }
 }
 
-function readMemory(context: ExecutionContext, storage: MemRef): ValueResult {
-  return readGuestU32(context, evalValueRef(context, storage.address));
+function readMemory(context: ExecutionContext, storage: MemRef, accessWidth: OperandWidth): ValueResult {
+  return readGuest(context, evalValueRef(context, storage.address), accessWidth);
 }
 
-function writeMemory(context: ExecutionContext, storage: MemRef, value: number): WriteResult {
-  return writeGuestU32(context, evalValueRef(context, storage.address), value);
+function writeMemory(context: ExecutionContext, storage: MemRef, accessWidth: OperandWidth, value: number): WriteResult {
+  return writeGuest(context, evalValueRef(context, storage.address), accessWidth, value);
 }
 
 function readGuest(context: ExecutionContext, address: number, width: OperandWidth): ValueResult {
@@ -287,7 +297,7 @@ function setFlags(
 ): void {
   const producer = FLAG_PRODUCERS[descriptor.producer] as Readonly<{
     inputs: readonly string[];
-    define(inputs: Readonly<Record<string, ValueRef>>): FlagDefs;
+    define(inputs: Readonly<Record<string, ValueRef>>, width?: OperandWidth): FlagDefs;
   }>;
 
   for (const name of producer.inputs) {
@@ -296,7 +306,7 @@ function setFlags(
     }
   }
 
-  for (const [flag, expr] of Object.entries(producer.define(descriptor.inputs)) as [FlagName, FlagExpr][]) {
+  for (const [flag, expr] of Object.entries(producer.define(descriptor.inputs, descriptor.width ?? 32)) as [FlagName, FlagExpr][]) {
     setFlag(context.state, flag, evalFlagExpr(context, expr));
   }
 }
@@ -383,28 +393,24 @@ function effectiveAddress(state: CpuState, binding: MemOperand): number {
   return u32(base + index + binding.disp);
 }
 
-function readRegisterAlias(state: CpuState, alias: RegisterAlias): number {
-  const value = getReg32(state, alias.base);
-
-  return alias.width === 32
-    ? value
-    : (value >>> alias.bitOffset) & widthMask(alias.width);
+function readReg32Access(state: CpuState, reg: Reg32, accessWidth: OperandWidth): number {
+  return maskValue(getReg32(state, reg), accessWidth);
 }
 
-function writeRegisterAlias(state: CpuState, alias: RegisterAlias, value: number): void {
-  if (alias.width === 32) {
-    setReg32(state, alias.base, value);
+function writeReg32Access(state: CpuState, reg: Reg32, accessWidth: OperandWidth, value: number): void {
+  if (accessWidth === 32) {
+    setReg32(state, reg, value);
     return;
   }
 
-  const mask = widthMask(alias.width) << alias.bitOffset;
-  const base = getReg32(state, alias.base);
+  const mask = widthMask(accessWidth);
+  const base = getReg32(state, reg);
 
-  setReg32(state, alias.base, (base & ~mask) | ((value << alias.bitOffset) & mask));
+  setReg32(state, reg, (base & ~mask) | (value & mask));
 }
 
-function widthMask(width: OperandWidth): number {
-  return width === 32 ? 0xffff_ffff : width === 16 ? 0xffff : 0xff;
+function maskValue(value: number, width: OperandWidth): number {
+  return width === 32 ? u32(value) : value & widthMask(width);
 }
 
 function signMask(width: 8 | 16 | 32): number {

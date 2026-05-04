@@ -23,6 +23,7 @@ import type { WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 
 type PendingFlags = Readonly<{
   producer: IrFlagSetOp["producer"];
+  width?: IrFlagSetOp["width"];
   writtenMask: IrFlagSetOp["writtenMask"];
   undefMask: IrFlagSetOp["undefMask"];
   inputs: ReadonlyMap<string, PendingInput>;
@@ -97,6 +98,7 @@ export function createJitFlagState(
 
       const pendingFlags = {
         producer: descriptor.producer,
+        ...(descriptor.width === undefined ? {} : { width: descriptor.width }),
         writtenMask: descriptor.writtenMask,
         undefMask: descriptor.undefMask,
         inputs: pendingInputs
@@ -205,6 +207,7 @@ export function createJitFlagState(
       {
         op: "flags.set",
         producer: pendingFlags.producer,
+        ...(pendingFlags.width === undefined ? {} : { width: pendingFlags.width }),
         writtenMask: pendingFlags.writtenMask,
         undefMask: pendingFlags.undefMask,
         inputs: inputs.inputRefs
@@ -219,7 +222,7 @@ export function createJitFlagState(
   function emitPendingFlagCondition(pendingFlags: PendingFlags, cc: ConditionCode): void {
     const inputs = pendingInputRefs(
       pendingFlags,
-      flagProducerConditionInputNames({ producer: pendingFlags.producer, cc })
+      flagProducerConditionInputNames({ producer: pendingFlags.producer, width: pendingFlags.width, cc })
     );
 
     emitFlagProducerCondition(
@@ -228,6 +231,7 @@ export function createJitFlagState(
         kind: "flagProducer.condition",
         cc,
         producer: pendingFlags.producer,
+        ...(pendingFlags.width === undefined ? {} : { width: pendingFlags.width }),
         writtenMask: pendingFlags.writtenMask,
         undefMask: pendingFlags.undefMask,
         inputs: inputs.inputRefs
@@ -322,7 +326,10 @@ export function createJitFlagState(
       }
     }
 
-    if (pendingFlags === undefined || flagProducerConditionKind({ producer: pendingFlags.producer, cc }) === undefined) {
+    if (
+      pendingFlags === undefined ||
+      flagProducerConditionKind({ producer: pendingFlags.producer, width: pendingFlags.width, cc }) === undefined
+    ) {
       return undefined;
     }
 

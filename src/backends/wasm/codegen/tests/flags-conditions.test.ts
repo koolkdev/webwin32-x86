@@ -17,27 +17,27 @@ import { emitSetFlags } from "#backends/wasm/codegen/flags.js";
 const unmodeledStorageBit = 1 << 9;
 
 test("emitSetFlags writes generated flags and normalizes arithmetic flag storage", async () => {
-  const add32 = await instantiateSetFlags("add32");
-  const logic32 = await instantiateSetFlags("logic32");
+  const add = await instantiateSetFlags("add");
+  const logic = await instantiateSetFlags("logic");
 
   strictEqual(
-    add32(0xffff_ffff, 1, 0, unmodeledStorageBit | x86ArithmeticFlagMask.SF | x86ArithmeticFlagMask.OF),
+    add(0xffff_ffff, 1, 0, unmodeledStorageBit | x86ArithmeticFlagMask.SF | x86ArithmeticFlagMask.OF),
     x86ArithmeticFlagMask.CF |
       x86ArithmeticFlagMask.PF |
       x86ArithmeticFlagMask.AF |
       x86ArithmeticFlagMask.ZF
   );
   strictEqual(
-    logic32(0, 0, 0, unmodeledStorageBit | x86ArithmeticFlagMask.CF | x86ArithmeticFlagMask.AF | x86ArithmeticFlagMask.OF),
+    logic(0, 0, 0, unmodeledStorageBit | x86ArithmeticFlagMask.CF | x86ArithmeticFlagMask.AF | x86ArithmeticFlagMask.OF),
     x86ArithmeticFlagMask.PF | x86ArithmeticFlagMask.ZF
   );
 });
 
 test("emitSetFlags supports partial producers that preserve CF", async () => {
-  const inc32 = await instantiateSetFlags("inc32");
+  const inc = await instantiateSetFlags("inc");
 
   strictEqual(
-    inc32(0xffff_ffff, 0, 0, x86ArithmeticFlagMask.CF | x86ArithmeticFlagMask.SF),
+    inc(0xffff_ffff, 0, 0, x86ArithmeticFlagMask.CF | x86ArithmeticFlagMask.SF),
     x86ArithmeticFlagMask.CF |
       x86ArithmeticFlagMask.PF |
       x86ArithmeticFlagMask.AF |
@@ -46,11 +46,11 @@ test("emitSetFlags supports partial producers that preserve CF", async () => {
 });
 
 test("emitSetFlags computes and writes only requested materialization bits", async () => {
-  const add32 = await instantiateSetFlags("add32", x86ArithmeticFlagMask.ZF);
-  const opcodes = wasmBodyOpcodes(encodeSetFlagsFunctionBody("add32", x86ArithmeticFlagMask.ZF).encode());
+  const add = await instantiateSetFlags("add", x86ArithmeticFlagMask.ZF);
+  const opcodes = wasmBodyOpcodes(encodeSetFlagsFunctionBody("add", x86ArithmeticFlagMask.ZF).encode());
 
   strictEqual(
-    add32(0xffff_ffff, 1, 0, x86ArithmeticFlagMask.SF),
+    add(0xffff_ffff, 1, 0, x86ArithmeticFlagMask.SF),
     x86ArithmeticFlagMask.SF | x86ArithmeticFlagMask.ZF
   );
   strictEqual(opcodes.includes(wasmOpcode.i32LtU), false);
@@ -62,7 +62,7 @@ test("emitSetFlags does not allocate an accumulator local", () => {
   const body = new WasmFunctionBodyEncoder(4);
   const aluFlags = wasmIrLocalAluFlagsStorage(body, 3);
 
-  emitSetFlags(body, aluFlags, createIrFlagSetOp("logic32", { result: v(2) }), {
+  emitSetFlags(body, aluFlags, createIrFlagSetOp("logic", { result: v(2) }), {
     emitValue: (value) => emitValueExpr(body, value)
   });
   body.localGet(3).end();
@@ -84,7 +84,7 @@ test("emitAluFlagsCondition evaluates compound condition formulas from arithmeti
   strictEqual(g(x86ArithmeticFlagMask.SF | x86ArithmeticFlagMask.OF), 1);
 });
 
-test("emitFlagProducerCondition evaluates producer-backed sub32 comparisons directly", async () => {
+test("emitFlagProducerCondition evaluates producer-backed sub comparisons directly", async () => {
   const eq = await instantiateFlagProducerCondition("E");
   const below = await instantiateFlagProducerCondition("B");
   const signedLess = await instantiateFlagProducerCondition("L");
@@ -99,17 +99,17 @@ test("emitFlagProducerCondition evaluates producer-backed sub32 comparisons dire
 });
 
 test("emitFlagProducerCondition evaluates producer-backed result conditions directly", async () => {
-  const incZero = await instantiateResultFlagProducerCondition("inc32", "E");
-  const logicNonZero = await instantiateResultFlagProducerCondition("logic32", "NE");
-  const decSign = await instantiateResultFlagProducerCondition("dec32", "S");
-  const addNotSign = await instantiateResultFlagProducerCondition("add32", "NS");
-  const subZero = await instantiateResultFlagProducerCondition("sub32", "E");
-  const addParity = await instantiateResultFlagProducerCondition("add32", "P");
-  const logicNotParity = await instantiateResultFlagProducerCondition("logic32", "NP");
-  const logicBelow = await instantiateResultFlagProducerCondition("logic32", "B");
-  const logicAboveEqual = await instantiateResultFlagProducerCondition("logic32", "AE");
-  const logicLessEqual = await instantiateResultFlagProducerCondition("logic32", "LE");
-  const logicGreater = await instantiateResultFlagProducerCondition("logic32", "G");
+  const incZero = await instantiateResultFlagProducerCondition("inc", "E");
+  const logicNonZero = await instantiateResultFlagProducerCondition("logic", "NE");
+  const decSign = await instantiateResultFlagProducerCondition("dec", "S");
+  const addNotSign = await instantiateResultFlagProducerCondition("add", "NS");
+  const subZero = await instantiateResultFlagProducerCondition("sub", "E");
+  const addParity = await instantiateResultFlagProducerCondition("add", "P");
+  const logicNotParity = await instantiateResultFlagProducerCondition("logic", "NP");
+  const logicBelow = await instantiateResultFlagProducerCondition("logic", "B");
+  const logicAboveEqual = await instantiateResultFlagProducerCondition("logic", "AE");
+  const logicLessEqual = await instantiateResultFlagProducerCondition("logic", "LE");
+  const logicGreater = await instantiateResultFlagProducerCondition("logic", "G");
 
   strictEqual(incZero(0), 1);
   strictEqual(incZero(1), 0);
@@ -163,7 +163,7 @@ function encodeSetFlagsModule(producer: FlagProducerName, mask?: number): Uint8A
 function encodeSetFlagsFunctionBody(producer: FlagProducerName, mask?: number): WasmFunctionBodyEncoder {
   const body = new WasmFunctionBodyEncoder(4);
   const aluFlags = wasmIrLocalAluFlagsStorage(body, 3);
-  const inputs: Readonly<Record<string, ValueRef>> = producer === "logic32"
+  const inputs: Readonly<Record<string, ValueRef>> = producer === "logic"
     ? { result: v(2) }
     : { left: v(0), right: v(1), result: v(2) };
 
@@ -187,7 +187,9 @@ async function instantiateCondition(cc: ConditionCode): Promise<(aluFlags: numbe
   return run as (aluFlags: number) => number;
 }
 
-async function instantiateFlagProducerCondition(cc: ConditionCode): Promise<(left: number, right: number) => number> {
+async function instantiateFlagProducerCondition(
+  cc: ConditionCode
+): Promise<(left: number, right: number) => number> {
   const module = await WebAssembly.compile(encodeFlagProducerConditionModule(cc));
   const instance = await WebAssembly.instantiate(module);
   const run = instance.exports.run;
@@ -227,8 +229,8 @@ function encodeFlagProducerConditionModule(cc: ConditionCode): Uint8Array<ArrayB
   emitFlagProducerCondition(body, {
     kind: "flagProducer.condition",
     cc,
-    producer: "sub32",
-    writtenMask: createIrFlagSetOp("sub32", { left: v(0), right: v(1), result: v(2) }).writtenMask,
+    producer: "sub",
+    writtenMask: createIrFlagSetOp("sub", { left: v(0), right: v(1), result: v(2) }).writtenMask,
     undefMask: 0,
     inputs: { left: v(0), right: v(1) }
   }, {
@@ -309,13 +311,13 @@ function v(id: number): ValueRef {
 
 function flagSetInputs(producer: FlagProducerName): Readonly<Record<string, ValueRef>> {
   switch (producer) {
-    case "logic32":
+    case "logic":
       return { result: v(0) };
-    case "inc32":
-    case "dec32":
+    case "inc":
+    case "dec":
       return { left: v(0), result: v(0) };
-    case "add32":
-    case "sub32":
+    case "add":
+    case "sub":
       return { left: v(0), right: v(0), result: v(0) };
   }
 }

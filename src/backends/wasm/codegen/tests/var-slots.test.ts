@@ -10,9 +10,9 @@ const c32 = (value: number) => ({ kind: "const32" as const, value });
 test("assignIrExprVarSlots reuses slots after last use", () => {
   const slots = assignIrExprVarSlots([
     { op: "let32", dst: v(0), value: c32(1) },
-    { op: "set32", target: reg("eax"), value: v(0) },
+    { op: "set", target: reg("eax"), value: v(0) },
     { op: "let32", dst: v(1), value: c32(2) },
-    { op: "set32", target: reg("ebx"), value: v(1) },
+    { op: "set", target: reg("ebx"), value: v(1) },
     { op: "next" }
   ]);
 
@@ -25,7 +25,7 @@ test("assignIrExprVarSlots can reuse a last-use input slot for a let destination
   const slots = assignIrExprVarSlots([
     { op: "let32", dst: v(0), value: c32(1) },
     { op: "let32", dst: v(1), value: { kind: "i32.add", a: v(0), b: c32(2) } },
-    { op: "set32", target: reg("eax"), value: v(1) },
+    { op: "set", target: reg("eax"), value: v(1) },
     { op: "next" }
   ]);
 
@@ -38,7 +38,7 @@ test("assignIrExprVarSlots keeps overlapping values in separate slots", () => {
   const slots = assignIrExprVarSlots([
     { op: "let32", dst: v(0), value: c32(1) },
     { op: "let32", dst: v(1), value: c32(2) },
-    { op: "set32", target: reg("eax"), value: { kind: "i32.add", a: v(0), b: v(1) } },
+    { op: "set", target: reg("eax"), value: { kind: "i32.add", a: v(0), b: v(1) } },
     { op: "next" }
   ]);
 

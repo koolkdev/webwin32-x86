@@ -25,7 +25,7 @@ test("JIT op effects identify post-instruction exits and condition values", () =
   const fallthrough = syntheticInstruction([{ op: "next" }], 0, "exit");
   const localNext = syntheticInstruction([{ op: "next" }]);
   const localCondition = syntheticInstruction([
-    { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+    { op: "set.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
     { op: "next" }
   ]);
   const branch = syntheticInstruction([
@@ -48,11 +48,11 @@ test("indexJitEffects indexes shared op effects", () => {
     instructions: [
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
-        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
       ]),
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
+        { op: "get", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
         { op: "next" }
       ], 1)
     ]
@@ -80,9 +80,9 @@ test("JIT effect helpers find the end of pre-instruction exits", () => {
   const effects = indexJitEffects({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
+        { op: "get", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        { op: "set32", target: { kind: "mem", address: c32(0x2004) }, value: v(1) },
+        { op: "set", target: { kind: "mem", address: c32(0x2004) }, value: v(1) },
         { op: "next" }
       ])
     ]
@@ -98,7 +98,7 @@ test("JIT condition use analysis rejects ordinary condition value uses", () => {
       instructions: [
         syntheticInstruction([
           { op: "aluFlags.condition", dst: v(0), cc: "E" },
-          { op: "set32", target: { kind: "reg", reg: "ecx" }, value: v(0) },
+          { op: "set", target: { kind: "reg", reg: "ecx" }, value: v(0) },
           { op: "next" }
         ])
       ]

@@ -13,7 +13,7 @@ test("validateJitIrBlock rejects missing JIT flag condition inputs", () => {
       op: "flagProducer.condition",
       dst: v(0),
       cc: "E",
-      producer: "sub32",
+      producer: "sub",
       writtenMask: IR_ALU_FLAG_MASK,
       undefMask: 0,
       inputs: { right: c32(0) }
@@ -28,7 +28,7 @@ test("validateJitIrBlock rejects JIT flag condition inputs used before definitio
       op: "flagProducer.condition",
       dst: v(0),
       cc: "E",
-      producer: "sub32",
+      producer: "sub",
       writtenMask: IR_ALU_FLAG_MASK,
       undefMask: 0,
       inputs: { left: v(1), right: c32(0) }
@@ -39,7 +39,7 @@ test("validateJitIrBlock rejects JIT flag condition inputs used before definitio
 
 test("validateJitIrBlock rejects operand indexes before effect analysis", () => {
   throws(() => validateJitIrBlock(jitBlock([
-    { op: "get32", dst: v(0), source: { kind: "operand", index: 0 } },
+    { op: "get", dst: v(0), source: { kind: "operand", index: 0 } },
     { op: "next" }
   ])), /IR operand 0 does not exist in 0-operand instruction/);
 });
@@ -50,9 +50,9 @@ test("validateJitIrBlock rejects unexpected JIT flag condition inputs", () => {
       op: "flagProducer.condition",
       dst: v(0),
       cc: "E",
-      producer: "logic32",
-      writtenMask: FLAG_PRODUCERS.logic32.writtenMask,
-      undefMask: FLAG_PRODUCERS.logic32.undefMask,
+      producer: "logic",
+      writtenMask: FLAG_PRODUCERS.logic.writtenMask,
+      undefMask: FLAG_PRODUCERS.logic.undefMask,
       inputs: { result: c32(0), left: c32(0) }
     },
     { op: "next" }
@@ -62,7 +62,7 @@ test("validateJitIrBlock rejects unexpected JIT flag condition inputs", () => {
 test("validateJitIrBlock rejects non-register materialization targets", () => {
   throws(() => validateJitIrBlock(jitBlock([
     {
-      op: "set32",
+      op: "set",
       role: "registerMaterialization",
       target: { kind: "mem", address: c32(0x2000) },
       value: c32(1)

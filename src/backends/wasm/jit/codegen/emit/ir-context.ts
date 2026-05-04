@@ -4,7 +4,7 @@ import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/e
 import type { JitModuleLinkTable } from "#backends/wasm/jit/compiled-blocks/module-link-table.js";
 import { emitIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 import type {
-  IrSet32ExprOp,
+  IrSetExprOp,
   IrStorageExpr,
   IrValueExpr
 } from "#backends/wasm/codegen/expressions.js";
@@ -150,7 +150,7 @@ function emitJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["i
   emitIrToWasm(ir, {
     body: jitContext.body,
     scratch: jitContext.scratch,
-    expression: { canInlineGet32: (source) => canInlineJitGet32(jitContext, source) },
+    expression: { canInlineGet: (source) => canInlineJitGet32(jitContext, source) },
     emitGet32: (source, helpers) => emitJitGet32(jitContext, source, helpers),
     emitSet32: (target, value, helpers, op) => emitJitSet32WithRole(jitContext, target, value, helpers, op),
     emitSet32If: (condition, target, value, helpers) =>
@@ -176,7 +176,7 @@ function emitJitSet32WithRole(
   target: IrStorageExpr,
   value: IrValueExpr,
   helpers: WasmIrEmitHelpers,
-  op: IrSet32ExprOp
+  op: IrSetExprOp
 ): void {
   emitJitSet32(jitContext, target, value, helpers);
 

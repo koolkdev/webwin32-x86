@@ -13,8 +13,8 @@ test("register-value-propagation folds register reads and materializes before ex
     instructions: [
       syntheticInstruction([
         { op: "const32", dst: v(0), value: 7 },
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(0) },
-        { op: "get32", dst: v(1), source: { kind: "reg", reg: "eax" } },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" } },
         { op: "next" }
       ], 0, "exit")
     ]
@@ -26,7 +26,7 @@ test("register-value-propagation folds register reads and materializes before ex
     foldedAddressCount: 0,
     materializedSetCount: 1
   });
-  deepStrictEqual(opNames(result.block), ["const32", "const32", "set32:registerMaterialization", "next"]);
+  deepStrictEqual(opNames(result.block), ["const32", "const32", "set:registerMaterialization", "next"]);
 });
 
 test("register-value-propagation inserts materialization before pre-instruction fault points", () => {
@@ -34,19 +34,19 @@ test("register-value-propagation inserts materialization before pre-instruction 
     instructions: [
       syntheticInstruction([
         { op: "const32", dst: v(0), value: 7 },
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "next" }
       ]),
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
+        { op: "get", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
         { op: "next" }
       ], 1, "exit")
     ]
   });
 
   deepStrictEqual(opNames({ instructions: [result.block.instructions[1]!] }), [
-    "set32:registerMaterialization",
-    "get32",
+    "set:registerMaterialization",
+    "get",
     "next"
   ]);
   strictEqual(result.registerValuePropagation.materializedSetCount, 1);
@@ -56,17 +56,17 @@ test("register-value-propagation materializes dependencies before clobbers", () 
   const result = propagateJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "set32", target: { kind: "reg", reg: "ebx" }, value: v(0) },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(0) },
         { op: "const32", dst: v(1), value: 0 },
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(1) },
         { op: "next" }
       ], 0, "exit")
     ]
   });
 
-  deepStrictEqual(opNames(result.block), ["get32", "const32", "set32:registerMaterialization", "set32", "next"]);
-  deepStrictEqual(set32Regs(result.block), ["ebx", "eax"]);
+  deepStrictEqual(opNames(result.block), ["get", "const32", "set:registerMaterialization", "set", "next"]);
+  deepStrictEqual(setRegs(result.block), ["ebx", "eax"]);
   strictEqual(result.registerValuePropagation.removedSetCount, 1);
   strictEqual(result.registerValuePropagation.materializedSetCount, 1);
 });
@@ -76,8 +76,8 @@ test("register-value-propagation is a validating repeatable optimization pass", 
     instructions: [
       syntheticInstruction([
         { op: "const32", dst: v(0), value: 7 },
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(0) },
-        { op: "get32", dst: v(1), source: { kind: "reg", reg: "eax" } },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" } },
         { op: "next" }
       ], 0, "exit")
     ]
@@ -106,10 +106,10 @@ function opNames(block: { instructions: readonly { ir: readonly { op: string; ro
   );
 }
 
-function set32Regs(block: { instructions: readonly { ir: readonly { op: string; target?: { kind: string; reg?: string } }[] }[] }): readonly string[] {
+function setRegs(block: { instructions: readonly { ir: readonly { op: string; target?: { kind: string; reg?: string } }[] }[] }): readonly string[] {
   return block.instructions.flatMap((instruction) =>
     instruction.ir.flatMap((op) =>
-      op.op === "set32" && op.target?.kind === "reg"
+      op.op === "set" && op.target?.kind === "reg"
         ? [op.target.reg ?? ""]
         : []
     )

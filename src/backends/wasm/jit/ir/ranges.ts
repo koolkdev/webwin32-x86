@@ -16,7 +16,7 @@ export function jitRegClobberedBetween(
   let clobbered = false;
 
   walkJitIrOpsBetween(block, after, before, (instruction, op) => {
-    if ((op.op === "set32" || op.op === "set32.if") && jitStorageReg(op.target, instruction.operands) === reg) {
+    if ((op.op === "set" || op.op === "set.if") && jitStorageReg(op.target, instruction.operands) === reg) {
       clobbered = true;
     }
   });
@@ -35,7 +35,7 @@ export function findJitRegWritebackBetween(
   walkJitIrOpsBetween(block, after, before, (instruction, op, location) => {
     if (
       writeback !== undefined ||
-      op.op !== "set32" ||
+      op.op !== "set" ||
       op.role === "registerMaterialization" ||
       !sameValueRef(op.value, value)
     ) {

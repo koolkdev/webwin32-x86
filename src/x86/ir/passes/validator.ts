@@ -2,6 +2,7 @@ import { assertIrAluFlagMask, IR_FLAG_MASK_NONE } from "#x86/ir/model/flag-effec
 import type { IrFlagProducerDescriptor } from "#x86/ir/model/flag-conditions.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import { irOpDst, irOpIsBinaryValue, irOpIsTerminator } from "#x86/ir/model/op-semantics.js";
+import type { OperandWidth } from "#x86/isa/types.js";
 import type { FlagMask, IrOp, IrBlock, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 
 export type ValidateIrBlockOptions = Readonly<{
@@ -61,19 +62,22 @@ function validateOpUses(
   }
 
   switch (op.op) {
-    case "get32":
+    case "get":
+      validateAccessWidth(op.accessWidth);
       validateStorageRef(op.source, definedVars, options);
       break;
-    case "set32":
+    case "set":
+      validateAccessWidth(op.accessWidth);
       validateStorageRef(op.target, definedVars, options);
       validateValueRef(op.value, definedVars);
       break;
-    case "set32.if":
+    case "set.if":
+      validateAccessWidth(op.accessWidth);
       validateValueRef(op.condition, definedVars);
       validateStorageRef(op.target, definedVars, options);
       validateValueRef(op.value, definedVars);
       break;
-    case "address32":
+    case "address":
       validateOperandIndex(op.operand.index, options);
       break;
     case "flags.set":
@@ -145,12 +149,19 @@ function validateAluFlagOpMask(mask: FlagMask, op: "flags.materialize" | "flags.
 function validateFlagSetDescriptor(op: IrFlagProducerDescriptor, definedVars: ReadonlySet<number>): void {
   const producer = FLAG_PRODUCERS[op.producer];
 
+  validateAccessWidth(op.width);
   validateFlagDescriptorMasks(op, "flags.set");
   validateFlagInputs(op, definedVars, {
     label: "flags.set",
     requiredInputs: producer.inputs,
     allowedInputs: producer.inputs
   });
+}
+
+function validateAccessWidth(width: OperandWidth | undefined): void {
+  if (width !== undefined && width !== 8 && width !== 16 && width !== 32) {
+    throw new Error(`IR access width must be 8, 16, or 32, got ${width}`);
+  }
 }
 
 function validateFlagDescriptorMasks(

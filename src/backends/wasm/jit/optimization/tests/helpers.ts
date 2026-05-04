@@ -25,15 +25,15 @@ export function logic32LocalConditionBlock(cc: ConditionCode): JitIrBlock {
   return {
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.and", dst: v(1), a: v(0), b: c32(0xff) },
-        createIrFlagSetOp("logic32", { result: v(1) }),
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        createIrFlagSetOp("logic", { result: v(1) }),
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(1) },
         { op: "next" }
       ], 0),
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc },
-        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ], 1)
     ]
@@ -55,12 +55,12 @@ export function syntheticInstruction(
   };
 }
 
-export function set32TargetRegs(
+export function setTargetRegs(
   instructions: readonly JitIrBlockInstruction[]
 ): readonly Reg32[] {
   return instructions.flatMap((instruction) =>
     instructionOps(instruction).flatMap((op) => {
-      if (op.op !== "set32") {
+      if (op.op !== "set") {
         return [];
       }
 

@@ -211,7 +211,7 @@ function validateJitRegisterMaterializations(
   for (let opIndex = 0; opIndex < block.length; opIndex += 1) {
     const op = block[opIndex];
 
-    if (op?.op !== "set32" || op.role !== "registerMaterialization") {
+    if (op?.op !== "set" || op.role !== "registerMaterialization") {
       continue;
     }
 

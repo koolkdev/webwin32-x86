@@ -16,11 +16,11 @@ test("reaching flags tracks partial flag producer ownership", () => {
   const analysis = analyzeJitReachingFlags({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "i32.add", dst: v(2), a: v(1), b: c32(1) },
-        createIrFlagSetOp("inc32", { left: v(1), result: v(2) }),
+        createIrFlagSetOp("inc", { left: v(1), result: v(2) }),
         { op: "aluFlags.condition", dst: v(3), cc: "B" },
         { op: "conditionalJump", condition: v(3), taken: c32(0x2000), notTaken: c32(0x1001) }
       ])
@@ -29,13 +29,13 @@ test("reaching flags tracks partial flag producer ownership", () => {
   const conditionRead = analysis.reads.find((read) => read.reason === "condition")!;
   const exitRead = analysis.reads.find((read) => read.reason === "exit")!;
 
-  strictEqual(singleReachingFlagProducer(conditionRead)?.producer, "add32");
+  strictEqual(singleReachingFlagProducer(conditionRead)?.producer, "add");
   deepStrictEqual(flagOwnerSummary(conditionRead.owners), [
-    { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add32" }
+    { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add" }
   ]);
   deepStrictEqual(flagOwnerSummary(exitRead.owners), [
-    { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add32" },
-    { mask: IR_ALU_FLAG_MASK & ~IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 1, producer: "inc32" }
+    { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add" },
+    { mask: IR_ALU_FLAG_MASK & ~IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 1, producer: "inc" }
   ]);
 });
 
@@ -43,13 +43,13 @@ test("reaching flags represents mixed-owner reads explicitly", () => {
   const analysis = analyzeJitReachingFlags({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "i32.add", dst: v(2), a: v(1), b: c32(1) },
-        createIrFlagSetOp("inc32", { left: v(1), result: v(2) }),
+        createIrFlagSetOp("inc", { left: v(1), result: v(2) }),
         { op: "aluFlags.condition", dst: v(3), cc: "A" },
-        { op: "set32.if", condition: v(3), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(3), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ])
     ]
@@ -58,8 +58,8 @@ test("reaching flags represents mixed-owner reads explicitly", () => {
 
   strictEqual(singleReachingFlagProducer(conditionRead), undefined);
   deepStrictEqual(flagOwnerSummary(conditionRead.owners), [
-    { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add32" },
-    { mask: IR_ALU_FLAG_MASKS.ZF, kind: "producer", sourceId: 1, producer: "inc32" }
+    { mask: IR_ALU_FLAG_MASKS.CF, kind: "producer", sourceId: 0, producer: "add" },
+    { mask: IR_ALU_FLAG_MASKS.ZF, kind: "producer", sourceId: 1, producer: "inc" }
   ]);
 });
 
@@ -67,11 +67,11 @@ test("reaching flags records materialized owners and pre-instruction exit entry 
   const analysis = analyzeJitReachingFlags({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "flags.materialize", mask: IR_ALU_FLAG_MASKS.ZF },
-        { op: "get32", dst: v(2), source: { kind: "mem", address: c32(0x2000) } },
+        { op: "get", dst: v(2), source: { kind: "mem", address: c32(0x2000) } },
         { op: "next" }
       ])
     ]
@@ -80,13 +80,13 @@ test("reaching flags records materialized owners and pre-instruction exit entry 
   const preExitRead = analysis.reads.find((read) => read.reason === "preInstructionExit")!;
 
   deepStrictEqual(flagOwnerSummary(materializeRead.owners), [
-    { mask: IR_ALU_FLAG_MASKS.ZF, kind: "producer", sourceId: 0, producer: "add32" }
+    { mask: IR_ALU_FLAG_MASKS.ZF, kind: "producer", sourceId: 0, producer: "add" }
   ]);
   deepStrictEqual(flagOwnerSummary(preExitRead.owners), [
     { mask: IR_ALU_FLAG_MASK, kind: "incoming" }
   ]);
   deepStrictEqual(flagOwnerSummary(analysis.finalOwners), [
-    { mask: IR_ALU_FLAG_MASK & ~IR_ALU_FLAG_MASKS.ZF, kind: "producer", sourceId: 0, producer: "add32" },
+    { mask: IR_ALU_FLAG_MASK & ~IR_ALU_FLAG_MASKS.ZF, kind: "producer", sourceId: 0, producer: "add" },
     { mask: IR_ALU_FLAG_MASKS.ZF, kind: "materialized" }
   ]);
 });
@@ -96,7 +96,7 @@ test("reaching flags classifies local, exit-coupled, and unused condition reads"
     instructions: [
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
-        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ])
     ]
@@ -105,7 +105,7 @@ test("reaching flags classifies local, exit-coupled, and unused condition reads"
     instructions: [
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
-        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "conditionalJump", condition: v(0), taken: c32(0x2000), notTaken: c32(0x1002) }
       ])
     ]
@@ -142,7 +142,7 @@ test("reaching flags records pre-instruction memory fault reads from instruction
   }
 
   deepStrictEqual(flagOwnerSummary(exitRead?.owners ?? []), [
-    { mask: IR_ALU_FLAG_MASK, kind: "producer", sourceId: 0, producer: "add32" }
+    { mask: IR_ALU_FLAG_MASK, kind: "producer", sourceId: 0, producer: "add" }
   ]);
 });
 
@@ -151,7 +151,7 @@ test("reaching flags records producer input values", () => {
   const analysis = analyzeJitReachingFlags(buildJitIrBlock([add]));
   const source = analysis.sources[0]!;
 
-  strictEqual(source.producer, "add32");
+  strictEqual(source.producer, "add");
   strictEqual(source.writtenMask, IR_ALU_FLAG_MASK);
   strictEqual(source.undefMask, 0);
   deepStrictEqual(source.inputs, {

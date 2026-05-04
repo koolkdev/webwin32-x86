@@ -111,6 +111,7 @@ function emitDirectFlagCondition(
   const inputs: Record<string, ValueRef> = {};
   const inputNames = flagProducerConditionInputNames({
     producer: condition.source.producer,
+    width: condition.source.width,
     cc: op.cc,
     inputs: flagConditionInputShape(condition)
   });
@@ -130,6 +131,7 @@ function emitDirectFlagCondition(
     dst: op.dst,
     cc: op.cc,
     producer: condition.source.producer,
+    ...(condition.source.width === undefined ? {} : { width: condition.source.width }),
     writtenMask: condition.source.writtenMask,
     undefMask: condition.source.undefMask,
     inputs

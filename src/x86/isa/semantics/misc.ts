@@ -8,6 +8,6 @@ export function nopSemantic(): SemanticTemplate {
 
 export function intSemantic(): SemanticTemplate {
   return (s) => {
-    s.hostTrap(s.get32(s.operand(0)));
+    s.hostTrap(s.get(s.operand(0)));
   };
 }

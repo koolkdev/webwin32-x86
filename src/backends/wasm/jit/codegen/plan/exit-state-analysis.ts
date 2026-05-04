@@ -100,14 +100,14 @@ export function analyzeJitCodegenState(
     opIndex: number
   ): void {
     switch (op.op) {
-      case "set32":
+      case "set":
         if (op.role === "registerMaterialization") {
           state.recordCommittedStorageWrite(op.target, instruction.operands);
         } else {
           state.recordStorageWrite(op.target, instruction.operands);
         }
         return;
-      case "set32.if":
+      case "set.if":
         state.recordStorageWrite(op.target, instruction.operands);
         return;
       case "flags.set":

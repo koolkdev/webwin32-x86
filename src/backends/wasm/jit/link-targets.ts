@@ -49,14 +49,14 @@ function staticTargetForVar(
   value: Extract<ValueRef, { kind: "var" }>
 ): number | undefined {
   const producer = instruction.ir.find((op) =>
-    (op.op === "get32" || op.op === "const32") && op.dst.id === value.id
+    (op.op === "get" || op.op === "const32") && op.dst.id === value.id
   );
 
   if (producer?.op === "const32") {
     return u32(producer.value);
   }
 
-  if (producer?.op !== "get32" || producer.source.kind !== "operand") {
+  if (producer?.op !== "get" || producer.source.kind !== "operand") {
     return undefined;
   }
 

@@ -21,7 +21,7 @@ export type JitFlagProducerConditionOp = IrFlagProducerConditionDescriptor & Rea
 
 export type JitSet32Role = "registerMaterialization";
 
-export type JitSet32Op = Extract<IrOp, { op: "set32" }> & Readonly<{
+export type JitSet32Op = Extract<IrOp, { op: "set" }> & Readonly<{
   role?: JitSet32Role;
 }>;
 
@@ -30,7 +30,7 @@ export type JitRegisterMaterializationOp = JitSet32Op & Readonly<{
 }>;
 
 export type JitIrOp =
-  | Exclude<IrOp, Extract<IrOp, { op: "set32" }>>
+  | Exclude<IrOp, Extract<IrOp, { op: "set" }>>
   | JitSet32Op
   | JitRegisterMaterializationOp
   | JitFlagProducerConditionOp;

@@ -34,13 +34,13 @@ export type JitRegisterValueRead = Readonly<{
   reg: Reg32;
   value: JitValue;
   folded: boolean;
-  reason: "get32" | "address32";
+  reason: "get" | "address";
 }>;
 
 export type JitRegisterValueFold = Readonly<{
   instructionIndex: number;
   opIndex: number;
-  kind: "get32" | "address32";
+  kind: "get" | "address";
   value: JitValue;
   regs: readonly Reg32[];
 }>;
@@ -159,7 +159,7 @@ function analyzeInstruction(
     }
 
     switch (op.op) {
-      case "get32": {
+      case "get": {
         const reg = jitStorageReg(op.source, instruction.operands);
         const value = registers.valueForStorage(op.source, instruction.operands);
 
@@ -171,18 +171,18 @@ function analyzeInstruction(
               phase: "beforeOp",
               reason: "policy"
             });
-            reads.push({ instructionIndex, opIndex, reg, value, folded: false, reason: "get32" });
+            reads.push({ instructionIndex, opIndex, reg, value, folded: false, reason: "get" });
           } else {
             registers.recordRead(reg);
-            reads.push({ instructionIndex, opIndex, reg, value, folded: true, reason: "get32" });
-            folds.push({ instructionIndex, opIndex, kind: "get32", value, regs: [reg] });
+            reads.push({ instructionIndex, opIndex, reg, value, folded: true, reason: "get" });
+            folds.push({ instructionIndex, opIndex, kind: "get", value, regs: [reg] });
           }
         }
 
         values.recordOp(op, instruction, registers.trackedValues);
         break;
       }
-      case "address32": {
+      case "address": {
         const readRegs = registers.regsReadByEffectiveAddress(op.operand, instruction.operands);
         const repeatedRegs = readRegs.filter((reg) => {
           const value = registers.get(reg);
@@ -207,14 +207,14 @@ function analyzeInstruction(
             reason: "read"
           });
         } else {
-          folds.push({ instructionIndex, opIndex, kind: "address32", value, regs: readRegs });
+          folds.push({ instructionIndex, opIndex, kind: "address", value, regs: readRegs });
 
           for (const reg of readRegs) {
             const regValue = registers.get(reg);
 
             if (regValue !== undefined) {
               registers.recordRead(reg);
-              reads.push({ instructionIndex, opIndex, reg, value: regValue, folded: true, reason: "address32" });
+              reads.push({ instructionIndex, opIndex, reg, value: regValue, folded: true, reason: "address" });
             }
           }
         }
@@ -222,7 +222,7 @@ function analyzeInstruction(
         values.recordOp(op, instruction, registers.trackedValues);
         break;
       }
-      case "set32": {
+      case "set": {
         if (op.role === "registerMaterialization") {
           const reg = registerBarrierReg(barriers, instructionIndex, opIndex, "write");
 
@@ -265,7 +265,7 @@ function analyzeInstruction(
         }
         break;
       }
-      case "set32.if": {
+      case "set.if": {
         const reg = registerBarrierReg(barriers, instructionIndex, opIndex, "conditionalWrite");
 
         if (reg !== undefined) {

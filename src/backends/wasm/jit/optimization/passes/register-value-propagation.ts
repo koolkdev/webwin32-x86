@@ -116,16 +116,16 @@ function propagateOp(
   stats: MutableJitRegisterValuePropagation
 ): void {
   switch (op.op) {
-    case "get32":
+    case "get":
       propagateGet32(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
       break;
-    case "address32":
+    case "address":
       propagateAddress32(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
       break;
-    case "set32":
+    case "set":
       propagateSet32(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
       break;
-    case "set32.if":
+    case "set.if":
       copyOp(instruction, op, rewrite);
       break;
     default:
@@ -137,7 +137,7 @@ function propagateOp(
 function propagateGet32(
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
-  op: Extract<JitIrOp, { op: "get32" }>,
+  op: Extract<JitIrOp, { op: "get" }>,
   opIndex: number,
   indexes: JitRegisterValuePropagationIndexes,
   rewrite: JitInstructionRewrite,
@@ -145,7 +145,7 @@ function propagateGet32(
 ): void {
   const fold = indexes.folds.get(registerValueAnalysisKey(instructionIndex, opIndex));
 
-  if (fold?.kind !== "get32") {
+  if (fold?.kind !== "get") {
     copyOp(instruction, op, rewrite);
     return;
   }
@@ -157,7 +157,7 @@ function propagateGet32(
 function propagateAddress32(
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
-  op: Extract<JitIrOp, { op: "address32" }>,
+  op: Extract<JitIrOp, { op: "address" }>,
   opIndex: number,
   indexes: JitRegisterValuePropagationIndexes,
   rewrite: JitInstructionRewrite,
@@ -165,7 +165,7 @@ function propagateAddress32(
 ): void {
   const fold = indexes.folds.get(registerValueAnalysisKey(instructionIndex, opIndex));
 
-  if (fold?.kind !== "address32") {
+  if (fold?.kind !== "address") {
     copyOp(instruction, op, rewrite);
     return;
   }
@@ -177,7 +177,7 @@ function propagateAddress32(
 function propagateSet32(
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
-  op: Extract<JitIrOp, { op: "set32" }>,
+  op: Extract<JitIrOp, { op: "set" }>,
   opIndex: number,
   indexes: JitRegisterValuePropagationIndexes,
   rewrite: JitInstructionRewrite,
@@ -205,7 +205,7 @@ function copyOp(
 function assignTrackedValue(
   rewrite: JitInstructionRewrite,
   dstId: number,
-  dst: Extract<JitIrOp, { op: "get32" | "address32" }>["dst"],
+  dst: Extract<JitIrOp, { op: "get" | "address" }>["dst"],
   value: JitValue
 ): void {
   assignJitValue(rewrite, dst, value);

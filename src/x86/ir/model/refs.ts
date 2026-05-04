@@ -19,11 +19,11 @@ export function operand(index: number): OperandRef {
   return { kind: "operand", index };
 }
 
-export function reg32(reg: Reg32): RegRef {
+export function reg(reg: Reg32): RegRef {
   return { kind: "reg", reg };
 }
 
-export function mem32(address: ValueInput): MemRef {
+export function mem(address: ValueInput): MemRef {
   return { kind: "mem", address: toValueRef(address) };
 }
 

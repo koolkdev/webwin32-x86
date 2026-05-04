@@ -3,13 +3,13 @@ import { pop32, push32 } from "./stack.js";
 
 export function jmpSemantic(): SemanticTemplate {
   return (s) => {
-    s.jump(s.get32(s.operand(0)));
+    s.jump(s.get(s.operand(0)));
   };
 }
 
 export function callSemantic(): SemanticTemplate {
   return (s) => {
-    const target = s.get32(s.operand(0));
+    const target = s.get(s.operand(0));
 
     push32(s, s.nextEip());
     s.jump(target);
@@ -25,17 +25,17 @@ export function retSemantic(): SemanticTemplate {
 export function retImmSemantic(): SemanticTemplate {
   return (s) => {
     const target = pop32(s);
-    const bytes = s.get32(s.operand(0));
-    const esp = s.get32(s.reg32("esp"));
+    const bytes = s.get(s.operand(0));
+    const esp = s.get(s.reg("esp"));
     const adjustedEsp = s.i32Add(esp, bytes);
 
-    s.set32(s.reg32("esp"), adjustedEsp);
+    s.set(s.reg("esp"), adjustedEsp);
     s.jump(target);
   };
 }
 
 export function jccSemantic(cc: ConditionCode): SemanticTemplate {
   return (s) => {
-    s.conditionalJump(s.condition(cc), s.get32(s.operand(0)), s.nextEip());
+    s.conditionalJump(s.condition(cc), s.get(s.operand(0)), s.nextEip());
   };
 }

@@ -48,6 +48,21 @@ test("stores imm32 memory using C7 group", () => {
   deepStrictEqual(readGuestBytes(memory, 0x20, 4), [0x78, 0x56, 0x34, 0x12]);
 });
 
+test("loads and stores byte and word memory widths", () => {
+  const memory = new ArrayBufferGuestMemory(0x40);
+  const state = createCpuState({ eax: 0xaabb_ccdd, ebx: 0x10, eip: startAddress });
+
+  strictEqual(run(state, [0x88, 0x43, 0x04], memory).stopReason, StopReason.NONE);
+  deepStrictEqual(readGuestBytes(memory, 0x14, 4), [0xdd, 0x00, 0x00, 0x00]);
+
+  memory.writeU16(0x16, 0x1234);
+  state.eax = 0xaabb_ccdd;
+  state.eip = startAddress;
+
+  strictEqual(run(state, [0x66, 0x8b, 0x43, 0x06], memory).stopReason, StopReason.NONE);
+  strictEqual(state.eax, 0xaabb_1234);
+});
+
 test("memory load fault is atomic", () => {
   const memory = new ArrayBufferGuestMemory(0x40);
   const state = createCpuState({ eax: 0x1234_5678, eip: startAddress, instructionCount: 7 });
@@ -61,6 +76,27 @@ test("memory load fault is atomic", () => {
   strictEqual(state.eax, before.eax);
   strictEqual(state.eip, before.eip);
   strictEqual(state.instructionCount, before.instructionCount);
+});
+
+test("byte and word memory faults report access width", () => {
+  const memory = new ArrayBufferGuestMemory(0x40);
+  const byteState = createCpuState({ eax: 0x1234_5678, eip: startAddress, instructionCount: 7 });
+  const wordState = createCpuState({ eax: 0x1234_5678, eip: startAddress, instructionCount: 7 });
+
+  const byteResult = run(byteState, [0x8a, 0x05, 0x40, 0x00, 0x00, 0x00], memory);
+  const wordResult = run(wordState, [0x66, 0x8b, 0x05, 0x3f, 0x00, 0x00, 0x00], memory);
+
+  strictEqual(byteResult.stopReason, StopReason.MEMORY_FAULT);
+  strictEqual(byteResult.faultAddress, 0x40);
+  strictEqual(byteResult.faultSize, 1);
+  strictEqual(byteResult.faultOperation, "read");
+  strictEqual(byteState.instructionCount, 7);
+
+  strictEqual(wordResult.stopReason, StopReason.MEMORY_FAULT);
+  strictEqual(wordResult.faultAddress, 0x3f);
+  strictEqual(wordResult.faultSize, 2);
+  strictEqual(wordResult.faultOperation, "read");
+  strictEqual(wordState.instructionCount, 7);
 });
 
 test("memory store fault is atomic", () => {

@@ -10,7 +10,7 @@ import {
   type X86ControlFlag,
   type X86EflagsFlag
 } from "#x86/isa/flags.js";
-import { reg32, type Reg32 } from "#x86/isa/types.js";
+import { reg32, type OperandWidth, type RegisterAlias, type Reg32 } from "#x86/isa/types.js";
 
 export type CpuArithmeticFlag = X86ArithmeticFlag;
 export type CpuControlFlag = X86ControlFlag;
@@ -65,6 +65,26 @@ export function setReg32(state: CpuState, reg: Reg32, value: number): void {
   state[reg] = u32(value);
 }
 
+export function getRegisterAlias(state: CpuState, alias: RegisterAlias): number {
+  const value = getReg32(state, alias.base);
+
+  return alias.width === 32
+    ? value
+    : (value >>> alias.bitOffset) & widthMask(alias.width);
+}
+
+export function setRegisterAlias(state: CpuState, alias: RegisterAlias, value: number): void {
+  if (alias.width === 32) {
+    setReg32(state, alias.base, value);
+    return;
+  }
+
+  const mask = widthMask(alias.width) << alias.bitOffset;
+  const base = getReg32(state, alias.base);
+
+  setReg32(state, alias.base, (base & ~mask) | ((value << alias.bitOffset) & mask));
+}
+
 export function getFlag(state: CpuState, flag: CpuFlag): boolean {
   return (state.eflags & eflagsMask[flag]) !== 0;
 }
@@ -92,6 +112,10 @@ export function hasEvenParityLowByte(value: number): boolean {
   }
 
   return isEven;
+}
+
+export function widthMask(width: OperandWidth): number {
+  return width === 32 ? 0xffff_ffff : width === 16 ? 0xffff : 0xff;
 }
 
 export function cloneCpuState(state: CpuState): CpuState {

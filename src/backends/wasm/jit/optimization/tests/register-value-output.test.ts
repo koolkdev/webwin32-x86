@@ -6,7 +6,7 @@ import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import { propagateJitRegisterValues } from "#backends/wasm/jit/optimization/passes/register-value-propagation.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/ir/types.js";
-import { set32TargetRegs, startAddress } from "./helpers.js";
+import { setTargetRegs, startAddress } from "./helpers.js";
 
 function runRegisterValuePass(block: JitIrBlock): Readonly<{
   block: JitIrBlock;
@@ -42,7 +42,7 @@ test("runRegisterValuePass keeps transient register calculations unmaterialized 
 
   strictEqual(folded.registerValuePropagation.removedSetCount, 4);
   strictEqual(folded.registerValuePropagation.materializedSetCount, 2);
-  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
 
 test("runRegisterValuePass materializes repeated expensive register-value reads", () => {
@@ -61,7 +61,7 @@ test("runRegisterValuePass materializes repeated expensive register-value reads"
 
   strictEqual(folded.registerValuePropagation.removedSetCount, 4);
   strictEqual(folded.registerValuePropagation.materializedSetCount, 3);
-  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx", "edx"]);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax", "ebx", "edx"]);
 });
 
 test("runRegisterValuePass keeps oversized expressions concrete", () => {
@@ -82,7 +82,7 @@ test("runRegisterValuePass keeps oversized expressions concrete", () => {
 
   strictEqual(folded.registerValuePropagation.removedSetCount, 4);
   strictEqual(folded.registerValuePropagation.materializedSetCount, 0);
-  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax"]);
 });
 
 test("runRegisterValuePass folds register values into indirect jump targets", () => {
@@ -101,9 +101,9 @@ test("runRegisterValuePass folds register values into indirect jump targets", ()
   strictEqual(folded.registerValuePropagation.materializedSetCount, 1);
   deepStrictEqual(
     opNames(jumpInstruction.ir.slice(0, jumpIndex)),
-    ["get32", "i32.xor", "set32:registerMaterialization"]
+    ["get", "i32.xor", "set:registerMaterialization"]
   );
-  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax"]);
 });
 
 test("runRegisterValuePass folds register values into effective addresses", () => {
@@ -120,8 +120,8 @@ test("runRegisterValuePass folds register values into effective addresses", () =
 
   strictEqual(folded.registerValuePropagation.removedSetCount, 3);
   strictEqual(folded.registerValuePropagation.materializedSetCount, 2);
-  strictEqual(folded.block.instructions[1]!.ir.some((op) => op.op === "address32"), false);
-  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
+  strictEqual(folded.block.instructions[1]!.ir.some((op) => op.op === "address"), false);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
 
 test("runRegisterValuePass materializes register values for scaled effective addresses", () => {
@@ -138,8 +138,8 @@ test("runRegisterValuePass materializes register values for scaled effective add
 
   strictEqual(folded.registerValuePropagation.removedSetCount, 2);
   strictEqual(folded.registerValuePropagation.materializedSetCount, 2);
-  strictEqual(folded.block.instructions[1]!.ir.some((op) => op.op === "address32"), true);
-  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx", "eax"]);
+  strictEqual(folded.block.instructions[1]!.ir.some((op) => op.op === "address"), true);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax", "ebx", "eax"]);
 });
 
 test("runRegisterValuePass materializes address registers before faultable memory reads", () => {
@@ -158,13 +158,13 @@ test("runRegisterValuePass materializes address registers before faultable memor
   strictEqual(hasSet32Reg(folded.block.instructions[0]!, "eax"), false);
   strictEqual(hasSet32Reg(loadInstruction, "eax"), true);
   deepStrictEqual(opNames(loadInstruction.ir), [
-    "get32",
-    "set32:registerMaterialization",
-    "get32",
-    "set32",
+    "get",
+    "set:registerMaterialization",
+    "get",
+    "set",
     "next"
   ]);
-  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
 
 test("runRegisterValuePass materializes address registers before faultable memory writes", () => {
@@ -182,8 +182,8 @@ test("runRegisterValuePass materializes address registers before faultable memor
   strictEqual(folded.registerValuePropagation.materializedSetCount, 1);
   strictEqual(hasSet32Reg(folded.block.instructions[0]!, "eax"), false);
   strictEqual(hasSet32Reg(storeInstruction, "eax"), true);
-  strictEqual(storeInstruction.ir.some((op) => op.op === "set32" && op.target.kind === "operand"), true);
-  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
+  strictEqual(storeInstruction.ir.some((op) => op.op === "set" && op.target.kind === "operand"), true);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax"]);
 });
 
 test("runRegisterValuePass resumes after the last pre-instruction exit in an instruction", () => {
@@ -194,10 +194,10 @@ test("runRegisterValuePass resumes after the last pre-instruction exit in an ins
   strictEqual(folded.registerValuePropagation.removedSetCount, 1);
   strictEqual(folded.registerValuePropagation.materializedSetCount, 1);
   strictEqual(
-    folded.block.instructions[0]!.ir.some((op) => op.op === "set32" && op.target.kind === "reg" && op.target.reg === "esp"),
+    folded.block.instructions[0]!.ir.some((op) => op.op === "set" && op.target.kind === "reg" && op.target.reg === "esp"),
     false
   );
-  deepStrictEqual(set32TargetRegs(folded.block.instructions), ["esp"]);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), ["esp"]);
 });
 
 function hasSet32Reg(
@@ -205,7 +205,7 @@ function hasSet32Reg(
   reg: Reg32
 ): boolean {
   return instruction.ir.some((op) =>
-    op.op === "set32" &&
+    op.op === "set" &&
     op.target.kind === "reg" &&
     op.target.reg === reg
   );

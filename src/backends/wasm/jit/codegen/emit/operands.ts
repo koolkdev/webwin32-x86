@@ -90,13 +90,13 @@ export function emitJitSet32If(
 
 export function emitJitAddress32(context: JitIrContext, source: IrStorageExpr): void {
   if (source.kind !== "operand") {
-    throw new Error(`unsupported address32 source for JIT IR: ${source.kind}`);
+    throw new Error(`unsupported address source for JIT IR: ${source.kind}`);
   }
 
   const binding = operandBinding(context, source.index);
 
   if (binding.kind !== "static.mem32") {
-    throw new Error(`address32 operand is not memory: ${binding.kind}`);
+    throw new Error(`address operand is not memory: ${binding.kind}`);
   }
 
   emitEffectiveAddress32(context.body, context.state.regs, binding.ea);

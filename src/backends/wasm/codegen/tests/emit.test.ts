@@ -17,11 +17,11 @@ const nextEipValue = 0x1234_5678;
 test("emitIrToWasm emits arithmetic through storage callbacks", async () => {
   const run = await instantiateEmittedBinary(
     buildIr((s) => {
-      const left = s.get32(s.operand(0));
-      const right = s.get32(s.operand(1));
+      const left = s.get(s.operand(0));
+      const right = s.get(s.operand(1));
       const adjusted = s.i32Add(left, 9);
 
-      s.set32(s.reg32("eax"), s.i32Or(s.i32Xor(adjusted, right), 0x80));
+      s.set(s.reg("eax"), s.i32Or(s.i32Xor(adjusted, right), 0x80));
     })
   );
 
@@ -32,8 +32,8 @@ test("emitIrToWasm emits arithmetic through storage callbacks", async () => {
 test("emitIrToWasm emits conditional control values with nested emitValue", async () => {
   const run = await instantiateEmittedBinary(
     buildIr((s) => {
-      const left = s.get32(s.operand(0));
-      const right = s.get32(s.operand(1));
+      const left = s.get(s.operand(0));
+      const right = s.get(s.operand(1));
       const sum = s.i32Add(left, right);
 
       s.conditionalJump(s.i32And(sum, 1), sum, s.nextEip());
@@ -44,13 +44,13 @@ test("emitIrToWasm emits conditional control values with nested emitValue", asyn
   strictEqual(run(2, 2), nextEipValue);
 });
 
-test("emitIrToWasm emits set32.if as a conditional write", async () => {
+test("emitIrToWasm emits set.if as a conditional write", async () => {
   const program = buildIr((s) => {
-    const value = s.get32(s.operand(0));
-    const condition = s.get32(s.operand(1));
+    const value = s.get(s.operand(0));
+    const condition = s.get(s.operand(1));
 
-    s.set32(s.reg32("eax"), 0x55);
-    s.set32If(condition, s.reg32("eax"), value);
+    s.set(s.reg("eax"), 0x55);
+    s.setIf(condition, s.reg("eax"), value);
   });
   const run = await instantiateEmittedBinary(program);
   const opcodes = emittedBodyOpcodes(program);
@@ -63,16 +63,16 @@ test("emitIrToWasm emits set32.if as a conditional write", async () => {
 test("emitIrToWasm uses planned slots for non-overlapping IR locals", () => {
   const scratch = emitWithTrackingScratch(
     buildIr((s) => {
-      const first = s.get32(s.operand(0));
+      const first = s.get(s.operand(0));
 
-      s.set32(s.reg32("eax"), first);
+      s.set(s.reg("eax"), first);
 
-      const second = s.get32(s.operand(1));
+      const second = s.get(s.operand(1));
 
-      s.set32(s.reg32("ebx"), second);
+      s.set(s.reg("ebx"), second);
       s.next();
     }),
-    { canInlineGet32: () => false }
+    { canInlineGet: () => false }
   );
 
   strictEqual(scratch.maxLive, 1);
@@ -81,14 +81,14 @@ test("emitIrToWasm uses planned slots for non-overlapping IR locals", () => {
 test("emitIrToWasm uses a reused input slot for a materialized let destination", () => {
   const scratch = emitWithTrackingScratch(
     buildIr((s) => {
-      const input = s.get32(s.operand(0));
+      const input = s.get(s.operand(0));
       const sum = s.i32Add(input, 1);
 
-      s.set32(s.reg32("eax"), sum);
-      s.set32(s.reg32("ebx"), sum);
+      s.set(s.reg("eax"), sum);
+      s.set(s.reg("ebx"), sum);
       s.next();
     }),
-    { canInlineGet32: () => false }
+    { canInlineGet: () => false }
   );
 
   strictEqual(scratch.maxLive, 1);
@@ -139,13 +139,13 @@ function emitTestProgram(program: IrBlock): WasmFunctionBodyEncoder {
   emitIrToWasm(program, {
     body,
     scratch,
-    expression: { canInlineGet32: () => true },
+    expression: { canInlineGet: () => true },
     emitGet32: (source) => emitGet32(body, regLocals, source),
     emitSet32: (target, value, helpers) => emitSet32(body, regLocals, target, value, helpers),
     emitSet32If: (condition, target, value, helpers) => emitSet32If(body, regLocals, condition, target, value, helpers),
     emitAddress32: (source) => {
       if (source.kind !== "operand") {
-        unsupported(`${source.kind} address32`);
+        unsupported(`${source.kind} address`);
       }
       body.i32Const(0x1000 + source.index);
     },
@@ -198,7 +198,7 @@ function emitWithTrackingScratch(
     emitGet32: (source) => emitGet32(body, regLocals, source),
     emitSet32: (target, value, helpers) => emitSet32(body, regLocals, target, value, helpers),
     emitSet32If: (condition, target, value, helpers) => emitSet32If(body, regLocals, condition, target, value, helpers),
-    emitAddress32: () => unsupported("address32"),
+    emitAddress32: () => unsupported("address"),
     emitSetFlags: () => unsupported("flags.set"),
     emitMaterializeFlags: () => unsupported("flags.materialize"),
     emitBoundaryFlags: () => unsupported("flags.boundary"),
@@ -241,7 +241,7 @@ function emitGet32(
       body.localGet(requireRegLocal(regLocals, source.reg));
       return;
     case "mem":
-      unsupported("mem get32");
+      unsupported("mem get");
   }
 }
 
@@ -253,7 +253,7 @@ function emitSet32(
   helpers: WasmIrEmitHelpers
 ): void {
   if (target.kind !== "reg") {
-    unsupported(`${target.kind} set32`);
+    unsupported(`${target.kind} set`);
   }
 
   helpers.emitValue(value);

@@ -14,6 +14,7 @@ export type JitFlagSource = Readonly<{
   instructionIndex: number;
   opIndex: number;
   producer: IrFlagSetOp["producer"];
+  width?: IrFlagSetOp["width"];
   writtenMask: number;
   undefMask: number;
   inputs: Readonly<Record<string, JitFlagInput>>;
@@ -34,6 +35,7 @@ export function buildJitFlagSource(
     instructionIndex,
     opIndex,
     producer: op.producer,
+    ...(op.width === undefined ? {} : { width: op.width }),
     writtenMask: op.writtenMask,
     undefMask: op.undefMask,
     inputs,

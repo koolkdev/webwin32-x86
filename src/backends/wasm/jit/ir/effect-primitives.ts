@@ -21,7 +21,7 @@ export function jitMemoryFaultReason(
     return undefined;
   }
 
-  if (op.op === "set32.if") {
+  if (op.op === "set.if") {
     throw new Error("JIT conditional memory writes are not supported by exit analysis");
   }
 
@@ -64,7 +64,7 @@ export function jitExitConditionValues(
 
 export function jitLocalConditionValues(op: JitIrOp): readonly ValueRef[] {
   switch (op.op) {
-    case "set32.if":
+    case "set.if":
       return [op.condition];
     default:
       return [];

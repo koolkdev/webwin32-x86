@@ -1,5 +1,6 @@
 import { x86ArithmeticFlagMask } from "#x86/isa/flags.js";
 import type { X86ArithmeticFlag } from "#x86/isa/flags.js";
+import type { OperandWidth } from "#x86/isa/types.js";
 import type { FlagProducerName, IrFlagSetOp, ValueRef } from "./types.js";
 
 export type FlagName = X86ArithmeticFlag;
@@ -28,7 +29,7 @@ export type FlagProducer<InputName extends string> = Readonly<{
   // still provide expressions for every written bit.
   writtenMask: number;
   undefMask: number;
-  define(inputs: Readonly<Record<InputName, ValueRef>>): FlagDefs;
+  define(inputs: Readonly<Record<InputName, ValueRef>>, width?: OperandWidth): FlagDefs;
 }>;
 
 export const constFlag = (value: 0 | 1): FlagExpr => ({ kind: "constFlag", value });
@@ -56,6 +57,15 @@ export const signMask = (width: 8 | 16 | 32): ValueExpr => ({
   kind: "const32",
   value: width === 32 ? 0x8000_0000 : width === 16 ? 0x8000 : 0x80
 });
+
+export const widthMask = (width: 8 | 16 | 32): ValueExpr => ({
+  kind: "const32",
+  value: width === 32 ? 0xffff_ffff : width === 16 ? 0xffff : 0xff
+});
+
+export function truncateToWidth(width: 8 | 16 | 32, value: ValueExpr): ValueExpr {
+  return width === 32 ? value : and(value, widthMask(width));
+}
 
 export function zspFlags(width: 8 | 16 | 32, result: ValueExpr): FlagDefs {
   return {
@@ -104,13 +114,13 @@ export function flagProducer<const InputName extends string>(
   inputs: readonly InputName[],
   writtenFlags: readonly FlagName[],
   undefFlags: readonly FlagName[],
-  define: (inputs: Readonly<Record<InputName, ValueRef>>) => FlagDefs
+  define: (inputs: Readonly<Record<InputName, ValueRef>>, width: OperandWidth) => FlagDefs
 ): FlagProducer<InputName> {
   return {
     inputs,
     writtenMask: maskFlags(writtenFlags),
     undefMask: maskFlags(undefFlags),
-    define
+    define: (inputValues, width = 32) => define(inputValues, width)
   };
 }
 
@@ -118,54 +128,68 @@ const arithmeticFlagNames = ["CF", "PF", "AF", "ZF", "SF", "OF"] as const satisf
 const incDecWrittenFlagNames = ["PF", "AF", "ZF", "SF", "OF"] as const satisfies readonly FlagName[];
 
 export const FLAG_PRODUCERS = {
-  add32: flagProducer(["left", "right", "result"], arithmeticFlagNames, [], ({ left, right, result }) => ({
-    ...zspFlags(32, result),
-    ...addCarryFlags(32, left, right, result)
-  })),
-
-  sub32: flagProducer(["left", "right", "result"], arithmeticFlagNames, [], ({ left, right, result }) => ({
-    ...zspFlags(32, result),
-    ...subCarryFlags(32, left, right, result)
-  })),
-
-  logic32: flagProducer(["result"], arithmeticFlagNames, ["AF"], ({ result }) => logicFlags(32, result)),
-
-  // INC/DEC intentionally omit CF from writtenMask. Consumers of CF after INC/DEC
-  // must keep using the previous CF source.
-  inc32: flagProducer(["left", "result"], incDecWrittenFlagNames, [], ({ left, result }) => {
-    const carry = addCarryFlags(32, left, const32(1), result);
+  add: flagProducer(["left", "right", "result"], arithmeticFlagNames, [], ({ left, right, result }, width) => {
+    const truncatedResult = truncateToWidth(width, result);
 
     return {
-      ...zspFlags(32, result),
-      AF: requiredFlagExpr(carry, "AF", "inc32"),
-      OF: requiredFlagExpr(carry, "OF", "inc32")
+      ...zspFlags(width, truncatedResult),
+      ...addCarryFlags(width, left, right, truncatedResult)
     };
   }),
 
-  dec32: flagProducer(["left", "result"], incDecWrittenFlagNames, [], ({ left, result }) => {
-    const carry = subCarryFlags(32, left, const32(1), result);
+  sub: flagProducer(["left", "right", "result"], arithmeticFlagNames, [], ({ left, right, result }, width) => {
+    const truncatedResult = truncateToWidth(width, result);
 
     return {
-      ...zspFlags(32, result),
-      AF: requiredFlagExpr(carry, "AF", "dec32"),
-      OF: requiredFlagExpr(carry, "OF", "dec32")
+      ...zspFlags(width, truncatedResult),
+      ...subCarryFlags(width, left, right, truncatedResult)
+    };
+  }),
+
+  logic: flagProducer(["result"], arithmeticFlagNames, ["AF"], ({ result }, width) =>
+    logicFlags(width, truncateToWidth(width, result))
+  ),
+
+  // INC/DEC intentionally omit CF from writtenMask. Consumers of CF after INC/DEC
+  // must keep using the previous CF source.
+  inc: flagProducer(["left", "result"], incDecWrittenFlagNames, [], ({ left, result }, width) => {
+    const truncatedResult = truncateToWidth(width, result);
+    const carry = addCarryFlags(width, left, const32(1), truncatedResult);
+
+    return {
+      ...zspFlags(width, truncatedResult),
+      AF: requiredFlagExpr(carry, "AF", "inc"),
+      OF: requiredFlagExpr(carry, "OF", "inc")
+    };
+  }),
+
+  dec: flagProducer(["left", "result"], incDecWrittenFlagNames, [], ({ left, result }, width) => {
+    const truncatedResult = truncateToWidth(width, result);
+    const carry = subCarryFlags(width, left, const32(1), truncatedResult);
+
+    return {
+      ...zspFlags(width, truncatedResult),
+      AF: requiredFlagExpr(carry, "AF", "dec"),
+      OF: requiredFlagExpr(carry, "OF", "dec")
     };
   })
 } as const satisfies Record<FlagProducerName, FlagProducer<string>>;
 
 export function createIrFlagSetOp(
   producer: FlagProducerName,
-  inputs: Readonly<Record<string, ValueRef>>
+  inputs: Readonly<Record<string, ValueRef>>,
+  width?: OperandWidth
 ): IrFlagSetOp {
   const flagProducer = FLAG_PRODUCERS[producer];
-
-  return {
+  const op = {
     op: "flags.set",
     producer,
     writtenMask: flagProducer.writtenMask,
     undefMask: flagProducer.undefMask,
     inputs
-  };
+  } as const satisfies IrFlagSetOp;
+
+  return width === undefined || width === 32 ? op : { ...op, width };
 }
 
 function const32(value: number): ValueExpr {

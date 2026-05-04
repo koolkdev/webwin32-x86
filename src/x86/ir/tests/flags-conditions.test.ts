@@ -22,11 +22,11 @@ const left = irVar(0);
 const right = irVar(1);
 const result = irVar(2);
 
-test("add32 producer defines aluFlags symbolically", () => {
-  deepStrictEqual(FLAG_PRODUCERS.add32.inputs, ["left", "right", "result"]);
-  deepStrictEqual(FLAG_PRODUCERS.add32.writtenMask, IR_ALU_FLAG_MASK);
-  deepStrictEqual(FLAG_PRODUCERS.add32.undefMask, 0);
-  deepStrictEqual(FLAG_PRODUCERS.add32.define({ left, right, result }), {
+test("add producer defines aluFlags symbolically", () => {
+  deepStrictEqual(FLAG_PRODUCERS.add.inputs, ["left", "right", "result"]);
+  deepStrictEqual(FLAG_PRODUCERS.add.writtenMask, IR_ALU_FLAG_MASK);
+  deepStrictEqual(FLAG_PRODUCERS.add.undefMask, 0);
+  deepStrictEqual(FLAG_PRODUCERS.add.define({ left, right, result }), {
     ZF: { kind: "eqz", value: result },
     SF: { kind: "signBit", value: result, width: 32 },
     PF: { kind: "parity8", value: result },
@@ -55,14 +55,14 @@ test("add32 producer defines aluFlags symbolically", () => {
   });
 });
 
-test("sub32 producer defines borrow and overflow symbolically", () => {
-  deepStrictEqual(FLAG_PRODUCERS.sub32.inputs, ["left", "right", "result"]);
-  deepStrictEqual(FLAG_PRODUCERS.sub32.define({ left, right, result }).CF, {
+test("sub producer defines borrow and overflow symbolically", () => {
+  deepStrictEqual(FLAG_PRODUCERS.sub.inputs, ["left", "right", "result"]);
+  deepStrictEqual(FLAG_PRODUCERS.sub.define({ left, right, result }).CF, {
     kind: "uLt",
     a: left,
     b: right
   });
-  deepStrictEqual(FLAG_PRODUCERS.sub32.define({ left, right, result }).OF, {
+  deepStrictEqual(FLAG_PRODUCERS.sub.define({ left, right, result }).OF, {
     kind: "ne0",
     value: {
       kind: "and",
@@ -76,11 +76,11 @@ test("sub32 producer defines borrow and overflow symbolically", () => {
   });
 });
 
-test("logic32 producer defines logical flags and keeps AF undefined", () => {
-  deepStrictEqual(FLAG_PRODUCERS.logic32.inputs, ["result"]);
-  deepStrictEqual(FLAG_PRODUCERS.logic32.writtenMask, IR_ALU_FLAG_MASK);
-  deepStrictEqual(FLAG_PRODUCERS.logic32.undefMask, IR_ALU_FLAG_MASKS.AF);
-  deepStrictEqual(FLAG_PRODUCERS.logic32.define({ result }), {
+test("logic producer defines logical flags and keeps AF undefined", () => {
+  deepStrictEqual(FLAG_PRODUCERS.logic.inputs, ["result"]);
+  deepStrictEqual(FLAG_PRODUCERS.logic.writtenMask, IR_ALU_FLAG_MASK);
+  deepStrictEqual(FLAG_PRODUCERS.logic.undefMask, IR_ALU_FLAG_MASKS.AF);
+  deepStrictEqual(FLAG_PRODUCERS.logic.define({ result }), {
     ZF: { kind: "eqz", value: result },
     SF: { kind: "signBit", value: result, width: 32 },
     PF: { kind: "parity8", value: result },
@@ -90,14 +90,14 @@ test("logic32 producer defines logical flags and keeps AF undefined", () => {
   });
 });
 
-test("inc32 and dec32 producers write all arithmetic flags except CF", () => {
+test("inc and dec producers write all arithmetic flags except CF", () => {
   const writtenMask = maskIrAluFlags(["PF", "AF", "ZF", "SF", "OF"]);
 
-  deepStrictEqual(FLAG_PRODUCERS.inc32.inputs, ["left", "result"]);
-  deepStrictEqual(FLAG_PRODUCERS.inc32.writtenMask, writtenMask);
-  deepStrictEqual(FLAG_PRODUCERS.inc32.undefMask, 0);
-  deepStrictEqual(FLAG_PRODUCERS.inc32.define({ left, result }).CF, undefined);
-  deepStrictEqual(FLAG_PRODUCERS.inc32.define({ left, result }).OF, {
+  deepStrictEqual(FLAG_PRODUCERS.inc.inputs, ["left", "result"]);
+  deepStrictEqual(FLAG_PRODUCERS.inc.writtenMask, writtenMask);
+  deepStrictEqual(FLAG_PRODUCERS.inc.undefMask, 0);
+  deepStrictEqual(FLAG_PRODUCERS.inc.define({ left, result }).CF, undefined);
+  deepStrictEqual(FLAG_PRODUCERS.inc.define({ left, result }).OF, {
     kind: "ne0",
     value: {
       kind: "and",
@@ -110,11 +110,11 @@ test("inc32 and dec32 producers write all arithmetic flags except CF", () => {
     }
   });
 
-  deepStrictEqual(FLAG_PRODUCERS.dec32.inputs, ["left", "result"]);
-  deepStrictEqual(FLAG_PRODUCERS.dec32.writtenMask, writtenMask);
-  deepStrictEqual(FLAG_PRODUCERS.dec32.undefMask, 0);
-  deepStrictEqual(FLAG_PRODUCERS.dec32.define({ left, result }).CF, undefined);
-  deepStrictEqual(FLAG_PRODUCERS.dec32.define({ left, result }).OF, {
+  deepStrictEqual(FLAG_PRODUCERS.dec.inputs, ["left", "result"]);
+  deepStrictEqual(FLAG_PRODUCERS.dec.writtenMask, writtenMask);
+  deepStrictEqual(FLAG_PRODUCERS.dec.undefMask, 0);
+  deepStrictEqual(FLAG_PRODUCERS.dec.define({ left, result }).CF, undefined);
+  deepStrictEqual(FLAG_PRODUCERS.dec.define({ left, result }).OF, {
     kind: "ne0",
     value: {
       kind: "and",
@@ -151,24 +151,24 @@ test("flag effect helpers expose condition reads and producer effects", () => {
   strictEqual(conditionFlagReadMask("E"), IR_ALU_FLAG_MASKS.ZF);
   strictEqual(conditionFlagReadMask("BE"), maskIrAluFlags(["CF", "ZF"]));
   strictEqual(conditionFlagReadMask("G"), maskIrAluFlags(["ZF", "SF", "OF"]));
-  deepStrictEqual(flagProducerEffect("add32"), {
+  deepStrictEqual(flagProducerEffect("add"), {
     reads: 0,
     writes: IR_ALU_FLAG_MASK,
     undefines: 0
   });
-  deepStrictEqual(flagProducerEffect("logic32"), {
+  deepStrictEqual(flagProducerEffect("logic"), {
     reads: 0,
     writes: IR_ALU_FLAG_MASK,
     undefines: IR_ALU_FLAG_MASKS.AF
   });
-  deepStrictEqual(flagProducerEffect("inc32"), {
+  deepStrictEqual(flagProducerEffect("inc"), {
     reads: 0,
     writes: IR_ALU_FLAG_MASK & ~IR_ALU_FLAG_MASKS.CF,
     undefines: 0
   });
 });
 
-test("sub32 flag producers support direct comparison condition emission", () => {
+test("sub flag producers support direct comparison condition emission", () => {
   const cases: readonly [ConditionCode, NonNullable<ReturnType<typeof flagProducerConditionKind>>][] = [
     ["E", "eq32"],
     ["NE", "ne32"],
@@ -181,11 +181,12 @@ test("sub32 flag producers support direct comparison condition emission", () => 
   ];
 
   deepStrictEqual(
-    cases.map(([cc]) => flagProducerConditionKind({ producer: "sub32", cc })),
+    cases.map(([cc]) => flagProducerConditionKind({ producer: "sub", cc })),
     cases.map(([, kind]) => kind)
   );
-  deepStrictEqual(canUseFlagProducerCondition(createDescriptor("sub32"), "E"), true);
-  deepStrictEqual(flagProducerConditionKind({ producer: "sub32", cc: "P" }), "parity8");
+  deepStrictEqual(canUseFlagProducerCondition(createDescriptor("sub"), "E"), true);
+  deepStrictEqual(flagProducerConditionKind({ producer: "sub", cc: "P" }), "parity8");
+  deepStrictEqual(flagProducerConditionKind({ producer: "sub", width: 8, cc: "L" }), undefined);
 });
 
 test("result flag producers support direct result condition emission", () => {
@@ -198,7 +199,7 @@ test("result flag producers support direct result condition emission", () => {
     ["NP", "notParity8"]
   ];
 
-  for (const producer of ["add32", "logic32", "inc32", "dec32"] as const) {
+  for (const producer of ["add", "logic", "inc", "dec"] as const) {
     deepStrictEqual(
       cases.map(([cc]) => flagProducerConditionKind({ producer, cc })),
       cases.map(([, kind]) => kind)
@@ -207,15 +208,16 @@ test("result flag producers support direct result condition emission", () => {
   }
 
   deepStrictEqual(
-    cases.map(([cc]) => flagProducerConditionKind({ producer: "sub32", cc, inputs: { result } })),
+    cases.map(([cc]) => flagProducerConditionKind({ producer: "sub", cc, inputs: { result } })),
     cases.map(([, kind]) => kind)
   );
-  deepStrictEqual(flagProducerConditionKind({ producer: "sub32", cc: "E" }), "eq32");
-  deepStrictEqual(flagProducerConditionKind({ producer: "sub32", cc: "E", inputs: { result } }), "zero32");
-  deepStrictEqual(canUseFlagProducerCondition(createDescriptor("inc32"), "B"), false);
+  deepStrictEqual(flagProducerConditionKind({ producer: "sub", cc: "E" }), "eq32");
+  deepStrictEqual(flagProducerConditionKind({ producer: "sub", cc: "E", inputs: { result } }), "zero32");
+  deepStrictEqual(flagProducerConditionKind({ producer: "add", width: 16, cc: "S" }), undefined);
+  deepStrictEqual(canUseFlagProducerCondition(createDescriptor("inc"), "B"), false);
 });
 
-test("logic32 producer folds conditions that depend on cleared carry and overflow", () => {
+test("logic producer folds conditions that depend on cleared carry and overflow", () => {
   const cases: readonly [ConditionCode, NonNullable<ReturnType<typeof flagProducerConditionKind>>][] = [
     ["O", "constFalse"],
     ["B", "constFalse"],
@@ -230,12 +232,12 @@ test("logic32 producer folds conditions that depend on cleared carry and overflo
   ];
 
   deepStrictEqual(
-    cases.map(([cc]) => flagProducerConditionKind({ producer: "logic32", cc })),
+    cases.map(([cc]) => flagProducerConditionKind({ producer: "logic", cc })),
     cases.map(([, kind]) => kind)
   );
-  deepStrictEqual(flagProducerConditionInputNames({ producer: "logic32", cc: "B" }), []);
-  deepStrictEqual(flagProducerConditionInputNames({ producer: "logic32", cc: "LE" }), ["result"]);
-  deepStrictEqual(canUseFlagProducerCondition(createDescriptor("logic32"), "B"), true);
+  deepStrictEqual(flagProducerConditionInputNames({ producer: "logic", cc: "B" }), []);
+  deepStrictEqual(flagProducerConditionInputNames({ producer: "logic", cc: "LE" }), ["result"]);
+  deepStrictEqual(canUseFlagProducerCondition(createDescriptor("logic"), "B"), true);
 });
 
 function createDescriptor(producer: FlagProducerName): Pick<IrFlagSetOp, "producer" | "writtenMask" | "undefMask" | "inputs"> {

@@ -14,10 +14,10 @@ test("flag-condition-specialization emits direct cmp branch conditions", () => {
   const result = specializeJitFlagConditions({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "get32", dst: v(1), source: { kind: "reg", reg: "ebx" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(1), source: { kind: "reg", reg: "ebx" } },
         { op: "i32.sub", dst: v(2), a: v(0), b: v(1) },
-        createIrFlagSetOp("sub32", { left: v(0), right: v(1), result: v(2) }),
+        createIrFlagSetOp("sub", { left: v(0), right: v(1), result: v(2) }),
         { op: "aluFlags.condition", dst: v(3), cc: "E" },
         { op: "conditionalJump", condition: v(3), taken: c32(0x2000), notTaken: c32(0x1001) }
       ])
@@ -34,12 +34,12 @@ test("flag-condition-specialization emits direct cmp conditional writes", () => 
   const result = specializeJitFlagConditions({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "get32", dst: v(1), source: { kind: "reg", reg: "ebx" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(1), source: { kind: "reg", reg: "ebx" } },
         { op: "i32.sub", dst: v(2), a: v(0), b: v(1) },
-        createIrFlagSetOp("sub32", { left: v(0), right: v(1), result: v(2) }),
+        createIrFlagSetOp("sub", { left: v(0), right: v(1), result: v(2) }),
         { op: "aluFlags.condition", dst: v(3), cc: "E" },
-        { op: "set32.if", condition: v(3), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(3), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ])
     ]
@@ -53,17 +53,17 @@ test("flag-condition-specialization falls back when producer inputs are clobbere
   const result = specializeJitFlagConditions({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "get32", dst: v(1), source: { kind: "reg", reg: "ebx" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(1), source: { kind: "reg", reg: "ebx" } },
         { op: "i32.sub", dst: v(2), a: v(0), b: v(1) },
-        createIrFlagSetOp("sub32", { left: v(0), right: v(1), result: v(2) }),
+        createIrFlagSetOp("sub", { left: v(0), right: v(1), result: v(2) }),
         { op: "next" }
       ]),
       syntheticInstruction([
         { op: "const32", dst: v(0), value: 0 },
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "aluFlags.condition", dst: v(1), cc: "E" },
-        { op: "set32.if", condition: v(1), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(1), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ], 1)
     ]
@@ -78,11 +78,11 @@ test("flag-condition-specialization handles supported result-only partial flag c
   const result = specializeJitFlagConditions({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("inc32", { left: v(0), result: v(1) }),
+        createIrFlagSetOp("inc", { left: v(0), result: v(1) }),
         { op: "aluFlags.condition", dst: v(2), cc: "E" },
-        { op: "set32.if", condition: v(2), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(2), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ])
     ]
@@ -96,13 +96,13 @@ test("flag-condition-specialization rejects mixed-owner reads", () => {
   const result = specializeJitFlagConditions({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "i32.add", dst: v(2), a: v(1), b: c32(1) },
-        createIrFlagSetOp("inc32", { left: v(1), result: v(2) }),
+        createIrFlagSetOp("inc", { left: v(1), result: v(2) }),
         { op: "aluFlags.condition", dst: v(3), cc: "A" },
-        { op: "set32.if", condition: v(3), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(3), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ])
     ]
@@ -116,22 +116,22 @@ test("flag-condition-specialization emits result conditions from writeback regis
   const result = specializeJitFlagConditions({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(1) },
         { op: "next" }
       ]),
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("inc32", { left: v(0), result: v(1) }),
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        createIrFlagSetOp("inc", { left: v(0), result: v(1) }),
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(1) },
         { op: "next" }
       ], 1),
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
-        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ], 2)
     ]
@@ -141,27 +141,27 @@ test("flag-condition-specialization emits result conditions from writeback regis
 
   strictEqual(result.flagConditionSpecialization.directConditionCount, 1);
   strictEqual(conditionInstruction.ir.some((op) => op.op === "aluFlags.condition"), false);
-  strictEqual(condition.producer, "inc32");
+  strictEqual(condition.producer, "inc");
   strictEqual(condition.cc, "E");
   deepStrictEqual(condition.inputs, { result: v(1) });
   strictEqual(conditionInstruction.ir.some((op) =>
-    op.op === "get32" && op.source.kind === "reg" && op.source.reg === "eax"
+    op.op === "get" && op.source.kind === "reg" && op.source.reg === "eax"
   ), true);
 });
 
-test("flag-condition-specialization emits sub32 equality from writeback registers", () => {
+test("flag-condition-specialization emits sub equality from writeback registers", () => {
   const result = specializeJitFlagConditions({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.sub", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("sub32", { left: v(0), right: c32(1), result: v(1) }),
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        createIrFlagSetOp("sub", { left: v(0), right: c32(1), result: v(1) }),
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(1) },
         { op: "next" }
       ]),
       syntheticInstruction([
         { op: "aluFlags.condition", dst: v(0), cc: "E" },
-        { op: "set32.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ], 1)
     ]
@@ -169,7 +169,7 @@ test("flag-condition-specialization emits sub32 equality from writeback register
   const condition = singleDirectCondition(result.block);
 
   strictEqual(result.flagConditionSpecialization.directConditionCount, 1);
-  strictEqual(condition.producer, "sub32");
+  strictEqual(condition.producer, "sub");
   strictEqual(condition.cc, "E");
   deepStrictEqual(condition.inputs, { result: v(1) });
 });
@@ -183,12 +183,12 @@ test("flag-condition-specialization handles decoded cmovcc writeback results", (
   const condition = singleDirectCondition(result.block);
 
   strictEqual(result.flagConditionSpecialization.directConditionCount, 1);
-  strictEqual(condition.producer, "inc32");
+  strictEqual(condition.producer, "inc");
   strictEqual(condition.cc, "E");
   deepStrictEqual(condition.inputs, { result: v(2) });
 });
 
-test("flag-condition-specialization supports logic32 condition variants", () => {
+test("flag-condition-specialization supports logic condition variants", () => {
   const cases: readonly Readonly<{ cc: ConditionCode; resultInput: boolean }>[] = [
     { cc: "O", resultInput: false },
     { cc: "NO", resultInput: false },
@@ -209,7 +209,7 @@ test("flag-condition-specialization supports logic32 condition variants", () => 
     const condition = singleDirectCondition(result.block);
 
     strictEqual(result.flagConditionSpecialization.directConditionCount, 1, cc);
-    strictEqual(condition.producer, "logic32", cc);
+    strictEqual(condition.producer, "logic", cc);
     strictEqual(condition.cc, cc);
     deepStrictEqual(condition.inputs, resultInput ? { result: v(1) } : {}, cc);
   }
@@ -225,7 +225,7 @@ test("flag-condition-specialization emits decoded branch conditions from partial
 
   strictEqual(result.flagConditionSpecialization.directConditionCount, 1);
   strictEqual(branchIr.some((op) => op.op === "aluFlags.condition"), false);
-  strictEqual(condition.producer, "inc32");
+  strictEqual(condition.producer, "inc");
   strictEqual(condition.cc, "E");
   deepStrictEqual(condition.inputs, { result: v(2) });
 });
@@ -234,11 +234,11 @@ test("flag-condition-specialization is a validating repeatable optimization pass
   const first = runJitOptimizationPasses({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.and", dst: v(1), a: v(0), b: c32(0xff) },
-        createIrFlagSetOp("logic32", { result: v(1) }),
+        createIrFlagSetOp("logic", { result: v(1) }),
         { op: "aluFlags.condition", dst: v(2), cc: "E" },
-        { op: "set32.if", condition: v(2), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(2), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ])
     ]

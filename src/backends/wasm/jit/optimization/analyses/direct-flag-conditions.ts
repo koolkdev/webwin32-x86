@@ -90,7 +90,7 @@ function directFlagCondition(
     return undefined;
   }
 
-  const kind = flagProducerConditionKind({ producer: source.producer, cc: read.cc });
+  const kind = flagProducerConditionKind({ producer: source.producer, width: source.width, cc: read.cc });
 
   if (kind === undefined) {
     return undefined;
@@ -140,6 +140,7 @@ function directConditionInputs(
   const resultInputs = {
     inputNames: flagProducerConditionInputNames({
       producer: source.producer,
+      width: source.width,
       cc,
       inputs: { result: { kind: "const32", value: 0 } }
     }),
@@ -177,7 +178,7 @@ function sourceConditionInputs(
     return undefined;
   }
 
-  const inputNames = flagProducerConditionInputNames({ producer: source.producer, cc: read.cc });
+  const inputNames = flagProducerConditionInputNames({ producer: source.producer, width: source.width, cc: read.cc });
   const inputs: Record<string, CandidateConditionInput> = {};
   const validAfter = sourceLocation(source);
 
@@ -282,6 +283,7 @@ function canUseResultInputForCondition(
 
   return flagProducerConditionKind({
     producer: source.producer,
+    width: source.width,
     cc: read.cc,
     inputs: { result: { kind: "const32", value: 0 } }
   }) !== undefined;

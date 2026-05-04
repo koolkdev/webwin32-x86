@@ -69,7 +69,7 @@ test("buildJitIrBlock prunes flag producers overwritten inside the block", () =>
   const ir = codegenIr(buildJitIrBlock([cmp, add]));
   const flagSets = ir.filter((op) => op.op === "flags.set");
 
-  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32"]);
+  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add"]);
 });
 
 test("buildJitIrBlock leaves condition materialization to JIT flag state", () => {
@@ -102,7 +102,7 @@ test("buildJitIrBlock keeps earlier CF producer live across INC", () => {
   const ir = codegenIr(buildJitIrBlock([add, inc, jc]));
   const flagSets = ir.filter((op) => op.op === "flags.set");
 
-  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
+  deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add", "inc"]);
   strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
 });
 
@@ -677,13 +677,13 @@ function irOpDstId(op: JitIrOp): readonly number[] {
 
 function irOpOperandIndexes(op: JitIrOp): readonly number[] {
   switch (op.op) {
-    case "get32":
+    case "get":
       return storageOperandIndexes(op.source);
-    case "set32":
+    case "set":
       return storageOperandIndexes(op.target);
-    case "set32.if":
+    case "set.if":
       return storageOperandIndexes(op.target);
-    case "address32":
+    case "address":
       return [op.operand.index];
     default:
       return [];

@@ -23,6 +23,7 @@ export type IrFlagProducerConditionKind =
 export type IrFlagProducerConditionDescriptor = Readonly<{
   cc: ConditionCode;
   producer: FlagProducerName;
+  width?: IrFlagSetOp["width"];
   writtenMask: FlagMask;
   undefMask: FlagMask;
   inputs: Readonly<Record<string, ValueRef>>;
@@ -30,13 +31,18 @@ export type IrFlagProducerConditionDescriptor = Readonly<{
 
 export type IrFlagProducerDescriptor = Pick<
   IrFlagSetOp,
-  "producer" | "writtenMask" | "undefMask" | "inputs"
+  "producer" | "width" | "writtenMask" | "undefMask" | "inputs"
 >;
 
 export function flagProducerConditionKind(
-  condition: Pick<IrFlagProducerConditionDescriptor, "cc" | "producer"> & Partial<Pick<IrFlagProducerConditionDescriptor, "inputs">>
+  condition: Pick<IrFlagProducerConditionDescriptor, "cc" | "producer"> &
+    Partial<Pick<IrFlagProducerConditionDescriptor, "inputs" | "width">>
 ): IrFlagProducerConditionKind | undefined {
-  if (condition.producer === "logic32") {
+  if (condition.width !== undefined && condition.width !== 32) {
+    return undefined;
+  }
+
+  if (condition.producer === "logic") {
     switch (condition.cc) {
       case "O":
       case "B":
@@ -67,7 +73,7 @@ export function flagProducerConditionKind(
     }
   }
 
-  if (condition.producer === "sub32" && !conditionUsesOnlyResultInput(condition)) {
+  if (condition.producer === "sub" && !conditionUsesOnlyResultInput(condition)) {
     switch (condition.cc) {
       case "E":
         return "eq32";
@@ -114,11 +120,17 @@ export function canUseFlagProducerCondition(
   descriptor: IrFlagProducerDescriptor,
   cc: ConditionCode
 ): boolean {
-  return flagProducerConditionKind({ producer: descriptor.producer, cc, inputs: descriptor.inputs }) !== undefined;
+  return flagProducerConditionKind({
+    producer: descriptor.producer,
+    width: descriptor.width,
+    cc,
+    inputs: descriptor.inputs
+  }) !== undefined;
 }
 
 export function flagProducerConditionInputNames(
-  condition: Pick<IrFlagProducerConditionDescriptor, "cc" | "producer"> & Partial<Pick<IrFlagProducerConditionDescriptor, "inputs">>
+  condition: Pick<IrFlagProducerConditionDescriptor, "cc" | "producer"> &
+    Partial<Pick<IrFlagProducerConditionDescriptor, "inputs" | "width">>
 ): readonly string[] {
   switch (flagProducerConditionKind(condition)) {
     case "eq32":
@@ -161,11 +173,11 @@ export function requiredFlagProducerConditionInput(
 }
 
 function producerHasResultInput(producer: FlagProducerName): boolean {
-  return producer === "add32" ||
-    producer === "sub32" ||
-    producer === "logic32" ||
-    producer === "inc32" ||
-    producer === "dec32";
+  return producer === "add" ||
+    producer === "sub" ||
+    producer === "logic" ||
+    producer === "inc" ||
+    producer === "dec";
 }
 
 function conditionUsesOnlyResultInput(condition: Partial<Pick<IrFlagProducerConditionDescriptor, "inputs">>): boolean {

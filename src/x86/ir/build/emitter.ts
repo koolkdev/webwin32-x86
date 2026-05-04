@@ -1,12 +1,12 @@
-import type { Reg32 } from "#x86/isa/types.js";
+import type { OperandWidth, Reg32 } from "#x86/isa/types.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import { irOpIsTerminator, type IrTerminatorOp } from "#x86/ir/model/op-semantics.js";
 import {
   const32,
-  mem32,
+  mem,
   nextEip,
   operand,
-  reg32,
+  reg,
   irVar,
   toStorageRef,
   toTargetRef,
@@ -87,38 +87,39 @@ export class IrEmitter implements IrBuilder {
     return nextEip();
   }
 
-  reg32(reg: Reg32): RegRef {
-    return reg32(reg);
+  reg(regInput: Reg32): RegRef {
+    return reg(regInput);
   }
 
-  mem32(address: ValueInput): MemRef {
-    return mem32(address);
+  mem(address: ValueInput): MemRef {
+    return mem(address);
   }
 
-  get32(source: StorageInput): VarRef {
+  get(source: StorageInput, accessWidth: OperandWidth = 32): VarRef {
     const dst = this.#allocVar();
 
-    this.#push({ op: "get32", dst, source: toStorageRef(source) });
+    this.#push({ op: "get", dst, source: toStorageRef(source), accessWidth });
     return dst;
   }
 
-  set32(target: StorageInput, value: ValueInput): void {
-    this.#push({ op: "set32", target: toStorageRef(target), value: toValueRef(value) });
+  set(target: StorageInput, value: ValueInput, accessWidth: OperandWidth = 32): void {
+    this.#push({ op: "set", target: toStorageRef(target), value: toValueRef(value), accessWidth });
   }
 
-  set32If(condition: ValueInput, target: StorageInput, value: ValueInput): void {
+  setIf(condition: ValueInput, target: StorageInput, value: ValueInput, accessWidth: OperandWidth = 32): void {
     this.#push({
-      op: "set32.if",
+      op: "set.if",
       condition: toValueRef(condition),
       target: toStorageRef(target),
-      value: toValueRef(value)
+      value: toValueRef(value),
+      accessWidth
     });
   }
 
-  address32(operandInput: OperandInput): VarRef {
+  address(operandInput: OperandInput): VarRef {
     const dst = this.#allocVar();
 
-    this.#push({ op: "address32", dst, operand: operandInput });
+    this.#push({ op: "address", dst, operand: operandInput });
     return dst;
   }
 
@@ -164,11 +165,12 @@ export class IrEmitter implements IrBuilder {
     return dst;
   }
 
-  setFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueInput>>): void {
+  setFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueInput>>, width?: OperandWidth): void {
     this.#push(
       createIrFlagSetOp(
         producer,
-        Object.fromEntries(Object.entries(inputs).map(([name, value]) => [name, toValueRef(value)]))
+        Object.fromEntries(Object.entries(inputs).map(([name, value]) => [name, toValueRef(value)])),
+        width
       )
     );
   }

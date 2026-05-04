@@ -22,7 +22,7 @@ test("validator accepts representative generated semantic templates", () => {
 });
 
 test("validator rejects missing terminator and ops after terminator", () => {
-  throws(() => validateIrBlock([{ op: "get32", dst: irVar(0), source: operand(0) }]), /exactly one terminator/);
+  throws(() => validateIrBlock([{ op: "get", dst: irVar(0), source: operand(0) }]), /exactly one terminator/);
 
   throws(
     () =>
@@ -38,7 +38,7 @@ test("validator rejects duplicate vars, use before definition, and missing opera
   throws(
     () =>
       validateIrBlock([
-        { op: "get32", dst: irVar(0), source: operand(0) },
+        { op: "get", dst: irVar(0), source: operand(0) },
         { op: "i32.add", dst: irVar(0), a: irVar(0), b: const32(1) },
         { op: "next" }
       ]),
@@ -55,7 +55,7 @@ test("validator rejects duplicate vars, use before definition, and missing opera
   );
 
   throws(
-    () => validateIrBlock([{ op: "get32", dst: irVar(0), source: operand(1) }, { op: "next" }], { operandCount: 1 }),
+    () => validateIrBlock([{ op: "get", dst: irVar(0), source: operand(1) }, { op: "next" }], { operandCount: 1 }),
     /operand 1 does not exist/
   );
 });
@@ -77,20 +77,20 @@ test("validator rejects malformed flag producer inputs", () => {
     () =>
       validateIrBlock([
         { op: "const32", dst: irVar(0), value: 1 },
-        createIrFlagSetOp("logic32", {}),
+        createIrFlagSetOp("logic", {}),
         { op: "next" }
       ]),
-    /flags\.set logic32 is missing input 'result'/
+    /flags\.set logic is missing input 'result'/
   );
 
   throws(
     () =>
       validateIrBlock([
         { op: "const32", dst: irVar(0), value: 1 },
-        createIrFlagSetOp("logic32", { result: irVar(0), extra: irVar(0) }),
+        createIrFlagSetOp("logic", { result: irVar(0), extra: irVar(0) }),
         { op: "next" }
       ]),
-    /flags\.set logic32 has unexpected input 'extra'/
+    /flags\.set logic has unexpected input 'extra'/
   );
 });
 
@@ -99,19 +99,19 @@ test("validator rejects flag descriptors that disagree with producer metadata", 
     () =>
       validateIrBlock([
         { op: "const32", dst: irVar(0), value: 1 },
-        { ...createIrFlagSetOp("logic32", { result: irVar(0) }), writtenMask: 1 },
+        { ...createIrFlagSetOp("logic", { result: irVar(0) }), writtenMask: 1 },
         { op: "next" }
       ]),
-    /flags\.set logic32 writtenMask does not match producer metadata/
+    /flags\.set logic writtenMask does not match producer metadata/
   );
 
   throws(
     () =>
       validateIrBlock([
         { op: "const32", dst: irVar(0), value: 1 },
-        { ...createIrFlagSetOp("add32", { left: irVar(0), right: const32(1), result: irVar(0) }), undefMask: 1 },
+        { ...createIrFlagSetOp("add", { left: irVar(0), right: const32(1), result: irVar(0) }), undefMask: 1 },
         { op: "next" }
       ]),
-    /flags\.set add32 undefMask does not match producer metadata/
+    /flags\.set add undefMask does not match producer metadata/
   );
 });

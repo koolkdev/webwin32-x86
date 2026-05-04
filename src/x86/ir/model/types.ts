@@ -1,4 +1,4 @@
-import type { Reg32 } from "#x86/isa/types.js";
+import type { OperandWidth, Reg32 } from "#x86/isa/types.js";
 
 export type VarId = number;
 
@@ -32,12 +32,13 @@ export type ConditionCode =
   | "LE"
   | "G";
 
-export type FlagProducerName = "add32" | "sub32" | "logic32" | "inc32" | "dec32";
+export type FlagProducerName = "add" | "sub" | "logic" | "inc" | "dec";
 export type FlagMask = number;
 
 export type IrFlagSetOp = Readonly<{
   op: "flags.set";
   producer: FlagProducerName;
+  width?: OperandWidth;
   writtenMask: FlagMask;
   undefMask: FlagMask;
   inputs: Readonly<Record<string, ValueRef>>;
@@ -59,10 +60,10 @@ export type IrBinaryValueOp = Readonly<{
 }>;
 
 export type IrOp =
-  | Readonly<{ op: "get32"; dst: VarRef; source: StorageRef }>
-  | Readonly<{ op: "set32"; target: StorageRef; value: ValueRef }>
-  | Readonly<{ op: "set32.if"; condition: ValueRef; target: StorageRef; value: ValueRef }>
-  | Readonly<{ op: "address32"; dst: VarRef; operand: OperandRef }>
+  | Readonly<{ op: "get"; dst: VarRef; source: StorageRef; accessWidth?: OperandWidth }>
+  | Readonly<{ op: "set"; target: StorageRef; value: ValueRef; accessWidth?: OperandWidth }>
+  | Readonly<{ op: "set.if"; condition: ValueRef; target: StorageRef; value: ValueRef; accessWidth?: OperandWidth }>
+  | Readonly<{ op: "address"; dst: VarRef; operand: OperandRef }>
   | Readonly<{ op: "const32"; dst: VarRef; value: number }>
   | IrBinaryValueOp
   | IrFlagSetOp
@@ -81,13 +82,13 @@ export interface IrBuilder {
   operand(index: number): OperandRef;
   const32(value: number): Const32Ref;
   nextEip(): NextEipRef;
-  reg32(reg: Reg32): RegRef;
-  mem32(address: ValueInput): MemRef;
+  reg(reg: Reg32): RegRef;
+  mem(address: ValueInput): MemRef;
 
-  get32(source: StorageInput): VarRef;
-  set32(target: StorageInput, value: ValueInput): void;
-  set32If(condition: ValueInput, target: StorageInput, value: ValueInput): void;
-  address32(operand: OperandInput): VarRef;
+  get(source: StorageInput, accessWidth?: OperandWidth): VarRef;
+  set(target: StorageInput, value: ValueInput, accessWidth?: OperandWidth): void;
+  setIf(condition: ValueInput, target: StorageInput, value: ValueInput, accessWidth?: OperandWidth): void;
+  address(operand: OperandInput): VarRef;
 
   setConst32(value: number): VarRef;
   i32Add(a: ValueInput, b: ValueInput): VarRef;
@@ -96,7 +97,7 @@ export interface IrBuilder {
   i32Or(a: ValueInput, b: ValueInput): VarRef;
   i32And(a: ValueInput, b: ValueInput): VarRef;
 
-  setFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueInput>>): void;
+  setFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueInput>>, width?: OperandWidth): void;
   materializeFlags(mask: FlagMask): void;
   boundaryFlags(mask: FlagMask): void;
   condition(cc: ConditionCode): VarRef;

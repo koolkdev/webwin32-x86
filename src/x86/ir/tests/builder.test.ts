@@ -11,9 +11,9 @@ test("builder rejects ops after a terminator", () => {
   throws(
     () =>
       buildIr((s) => {
-        s.jump(s.get32(s.operand(0)));
-        s.get32(s.operand(1));
+        s.jump(s.get(s.operand(0)));
+        s.get(s.operand(1));
       }),
-    /cannot emit get32 after IR terminator/
+    /cannot emit get after IR terminator/
   );
 });

@@ -70,7 +70,7 @@ export function materializeJitRegisterValue(
   value: JitValue
 ): void {
   rewrite.ops.push({
-    op: "set32",
+    op: "set",
     role: "registerMaterialization",
     target: { kind: "reg", reg },
     value: emitJitValueRef(rewrite, value)
@@ -98,7 +98,7 @@ export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitValue)
     case "reg": {
       const dst = allocVar(rewrite);
 
-      rewrite.ops.push({ op: "get32", dst, source: { kind: "reg", reg: value.reg } });
+      rewrite.ops.push({ op: "get", dst, source: { kind: "reg", reg: value.reg } });
       rewrite.values.record(dst.id, value);
       return dst;
     }
@@ -120,7 +120,7 @@ export function assignJitValue(
       rewrite.ops.push({ op: "const32", dst, value: value.value });
       return;
     case "reg":
-      rewrite.ops.push({ op: "get32", dst, source: { kind: "reg", reg: value.reg } });
+      rewrite.ops.push({ op: "get", dst, source: { kind: "reg", reg: value.reg } });
       return;
   }
 }

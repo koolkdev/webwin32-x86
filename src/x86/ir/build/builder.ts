@@ -3,10 +3,10 @@ import type { SemanticTemplate, IrBlock } from "#x86/ir/model/types.js";
 
 export {
   const32,
-  mem32,
+  mem,
   nextEip,
   operand,
-  reg32,
+  reg,
   irVar
 } from "#x86/ir/model/refs.js";
 export { irBlockTerminator };

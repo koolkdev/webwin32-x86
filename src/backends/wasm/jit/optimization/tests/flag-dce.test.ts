@@ -12,13 +12,13 @@ test("flag-dce removes overwritten flag producers", () => {
   const result = pruneDeadJitFlagSets({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "i32.sub", dst: v(2), a: v(1), b: c32(1) },
-        createIrFlagSetOp("sub32", { left: v(1), right: c32(1), result: v(2) }),
+        createIrFlagSetOp("sub", { left: v(1), right: c32(1), result: v(2) }),
         { op: "aluFlags.condition", dst: v(3), cc: "E" },
-        { op: "set32.if", condition: v(3), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "set.if", condition: v(3), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
         { op: "next" }
       ])
     ]
@@ -26,18 +26,18 @@ test("flag-dce removes overwritten flag producers", () => {
 
   strictEqual(result.flagDce.removedSetCount, 1);
   strictEqual(result.flagDce.retainedSetCount, 1);
-  deepStrictEqual(flagProducerNames(result.block), ["sub32"]);
+  deepStrictEqual(flagProducerNames(result.block), ["sub"]);
 });
 
 test("flag-dce keeps partial flag producers needed by later CF reads", () => {
   const result = pruneDeadJitFlagSets({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "i32.add", dst: v(2), a: v(1), b: c32(1) },
-        createIrFlagSetOp("inc32", { left: v(1), result: v(2) }),
+        createIrFlagSetOp("inc", { left: v(1), result: v(2) }),
         { op: "aluFlags.condition", dst: v(3), cc: "B" },
         { op: "conditionalJump", condition: v(3), taken: c32(0x2000), notTaken: c32(0x1001) }
       ])
@@ -46,20 +46,20 @@ test("flag-dce keeps partial flag producers needed by later CF reads", () => {
 
   strictEqual(result.flagDce.removedSetCount, 0);
   strictEqual(result.flagDce.retainedSetCount, 2);
-  deepStrictEqual(flagProducerNames(result.block), ["add32", "inc32"]);
+  deepStrictEqual(flagProducerNames(result.block), ["add", "inc"]);
 });
 
 test("flag-dce keeps producers needed by memory fault and control exits", () => {
   const result = pruneDeadJitFlagSets({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "next" }
       ]),
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
+        { op: "get", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
         { op: "next" }
       ], 1, "exit")
     ]
@@ -67,17 +67,17 @@ test("flag-dce keeps producers needed by memory fault and control exits", () => 
 
   strictEqual(result.flagDce.removedSetCount, 0);
   strictEqual(result.flagDce.retainedSetCount, 1);
-  deepStrictEqual(flagProducerNames(result.block), ["add32"]);
+  deepStrictEqual(flagProducerNames(result.block), ["add"]);
 });
 
 test("flag liveness applies pre-instruction fault reads at instruction entry", () => {
   const liveness = analyzeJitFlagLiveness({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
-        { op: "get32", dst: v(2), source: { kind: "mem", address: c32(0x2000) } },
+        createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
+        { op: "get", dst: v(2), source: { kind: "mem", address: c32(0x2000) } },
         { op: "next" }
       ])
     ]
@@ -91,9 +91,9 @@ test("flag-dce keeps undefined bits needed by explicit boundaries", () => {
   const result = pruneDeadJitFlagSets({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.and", dst: v(1), a: v(0), b: c32(0xff) },
-        createIrFlagSetOp("logic32", { result: v(1) }),
+        createIrFlagSetOp("logic", { result: v(1) }),
         { op: "flags.boundary", mask: IR_ALU_FLAG_MASKS.AF },
         { op: "next" }
       ])
@@ -108,9 +108,9 @@ test("flag-dce keeps producers needed by explicit flag materialization", () => {
   const result = pruneDeadJitFlagSets({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "flags.materialize", mask: IR_ALU_FLAG_MASKS.ZF },
         { op: "next" }
       ])
@@ -119,16 +119,16 @@ test("flag-dce keeps producers needed by explicit flag materialization", () => {
 
   strictEqual(result.flagDce.removedSetCount, 0);
   strictEqual(result.flagDce.retainedSetCount, 1);
-  deepStrictEqual(flagProducerNames(result.block), ["add32"]);
+  deepStrictEqual(flagProducerNames(result.block), ["add"]);
 });
 
 test("flag-dce is a validating repeatable optimization pass", () => {
   const first = runJitOptimizationPasses({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        createIrFlagSetOp("add32", { left: v(0), right: c32(1), result: v(1) }),
+        createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "next" }
       ])
     ]

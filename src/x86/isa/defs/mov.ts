@@ -10,7 +10,14 @@ export const MOV = mnemonic("mov", [
     opcode: [0x8a],
     operands: [modrmReg("r8"), modrmRm("rm8")],
     format: { syntax: "mov {0}, {1}" },
-    semantics: movSemantic()
+    semantics: movSemantic(8)
+  }),
+  // 88 /r: MOV r/m8, r8
+  form("rm8_r8", {
+    opcode: [0x88],
+    operands: [modrmRm("rm8"), modrmReg("r8")],
+    format: { syntax: "mov {0}, {1}" },
+    semantics: movSemantic(8)
   }),
   // 66 8B /r: MOV r16, r/m16
   form("r16_rm16", {
@@ -18,21 +25,46 @@ export const MOV = mnemonic("mov", [
     opcode: [0x8b],
     operands: [modrmReg("r16"), modrmRm("rm16")],
     format: { syntax: "mov {0}, {1}" },
-    semantics: movSemantic()
+    semantics: movSemantic(16)
+  }),
+  // 66 89 /r: MOV r/m16, r16
+  form("rm16_r16", {
+    prefixes: { operandSize: "override" },
+    opcode: [0x89],
+    operands: [modrmRm("rm16"), modrmReg("r16")],
+    format: { syntax: "mov {0}, {1}" },
+    semantics: movSemantic(16)
   }),
   // 8B /r: MOV r32, r/m32
   form("r32_rm32", {
     opcode: [0x8b],
     operands: [modrmReg("r32"), modrmRm("rm32")],
     format: { syntax: "mov {0}, {1}" },
-    semantics: movSemantic()
+    semantics: movSemantic(32)
   }),
   // 89 /r: MOV r/m32, r32
   form("rm32_r32", {
     opcode: [0x89],
     operands: [modrmRm("rm32"), modrmReg("r32")],
     format: { syntax: "mov {0}, {1}" },
-    semantics: movSemantic()
+    semantics: movSemantic(32)
+  }),
+  // C6 /0 ib: MOV r/m8, imm8
+  form("rm8_imm8", {
+    opcode: [0xc6],
+    modrm: { match: { reg: 0 } },
+    operands: [modrmRm("rm8"), imm(8)],
+    format: { syntax: "mov {0}, {1}" },
+    semantics: movSemantic(8)
+  }),
+  // 66 C7 /0 iw: MOV r/m16, imm16
+  form("rm16_imm16", {
+    prefixes: { operandSize: "override" },
+    opcode: [0xc7],
+    modrm: { match: { reg: 0 } },
+    operands: [modrmRm("rm16"), imm(16)],
+    format: { syntax: "mov {0}, {1}" },
+    semantics: movSemantic(16)
   }),
   // C7 /0 id: MOV r/m32, imm32
   form("rm32_imm32", {
@@ -40,14 +72,29 @@ export const MOV = mnemonic("mov", [
     modrm: { match: { reg: 0 } },
     operands: [modrmRm("rm32"), imm(32)],
     format: { syntax: "mov {0}, {1}" },
-    semantics: movSemantic()
+    semantics: movSemantic(32)
+  }),
+  // B0+rb ib: MOV r8, imm8
+  form("r8_imm8", {
+    opcode: [opcodePlusReg(0xb0)],
+    operands: [opReg("r8"), imm(8)],
+    format: { syntax: "mov {0}, {1}" },
+    semantics: movSemantic(8)
+  }),
+  // 66 B8+rw iw: MOV r16, imm16
+  form("r16_imm16", {
+    prefixes: { operandSize: "override" },
+    opcode: [opcodePlusReg(0xb8)],
+    operands: [opReg("r16"), imm(16)],
+    format: { syntax: "mov {0}, {1}" },
+    semantics: movSemantic(16)
   }),
   // B8+rd id: MOV r32, imm32
   form("r32_imm32", {
     opcode: [opcodePlusReg(0xb8)],
     operands: [opReg(), imm(32)],
     format: { syntax: "mov {0}, {1}" },
-    semantics: movSemantic()
+    semantics: movSemantic(32)
   })
 ]);
 

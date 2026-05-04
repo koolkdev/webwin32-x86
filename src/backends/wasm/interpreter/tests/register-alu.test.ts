@@ -12,7 +12,7 @@ const subBorrowEflags = 0x95;
 const zeroLogicEflags = 0x44;
 const signLogicEflags = 0x84;
 
-test("executes ADD r32, r/m32 and materializes add32 flags", async () => {
+test("executes ADD r32, r/m32 and materializes add flags", async () => {
   const initialState = createCpuState({
     eax: 0xffff_ffff,
     ebx: 1,
@@ -30,7 +30,7 @@ test("executes ADD r32, r/m32 and materializes add32 flags", async () => {
   strictEqual(state.eflags, preservedEflags | addWraparoundEflags);
 });
 
-test("executes SUB r/m32, r32 and materializes sub32 flags", async () => {
+test("executes SUB r/m32, r32 and materializes sub flags", async () => {
   const initialState = createCpuState({
     eax: 0,
     ebx: 1,
@@ -48,7 +48,7 @@ test("executes SUB r/m32, r32 and materializes sub32 flags", async () => {
   strictEqual(state.eflags, preservedEflags | subBorrowEflags);
 });
 
-test("executes XOR r/m32, r32 and materializes logic32 flags", async () => {
+test("executes XOR r/m32, r32 and materializes logic flags", async () => {
   const initialState = createCpuState({
     eax: 0x1234_5678,
     eip: startAddress,
@@ -64,7 +64,7 @@ test("executes XOR r/m32, r32 and materializes logic32 flags", async () => {
   strictEqual(state.eflags, preservedEflags | zeroLogicEflags);
 });
 
-test("executes OR r32, r/m32 and materializes logic32 flags", async () => {
+test("executes OR r32, r/m32 and materializes logic flags", async () => {
   const initialState = createCpuState({
     eax: 0x8000_0000,
     ebx: 0x100,
@@ -82,7 +82,7 @@ test("executes OR r32, r/m32 and materializes logic32 flags", async () => {
   strictEqual(state.eflags, preservedEflags | signLogicEflags);
 });
 
-test("executes AND r/m32, r32 and materializes logic32 flags", async () => {
+test("executes AND r/m32, r32 and materializes logic flags", async () => {
   const initialState = createCpuState({
     eax: 0xffff_ffff,
     ebx: 0,

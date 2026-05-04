@@ -25,21 +25,21 @@ test("local-dce keeps dead memory reads because they can fault", () => {
   const result = pruneDeadJitLocalValues({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
+        { op: "get", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
         { op: "next" }
       ])
     ]
   });
 
   strictEqual(result.localDce.removedOpCount, 0);
-  deepStrictEqual(result.block.instructions[0]?.ir.map((op) => op.op), ["get32", "next"]);
+  deepStrictEqual(result.block.instructions[0]?.ir.map((op) => op.op), ["get", "next"]);
 });
 
 test("local-dce removes dead non-faulting register reads", () => {
   const result = pruneDeadJitLocalValues({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "next" }
       ])
     ]

@@ -67,6 +67,20 @@ test("executes mov r/m32, imm32", () => {
   strictEqual(state.instructionCount, 1);
 });
 
+test("executes byte and word mov through register aliases", () => {
+  const state = createCpuState({ eax: 0x1234_5678, eip: startAddress });
+
+  execute(state, [0xb0, 0xaa]);
+  strictEqual(state.eax, 0x1234_56aa);
+
+  executeAtStateEip(state, [0xb4, 0xbb]);
+  strictEqual(state.eax, 0x1234_bbaa);
+
+  executeAtStateEip(state, [0x66, 0xb8, 0xcd, 0xab]);
+  strictEqual(state.eax, 0x1234_abcd);
+  strictEqual(state.instructionCount, 3);
+});
+
 test("executes add r/m32, r32 and materializes add flags", () => {
   const state = createCpuState({ eax: 0xffff_ffff, ebx: 1, eip: startAddress });
 

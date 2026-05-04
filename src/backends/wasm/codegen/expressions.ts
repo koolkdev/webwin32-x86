@@ -22,12 +22,13 @@ export type IrStorageExpr =
 export type IrValueExpr =
   | ValueRef
   | Readonly<{ kind: "src32"; source: IrStorageExpr }>
-  | Readonly<{ kind: "address32"; operand: OperandRef }>
+  | Readonly<{ kind: "address"; operand: OperandRef }>
   | Readonly<{ kind: "aluFlags.condition"; cc: ConditionCode }>
   | Readonly<{
       kind: "flagProducer.condition";
       cc: ConditionCode;
       producer: IrFlagProducerConditionDescriptor["producer"];
+      width?: IrFlagProducerConditionDescriptor["width"];
       writtenMask: IrFlagProducerConditionDescriptor["writtenMask"];
       undefMask: IrFlagProducerConditionDescriptor["undefMask"];
       inputs: Readonly<Record<string, ValueRef>>;
@@ -38,19 +39,19 @@ export type IrValueExpr =
   | Readonly<{ kind: "i32.or"; a: IrValueExpr; b: IrValueExpr }>
   | Readonly<{ kind: "i32.and"; a: IrValueExpr; b: IrValueExpr }>;
 
-export type IrSet32ExprOp = Readonly<{
-  op: "set32";
+export type IrSetExprOp = Readonly<{
+  op: "set";
   target: IrStorageExpr;
   value: IrValueExpr;
-  role?: IrSet32ExprRole;
+  role?: IrSetExprRole;
 }>;
 
-export type IrSet32ExprRole = "registerMaterialization";
+export type IrSetExprRole = "registerMaterialization";
 
 export type IrExprOp =
   | Readonly<{ op: "let32"; dst: VarRef; value: IrValueExpr }>
-  | IrSet32ExprOp
-  | Readonly<{ op: "set32.if"; condition: IrValueExpr; target: IrStorageExpr; value: IrValueExpr }>
+  | IrSetExprOp
+  | Readonly<{ op: "set.if"; condition: IrValueExpr; target: IrStorageExpr; value: IrValueExpr }>
   | IrFlagSetOp
   | Readonly<{ op: "flags.materialize"; mask: number }>
   | Readonly<{ op: "flags.boundary"; mask: number }>
@@ -66,18 +67,18 @@ export type IrExpressionFlagProducerConditionOp = IrFlagProducerConditionDescrip
   dst: VarRef;
 }>;
 
-export type IrExpressionSet32InputOp = Extract<IrOp, { op: "set32" }> & Readonly<{
-  role?: IrSet32ExprRole;
+export type IrExpressionSetInputOp = Extract<IrOp, { op: "set" }> & Readonly<{
+  role?: IrSetExprRole;
 }>;
 
 export type IrExpressionInputOp =
-  | Exclude<IrOp, Extract<IrOp, { op: "set32" }>>
-  | IrExpressionSet32InputOp
+  | Exclude<IrOp, Extract<IrOp, { op: "set" }>>
+  | IrExpressionSetInputOp
   | IrExpressionFlagProducerConditionOp;
 export type IrExpressionInputBlock = readonly IrExpressionInputOp[];
 
 export type IrExpressionOptions = Readonly<{
-  canInlineGet32?: (source: StorageRef) => boolean;
+  canInlineGet?: (source: StorageRef) => boolean;
 }>;
 
 export function buildIrExpressionBlock(
@@ -106,22 +107,22 @@ class ExpressionBuilder {
   build(): IrExprBlock {
     for (const op of this.block) {
       switch (op.op) {
-        case "get32":
-          this.#defineValue(op.dst, { kind: "src32", source: this.#storageExpr(op.source) }, this.options.canInlineGet32?.(op.source) === true);
+        case "get":
+          this.#defineValue(op.dst, { kind: "src32", source: this.#storageExpr(op.source) }, this.options.canInlineGet?.(op.source) === true);
           break;
-        case "set32":
-          this.#ops.push(this.#set32Expr(op));
+        case "set":
+          this.#ops.push(this.#setExpr(op));
           break;
-        case "set32.if":
+        case "set.if":
           this.#ops.push({
-            op: "set32.if",
+            op: "set.if",
             condition: this.#valueExpr(op.condition),
             target: this.#storageExpr(op.target),
             value: this.#valueExpr(this.#materializedValue(op.value))
           });
           break;
-        case "address32":
-          this.#defineValue(op.dst, { kind: "address32", operand: op.operand }, true);
+        case "address":
+          this.#defineValue(op.dst, { kind: "address", operand: op.operand }, true);
           break;
         case "const32":
           this.#bindings.set(op.dst.id, { kind: "const32", value: op.value });
@@ -141,6 +142,7 @@ class ExpressionBuilder {
             kind: "flagProducer.condition",
             cc: op.cc,
             producer: op.producer,
+            ...(op.width === undefined ? {} : { width: op.width }),
             writtenMask: op.writtenMask,
             undefMask: op.undefMask,
             inputs: this.#materializedFlagProducerConditionInputs(op)
@@ -150,6 +152,7 @@ class ExpressionBuilder {
           this.#ops.push({
             op: "flags.set",
             producer: op.producer,
+            ...(op.width === undefined ? {} : { width: op.width }),
             writtenMask: op.writtenMask,
             undefMask: op.undefMask,
             inputs: Object.fromEntries(
@@ -195,9 +198,9 @@ class ExpressionBuilder {
     this.#ops.push({ op: "let32", dst, value });
   }
 
-  #set32Expr(op: Extract<IrExpressionInputOp, { op: "set32" }>): IrSet32ExprOp {
-    const expr: IrSet32ExprOp = {
-      op: "set32",
+  #setExpr(op: Extract<IrExpressionInputOp, { op: "set" }>): IrSetExprOp {
+    const expr: IrSetExprOp = {
+      op: "set",
       target: this.#storageExpr(op.target),
       value: this.#valueExpr(op.value)
     };
@@ -266,19 +269,19 @@ function countVarUses(block: IrExpressionInputBlock): Map<number, number> {
 
   for (const op of block) {
     switch (op.op) {
-      case "get32":
+      case "get":
         countStorageUses(counts, op.source);
         break;
-      case "set32":
+      case "set":
         countStorageUses(counts, op.target);
         countValueUse(counts, op.value);
         break;
-      case "set32.if":
+      case "set.if":
         countValueUse(counts, op.condition);
         countStorageUses(counts, op.target);
         countValueUse(counts, op.value);
         break;
-      case "address32":
+      case "address":
       case "const32":
       case "aluFlags.condition":
       case "next":
@@ -337,7 +340,7 @@ function conditionalWriteValueVars(block: IrExpressionInputBlock): ReadonlySet<n
   const vars = new Set<number>();
 
   for (const op of block) {
-    if (op.op === "set32.if" && op.value.kind === "var") {
+    if (op.op === "set.if" && op.value.kind === "var") {
       vars.add(op.value.id);
     }
   }

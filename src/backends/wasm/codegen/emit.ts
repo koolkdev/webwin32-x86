@@ -4,7 +4,7 @@ import {
   type IrExpressionInputBlock,
   type IrExprOp,
   type IrExprBlock,
-  type IrSet32ExprOp,
+  type IrSetExprOp,
   type IrStorageExpr,
   type IrValueExpr
 } from "#backends/wasm/codegen/expressions.js";
@@ -23,7 +23,7 @@ export type WasmIrEmitContext = Readonly<{
   scratch: WasmLocalScratchAllocator;
   expression?: IrExpressionOptions;
   emitGet32(source: IrStorageExpr, helpers: WasmIrEmitHelpers): void;
-  emitSet32(target: IrStorageExpr, value: IrValueExpr, helpers: WasmIrEmitHelpers, op: IrSet32ExprOp): void;
+  emitSet32(target: IrStorageExpr, value: IrValueExpr, helpers: WasmIrEmitHelpers, op: IrSetExprOp): void;
   emitSet32If(condition: IrValueExpr, target: IrStorageExpr, value: IrValueExpr, helpers: WasmIrEmitHelpers): void;
   emitAddress32(source: IrStorageExpr, helpers: WasmIrEmitHelpers): void;
   emitSetFlags(descriptor: IrFlagSetOp, helpers: WasmIrEmitHelpers): void;
@@ -92,10 +92,10 @@ class IrExprWasmEmitter {
         this.#emitValue(op.value);
         this.#context.body.localSet(this.#wasmLocalForVar(op.dst.id));
         return;
-      case "set32":
+      case "set":
         this.#context.emitSet32(op.target, op.value, this.#helpers, op);
         return;
-      case "set32.if":
+      case "set.if":
         this.#context.emitSet32If(op.condition, op.target, op.value, this.#helpers);
         return;
       case "flags.set":
@@ -136,7 +136,7 @@ class IrExprWasmEmitter {
       case "src32":
         this.#context.emitGet32(value.source, this.#helpers);
         return;
-      case "address32":
+      case "address":
         this.#context.emitAddress32(value.operand, this.#helpers);
         return;
       case "aluFlags.condition":

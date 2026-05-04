@@ -9,7 +9,7 @@ import type { InstructionSpec } from "#x86/isa/schema/types.js";
 
 test("x86-32 core registers the initial instruction surface", () => {
   strictEqual(X86_32_CORE.name, "x86-32-core");
-  strictEqual(X86_32_CORE.instructions.length, 110);
+  strictEqual(X86_32_CORE.instructions.length, 180);
 
   const ids = X86_32_CORE.instructions.map((spec) => spec.id);
 
@@ -17,6 +17,8 @@ test("x86-32 core registers the initial instruction surface", () => {
     "mov.r32_rm32",
     "mov.r8_rm8",
     "mov.r16_rm16",
+    "mov.r8_imm8",
+    "mov.r16_imm16",
     "nop.near",
     "nop.operand_size_override",
     "mov.rm32_r32",
@@ -25,17 +27,24 @@ test("x86-32 core registers the initial instruction surface", () => {
     "cmove.r32_rm32",
     "lea.r32_m32",
     "add.rm8_r8",
+    "add.rm16_imm8",
+    "add.ax_imm16",
     "add.rm32_imm8",
     "or.rm32_imm8",
     "and.rm32_imm8",
     "sub.rm32_imm8",
     "xor.eax_imm32",
     "inc.r32",
+    "inc.rm8",
+    "inc.rm16",
     "inc.rm32",
     "dec.r32",
+    "dec.rm8",
+    "dec.rm16",
     "dec.rm32",
     "cmp.rm32_imm8",
     "cmp.rm16_imm16",
+    "test.al_imm8",
     "test.rm32_imm32",
     "push.r32",
     "pop.r32",
@@ -76,10 +85,11 @@ test("cmovcc forms are concrete specs with conditional-write semantics", () => {
 
   deepStrictEqual(program[1], { op: "aluFlags.condition", dst: { kind: "var", id: 1 }, cc: "E" });
   deepStrictEqual(program[2], {
-    op: "set32.if",
+    op: "set.if",
     condition: { kind: "var", id: 1 },
     target: { kind: "operand", index: 0 },
-    value: { kind: "var", id: 0 }
+    value: { kind: "var", id: 0 },
+    accessWidth: 32
   });
   strictEqual(program.at(-1)?.op, "next");
 });

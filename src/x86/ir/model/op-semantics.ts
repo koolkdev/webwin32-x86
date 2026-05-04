@@ -41,9 +41,9 @@ export function irOpIsBinaryValue<T extends { op: string }>(op: T): op is Extrac
 
 export function irOpResult(op: IrOp): IrOpResult {
   switch (op.op) {
-    case "get32":
+    case "get":
       return { kind: "value", dst: op.dst, sideEffect: "storageRead" };
-    case "address32":
+    case "address":
     case "const32":
     case "i32.add":
     case "i32.sub":
@@ -52,8 +52,8 @@ export function irOpResult(op: IrOp): IrOpResult {
     case "i32.and":
     case "aluFlags.condition":
       return { kind: "value", dst: op.dst, sideEffect: "none" };
-    case "set32":
-    case "set32.if":
+    case "set":
+    case "set.if":
     case "flags.set":
     case "flags.materialize":
     case "flags.boundary":
@@ -80,10 +80,10 @@ export function irOpIsTerminator(op: IrOp): op is IrTerminatorOp {
     case "conditionalJump":
     case "hostTrap":
       return true;
-    case "get32":
-    case "set32":
-    case "set32.if":
-    case "address32":
+    case "get":
+    case "set":
+    case "set.if":
+    case "address":
     case "const32":
     case "i32.add":
     case "i32.sub":
@@ -114,19 +114,19 @@ export function visitIrOpValueRefs(
   visit: (value: ValueRef, role: IrValueUseRole) => void
 ): void {
   switch (op.op) {
-    case "get32":
+    case "get":
       visitIrStorageValueRefs(op.source, visit);
       return;
-    case "set32":
+    case "set":
       visitIrStorageValueRefs(op.target, visit);
       visit(op.value, "value");
       return;
-    case "set32.if":
+    case "set.if":
       visit(op.condition, "condition");
       visitIrStorageValueRefs(op.target, visit);
       visit(op.value, "value");
       return;
-    case "address32":
+    case "address":
     case "const32":
       return;
     case "i32.add":
@@ -189,14 +189,14 @@ export function visitIrOpStorageRefs(
   visit: (storage: StorageRef, role: IrStorageUseRole) => void
 ): void {
   switch (op.op) {
-    case "get32":
+    case "get":
       visit(op.source, "read");
       return;
-    case "set32":
-    case "set32.if":
+    case "set":
+    case "set.if":
       visit(op.target, "write");
       return;
-    case "address32":
+    case "address":
     case "const32":
     case "i32.add":
     case "i32.sub":

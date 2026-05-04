@@ -10,36 +10,36 @@ const op = (index: number) => ({ kind: "operand" as const, index });
 const reg = (reg: "eax" | "ebx") => ({ kind: "reg" as const, reg });
 const c32 = (value: number) => ({ kind: "const32" as const, value });
 
-test("expression selector inlines allowed single-use get32 into set32", () => {
+test("expression selector inlines allowed single-use get into set", () => {
   deepStrictEqual(
     buildIrExpressionBlock(
       [
-        { op: "get32", dst: v(0), source: op(1) },
-        { op: "set32", target: op(0), value: v(0) },
+        { op: "get", dst: v(0), source: op(1) },
+        { op: "set", target: op(0), value: v(0) },
         { op: "next" }
       ],
-      { canInlineGet32: () => true }
+      { canInlineGet: () => true }
     ),
     [
-      { op: "set32", target: op(0), value: { kind: "src32", source: op(1) } },
+      { op: "set", target: op(0), value: { kind: "src32", source: op(1) } },
       { op: "next" }
     ]
   );
 });
 
-test("expression selector materializes get32 when the source cannot be inlined", () => {
+test("expression selector materializes get when the source cannot be inlined", () => {
   deepStrictEqual(
     buildIrExpressionBlock(
       [
-        { op: "get32", dst: v(0), source: op(1) },
-        { op: "set32", target: op(0), value: v(0) },
+        { op: "get", dst: v(0), source: op(1) },
+        { op: "set", target: op(0), value: v(0) },
         { op: "next" }
       ],
-      { canInlineGet32: () => false }
+      { canInlineGet: () => false }
     ),
     [
       { op: "let32", dst: v(0), value: { kind: "src32", source: op(1) } },
-      { op: "set32", target: op(0), value: v(0) },
+      { op: "set", target: op(0), value: v(0) },
       { op: "next" }
     ]
   );
@@ -49,16 +49,16 @@ test("expression selector folds simple register arithmetic into destination valu
   deepStrictEqual(
     buildIrExpressionBlock(
       [
-        { op: "get32", dst: v(0), source: reg("eax") },
+        { op: "get", dst: v(0), source: reg("eax") },
         { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
-        { op: "set32", target: reg("ebx"), value: v(1) },
+        { op: "set", target: reg("ebx"), value: v(1) },
         { op: "next" }
       ],
-      { canInlineGet32: () => true }
+      { canInlineGet: () => true }
     ),
     [
       {
-        op: "set32",
+        op: "set",
         target: reg("ebx"),
         value: {
           kind: "i32.add",
@@ -71,17 +71,17 @@ test("expression selector folds simple register arithmetic into destination valu
   );
 });
 
-test("expression selector can reuse constant bindings without a temporary", () => {
+test("expression selector can reuse const32 bindings without a temporary", () => {
   deepStrictEqual(
     buildIrExpressionBlock([
       { op: "const32", dst: v(0), value: 7 },
       { op: "i32.add", dst: v(1), a: v(0), b: v(0) },
-      { op: "set32", target: reg("ebx"), value: v(1) },
+      { op: "set", target: reg("ebx"), value: v(1) },
       { op: "next" }
     ]),
     [
       {
-        op: "set32",
+        op: "set",
         target: reg("ebx"),
         value: {
           kind: "i32.add",
@@ -98,19 +98,19 @@ test("expression selector materializes flag inputs that still need value refs", 
   deepStrictEqual(
     buildIrExpressionBlock(
       [
-        { op: "get32", dst: v(0), source: op(0) },
-        { op: "get32", dst: v(1), source: op(1) },
+        { op: "get", dst: v(0), source: op(0) },
+        { op: "get", dst: v(1), source: op(1) },
         { op: "i32.sub", dst: v(2), a: v(0), b: v(1) },
-        createIrFlagSetOp("sub32", { left: v(0), right: v(1), result: v(2) }),
+        createIrFlagSetOp("sub", { left: v(0), right: v(1), result: v(2) }),
         { op: "next" }
       ],
-      { canInlineGet32: () => true }
+      { canInlineGet: () => true }
     ),
     [
       { op: "let32", dst: v(0), value: { kind: "src32", source: op(0) } },
       { op: "let32", dst: v(1), value: { kind: "src32", source: op(1) } },
       { op: "let32", dst: v(2), value: { kind: "i32.sub", a: v(0), b: v(1) } },
-      createIrFlagSetOp("sub32", { left: v(0), right: v(1), result: v(2) }),
+      createIrFlagSetOp("sub", { left: v(0), right: v(1), result: v(2) }),
       { op: "next" }
     ]
   );
@@ -120,17 +120,17 @@ test("expression selector materializes conditional set values at their definitio
   deepStrictEqual(
     buildIrExpressionBlock(
       [
-        { op: "get32", dst: v(0), source: op(1) },
+        { op: "get", dst: v(0), source: op(1) },
         { op: "aluFlags.condition", dst: v(1), cc: "E" },
-        { op: "set32.if", condition: v(1), target: op(0), value: v(0) },
+        { op: "set.if", condition: v(1), target: op(0), value: v(0) },
         { op: "next" }
       ],
-      { canInlineGet32: () => true }
+      { canInlineGet: () => true }
     ),
     [
       { op: "let32", dst: v(0), value: { kind: "src32", source: op(1) } },
       { op: "let32", dst: v(1), value: { kind: "aluFlags.condition", cc: "E" } },
-      { op: "set32.if", condition: v(1), target: op(0), value: v(0) },
+      { op: "set.if", condition: v(1), target: op(0), value: v(0) },
       { op: "next" }
     ]
   );

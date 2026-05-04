@@ -59,7 +59,7 @@ export function emitInterpreterIrWithContext(block: IrBlock, context: Interprete
   emitIrToWasm(block, {
     body: context.body,
     scratch: context.scratch,
-    expression: { canInlineGet32: (source) => canInlineGet32(context, source) },
+    expression: { canInlineGet: (source) => canInlineGet(context, source) },
     emitGet32: (source, helpers) => emitGet32(context, regs, source, helpers),
     emitSet32: (target, value, helpers) => emitSet32(context, regs, target, value, helpers),
     emitSet32If: (condition, target, value, helpers) =>
@@ -100,7 +100,7 @@ function emitGet32(
   }
 }
 
-function canInlineGet32(context: InterpreterIrEmitContext, source: StorageRef): boolean {
+function canInlineGet(context: InterpreterIrEmitContext, source: StorageRef): boolean {
   switch (source.kind) {
     case "reg":
       return true;
@@ -156,13 +156,13 @@ function emitSet32If(
 
 function emitAddress32(context: InterpreterIrEmitContext, source: IrStorageExpr): void {
   if (source.kind !== "operand") {
-    throw new Error(`unsupported address32 source for Wasm interpreter: ${source.kind}`);
+    throw new Error(`unsupported address source for Wasm interpreter: ${source.kind}`);
   }
 
   const binding = operandBinding(context, source.index);
 
   if (binding.kind !== "mem32") {
-    throw new Error(`address32 operand is not memory: ${binding.kind}`);
+    throw new Error(`address operand is not memory: ${binding.kind}`);
   }
 
   context.body.localGet(binding.addressLocal);

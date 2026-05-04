@@ -21,8 +21,8 @@ test("register barrier analysis identifies exits and register writes", () => {
   const block = {
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "get", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "next" }
       ], 0, "exit")
     ]
@@ -72,8 +72,8 @@ test("register value analysis tracks foldable register reads", () => {
     instructions: [
       syntheticInstruction([
         { op: "const32", dst: v(0), value: 7 },
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(0) },
-        { op: "get32", dst: v(1), source: { kind: "reg", reg: "eax" } },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" } },
         { op: "next" }
       ])
     ]
@@ -84,12 +84,12 @@ test("register value analysis tracks foldable register reads", () => {
     reg: read.reg,
     folded: read.folded,
     reason: read.reason
-  })), [{ reg: "eax", folded: true, reason: "get32" }]);
+  })), [{ reg: "eax", folded: true, reason: "get" }]);
   deepStrictEqual(analysis.folds.map((fold) => ({
     opIndex: fold.opIndex,
     kind: fold.kind,
     regs: fold.regs
-  })), [{ opIndex: 2, kind: "get32", regs: ["eax"] }]);
+  })), [{ opIndex: 2, kind: "get", regs: ["eax"] }]);
   deepStrictEqual(analysis.materializations.map((entry) => ({
     opIndex: entry.opIndex,
     phase: entry.phase,
@@ -102,10 +102,10 @@ test("register value analysis materializes dependencies before clobbers", () => 
   const analysis = analyzeJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "get32", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "set32", target: { kind: "reg", reg: "ebx" }, value: v(0) },
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(0) },
         { op: "const32", dst: v(1), value: 0 },
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(1) },
         { op: "next" }
       ])
     ]
@@ -126,7 +126,7 @@ test("register value analysis keeps immediately exiting writes concrete", () => 
     instructions: [
       syntheticInstruction([
         { op: "const32", dst: v(0), value: 7 },
-        { op: "set32", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "next" }
       ], 0, "exit")
     ]
