@@ -63,14 +63,6 @@ export function createJitInstructionRewrite(
   };
 }
 
-export function createJitPreludeRewrite(): JitInstructionRewrite {
-  return {
-    ops: [],
-    values: new JitValueTracker(),
-    nextVarId: 0
-  };
-}
-
 export function materializeJitRegisterValue(
   rewrite: JitInstructionRewrite,
   reg: Reg32,

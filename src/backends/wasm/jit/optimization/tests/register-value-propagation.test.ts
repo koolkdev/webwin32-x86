@@ -27,7 +27,6 @@ test("register-value-propagation folds register reads and materializes before ex
     materializedSetCount: 1
   });
   deepStrictEqual(opNames(result.block), ["const32", "const32", "set32", "next"]);
-  strictEqual(result.block.instructions[0]?.ir.some((op) => "prelude" in op), false);
 });
 
 test("register-value-propagation inserts materialization before pre-instruction fault points", () => {

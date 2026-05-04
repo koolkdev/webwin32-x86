@@ -118,7 +118,6 @@ test("runJitIrOptimizationPipeline exposes the new pass pipeline as plain JIT IR
     "register-value-propagation",
     "local-dce"
   ]);
-  strictEqual(result.block.instructions.every((instruction) => !("prelude" in instruction)), true);
   strictEqual(result.passResults.some((pass) =>
     pass.name === "flag-condition-specialization" && pass.stats.directConditionCount === 1
   ), true);
