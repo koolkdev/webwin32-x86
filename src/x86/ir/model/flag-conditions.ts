@@ -1,24 +1,24 @@
 import type { ConditionCode, FlagMask, FlagProducerName, IrFlagSetOp, ValueRef } from "./types.js";
 
 export type IrFlagProducerConditionKind =
-  | "eq32"
-  | "ne32"
-  | "uLt32"
-  | "uGe32"
-  | "sLt32"
-  | "sGe32"
-  | "sLe32"
-  | "sGt32"
-  | "zero32"
-  | "nonZero32"
-  | "sign32"
-  | "notSign32"
+  | "eq"
+  | "ne"
+  | "uLt"
+  | "uGe"
+  | "sLt"
+  | "sGe"
+  | "sLe"
+  | "sGt"
+  | "zero"
+  | "nonZero"
+  | "sign"
+  | "notSign"
   | "parity8"
   | "notParity8"
   | "constTrue"
   | "constFalse"
-  | "zeroOrSign32"
-  | "nonZeroAndNotSign32";
+  | "zeroOrSign"
+  | "nonZeroAndNotSign";
 
 export type IrFlagProducerConditionDescriptor = Readonly<{
   cc: ConditionCode;
@@ -38,10 +38,6 @@ export function flagProducerConditionKind(
   condition: Pick<IrFlagProducerConditionDescriptor, "cc" | "producer"> &
     Partial<Pick<IrFlagProducerConditionDescriptor, "inputs" | "width">>
 ): IrFlagProducerConditionKind | undefined {
-  if (condition.width !== undefined && condition.width !== 32) {
-    return undefined;
-  }
-
   if (condition.producer === "logic") {
     switch (condition.cc) {
       case "O":
@@ -52,45 +48,45 @@ export function flagProducerConditionKind(
         return "constTrue";
       case "E":
       case "BE":
-        return "zero32";
+        return "zero";
       case "NE":
       case "A":
-        return "nonZero32";
+        return "nonZero";
       case "S":
       case "L":
-        return "sign32";
+        return "sign";
       case "NS":
       case "GE":
-        return "notSign32";
+        return "notSign";
       case "P":
         return "parity8";
       case "NP":
         return "notParity8";
       case "LE":
-        return "zeroOrSign32";
+        return "zeroOrSign";
       case "G":
-        return "nonZeroAndNotSign32";
+        return "nonZeroAndNotSign";
     }
   }
 
   if (condition.producer === "sub" && !conditionUsesOnlyResultInput(condition)) {
     switch (condition.cc) {
       case "E":
-        return "eq32";
+        return "eq";
       case "NE":
-        return "ne32";
+        return "ne";
       case "B":
-        return "uLt32";
+        return "uLt";
       case "AE":
-        return "uGe32";
+        return "uGe";
       case "L":
-        return "sLt32";
+        return "sLt";
       case "GE":
-        return "sGe32";
+        return "sGe";
       case "LE":
-        return "sLe32";
+        return "sLe";
       case "G":
-        return "sGt32";
+        return "sGt";
     }
   }
 
@@ -100,13 +96,13 @@ export function flagProducerConditionKind(
 
   switch (condition.cc) {
     case "E":
-      return "zero32";
+      return "zero";
     case "NE":
-      return "nonZero32";
+      return "nonZero";
     case "S":
-      return "sign32";
+      return "sign";
     case "NS":
-      return "notSign32";
+      return "notSign";
     case "P":
       return "parity8";
     case "NP":
@@ -133,23 +129,23 @@ export function flagProducerConditionInputNames(
     Partial<Pick<IrFlagProducerConditionDescriptor, "inputs" | "width">>
 ): readonly string[] {
   switch (flagProducerConditionKind(condition)) {
-    case "eq32":
-    case "ne32":
-    case "uLt32":
-    case "uGe32":
-    case "sLt32":
-    case "sGe32":
-    case "sLe32":
-    case "sGt32":
+    case "eq":
+    case "ne":
+    case "uLt":
+    case "uGe":
+    case "sLt":
+    case "sGe":
+    case "sLe":
+    case "sGt":
       return ["left", "right"];
-    case "zero32":
-    case "nonZero32":
-    case "sign32":
-    case "notSign32":
+    case "zero":
+    case "nonZero":
+    case "sign":
+    case "notSign":
     case "parity8":
     case "notParity8":
-    case "zeroOrSign32":
-    case "nonZeroAndNotSign32":
+    case "zeroOrSign":
+    case "nonZeroAndNotSign":
       return ["result"];
     case "constTrue":
     case "constFalse":

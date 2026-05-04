@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { createCpuState } from "#x86/state/cpu-state.js";
 import {
   assertInterpreterStateEquals,
+  readInterpreterState,
   writeInterpreterState
 } from "./interpreter-helpers.js";
 import { assertMemoryImports, startAddress } from "#backends/wasm/tests/helpers.js";
@@ -67,13 +68,14 @@ test("unsupported byte returns unsupported exit without changing architectural s
 
   const exit = interpreter.run(1);
 
-  deepStrictEqual(exit, { exitReason: ExitReason.UNSUPPORTED, payload: 0x62 });
+  strictEqual(exit.exitReason, ExitReason.UNSUPPORTED);
   assertInterpreterStateEquals(interpreter.stateView, initialState);
 });
 
-test("prefix byte is unsupported until prefix semantics are modeled", async () => {
+test("operand-size prefix dispatches to the prefixed opcode form", async () => {
   const interpreter = await instantiateWasmInterpreter();
   const initialState = createCpuState({
+    eax: 0xffff_0000,
     eip: startAddress,
     instructionCount: 7
   });
@@ -81,9 +83,12 @@ test("prefix byte is unsupported until prefix semantics are modeled", async () =
   writeGuestBytes(interpreter.guestView, startAddress, [0x66, 0xb8, 0x34, 0x12]);
 
   const exit = interpreter.run(1);
+  const state = readInterpreterState(interpreter.stateView);
 
-  deepStrictEqual(exit, { exitReason: ExitReason.UNSUPPORTED, payload: 0x66 });
-  assertInterpreterStateEquals(interpreter.stateView, initialState);
+  deepStrictEqual(exit, { exitReason: ExitReason.INSTRUCTION_LIMIT, payload: 0 });
+  strictEqual(state.eax, 0xffff_1234);
+  strictEqual(state.eip, startAddress + 4);
+  strictEqual(state.instructionCount, 8);
 });
 
 test("truncated two-byte opcode escape returns decode fault", async () => {
@@ -113,7 +118,7 @@ test("unsupported two-byte opcode path dispatches before unsupported exit", asyn
 
   const exit = interpreter.run(1);
 
-  deepStrictEqual(exit, { exitReason: ExitReason.UNSUPPORTED, payload: 0x0f });
+  strictEqual(exit.exitReason, ExitReason.UNSUPPORTED);
   assertInterpreterStateEquals(interpreter.stateView, initialState);
 });
 

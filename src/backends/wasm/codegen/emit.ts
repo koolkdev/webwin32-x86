@@ -12,6 +12,7 @@ import type {
   ConditionCode,
   IrFlagSetOp,
 } from "#x86/ir/model/types.js";
+import type { OperandWidth } from "#x86/isa/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
@@ -22,9 +23,21 @@ export type WasmIrEmitContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
   expression?: IrExpressionOptions;
-  emitGet32(source: IrStorageExpr, helpers: WasmIrEmitHelpers): void;
-  emitSet32(target: IrStorageExpr, value: IrValueExpr, helpers: WasmIrEmitHelpers, op: IrSetExprOp): void;
-  emitSet32If(condition: IrValueExpr, target: IrStorageExpr, value: IrValueExpr, helpers: WasmIrEmitHelpers): void;
+  emitGet32(source: IrStorageExpr, accessWidth: OperandWidth, helpers: WasmIrEmitHelpers): void;
+  emitSet32(
+    target: IrStorageExpr,
+    value: IrValueExpr,
+    accessWidth: OperandWidth,
+    helpers: WasmIrEmitHelpers,
+    op: IrSetExprOp
+  ): void;
+  emitSet32If(
+    condition: IrValueExpr,
+    target: IrStorageExpr,
+    value: IrValueExpr,
+    accessWidth: OperandWidth,
+    helpers: WasmIrEmitHelpers
+  ): void;
   emitAddress32(source: IrStorageExpr, helpers: WasmIrEmitHelpers): void;
   emitSetFlags(descriptor: IrFlagSetOp, helpers: WasmIrEmitHelpers): void;
   emitMaterializeFlags(mask: number, helpers: WasmIrEmitHelpers): void;
@@ -93,10 +106,10 @@ class IrExprWasmEmitter {
         this.#context.body.localSet(this.#wasmLocalForVar(op.dst.id));
         return;
       case "set":
-        this.#context.emitSet32(op.target, op.value, this.#helpers, op);
+        this.#context.emitSet32(op.target, op.value, op.accessWidth, this.#helpers, op);
         return;
       case "set.if":
-        this.#context.emitSet32If(op.condition, op.target, op.value, this.#helpers);
+        this.#context.emitSet32If(op.condition, op.target, op.value, op.accessWidth, this.#helpers);
         return;
       case "flags.set":
         this.#context.emitSetFlags(op, this.#helpers);
@@ -134,7 +147,7 @@ class IrExprWasmEmitter {
         this.#context.emitNextEip(this.#helpers);
         return;
       case "src32":
-        this.#context.emitGet32(value.source, this.#helpers);
+        this.#context.emitGet32(value.source, value.accessWidth, this.#helpers);
         return;
       case "address":
         this.#context.emitAddress32(value.operand, this.#helpers);

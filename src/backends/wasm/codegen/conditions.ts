@@ -5,6 +5,7 @@ import {
   requiredFlagProducerConditionInput
 } from "#x86/ir/model/flag-conditions.js";
 import type { ConditionCode } from "#x86/ir/model/types.js";
+import type { OperandWidth } from "#x86/isa/types.js";
 import { x86ArithmeticFlagMask } from "#x86/isa/flags.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
@@ -25,51 +26,51 @@ export function emitFlagProducerCondition(
   helpers: WasmIrEmitHelpers
 ): void {
   switch (flagProducerConditionKind(condition)) {
-    case "eq32":
+    case "eq":
       emitInputCompare(body, condition, helpers);
       body.i32Xor().i32Eqz();
       return;
-    case "ne32":
+    case "ne":
       emitInputCompare(body, condition, helpers);
       body.i32Xor().i32Eqz().i32Eqz();
       return;
-    case "uLt32":
+    case "uLt":
       emitInputCompare(body, condition, helpers);
       body.i32LtU();
       return;
-    case "uGe32":
+    case "uGe":
       emitInputCompare(body, condition, helpers);
       body.i32LtU().i32Eqz();
       return;
-    case "sLt32":
+    case "sLt":
       emitSignedInputCompare(body, condition, helpers);
       body.i32LtU();
       return;
-    case "sGe32":
+    case "sGe":
       emitSignedInputCompare(body, condition, helpers);
       body.i32LtU().i32Eqz();
       return;
-    case "sLe32":
+    case "sLe":
       emitSignedInputCompare(body, condition, helpers);
       body.i32GtU().i32Eqz();
       return;
-    case "sGt32":
+    case "sGt":
       emitSignedInputCompare(body, condition, helpers);
       body.i32GtU();
       return;
-    case "zero32":
+    case "zero":
       emitResultInput(body, condition, helpers);
       body.i32Eqz();
       return;
-    case "nonZero32":
+    case "nonZero":
       emitResultInput(body, condition, helpers);
       body.i32Eqz().i32Eqz();
       return;
-    case "sign32":
+    case "sign":
       emitResultSign(body, condition, helpers);
       body.i32Eqz().i32Eqz();
       return;
-    case "notSign32":
+    case "notSign":
       emitResultSign(body, condition, helpers);
       body.i32Eqz();
       return;
@@ -86,14 +87,14 @@ export function emitFlagProducerCondition(
     case "constFalse":
       body.i32Const(0);
       return;
-    case "zeroOrSign32":
+    case "zeroOrSign":
       emitResultInput(body, condition, helpers);
       body.i32Eqz();
       emitResultSign(body, condition, helpers);
       body.i32Eqz().i32Eqz();
       body.i32Or();
       return;
-    case "nonZeroAndNotSign32":
+    case "nonZeroAndNotSign":
       emitResultInput(body, condition, helpers);
       body.i32Eqz().i32Eqz();
       emitResultSign(body, condition, helpers);
@@ -142,8 +143,8 @@ function emitInputCompare(
   condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>,
   helpers: WasmIrEmitHelpers
 ): void {
-  helpers.emitValue(requiredFlagProducerConditionInput(condition, "left"));
-  helpers.emitValue(requiredFlagProducerConditionInput(condition, "right"));
+  emitMaskedConditionInput(body, condition, helpers, "left");
+  emitMaskedConditionInput(body, condition, helpers, "right");
 }
 
 function emitSignedInputCompare(
@@ -151,17 +152,19 @@ function emitSignedInputCompare(
   condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>,
   helpers: WasmIrEmitHelpers
 ): void {
-  emitSignedCompareInput(body, helpers, requiredFlagProducerConditionInput(condition, "left"));
-  emitSignedCompareInput(body, helpers, requiredFlagProducerConditionInput(condition, "right"));
+  emitSignedCompareInput(body, helpers, conditionWidth(condition), requiredFlagProducerConditionInput(condition, "left"));
+  emitSignedCompareInput(body, helpers, conditionWidth(condition), requiredFlagProducerConditionInput(condition, "right"));
 }
 
 function emitSignedCompareInput(
   body: WasmFunctionBodyEncoder,
   helpers: WasmIrEmitHelpers,
+  width: OperandWidth,
   value: IrValueExpr
 ): void {
   helpers.emitValue(value);
-  body.i32Const(i32(0x8000_0000)).i32Xor();
+  emitMaskValueToWidth(body, width);
+  body.i32Const(signMask(width)).i32Xor();
 }
 
 function emitResultInput(
@@ -170,6 +173,7 @@ function emitResultInput(
   helpers: WasmIrEmitHelpers
 ): void {
   helpers.emitValue(requiredFlagProducerConditionInput(condition, "result"));
+  emitMaskValueToWidth(body, conditionWidth(condition));
 }
 
 function emitResultSign(
@@ -178,7 +182,7 @@ function emitResultSign(
   helpers: WasmIrEmitHelpers
 ): void {
   emitResultInput(body, condition, helpers);
-  body.i32Const(i32(0x8000_0000)).i32And();
+  body.i32Const(signMask(conditionWidth(condition))).i32And();
 }
 
 function emitResultParity(
@@ -188,4 +192,30 @@ function emitResultParity(
 ): void {
   emitResultInput(body, condition, helpers);
   body.i32Const(0xff).i32And().i32Popcnt().i32Const(1).i32And().i32Eqz();
+}
+
+function emitMaskedConditionInput(
+  body: WasmFunctionBodyEncoder,
+  condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>,
+  helpers: WasmIrEmitHelpers,
+  inputName: string
+): void {
+  helpers.emitValue(requiredFlagProducerConditionInput(condition, inputName));
+  emitMaskValueToWidth(body, conditionWidth(condition));
+}
+
+function emitMaskValueToWidth(body: WasmFunctionBodyEncoder, width: OperandWidth): void {
+  if (width === 32) {
+    return;
+  }
+
+  body.i32Const(width === 16 ? 0xffff : 0xff).i32And();
+}
+
+function conditionWidth(condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>): OperandWidth {
+  return condition.width ?? 32;
+}
+
+function signMask(width: OperandWidth): number {
+  return width === 32 ? i32(0x8000_0000) : width === 16 ? 0x8000 : 0x80;
 }

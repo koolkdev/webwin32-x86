@@ -8,10 +8,14 @@ import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { decodeExit, ExitReason } from "#backends/wasm/exit.js";
 import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "#backends/wasm/codegen/exit.js";
 import {
+  emitWasmIrLoadGuest,
+  emitWasmIrLoadGuestFromStack,
   emitWasmIrLoadGuestU32,
   emitWasmIrLoadGuestU32FromStack,
+  emitWasmIrStoreGuest,
   emitWasmIrStoreGuestU32
 } from "#backends/wasm/codegen/memory.js";
+import type { OperandWidth } from "#x86/isa/types.js";
 
 test("guest u32 load helpers return values and fault before out-of-bounds reads", async () => {
   for (const mode of ["local", "stack"] as const) {
@@ -25,7 +29,8 @@ test("guest u32 load helpers return values and fault before out-of-bounds reads"
     });
     deepStrictEqual(decodeExit(run(0x1_0000)), {
       exitReason: ExitReason.MEMORY_READ_FAULT,
-      payload: 0x1_0000
+      payload: 0x1_0000,
+      detail: 4
     });
   }
 });
@@ -41,8 +46,47 @@ test("guest u32 store helper writes values and reports write faults", async () =
 
   deepStrictEqual(decodeExit(run(0x1_0000, 0)), {
     exitReason: ExitReason.MEMORY_WRITE_FAULT,
-    payload: 0x1_0000
+    payload: 0x1_0000,
+    detail: 4
   });
+});
+
+test("guest width-aware helpers use 1/2/4-byte bounds", async () => {
+  for (const width of [8, 16, 32] as const) {
+    const byteLength = width / 8;
+    const maxValidAddress = 0x1_0000 - byteLength;
+    const faultAddress = maxValidAddress + 1;
+
+    for (const mode of ["local", "stack"] as const) {
+      const { run, guestView } = await instantiateMemoryModule(encodeGuestLoadModule(mode, width));
+
+      writeGuestValue(guestView, maxValidAddress, width, 0x1234_5678);
+
+      deepStrictEqual(decodeExit(run(maxValidAddress)), {
+        exitReason: ExitReason.FALLTHROUGH,
+        payload: expectedGuestValue(width, 0x1234_5678)
+      });
+      deepStrictEqual(decodeExit(run(faultAddress)), {
+        exitReason: ExitReason.MEMORY_READ_FAULT,
+        payload: faultAddress,
+        detail: byteLength
+      });
+    }
+
+    const { run, guestView } = await instantiateMemoryModule(encodeGuestStoreModule(width));
+
+    writeGuestValue(guestView, maxValidAddress, width, 0xffff_ffff);
+    deepStrictEqual(decodeExit(run(maxValidAddress, 0x1234_5678)), {
+      exitReason: ExitReason.FALLTHROUGH,
+      payload: 0
+    });
+    strictEqual(readGuestValue(guestView, maxValidAddress, width), expectedGuestValue(width, 0x1234_5678));
+    deepStrictEqual(decodeExit(run(faultAddress, 0)), {
+      exitReason: ExitReason.MEMORY_WRITE_FAULT,
+      payload: faultAddress,
+      detail: byteLength
+    });
+  }
 });
 
 async function instantiateMemoryModule(bytes: Uint8Array<ArrayBuffer>): Promise<{
@@ -78,7 +122,7 @@ async function instantiateMemoryModule(bytes: Uint8Array<ArrayBuffer>): Promise<
   };
 }
 
-function encodeGuestLoadModule(mode: "local" | "stack"): Uint8Array<ArrayBuffer> {
+function encodeGuestLoadModule(mode: "local" | "stack", width: OperandWidth = 32): Uint8Array<ArrayBuffer> {
   const module = new WasmModuleEncoder();
 
   importStateAndGuestMemory(module);
@@ -93,10 +137,18 @@ function encodeGuestLoadModule(mode: "local" | "stack"): Uint8Array<ArrayBuffer>
 
   body.block();
   if (mode === "local") {
-    emitWasmIrLoadGuestU32({ body, exit }, 0);
+    if (width === 32) {
+      emitWasmIrLoadGuestU32({ body, exit }, 0);
+    } else {
+      emitWasmIrLoadGuest({ body, exit }, 0, width);
+    }
   } else {
     body.localGet(0);
-    emitWasmIrLoadGuestU32FromStack({ body, exit }, 0);
+    if (width === 32) {
+      emitWasmIrLoadGuestU32FromStack({ body, exit }, 0);
+    } else {
+      emitWasmIrLoadGuestFromStack({ body, exit }, 0, width);
+    }
   }
   emitWasmIrExitFromI32Stack(body, exit, ExitReason.FALLTHROUGH);
   body.endBlock();
@@ -108,7 +160,7 @@ function encodeGuestLoadModule(mode: "local" | "stack"): Uint8Array<ArrayBuffer>
   return module.encode();
 }
 
-function encodeGuestStoreModule(): Uint8Array<ArrayBuffer> {
+function encodeGuestStoreModule(width: OperandWidth = 32): Uint8Array<ArrayBuffer> {
   const module = new WasmModuleEncoder();
 
   importStateAndGuestMemory(module);
@@ -122,7 +174,11 @@ function encodeGuestStoreModule(): Uint8Array<ArrayBuffer> {
   const exit: WasmIrExitTarget = { exitLocal, exitLabelDepth: 0 };
 
   body.block();
-  emitWasmIrStoreGuestU32({ body, exit }, 0, 1);
+  if (width === 32) {
+    emitWasmIrStoreGuestU32({ body, exit }, 0, 1);
+  } else {
+    emitWasmIrStoreGuest({ body, exit }, 0, 1, width);
+  }
   body.i32Const(0);
   emitWasmIrExitFromI32Stack(body, exit, ExitReason.FALLTHROUGH);
   body.endBlock();
@@ -132,6 +188,42 @@ function encodeGuestStoreModule(): Uint8Array<ArrayBuffer> {
   module.exportFunction("run", functionIndex);
 
   return module.encode();
+}
+
+function writeGuestValue(view: DataView, address: number, width: OperandWidth, value: number): void {
+  switch (width) {
+    case 8:
+      view.setUint8(address, value & 0xff);
+      return;
+    case 16:
+      view.setUint16(address, value & 0xffff, true);
+      return;
+    case 32:
+      view.setUint32(address, value >>> 0, true);
+      return;
+  }
+}
+
+function readGuestValue(view: DataView, address: number, width: OperandWidth): number {
+  switch (width) {
+    case 8:
+      return view.getUint8(address);
+    case 16:
+      return view.getUint16(address, true);
+    case 32:
+      return view.getUint32(address, true);
+  }
+}
+
+function expectedGuestValue(width: OperandWidth, value: number): number {
+  switch (width) {
+    case 8:
+      return value & 0xff;
+    case 16:
+      return value & 0xffff;
+    case 32:
+      return value >>> 0;
+  }
 }
 
 function importStateAndGuestMemory(module: WasmModuleEncoder): void {

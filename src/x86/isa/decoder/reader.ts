@@ -72,3 +72,12 @@ export function decodeFault(address: number, raw: readonly number[] = []): IsaDe
     raw
   };
 }
+
+export function instructionTooLongFault(address: number, raw: readonly number[] = []): IsaDecodeFault {
+  return {
+    reason: "instructionTooLong",
+    address,
+    offset: maxX86InstructionLength,
+    raw
+  };
+}

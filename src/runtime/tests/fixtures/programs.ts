@@ -82,7 +82,6 @@ export const UNSUPPORTED_OPCODE = {
   expected: {
     result: {
       stopReason: StopReason.UNSUPPORTED,
-      unsupportedByte: 0x62,
       unsupportedReason: "unsupportedOpcode"
     },
     state: {

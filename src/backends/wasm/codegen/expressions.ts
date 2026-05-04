@@ -13,6 +13,7 @@ import type {
   ValueRef,
   VarRef
 } from "#x86/ir/model/types.js";
+import type { OperandWidth } from "#x86/isa/types.js";
 
 export type IrStorageExpr =
   | OperandRef
@@ -21,7 +22,7 @@ export type IrStorageExpr =
 
 export type IrValueExpr =
   | ValueRef
-  | Readonly<{ kind: "src32"; source: IrStorageExpr }>
+  | Readonly<{ kind: "src32"; source: IrStorageExpr; accessWidth: OperandWidth }>
   | Readonly<{ kind: "address"; operand: OperandRef }>
   | Readonly<{ kind: "aluFlags.condition"; cc: ConditionCode }>
   | Readonly<{
@@ -43,6 +44,7 @@ export type IrSetExprOp = Readonly<{
   op: "set";
   target: IrStorageExpr;
   value: IrValueExpr;
+  accessWidth: OperandWidth;
   role?: IrSetExprRole;
 }>;
 
@@ -51,7 +53,13 @@ export type IrSetExprRole = "registerMaterialization";
 export type IrExprOp =
   | Readonly<{ op: "let32"; dst: VarRef; value: IrValueExpr }>
   | IrSetExprOp
-  | Readonly<{ op: "set.if"; condition: IrValueExpr; target: IrStorageExpr; value: IrValueExpr }>
+  | Readonly<{
+      op: "set.if";
+      condition: IrValueExpr;
+      target: IrStorageExpr;
+      value: IrValueExpr;
+      accessWidth: OperandWidth;
+    }>
   | IrFlagSetOp
   | Readonly<{ op: "flags.materialize"; mask: number }>
   | Readonly<{ op: "flags.boundary"; mask: number }>
@@ -108,7 +116,11 @@ class ExpressionBuilder {
     for (const op of this.block) {
       switch (op.op) {
         case "get":
-          this.#defineValue(op.dst, { kind: "src32", source: this.#storageExpr(op.source) }, this.options.canInlineGet?.(op.source) === true);
+          this.#defineValue(
+            op.dst,
+            { kind: "src32", source: this.#storageExpr(op.source), accessWidth: op.accessWidth ?? 32 },
+            this.options.canInlineGet?.(op.source) === true
+          );
           break;
         case "set":
           this.#ops.push(this.#setExpr(op));
@@ -118,7 +130,8 @@ class ExpressionBuilder {
             op: "set.if",
             condition: this.#valueExpr(op.condition),
             target: this.#storageExpr(op.target),
-            value: this.#valueExpr(this.#materializedValue(op.value))
+            value: this.#valueExpr(this.#materializedValue(op.value)),
+            accessWidth: op.accessWidth ?? 32
           });
           break;
         case "address":
@@ -202,7 +215,8 @@ class ExpressionBuilder {
     const expr: IrSetExprOp = {
       op: "set",
       target: this.#storageExpr(op.target),
-      value: this.#valueExpr(op.value)
+      value: this.#valueExpr(op.value),
+      accessWidth: op.accessWidth ?? 32
     };
 
     return op.role === undefined ? expr : { ...expr, role: op.role };

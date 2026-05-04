@@ -1,5 +1,12 @@
-import type { ExpandedInstructionSpec, OperandSpec } from "#x86/isa/schema/types.js";
+import type {
+  ExpandedInstructionSpec,
+  MemOperandType,
+  OperandSpec,
+  RegOperandType,
+  RmOperandType
+} from "#x86/isa/schema/types.js";
 import { registerAlias } from "#x86/isa/registers.js";
+import type { OperandWidth } from "#x86/isa/types.js";
 import type {
   InterpreterInstructionLength,
   InterpreterOperandBinding
@@ -9,10 +16,9 @@ import { decodeModRmRmOperand } from "./address-decode.js";
 import {
   advanceDecodeReader,
   emitReadGuestByte,
-  emitReadGuestBytePlus,
-  emitReadGuestU32,
+  emitReadGuestUnsigned,
   instructionLengthFromDecodeReader,
-  staticDecodeReader,
+  localDecodeReader,
   type DecodeReader
 } from "./decode-reader.js";
 import type { InterpreterHandlerContext } from "#backends/wasm/interpreter/codegen/handler-context.js";
@@ -30,7 +36,7 @@ export function decodeInstructionOperands(
 ): DecodedInterpreterOperands {
   const operands: InterpreterOperandBinding[] = [];
   const scratchLocals: number[] = [];
-  let reader: DecodeReader = staticDecodeReader(instruction.opcode.length);
+  let reader: DecodeReader = decodeReaderAtOperandStart(context, instruction.opcode.length);
 
   if (modRmLocal !== undefined) {
     reader = advanceDecodeReader(reader, 1, context);
@@ -51,6 +57,16 @@ export function decodeInstructionOperands(
   };
 }
 
+function decodeReaderAtOperandStart(context: InterpreterHandlerContext, opcodeLength: number): DecodeReader {
+  if (context.opcodeOffset.kind === "static") {
+    return { kind: "static", value: context.opcodeOffset.value + opcodeLength };
+  }
+
+  const reader = localDecodeReader(context.opcodeOffset.local);
+
+  return advanceDecodeReader(reader, opcodeLength, context);
+}
+
 function decodeOperand(
   operand: OperandSpec,
   reader: DecodeReader,
@@ -64,7 +80,7 @@ function decodeOperand(
       }
 
       return {
-        binding: { kind: "modrm.reg32", modRmLocal },
+        binding: { kind: "modrm.reg", modRmLocal, width: operandTypeWidth(operand.type) },
         nextReader: reader,
         scratchLocals: []
       };
@@ -76,22 +92,22 @@ function decodeOperand(
       return mapNextReader(decodeModRmRmOperand(operand, reader, context, modRmLocal));
     case "opcode.reg":
       return {
-        binding: { kind: "opcode.reg32", opcodeLocal: context.opcodeLocal },
+        binding: { kind: "opcode.reg", opcodeLocal: context.locals.opcode, width: operandTypeWidth(operand.type) },
         nextReader: reader,
         scratchLocals: []
       };
     case "implicit.reg":
       return {
-        binding: { kind: "implicit.reg32", reg: registerAlias(operand.reg).base },
+        binding: { kind: "implicit.reg", alias: registerAlias(operand.reg) },
         nextReader: reader,
         scratchLocals: []
       };
     case "imm": {
       const local = context.scratch.allocLocal(wasmValueType.i32);
 
-      emitLoadImmediateForDecode(operand, reader, context, local);
+      emitLoadImmediate(operand, reader, context, local);
       return {
-        binding: { kind: "imm32", local },
+        binding: { kind: "imm", local },
         nextReader: advanceDecodeReader(reader, immediateByteLength(operand.width), context),
         scratchLocals: [local]
       };
@@ -99,9 +115,9 @@ function decodeOperand(
     case "rel": {
       const local = context.scratch.allocLocal(wasmValueType.i32);
 
-      emitLoadRelativeTargetForDecode(operand, reader, context, local);
+      emitLoadRelativeTarget(operand, reader, context, local);
       return {
-        binding: { kind: "relTarget32", local },
+        binding: { kind: "relTarget", local },
         nextReader: advanceDecodeReader(reader, immediateByteLength(operand.width), context),
         scratchLocals: [local]
       };
@@ -123,7 +139,7 @@ function mapNextReader(
   };
 }
 
-function emitLoadImmediateForDecode(
+function emitLoadImmediate(
   operand: Extract<OperandSpec, { kind: "imm" }>,
   reader: DecodeReader,
   context: InterpreterHandlerContext,
@@ -134,10 +150,10 @@ function emitLoadImmediateForDecode(
       emitReadGuestByte(context, reader, local);
       break;
     case 16:
-      emitLoadGuestU16ForDecode(context, reader, local);
+      emitReadGuestUnsigned(context, reader, 16, local);
       break;
     case 32:
-      emitReadGuestU32(context, reader, local);
+      emitReadGuestUnsigned(context, reader, 32, local);
       break;
   }
 
@@ -146,7 +162,7 @@ function emitLoadImmediateForDecode(
   }
 }
 
-function emitLoadRelativeTargetForDecode(
+function emitLoadRelativeTarget(
   operand: Extract<OperandSpec, { kind: "rel" }>,
   reader: DecodeReader,
   context: InterpreterHandlerContext,
@@ -158,7 +174,7 @@ function emitLoadRelativeTargetForDecode(
       emitSignExtendLocal(context, local, 8);
       break;
     case 32:
-      emitReadGuestU32(context, reader, local);
+      emitReadGuestUnsigned(context, reader, 32, local);
       break;
   }
 
@@ -176,7 +192,7 @@ function emitResolveRelativeTarget(
 }
 
 function emitNextEipForReader(context: InterpreterHandlerContext, reader: DecodeReader, byteLength: number): void {
-  context.body.localGet(context.eipLocal);
+  context.body.localGet(context.locals.eip);
 
   if (reader.kind === "static") {
     context.body.i32Const(reader.value + byteLength);
@@ -185,22 +201,6 @@ function emitNextEipForReader(context: InterpreterHandlerContext, reader: Decode
   }
 
   context.body.i32Add();
-}
-
-function emitLoadGuestU16ForDecode(
-  context: InterpreterHandlerContext,
-  reader: DecodeReader,
-  local: number
-): void {
-  const highLocal = context.scratch.allocLocal(wasmValueType.i32);
-
-  try {
-    emitReadGuestByte(context, reader, local);
-    emitReadGuestBytePlus(context, reader, 1, highLocal);
-    context.body.localGet(local).localGet(highLocal).i32Const(8).i32Shl().i32Or().localSet(local);
-  } finally {
-    context.scratch.freeLocal(highLocal);
-  }
 }
 
 function emitSignExtendLocal(context: InterpreterHandlerContext, local: number, width: 8 | 16 | 32): void {
@@ -215,4 +215,21 @@ function emitSignExtendLocal(context: InterpreterHandlerContext, local: number, 
 
 function immediateByteLength(width: 8 | 16 | 32): number {
   return width / 8;
+}
+
+export function operandTypeWidth(type: RegOperandType | RmOperandType | MemOperandType): OperandWidth {
+  switch (type) {
+    case "r8":
+    case "rm8":
+    case "m8":
+      return 8;
+    case "r16":
+    case "rm16":
+    case "m16":
+      return 16;
+    case "r32":
+    case "rm32":
+    case "m32":
+      return 32;
+  }
 }

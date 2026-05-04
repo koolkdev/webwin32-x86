@@ -141,8 +141,9 @@ function emitTestProgram(program: IrBlock): WasmFunctionBodyEncoder {
     scratch,
     expression: { canInlineGet: () => true },
     emitGet32: (source) => emitGet32(body, regLocals, source),
-    emitSet32: (target, value, helpers) => emitSet32(body, regLocals, target, value, helpers),
-    emitSet32If: (condition, target, value, helpers) => emitSet32If(body, regLocals, condition, target, value, helpers),
+    emitSet32: (target, value, _accessWidth, helpers) => emitSet32(body, regLocals, target, value, helpers),
+    emitSet32If: (condition, target, value, _accessWidth, helpers) =>
+      emitSet32If(body, regLocals, condition, target, value, helpers),
     emitAddress32: (source) => {
       if (source.kind !== "operand") {
         unsupported(`${source.kind} address`);
@@ -196,8 +197,9 @@ function emitWithTrackingScratch(
     scratch,
     expression,
     emitGet32: (source) => emitGet32(body, regLocals, source),
-    emitSet32: (target, value, helpers) => emitSet32(body, regLocals, target, value, helpers),
-    emitSet32If: (condition, target, value, helpers) => emitSet32If(body, regLocals, condition, target, value, helpers),
+    emitSet32: (target, value, _accessWidth, helpers) => emitSet32(body, regLocals, target, value, helpers),
+    emitSet32If: (condition, target, value, _accessWidth, helpers) =>
+      emitSet32If(body, regLocals, condition, target, value, helpers),
     emitAddress32: () => unsupported("address"),
     emitSetFlags: () => unsupported("flags.set"),
     emitMaterializeFlags: () => unsupported("flags.materialize"),

@@ -1,131 +1,102 @@
-import type { Reg32 } from "#x86/isa/types.js";
+import type { OperandWidth, Reg32 } from "#x86/isa/types.js";
 import { reg32 } from "#x86/isa/types.js";
+import { registerAliasByIndex } from "#x86/isa/registers.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
-import { wasmValueType } from "#backends/wasm/encoder/types.js";
+import { wasmValueType, type WasmValueType } from "#backends/wasm/encoder/types.js";
+import {
+  emitLoadRegAlias,
+  emitStoreRegAlias
+} from "#backends/wasm/codegen/registers.js";
 
 type Reg32Locals = Readonly<Record<Reg32, number>>;
+type EmitIndex = () => void;
 
-export function emitCopyReg32FromIndexLocal(
+const REGISTER_COUNT = reg32.length;
+const DEFAULT_REGISTER_CASE = REGISTER_COUNT;
+const REGISTER_CASE_COUNT = REGISTER_COUNT + 1;
+const REGISTER_INDEX_MASK = 0b111;
+
+export function emitCopyRegFromIndexLocal(
   body: WasmFunctionBodyEncoder,
   regs: Reg32Locals,
+  width: OperandWidth,
   indexLocal: number,
   targetLocal: number
 ): void {
-  emitLoadReg32ByIndexLocal(body, regs, indexLocal);
+  emitLoadRegByIndex(body, regs, width, () => {
+    body.localGet(indexLocal);
+  });
   body.localSet(targetLocal);
 }
 
-export function emitLoadReg32ByIndexLocal(
+export function emitLoadRegByIndex(
   body: WasmFunctionBodyEncoder,
   regs: Reg32Locals,
-  indexLocal: number
+  width: OperandWidth,
+  emitIndex: EmitIndex
 ): void {
-  emitLoadReg32ByIndex(body, regs, () => {
-    body.localGet(indexLocal);
+  emitRegisterIndexSwitch(body, wasmValueType.i32, emitIndex, (caseIndex) => {
+    if (caseIndex === DEFAULT_REGISTER_CASE) {
+      body.i32Const(0);
+      return;
+    }
+
+    emitLoadRegAlias(body, regs, registerAliasByIndex(width, caseIndex));
   });
 }
 
-export function emitLoadReg32ByIndex(
+export function emitStoreRegByIndex(
   body: WasmFunctionBodyEncoder,
   regs: Reg32Locals,
-  emitIndex: () => void
+  width: OperandWidth,
+  emitIndex: EmitIndex,
+  valueLocal: number
 ): void {
-  const defaultCaseIndex = reg32.length;
-  const caseCount = reg32.length + 1;
+  emitRegisterIndexSwitch(body, undefined, emitIndex, (caseIndex) => {
+    if (caseIndex === DEFAULT_REGISTER_CASE) {
+      return;
+    }
 
-  body.block(wasmValueType.i32);
+    emitStoreRegAlias(body, regs, registerAliasByIndex(width, caseIndex), () => {
+      body.localGet(valueLocal);
+    });
+  });
+}
 
-  for (let index = 0; index < caseCount; index += 1) {
+export function emitOpcodeRegIndex(body: WasmFunctionBodyEncoder, opcodeLocal: number): void {
+  body.localGet(opcodeLocal).i32Const(REGISTER_INDEX_MASK).i32And();
+}
+
+export function emitModRmRmIndex(body: WasmFunctionBodyEncoder, modRmLocal: number): void {
+  body.localGet(modRmLocal).i32Const(REGISTER_INDEX_MASK).i32And();
+}
+
+function emitRegisterIndexSwitch(
+  body: WasmFunctionBodyEncoder,
+  result: WasmValueType | undefined,
+  emitIndex: EmitIndex,
+  emitCase: (caseIndex: number) => void
+): void {
+  body.block(result);
+
+  // One block per register plus an innermost default block. br_table depths count
+  // from innermost to outermost, so register index 0 maps to the largest depth.
+  for (let index = 0; index < REGISTER_CASE_COUNT; index += 1) {
     body.block();
   }
 
   emitIndex();
-  body.brTable(reg32ValueDispatchTable(), 0);
+  body.brTable(registerIndexDispatchTable(), 0);
 
-  for (let caseIndex = caseCount - 1; caseIndex >= 0; caseIndex -= 1) {
+  for (let caseIndex = DEFAULT_REGISTER_CASE; caseIndex >= 0; caseIndex -= 1) {
     body.endBlock();
-
-    if (caseIndex === defaultCaseIndex) {
-      body.i32Const(0);
-    } else {
-      const reg = reg32[caseIndex];
-
-      if (reg === undefined) {
-        throw new Error(`missing register dispatch case: ${caseIndex}`);
-      }
-
-      body.localGet(regs[reg]);
-    }
-
+    emitCase(caseIndex);
     body.br(caseIndex);
   }
 
   body.endBlock();
 }
 
-export function emitStoreReg32ByIndexLocal(
-  body: WasmFunctionBodyEncoder,
-  regs: Reg32Locals,
-  indexLocal: number,
-  valueLocal: number
-): void {
-  emitStoreReg32ByIndex(body, regs, () => {
-    body.localGet(indexLocal);
-  }, valueLocal);
-}
-
-export function emitStoreReg32ByIndex(
-  body: WasmFunctionBodyEncoder,
-  regs: Reg32Locals,
-  emitIndex: () => void,
-  valueLocal: number
-): void {
-  emitReg32IndexDispatch(body, emitIndex, (reg) => {
-    body.localGet(valueLocal).localSet(regs[reg]);
-  });
-}
-
-export function emitOpcodeRegIndex(body: WasmFunctionBodyEncoder, opcodeLocal: number): void {
-  body.localGet(opcodeLocal).i32Const(0b111).i32And();
-}
-
-export function emitModRmRmIndex(body: WasmFunctionBodyEncoder, modRmLocal: number): void {
-  body.localGet(modRmLocal).i32Const(0b111).i32And();
-}
-
-function emitReg32IndexDispatch(
-  body: WasmFunctionBodyEncoder,
-  emitIndex: () => void,
-  emitCase: (reg: Reg32) => void
-): void {
-  body.block();
-
-  for (const _reg of reg32) {
-    body.block();
-  }
-
-  emitIndex();
-  body.brTable(reg32IndexDispatchTable(), reg32.length);
-
-  for (let index = reg32.length - 1; index >= 0; index -= 1) {
-    const reg = reg32[index];
-
-    if (reg === undefined) {
-      continue;
-    }
-
-    body.endBlock();
-    emitCase(reg);
-    body.br(index);
-  }
-
-  body.endBlock();
-}
-
-function reg32IndexDispatchTable(): number[] {
-  return reg32.map((_reg, index) => reg32.length - 1 - index);
-}
-
-function reg32ValueDispatchTable(): number[] {
-  return reg32.map((_reg, index) => reg32.length - index);
+function registerIndexDispatchTable(): number[] {
+  return reg32.map((_reg, index) => DEFAULT_REGISTER_CASE - index);
 }

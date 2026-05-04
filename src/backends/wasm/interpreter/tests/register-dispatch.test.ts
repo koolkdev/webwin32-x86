@@ -5,7 +5,7 @@ import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
-import { emitLoadReg32ByIndex } from "#backends/wasm/interpreter/dispatch/register-dispatch.js";
+import { emitLoadRegByIndex } from "#backends/wasm/interpreter/dispatch/register-dispatch.js";
 
 test("register dispatch can leave the selected register value on the stack", async () => {
   const module = await WebAssembly.compile(encodeRegisterDispatchTestModule());
@@ -31,7 +31,7 @@ function encodeRegisterDispatchTestModule(): Uint8Array<ArrayBuffer> {
   const body = new WasmFunctionBodyEncoder(1 + reg32.length);
   const regs = Object.fromEntries(reg32.map((reg, index) => [reg, index + 1])) as Record<Reg32, number>;
 
-  emitLoadReg32ByIndex(body, regs, () => {
+  emitLoadRegByIndex(body, regs, 32, () => {
     body.localGet(0);
   });
   body.end();

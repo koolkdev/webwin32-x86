@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { ArrayBufferGuestMemory } from "#x86/memory/guest-memory.js";
 import { GuestMemoryDecodeReader } from "#x86/isa/decoder/guest-memory-reader.js";
 import { decodeIsaBlock } from "#x86/isa/decoder/decode-block.js";
+import { maxX86InstructionLength } from "#x86/isa/decoder/reader.js";
 import { ByteArrayDecodeReader, imm8 } from "./helpers.js";
 
 const startAddress = 0x1000;
@@ -100,6 +101,19 @@ test("decodeIsaBlock_reports_decode_fault_after_valid_prefix_instructions", () =
   strictEqual(block.terminator.kind, "decode-fault");
   strictEqual(block.terminator.fault.address, startAddress + 1);
   deepStrictEqual(block.terminator.fault.raw, [0xb8, 0x01]);
+});
+
+test("decodeIsaBlock_preserves_instruction_too_long_faults", () => {
+  const values = [...new Array<number>(13).fill(0x66), 0xb8, 0x34, 0x12];
+  const block = decodeIsaBlock(byteReader(values), startAddress);
+
+  strictEqual(block.terminator.kind, "decode-fault");
+  if (block.terminator.kind === "decode-fault") {
+    strictEqual(block.terminator.fault.reason, "instructionTooLong");
+    strictEqual(block.terminator.fault.address, startAddress);
+    strictEqual(block.terminator.fault.offset, maxX86InstructionLength);
+    deepStrictEqual(block.terminator.fault.raw, values.slice(0, maxX86InstructionLength));
+  }
 });
 
 function byteReader(values: readonly number[]): ByteArrayDecodeReader {

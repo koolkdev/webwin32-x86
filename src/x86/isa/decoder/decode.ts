@@ -20,7 +20,16 @@ import type { MemOperand, OperandWidth } from "#x86/isa/types.js";
 import { signedImm8, signedImm32 } from "./immediate.js";
 import { decodeModRmAddressing, rm32ModRmByteLengthAt, type ModRmRm } from "./modrm.js";
 import { buildOpcodeDispatch, opcodeLeaf, type OpcodeDispatchLeaf } from "./opcode-dispatch.js";
-import { readRawBytes, readU16LE, readU32LE, type IsaDecodeReader } from "./reader.js";
+import {
+  instructionTooLongFault,
+  IsaDecodeError,
+  maxX86InstructionLength,
+  readAvailableBytes,
+  readRawBytes,
+  readU16LE,
+  readU32LE,
+  type IsaDecodeReader
+} from "./reader.js";
 import type { IsaDecodedInstruction, IsaDecodeResult, IsaOperandBinding } from "./types.js";
 
 type DecodedModRm = Readonly<{
@@ -55,29 +64,52 @@ export function decodeIsaInstructionFromReader(
   reader: IsaDecodeReader,
   address: number
 ): IsaDecodeResult {
-  const prefixes = decodePrefixes(reader, address);
+  const instructionReader = maxLengthDecodeReader(reader, address);
+  const prefixes = decodePrefixes(instructionReader, address);
   const opcodeAddress = address + prefixes.byteLength;
-  const lookup = opcodeLeaf(OPCODE_DISPATCH_ROOT, reader, opcodeAddress);
+  const lookup = opcodeLeaf(OPCODE_DISPATCH_ROOT, instructionReader, opcodeAddress);
 
   if (lookup.kind === "unsupported") {
-    return unsupported(reader, address, prefixes.byteLength + lookup.length);
+    return unsupported(instructionReader, address, prefixes.byteLength + lookup.length);
   }
 
-  const dispatched = dispatchCandidates(reader, opcodeAddress, prefixes.byteLength, prefixes.operandSize, lookup.leaf);
+  const dispatched = dispatchCandidates(
+    instructionReader,
+    opcodeAddress,
+    prefixes.byteLength,
+    prefixes.operandSize,
+    lookup.leaf
+  );
 
   for (const expanded of dispatched.candidates) {
-    const decoded = decodeCandidate(reader, address, opcodeAddress, expanded, dispatched.modrm);
+    const decoded = decodeCandidate(instructionReader, address, opcodeAddress, expanded, dispatched.modrm);
 
     if (decoded.kind === "match") {
       return { kind: "ok", instruction: decoded.instruction };
     }
 
     if (decoded.kind === "unsupported") {
-      return unsupported(reader, address, decoded.length);
+      return unsupported(instructionReader, address, decoded.length);
     }
   }
 
-  return unsupported(reader, address, dispatched.unsupportedLength);
+  return unsupported(instructionReader, address, dispatched.unsupportedLength);
+}
+
+function maxLengthDecodeReader(reader: IsaDecodeReader, address: number): IsaDecodeReader {
+  return {
+    readU8: (eip) => {
+      const offset = eip - address;
+
+      if (Number.isInteger(offset) && offset >= maxX86InstructionLength) {
+        throw new IsaDecodeError(
+          instructionTooLongFault(address, readAvailableBytes(reader, address, maxX86InstructionLength))
+        );
+      }
+
+      return reader.readU8(eip);
+    }
+  };
 }
 
 function decodeCandidate(

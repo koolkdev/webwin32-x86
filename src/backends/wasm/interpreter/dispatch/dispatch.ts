@@ -21,18 +21,30 @@ export function dispatchBytes(node: OpcodeDispatchNode): number[] {
 }
 
 function interpreterSupportsInstruction(spec: InstructionSpec): boolean {
-  return spec.prefixes === undefined && (spec.operands ?? []).every(interpreterSupportsOperand);
+  return (
+    (spec.prefixes === undefined || spec.prefixes.operandSize !== undefined) &&
+    (spec.operands ?? []).every(interpreterSupportsOperand)
+  );
 }
 
 function interpreterSupportsOperand(operand: OperandSpec): boolean {
   switch (operand.kind) {
     case "modrm.reg":
     case "opcode.reg":
-      return operand.type === "r32";
+      return operand.type === "r8" || operand.type === "r16" || operand.type === "r32";
     case "modrm.rm":
-      return operand.type === "rm32" || operand.type === "m32";
+      return (
+        operand.type === "rm8" ||
+        operand.type === "rm16" ||
+        operand.type === "rm32" ||
+        operand.type === "m8" ||
+        operand.type === "m16" ||
+        operand.type === "m32"
+      );
     case "implicit.reg":
-      return registerAlias(operand.reg).width === 32;
+      return registerAlias(operand.reg).width === 8 ||
+        registerAlias(operand.reg).width === 16 ||
+        registerAlias(operand.reg).width === 32;
     case "imm":
     case "rel":
       return true;

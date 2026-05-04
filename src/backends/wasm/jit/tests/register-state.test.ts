@@ -108,7 +108,7 @@ test("jit register exit states store committed registers on a later memory fault
     })
   );
 
-  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_WRITE_FAULT, payload: 0x10000 });
+  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_WRITE_FAULT, payload: 0x10000, detail: 4 });
   strictEqual(result.state.eax, 0x1111_1111);
   strictEqual(result.state.ebx, 0x2222_2222);
   strictEqual(result.state.ecx, 0xcccc_cccc);

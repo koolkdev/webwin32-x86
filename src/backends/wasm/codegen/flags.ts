@@ -29,7 +29,7 @@ export function emitSetFlags(
   options: EmitSetFlagsOptions = {}
 ): void {
   const flagProducer = FLAG_PRODUCERS[descriptor.producer];
-  const defs = flagProducer.define(descriptor.inputs);
+  const defs = flagProducer.define(descriptor.inputs, descriptor.width ?? 32);
   // Masked materialization computes only requested bits; partial producers also
   // preserve bits outside writtenMask, such as CF for INC/DEC.
   const writeMask = descriptor.writtenMask & (options.mask ?? x86ArithmeticFlagsMask);

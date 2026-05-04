@@ -1,4 +1,5 @@
 import type { MemOperand } from "#x86/isa/types.js";
+import type { OperandWidth } from "#x86/isa/types.js";
 import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import type { StorageRef } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
@@ -28,8 +29,13 @@ export function canInlineJitGet32(context: JitIrContext, source: StorageRef): bo
 export function emitJitGet32(
   context: JitIrContext,
   source: IrStorageExpr,
+  accessWidth: OperandWidth,
   helpers: WasmIrEmitHelpers
 ): void {
+  if (accessWidth !== 32) {
+    throw new Error(`JIT codegen does not support ${accessWidth}-bit reads`);
+  }
+
   const regs = context.state.regs;
 
   switch (source.kind) {
@@ -72,8 +78,13 @@ export function emitJitSet32If(
   condition: IrValueExpr,
   target: IrStorageExpr,
   value: IrValueExpr,
+  accessWidth: OperandWidth,
   helpers: WasmIrEmitHelpers
 ): void {
+  if (accessWidth !== 32) {
+    throw new Error(`JIT codegen does not support ${accessWidth}-bit conditional writes`);
+  }
+
   const regs = context.state.regs;
 
   switch (target.kind) {

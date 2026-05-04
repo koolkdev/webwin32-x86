@@ -259,7 +259,7 @@ test("jit IR block keeps cmovcc source memory faults unconditional", async () =>
   strictEqual(result.state.edx, 0x1111_1111);
   strictEqual(result.state.eip, startAddress);
   strictEqual(result.state.instructionCount, 0);
-  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000 });
+  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000, detail: 4 });
 });
 
 test("jit IR block emits leave", async () => {
@@ -392,7 +392,7 @@ test("jit IR block materializes register values before memory fault exits", asyn
   strictEqual(result.state.edx, 0xeeee_eeee);
   strictEqual(result.state.eip, startAddress + 2);
   strictEqual(result.state.instructionCount, 1);
-  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: load });
+  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: load, detail: 4 });
 });
 
 test("jit IR block preserves register values before source clobbers", async () => {
@@ -642,7 +642,7 @@ test("jit IR block materializes deferred flags on later fault exits", async () =
   strictEqual(result.state.eflags, (preservedEflags | addWraparoundEflags) >>> 0);
   strictEqual(result.state.eip, startAddress + 3);
   strictEqual(result.state.instructionCount, 1);
-  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000 });
+  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000, detail: 4 });
 });
 
 test("jit IR block keeps flags live across memory fault exits before later overwrites", async () => {
@@ -660,7 +660,7 @@ test("jit IR block keeps flags live across memory fault exits before later overw
   strictEqual(result.state.eflags, (preservedEflags | addWraparoundEflags) >>> 0);
   strictEqual(result.state.eip, startAddress + 3);
   strictEqual(result.state.instructionCount, 1);
-  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000 });
+  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000, detail: 4 });
 });
 
 function codegenIr(block: ReturnType<typeof buildJitIrBlock>): readonly JitIrOp[] {

@@ -58,16 +58,15 @@ test("runtime instance stops at max instructions", () => {
   strictEqual(runtime.memories.state.instructionCount, 4);
 });
 
-test("runtime instance decodes from guest memory even when eip is outside loaded code regions", () => {
+test("runtime instance executes from guest memory even when eip is outside loaded code regions", () => {
   const runtime = new RuntimeInstance({
     state: { eip: engineFixtureStartAddress }
   });
-  const result = runtime.run();
+  const result = runtime.run({ maxInstructions: 1 });
 
-  strictEqual(result.stopReason, StopReason.UNSUPPORTED);
-  strictEqual(result.unsupportedByte, 0x00);
-  strictEqual(result.unsupportedReason, "unsupportedOpcode");
-  strictEqual(runtime.memories.state.eip, engineFixtureStartAddress);
+  strictEqual(result.stopReason, StopReason.INSTRUCTION_LIMIT);
+  strictEqual(runtime.memories.state.eip, engineFixtureStartAddress + 2);
+  strictEqual(runtime.memories.state.instructionCount, 1);
 });
 
 test("runtime instance compiled-blocks mode does not fall back after block decode faults", () => {

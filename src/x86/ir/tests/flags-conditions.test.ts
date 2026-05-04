@@ -170,14 +170,14 @@ test("flag effect helpers expose condition reads and producer effects", () => {
 
 test("sub flag producers support direct comparison condition emission", () => {
   const cases: readonly [ConditionCode, NonNullable<ReturnType<typeof flagProducerConditionKind>>][] = [
-    ["E", "eq32"],
-    ["NE", "ne32"],
-    ["B", "uLt32"],
-    ["AE", "uGe32"],
-    ["L", "sLt32"],
-    ["GE", "sGe32"],
-    ["LE", "sLe32"],
-    ["G", "sGt32"]
+    ["E", "eq"],
+    ["NE", "ne"],
+    ["B", "uLt"],
+    ["AE", "uGe"],
+    ["L", "sLt"],
+    ["GE", "sGe"],
+    ["LE", "sLe"],
+    ["G", "sGt"]
   ];
 
   deepStrictEqual(
@@ -186,15 +186,15 @@ test("sub flag producers support direct comparison condition emission", () => {
   );
   deepStrictEqual(canUseFlagProducerCondition(createDescriptor("sub"), "E"), true);
   deepStrictEqual(flagProducerConditionKind({ producer: "sub", cc: "P" }), "parity8");
-  deepStrictEqual(flagProducerConditionKind({ producer: "sub", width: 8, cc: "L" }), undefined);
+  deepStrictEqual(flagProducerConditionKind({ producer: "sub", width: 8, cc: "L" }), "sLt");
 });
 
 test("result flag producers support direct result condition emission", () => {
   const cases: readonly [ConditionCode, NonNullable<ReturnType<typeof flagProducerConditionKind>>][] = [
-    ["E", "zero32"],
-    ["NE", "nonZero32"],
-    ["S", "sign32"],
-    ["NS", "notSign32"],
+    ["E", "zero"],
+    ["NE", "nonZero"],
+    ["S", "sign"],
+    ["NS", "notSign"],
     ["P", "parity8"],
     ["NP", "notParity8"]
   ];
@@ -211,9 +211,9 @@ test("result flag producers support direct result condition emission", () => {
     cases.map(([cc]) => flagProducerConditionKind({ producer: "sub", cc, inputs: { result } })),
     cases.map(([, kind]) => kind)
   );
-  deepStrictEqual(flagProducerConditionKind({ producer: "sub", cc: "E" }), "eq32");
-  deepStrictEqual(flagProducerConditionKind({ producer: "sub", cc: "E", inputs: { result } }), "zero32");
-  deepStrictEqual(flagProducerConditionKind({ producer: "add", width: 16, cc: "S" }), undefined);
+  deepStrictEqual(flagProducerConditionKind({ producer: "sub", cc: "E" }), "eq");
+  deepStrictEqual(flagProducerConditionKind({ producer: "sub", cc: "E", inputs: { result } }), "zero");
+  deepStrictEqual(flagProducerConditionKind({ producer: "add", width: 16, cc: "S" }), "sign");
   deepStrictEqual(canUseFlagProducerCondition(createDescriptor("inc"), "B"), false);
 });
 
@@ -223,12 +223,12 @@ test("logic producer folds conditions that depend on cleared carry and overflow"
     ["B", "constFalse"],
     ["NO", "constTrue"],
     ["AE", "constTrue"],
-    ["BE", "zero32"],
-    ["A", "nonZero32"],
-    ["L", "sign32"],
-    ["GE", "notSign32"],
-    ["LE", "zeroOrSign32"],
-    ["G", "nonZeroAndNotSign32"]
+    ["BE", "zero"],
+    ["A", "nonZero"],
+    ["L", "sign"],
+    ["GE", "notSign"],
+    ["LE", "zeroOrSign"],
+    ["G", "nonZeroAndNotSign"]
   ];
 
   deepStrictEqual(

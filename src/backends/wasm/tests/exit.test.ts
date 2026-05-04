@@ -38,6 +38,12 @@ const fixtures: readonly ExitFixture[] = [
     payload: 0x3e
   },
   {
+    name: "memory_fault_detail_decodes",
+    exitReason: ExitReason.MEMORY_READ_FAULT,
+    payload: 0x3e,
+    detail: 2
+  },
+  {
     name: "roundtrip_high_payload_bit",
     exitReason: ExitReason.FALLTHROUGH,
     payload: 0xffff_ffff
@@ -48,10 +54,11 @@ for (const fixture of fixtures) {
   test(fixture.name, async () => {
     const expected = {
       exitReason: fixture.exitReason,
-      payload: fixture.payload
+      payload: fixture.payload,
+      ...(fixture.detail === undefined ? {} : { detail: fixture.detail })
     };
-    const encoded = encodeExit(fixture.exitReason, fixture.payload);
-    const wasmEncoded = await runExitResult(fixture.exitReason, fixture.payload);
+    const encoded = encodeExit(fixture.exitReason, fixture.payload, fixture.detail);
+    const wasmEncoded = await runExitResult(fixture.exitReason, fixture.payload, fixture.detail);
 
     deepStrictEqual(decodeExit(encoded), expected);
     strictEqual(wasmEncoded, encoded);
@@ -59,14 +66,14 @@ for (const fixture of fixtures) {
   });
 }
 
-async function runExitResult(exitReason: ExitReason, payload: number): Promise<bigint> {
+async function runExitResult(exitReason: ExitReason, payload: number, detail = 0): Promise<bigint> {
   const module = new WasmModuleEncoder();
   const typeIndex = module.addFunctionType({
     params: [],
     results: [wasmValueType.i64]
   });
   const body = new WasmFunctionBodyEncoder()
-    .i64Const(encodeExit(exitReason, payload))
+    .i64Const(encodeExit(exitReason, payload, detail))
     .end();
   const functionIndex = module.addFunction(typeIndex, body);
 

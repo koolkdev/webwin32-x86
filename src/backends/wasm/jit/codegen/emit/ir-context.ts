@@ -1,5 +1,6 @@
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import type { OperandWidth } from "#x86/isa/types.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitModuleLinkTable } from "#backends/wasm/jit/compiled-blocks/module-link-table.js";
 import { emitIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
@@ -151,10 +152,11 @@ function emitJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["i
     body: jitContext.body,
     scratch: jitContext.scratch,
     expression: { canInlineGet: (source) => canInlineJitGet32(jitContext, source) },
-    emitGet32: (source, helpers) => emitJitGet32(jitContext, source, helpers),
-    emitSet32: (target, value, helpers, op) => emitJitSet32WithRole(jitContext, target, value, helpers, op),
-    emitSet32If: (condition, target, value, helpers) =>
-      emitJitSet32If(jitContext, condition, target, value, helpers),
+    emitGet32: (source, accessWidth, helpers) => emitJitGet32(jitContext, source, accessWidth, helpers),
+    emitSet32: (target, value, accessWidth, helpers, op) =>
+      emitJitSet32WithRole(jitContext, target, value, accessWidth, helpers, op),
+    emitSet32If: (condition, target, value, accessWidth, helpers) =>
+      emitJitSet32If(jitContext, condition, target, value, accessWidth, helpers),
     emitAddress32: (source) => emitJitAddress32(jitContext, source),
     emitSetFlags: (descriptor, helpers) =>
       jitContext.state.flags.emitSet(descriptor, helpers),
@@ -175,9 +177,14 @@ function emitJitSet32WithRole(
   jitContext: JitIrContext,
   target: IrStorageExpr,
   value: IrValueExpr,
+  accessWidth: OperandWidth,
   helpers: WasmIrEmitHelpers,
   op: IrSetExprOp
 ): void {
+  if (accessWidth !== 32) {
+    throw new Error(`JIT codegen does not support ${accessWidth}-bit writes`);
+  }
+
   emitJitSet32(jitContext, target, value, helpers);
 
   if (op.role !== "registerMaterialization") {

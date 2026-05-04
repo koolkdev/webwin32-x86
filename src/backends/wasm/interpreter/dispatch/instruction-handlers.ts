@@ -4,16 +4,16 @@ import type { OpcodeDispatchCandidateSet, OpcodeDispatchLeaf } from "#x86/isa/de
 import type { SemanticTemplate } from "#x86/ir/model/types.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { emitInterpreterIrWithContext } from "#backends/wasm/interpreter/codegen/ir-context.js";
-import { emitLoadGuestByte } from "#backends/wasm/interpreter/decode/guest-bytes.js";
 import type { InterpreterHandlerContext } from "#backends/wasm/interpreter/codegen/handler-context.js";
 import { emitModRmDispatch, type ModRmDispatchCase } from "./modrm-dispatch.js";
 import { decodeInstructionOperands } from "#backends/wasm/interpreter/decode/operand-decode.js";
+import { emitReadGuestByteAtRelativeOffset } from "#backends/wasm/interpreter/decode/decode-reader.js";
 
 export function emitInstructionHandlerForLeaf(
   leaf: OpcodeDispatchLeaf,
   context: InterpreterHandlerContext
 ): boolean {
-  const candidates = leaf.operandSize.default;
+  const candidates = leaf.operandSize[context.operandSize];
 
   switch (candidates.kind) {
     case "empty":
@@ -47,7 +47,7 @@ function emitModRmInstructionHandler(
   const modRmLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
-    emitLoadGuestByte(context.body, context.eipLocal, leaf.opcodeLength, context.addressLocal, modRmLocal, context.exit);
+    emitReadGuestByteAtRelativeOffset(context, context.opcodeOffset, leaf.opcodeLength, modRmLocal);
 
     if (modRmCases.length === 1 && modRmCases[0]?.regs.length === reg3Values.length) {
       emitInstructionHandler(modRmCases[0].instruction, context, modRmLocal);
@@ -58,7 +58,6 @@ function emitModRmInstructionHandler(
       context.body,
       context.exit,
       modRmLocal,
-      context.opcodeLocal,
       bindModRmCases(modRmCases, context, modRmLocal)
     );
   } finally {
@@ -81,11 +80,11 @@ function emitInstructionHandler(
       body: context.body,
       scratch: context.scratch,
       state: context.state,
+      locals: context.locals,
       exit: context.exit,
-      eipLocal: context.eipLocal,
+      depths: context.depths,
       instructionLength: decoded.instructionLength,
-      operands: decoded.operands,
-      instructionDoneLabelDepth: context.instructionDoneLabelDepth
+      operands: decoded.operands
     });
   } finally {
     for (const local of decoded.scratchLocals) {
@@ -133,7 +132,7 @@ function bindModRmCases(
         dispatchCase.instruction,
         {
           ...context,
-          instructionDoneLabelDepth: context.instructionDoneLabelDepth + 1 + index,
+          depths: context.depths.caseBranch(index),
           exit: {
             ...context.exit,
             exitLabelDepth: context.exit.exitLabelDepth + 1 + index

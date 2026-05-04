@@ -215,6 +215,6 @@ test("unsupported 81 /2 group returns unsupported before immediate decode", asyn
 
   const exit = interpreter.run(1);
 
-  deepStrictEqual(exit, { exitReason: ExitReason.UNSUPPORTED, payload: 0x81 });
+  strictEqual(exit.exitReason, ExitReason.UNSUPPORTED);
   assertInterpreterStateEquals(interpreter.stateView, initialState);
 });

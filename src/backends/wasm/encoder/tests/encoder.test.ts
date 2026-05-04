@@ -3,7 +3,8 @@ import { test } from "node:test";
 
 import { wasmBranchHint, WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
-import { wasmValueType } from "#backends/wasm/encoder/types.js";
+import { wasmOpcode, wasmValueType } from "#backends/wasm/encoder/types.js";
+import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
 
 test("constant i64 function compiles", async () => {
   const bytes = encodeConstantI64TestModule("constant", 0x0006_0000_1234_5678n);
@@ -70,6 +71,19 @@ test("typed if expression compiles and returns branch values", async () => {
 
   strictEqual(select(0), 20);
   strictEqual(select(1), 10);
+});
+
+test("i32 load16/store8/store16 opcodes compile", async () => {
+  const body = encodeWidthMemoryOpcodeBody();
+  const bytes = encodeWidthMemoryOpcodeModule(body);
+
+  await WebAssembly.compile(bytes);
+
+  const opcodes = wasmBodyOpcodes(body.encode());
+
+  strictEqual(opcodes.includes(wasmOpcode.i32Load16U), true);
+  strictEqual(opcodes.includes(wasmOpcode.i32Store8), true);
+  strictEqual(opcodes.includes(wasmOpcode.i32Store16), true);
 });
 
 type CompileResult =
@@ -170,4 +184,40 @@ function encodeTypedIfTestModule(): Uint8Array<ArrayBuffer> {
   module.exportFunction("select", functionIndex);
 
   return module.encode();
+}
+
+function encodeWidthMemoryOpcodeModule(body: WasmFunctionBodyEncoder): Uint8Array<ArrayBuffer> {
+  const module = new WasmModuleEncoder();
+
+  module.importMemory("env", "memory", { minPages: 1 });
+
+  const typeIndex = module.addFunctionType({
+    params: [wasmValueType.i32, wasmValueType.i32],
+    results: [wasmValueType.i32]
+  });
+  const functionIndex = module.addFunction(typeIndex, body);
+
+  module.exportFunction("run", functionIndex);
+
+  return module.encode();
+}
+
+function encodeWidthMemoryOpcodeBody(): WasmFunctionBodyEncoder {
+  const body = new WasmFunctionBodyEncoder(2);
+  const valueLocal = body.addLocal(wasmValueType.i32);
+
+  body
+    .localGet(0)
+    .i32Load16U({ align: 1, memoryIndex: 0, offset: 0 })
+    .localSet(valueLocal)
+    .localGet(0)
+    .localGet(1)
+    .i32Store8({ align: 0, memoryIndex: 0, offset: 0 })
+    .localGet(0)
+    .localGet(1)
+    .i32Store16({ align: 1, memoryIndex: 0, offset: 0 })
+    .localGet(valueLocal)
+    .end();
+
+  return body;
 }

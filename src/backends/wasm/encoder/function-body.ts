@@ -224,8 +224,26 @@ export class WasmFunctionBodyEncoder {
     return this;
   }
 
+  i32Load16U(immediate: WasmMemoryImmediate): this {
+    this.#writeInstruction(wasmOpcode.i32Load16U);
+    this.#instructions.writeBytes(encodeMemoryImmediate(immediate));
+    return this;
+  }
+
   i32Store(immediate: WasmMemoryImmediate): this {
     this.#writeInstruction(wasmOpcode.i32Store);
+    this.#instructions.writeBytes(encodeMemoryImmediate(immediate));
+    return this;
+  }
+
+  i32Store8(immediate: WasmMemoryImmediate): this {
+    this.#writeInstruction(wasmOpcode.i32Store8);
+    this.#instructions.writeBytes(encodeMemoryImmediate(immediate));
+    return this;
+  }
+
+  i32Store16(immediate: WasmMemoryImmediate): this {
+    this.#writeInstruction(wasmOpcode.i32Store16);
     this.#instructions.writeBytes(encodeMemoryImmediate(immediate));
     return this;
   }

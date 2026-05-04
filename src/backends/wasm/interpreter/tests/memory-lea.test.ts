@@ -155,6 +155,6 @@ test("LEA m32 form rejects register ModRM", async () => {
   });
   const { interpreter, exit } = await executeMemoryInstruction([0x8d, 0xc0], initialState);
 
-  deepStrictEqual(exit, { exitReason: ExitReason.UNSUPPORTED, payload: 0x8d });
+  strictEqual(exit.exitReason, ExitReason.UNSUPPORTED);
   assertInterpreterStateEquals(interpreter.stateView, initialState);
 });

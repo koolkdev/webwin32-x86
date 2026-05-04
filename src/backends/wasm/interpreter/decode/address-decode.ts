@@ -1,19 +1,20 @@
 import type { MemOperandType, OperandSpec, RmOperandType } from "#x86/isa/schema/types.js";
+import type { OperandWidth } from "#x86/isa/types.js";
 import type { InterpreterOperandBinding } from "#backends/wasm/interpreter/codegen/ir-context.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
-import { emitWasmIrExitFromI32Stack } from "#backends/wasm/codegen/exit.js";
+import { emitWasmIrExitConstPayload } from "#backends/wasm/codegen/exit.js";
 import {
   advanceDecodeReader,
   emitReadGuestByte,
-  emitReadGuestU32,
+  emitReadGuestUnsigned,
   localDecodeReader,
   materializeDecodeReader,
   type DecodeReader
 } from "./decode-reader.js";
 import type { InterpreterHandlerContext } from "#backends/wasm/interpreter/codegen/handler-context.js";
 import { emitIfModRmMemory, emitIfModRmRegister } from "./modrm-bits.js";
-import { emitCopyReg32FromIndexLocal } from "#backends/wasm/interpreter/dispatch/register-dispatch.js";
+import { emitCopyRegFromIndexLocal } from "#backends/wasm/interpreter/dispatch/register-dispatch.js";
 
 export function decodeModRmRmOperand(
   operand: Extract<OperandSpec, { kind: "modrm.rm" }>,
@@ -30,8 +31,8 @@ export function decodeModRmRmOperand(
 
   return {
     binding: isMemoryOnlyOperand(operand.type)
-      ? { kind: "mem32", addressLocal }
-      : { kind: "rm32", modRmLocal, addressLocal },
+      ? { kind: "mem", addressLocal, width: operandTypeWidth(operand.type) }
+      : { kind: "rm", modRmLocal, addressLocal, width: operandTypeWidth(operand.type) },
     nextDecodeReader: decoded.nextDecodeReader,
     scratchLocals: [addressLocal, ...decoded.scratchLocals]
   };
@@ -86,6 +87,20 @@ function isMemoryOnlyOperand(type: RmOperandType | MemOperandType): type is MemO
   }
 }
 
+function operandTypeWidth(type: RmOperandType | MemOperandType): OperandWidth {
+  switch (type) {
+    case "rm8":
+    case "m8":
+      return 8;
+    case "rm16":
+    case "m16":
+      return 16;
+    case "rm32":
+    case "m32":
+      return 32;
+  }
+}
+
 function decodeDynamicMemoryAddress(
   decodeReader: DecodeReader,
   context: InterpreterHandlerContext,
@@ -124,16 +139,16 @@ function decodeDynamicNonSibMemoryAddress(
       advanceDecodeReader(decodeReader, 4, context);
     });
     emitIfLocalNotEqualsConst(context, rmLocal, 0b101, () => {
-      emitCopyReg32FromIndexLocal(context.body, context.state.regs, rmLocal, addressLocal);
+      emitCopyRegFromIndexLocal(context.body, context.state.regs, 32, rmLocal, addressLocal);
     });
   });
   emitIfLocalEqualsConst(context, modLocal, 1, () => {
-    emitCopyReg32FromIndexLocal(context.body, context.state.regs, rmLocal, addressLocal);
+    emitCopyRegFromIndexLocal(context.body, context.state.regs, 32, rmLocal, addressLocal);
     addDisplacementToAddress(8, decodeReader, context, addressLocal);
     advanceDecodeReader(decodeReader, 1, context);
   });
   emitIfLocalEqualsConst(context, modLocal, 2, () => {
-    emitCopyReg32FromIndexLocal(context.body, context.state.regs, rmLocal, addressLocal);
+    emitCopyRegFromIndexLocal(context.body, context.state.regs, 32, rmLocal, addressLocal);
     addDisplacementToAddress(32, decodeReader, context, addressLocal);
     advanceDecodeReader(decodeReader, 4, context);
   });
@@ -189,7 +204,7 @@ function addSibIndexToAddress(context: InterpreterHandlerContext, sibLocal: numb
   try {
     emitIfLocalNotEqualsConst(context, indexLocal, 0b100, () => {
       context.body.localGet(addressLocal);
-      emitCopyReg32FromIndexLocal(context.body, context.state.regs, indexLocal, indexValueLocal);
+      emitCopyRegFromIndexLocal(context.body, context.state.regs, 32, indexLocal, indexValueLocal);
       context.body.localGet(indexValueLocal);
       context.body.localGet(sibLocal).i32Const(6).i32ShrU().i32Shl();
       context.body.i32Add().localSet(addressLocal);
@@ -205,7 +220,7 @@ function addRegIndexLocalToAddress(context: InterpreterHandlerContext, indexLoca
 
   try {
     context.body.localGet(addressLocal);
-    emitCopyReg32FromIndexLocal(context.body, context.state.regs, indexLocal, valueLocal);
+    emitCopyRegFromIndexLocal(context.body, context.state.regs, 32, indexLocal, valueLocal);
     context.body.localGet(valueLocal);
     context.body.i32Add().localSet(addressLocal);
   } finally {
@@ -250,7 +265,7 @@ function emitLoadDisplacement(
       emitSignExtendLocal(context, local, 8);
       return;
     case 32:
-      emitReadGuestU32(context, decodeReader, local);
+      emitReadGuestUnsigned(context, decodeReader, 32, local);
       return;
   }
 }
@@ -279,8 +294,7 @@ function emitIfLocalNotEqualsConst(
 
 function emitUnsupportedIfModRmRegister(context: InterpreterHandlerContext, modRmLocal: number): void {
   emitIfModRmRegister(context.body, modRmLocal, () => {
-    context.body.localGet(context.opcodeLocal);
-    emitWasmIrExitFromI32Stack(context.body, context.exit, ExitReason.UNSUPPORTED, 1);
+    emitWasmIrExitConstPayload(context.body, context.exit, ExitReason.UNSUPPORTED, 0, 1);
   });
 }
 

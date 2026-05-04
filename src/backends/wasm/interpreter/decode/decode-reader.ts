@@ -2,11 +2,15 @@ import type { InterpreterInstructionLength } from "#backends/wasm/interpreter/co
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import {
   emitLoadGuestByte,
-  emitLoadGuestByteForDecodeAtDynamicOffset,
-  emitLoadGuestU32ForDecode,
-  emitLoadGuestU32ForDecodeAtDynamicOffset
+  emitLoadGuestByteAtDynamicOffset,
+  emitLoadGuestUnsigned,
+  emitLoadGuestUnsignedAtDynamicOffset
 } from "./guest-bytes.js";
 import type { InterpreterHandlerContext } from "#backends/wasm/interpreter/codegen/handler-context.js";
+import type { OperandWidth } from "#x86/isa/types.js";
+import { maxX86InstructionLength } from "#x86/isa/decoder/reader.js";
+import { ExitReason } from "#backends/wasm/exit.js";
+import { emitWasmIrExitFromI32Stack } from "#backends/wasm/codegen/exit.js";
 
 export type DecodeReader =
   | Readonly<{ kind: "static"; value: number }>
@@ -58,22 +62,60 @@ export function emitReadGuestByte(
   decodeReader: DecodeReader,
   local: number
 ): void {
-  if (decodeReader.kind === "static") {
-    emitLoadGuestByte(context.body, context.eipLocal, decodeReader.value, context.addressLocal, local, context.exit);
+  if (emitFaultIfInstructionReadTooLong(context, decodeReader, 1)) {
     return;
   }
 
-  emitLoadGuestByteForDecodeAtDynamicOffset(
+  if (decodeReader.kind === "static") {
+    emitLoadGuestByte(context.body, context.locals.eip, decodeReader.value, context.locals.address, local, context.exit);
+    return;
+  }
+
+  emitLoadGuestByteAtDynamicOffset(
     context.body,
-    context.eipLocal,
+    context.locals.eip,
     decodeReader.local,
-    context.addressLocal,
+    context.locals.address,
     local,
     context.exit
   );
 }
 
-export function emitReadGuestBytePlus(
+export function emitReadGuestUnsigned(
+  context: InterpreterHandlerContext,
+  decodeReader: DecodeReader,
+  width: OperandWidth,
+  local: number
+): void {
+  if (emitFaultIfInstructionReadTooLong(context, decodeReader, instructionReadByteLength(width))) {
+    return;
+  }
+
+  if (decodeReader.kind === "static") {
+    emitLoadGuestUnsigned(
+      context.body,
+      context.locals.eip,
+      decodeReader.value,
+      width,
+      context.locals.address,
+      local,
+      context.exit
+    );
+    return;
+  }
+
+  emitLoadGuestUnsignedAtDynamicOffset(
+    context.body,
+    context.locals.eip,
+    decodeReader.local,
+    width,
+    context.locals.address,
+    local,
+    context.exit
+  );
+}
+
+export function emitReadGuestByteAtRelativeOffset(
   context: InterpreterHandlerContext,
   decodeReader: DecodeReader,
   byteOffset: number,
@@ -85,14 +127,7 @@ export function emitReadGuestBytePlus(
   }
 
   if (decodeReader.kind === "static") {
-    emitLoadGuestByte(
-      context.body,
-      context.eipLocal,
-      decodeReader.value + byteOffset,
-      context.addressLocal,
-      local,
-      context.exit
-    );
+    emitReadGuestByte(context, staticDecodeReader(decodeReader.value + byteOffset), local);
     return;
   }
 
@@ -100,35 +135,41 @@ export function emitReadGuestBytePlus(
 
   try {
     context.body.localGet(decodeReader.local).i32Const(byteOffset).i32Add().localSet(offsetLocal);
-    emitLoadGuestByteForDecodeAtDynamicOffset(
-      context.body,
-      context.eipLocal,
-      offsetLocal,
-      context.addressLocal,
-      local,
-      context.exit
-    );
+    emitReadGuestByte(context, localDecodeReader(offsetLocal), local);
   } finally {
     context.scratch.freeLocal(offsetLocal);
   }
 }
 
-export function emitReadGuestU32(
+function emitFaultIfInstructionReadTooLong(
   context: InterpreterHandlerContext,
   decodeReader: DecodeReader,
-  local: number
-): void {
+  byteLength: number
+): boolean {
   if (decodeReader.kind === "static") {
-    emitLoadGuestU32ForDecode(context.body, context.eipLocal, decodeReader.value, context.addressLocal, local, context.exit);
-    return;
+    if (decodeReader.value + byteLength <= maxX86InstructionLength) {
+      return false;
+    }
+
+    emitInstructionTooLongFault(context, 0);
+    return true;
   }
 
-  emitLoadGuestU32ForDecodeAtDynamicOffset(
-    context.body,
-    context.eipLocal,
-    decodeReader.local,
-    context.addressLocal,
-    local,
-    context.exit
-  );
+  context.body
+    .localGet(decodeReader.local)
+    .i32Const(maxX86InstructionLength - byteLength)
+    .i32GtU()
+    .ifBlock();
+  emitInstructionTooLongFault(context, 1);
+  context.body.endBlock();
+  return false;
+}
+
+function emitInstructionTooLongFault(context: InterpreterHandlerContext, extraDepth: number): void {
+  context.body.localGet(context.locals.eip).i32Const(maxX86InstructionLength).i32Add();
+  emitWasmIrExitFromI32Stack(context.body, context.exit, ExitReason.DECODE_FAULT, extraDepth);
+}
+
+function instructionReadByteLength(width: OperandWidth): 1 | 2 | 4 {
+  return width === 8 ? 1 : width === 16 ? 2 : 4;
 }

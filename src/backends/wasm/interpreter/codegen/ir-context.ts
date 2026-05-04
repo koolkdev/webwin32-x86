@@ -1,4 +1,4 @@
-import type { Reg32 } from "#x86/isa/types.js";
+import type { OperandWidth, RegisterAlias, Reg32 } from "#x86/isa/types.js";
 import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import type {
   IrBlock,
@@ -9,17 +9,27 @@ import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-bo
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/codegen/alu-flags.js";
 import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "#backends/wasm/codegen/exit.js";
-import { emitWasmIrLoadGuestU32, emitWasmIrLoadGuestU32FromStack, emitWasmIrStoreGuestU32 } from "#backends/wasm/codegen/memory.js";
-import { wasmIrLocalReg32Storage, type WasmIrReg32Storage } from "#backends/wasm/codegen/registers.js";
+import {
+  emitWasmIrLoadGuest,
+  emitWasmIrLoadGuestFromStack,
+  emitWasmIrStoreGuest
+} from "#backends/wasm/codegen/memory.js";
+import {
+  emitLoadReg32Access as emitLoadRegAccess,
+  emitLoadRegAlias,
+  emitMaskValueToWidth,
+  emitStoreReg32Access as emitStoreRegAccess,
+  emitStoreRegAlias
+} from "#backends/wasm/codegen/registers.js";
 import {
   emitCompleteInstruction,
   emitCompleteInstructionWithTarget
 } from "./state-cache.js";
 import {
-  emitLoadReg32ByIndex,
+  emitLoadRegByIndex,
   emitModRmRmIndex,
   emitOpcodeRegIndex,
-  emitStoreReg32ByIndex
+  emitStoreRegByIndex
 } from "#backends/wasm/interpreter/dispatch/register-dispatch.js";
 import type { InterpreterStateCache } from "./state-cache.js";
 import { emitIfModRmMemory, emitIfModRmRegister, emitModRmIsRegister, emitModRmRegIndex } from "#backends/wasm/interpreter/decode/modrm-bits.js";
@@ -27,15 +37,17 @@ import { emitIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/codegen/emi
 import { emitSetFlags } from "#backends/wasm/codegen/flags.js";
 import { emitAluFlagsCondition, emitFlagProducerCondition } from "#backends/wasm/codegen/conditions.js";
 import { ExitReason } from "#backends/wasm/exit.js";
+import type { InterpreterLocals } from "./locals.js";
+import type { InterpreterDispatchDepths } from "./depths.js";
 
 export type InterpreterOperandBinding =
-  | Readonly<{ kind: "opcode.reg32"; opcodeLocal: number }>
-  | Readonly<{ kind: "modrm.reg32"; modRmLocal: number }>
-  | Readonly<{ kind: "rm32"; modRmLocal: number; addressLocal: number }>
-  | Readonly<{ kind: "mem32"; addressLocal: number }>
-  | Readonly<{ kind: "implicit.reg32"; reg: Reg32 }>
-  | Readonly<{ kind: "imm32"; local: number }>
-  | Readonly<{ kind: "relTarget32"; local: number }>;
+  | Readonly<{ kind: "opcode.reg"; opcodeLocal: number; width: OperandWidth }>
+  | Readonly<{ kind: "modrm.reg"; modRmLocal: number; width: OperandWidth }>
+  | Readonly<{ kind: "rm"; modRmLocal: number; addressLocal: number; width: OperandWidth }>
+  | Readonly<{ kind: "mem"; addressLocal: number; width: OperandWidth }>
+  | Readonly<{ kind: "implicit.reg"; alias: RegisterAlias }>
+  | Readonly<{ kind: "imm"; local: number }>
+  | Readonly<{ kind: "relTarget"; local: number }>;
 
 export type InterpreterInstructionLength =
   | number
@@ -45,26 +57,26 @@ export type InterpreterIrEmitContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
   state: InterpreterStateCache;
+  locals: InterpreterLocals;
   exit: WasmIrExitTarget;
-  eipLocal: number;
+  depths: InterpreterDispatchDepths;
   instructionLength: InterpreterInstructionLength;
   operands: readonly InterpreterOperandBinding[];
-  instructionDoneLabelDepth: number;
 }>;
 
 export function emitInterpreterIrWithContext(block: IrBlock, context: InterpreterIrEmitContext): void {
   const aluFlags = wasmIrLocalAluFlagsStorage(context.body, context.state.aluFlagsLocal);
-  const regs = wasmIrLocalReg32Storage(context.body, context.state.regs);
 
   emitIrToWasm(block, {
     body: context.body,
     scratch: context.scratch,
     expression: { canInlineGet: (source) => canInlineGet(context, source) },
-    emitGet32: (source, helpers) => emitGet32(context, regs, source, helpers),
-    emitSet32: (target, value, helpers) => emitSet32(context, regs, target, value, helpers),
-    emitSet32If: (condition, target, value, helpers) =>
-      emitSet32If(context, regs, condition, target, value, helpers),
-    emitAddress32: (source) => emitAddress32(context, source),
+    emitGet32: (source, accessWidth, helpers) => emitGetStorage(context, source, accessWidth, helpers),
+    emitSet32: (target, value, accessWidth, helpers) =>
+      emitSetStorage(context, target, value, accessWidth, helpers),
+    emitSet32If: (condition, target, value, accessWidth, helpers) =>
+      emitSetStorageIf(context, condition, target, value, accessWidth, helpers),
+    emitAddress32: (source) => emitAddress(context, source),
     emitSetFlags: (descriptor, helpers) =>
       emitSetFlags(context.body, aluFlags, descriptor, helpers),
     emitMaterializeFlags: () => {},
@@ -80,22 +92,22 @@ export function emitInterpreterIrWithContext(block: IrBlock, context: Interprete
   });
 }
 
-function emitGet32(
+function emitGetStorage(
   context: InterpreterIrEmitContext,
-  regs: WasmIrReg32Storage,
   source: IrStorageExpr,
+  accessWidth: OperandWidth,
   helpers: WasmIrEmitHelpers
 ): void {
   switch (source.kind) {
     case "operand":
-      emitGetOperand32(context, regs, source.index);
+      emitGetOperand(context, source.index, accessWidth);
       return;
     case "reg":
-      regs.emitGet(source.reg);
+      emitLoadRegAccess(context.body, context.state.regs, source.reg, accessWidth);
       return;
     case "mem":
       helpers.emitValue(source.address);
-      emitLoadGuestU32FromStack(context);
+      emitLoadGuestFromStack(context, accessWidth);
       return;
   }
 }
@@ -110,117 +122,122 @@ function canInlineGet(context: InterpreterIrEmitContext, source: StorageRef): bo
       const binding = operandBinding(context, source.index);
 
       return (
-        binding.kind === "opcode.reg32" ||
-        binding.kind === "modrm.reg32" ||
-        binding.kind === "implicit.reg32" ||
-        binding.kind === "imm32" ||
-        binding.kind === "relTarget32"
+        binding.kind === "opcode.reg" ||
+        binding.kind === "modrm.reg" ||
+        binding.kind === "implicit.reg" ||
+        binding.kind === "imm" ||
+        binding.kind === "relTarget"
       );
     }
   }
 }
 
-function emitSet32(
+function emitSetStorage(
   context: InterpreterIrEmitContext,
-  regs: WasmIrReg32Storage,
   target: IrStorageExpr,
   value: IrValueExpr,
+  accessWidth: OperandWidth,
   helpers: WasmIrEmitHelpers
 ): void {
   switch (target.kind) {
     case "operand":
-      emitSetOperand32(context, regs, target.index, value, helpers);
+      emitSetOperand(context, target.index, value, accessWidth, helpers);
       return;
     case "reg":
-      regs.emitSet(target.reg, () => helpers.emitValue(value));
+      emitStoreRegAccess(context.body, context.state.regs, target.reg, accessWidth, () => helpers.emitValue(value));
       return;
     case "mem":
-      emitStoreMem32(context, () => helpers.emitValue(target.address), () => helpers.emitValue(value));
+      emitStoreMem(context, () => helpers.emitValue(target.address), () => helpers.emitValue(value), accessWidth);
       return;
   }
 }
 
-function emitSet32If(
+function emitSetStorageIf(
   context: InterpreterIrEmitContext,
-  regs: WasmIrReg32Storage,
   condition: IrValueExpr,
   target: IrStorageExpr,
   value: IrValueExpr,
+  accessWidth: OperandWidth,
   helpers: WasmIrEmitHelpers
 ): void {
   helpers.emitValue(condition);
   context.body.ifBlock();
-  emitSet32(context, regs, target, value, helpers);
+  emitSetStorage(context, target, value, accessWidth, helpers);
   context.body.endBlock();
 }
 
-function emitAddress32(context: InterpreterIrEmitContext, source: IrStorageExpr): void {
+function emitAddress(context: InterpreterIrEmitContext, source: IrStorageExpr): void {
   if (source.kind !== "operand") {
     throw new Error(`unsupported address source for Wasm interpreter: ${source.kind}`);
   }
 
   const binding = operandBinding(context, source.index);
 
-  if (binding.kind !== "mem32") {
+  if (binding.kind !== "mem") {
     throw new Error(`address operand is not memory: ${binding.kind}`);
   }
 
   context.body.localGet(binding.addressLocal);
 }
 
-function emitGetOperand32(context: InterpreterIrEmitContext, regs: WasmIrReg32Storage, index: number): void {
+function emitGetOperand(
+  context: InterpreterIrEmitContext,
+  index: number,
+  accessWidth: OperandWidth
+): void {
   const binding = operandBinding(context, index);
 
   switch (binding.kind) {
-    case "opcode.reg32":
-      emitLoadDynamicReg32(context, () => emitOpcodeRegIndex(context.body, binding.opcodeLocal));
+    case "opcode.reg":
+      emitLoadDynamicReg(context, binding.width, () => emitOpcodeRegIndex(context.body, binding.opcodeLocal));
       return;
-    case "modrm.reg32":
-      emitLoadDynamicReg32(context, () => emitModRmRegIndex(context.body, binding.modRmLocal));
+    case "modrm.reg":
+      emitLoadDynamicReg(context, binding.width, () => emitModRmRegIndex(context.body, binding.modRmLocal));
       return;
-    case "rm32":
-      emitGetRm32(context, binding);
+    case "rm":
+      emitGetRm(context, binding, accessWidth);
       return;
-    case "mem32":
-      emitWasmIrLoadGuestU32(context, binding.addressLocal);
+    case "mem":
+      emitWasmIrLoadGuest(context, binding.addressLocal, accessWidth);
       return;
-    case "implicit.reg32":
-      regs.emitGet(binding.reg);
+    case "implicit.reg":
+      emitLoadRegAlias(context.body, context.state.regs, binding.alias);
       return;
-    case "imm32":
-    case "relTarget32":
+    case "imm":
+    case "relTarget":
       context.body.localGet(binding.local);
+      emitMaskValueToWidth(context.body, accessWidth);
       return;
   }
 }
 
-function emitSetOperand32(
+function emitSetOperand(
   context: InterpreterIrEmitContext,
-  regs: WasmIrReg32Storage,
   index: number,
   value: IrValueExpr,
+  accessWidth: OperandWidth,
   helpers: WasmIrEmitHelpers
 ): void {
   const binding = operandBinding(context, index);
 
   switch (binding.kind) {
-    case "opcode.reg32":
-      emitStoreDynamicReg32(context, () => emitOpcodeRegIndex(context.body, binding.opcodeLocal), value, helpers);
+    case "opcode.reg":
+      emitStoreDynamicReg(context, binding.width, () => emitOpcodeRegIndex(context.body, binding.opcodeLocal), value, helpers);
       return;
-    case "modrm.reg32":
-      emitStoreDynamicReg32(context, () => emitModRmRegIndex(context.body, binding.modRmLocal), value, helpers);
+    case "modrm.reg":
+      emitStoreDynamicReg(context, binding.width, () => emitModRmRegIndex(context.body, binding.modRmLocal), value, helpers);
       return;
-    case "rm32":
-      emitSetRm32(context, binding, value, helpers);
+    case "rm":
+      emitSetRm(context, binding, value, accessWidth, helpers);
       return;
-    case "mem32":
-      emitStoreMem32(context, () => context.body.localGet(binding.addressLocal), () => helpers.emitValue(value));
+    case "mem":
+      emitStoreMem(context, () => context.body.localGet(binding.addressLocal), () => helpers.emitValue(value), accessWidth);
       return;
-    case "implicit.reg32":
-      regs.emitSet(binding.reg, () => helpers.emitValue(value));
+    case "implicit.reg":
+      emitStoreRegAlias(context.body, context.state.regs, binding.alias, () => helpers.emitValue(value));
       return;
-    case "imm32":
-    case "relTarget32":
+    case "imm":
+    case "relTarget":
       throw new Error(`cannot set ${binding.kind} operand`);
   }
 }
@@ -235,7 +252,7 @@ function emitNext(context: InterpreterIrEmitContext): void {
 }
 
 function emitNextEip(context: InterpreterIrEmitContext): void {
-  context.body.localGet(context.eipLocal);
+  context.body.localGet(context.locals.eip);
 
   if (typeof context.instructionLength === "number") {
     context.body.i32Const(context.instructionLength);
@@ -279,37 +296,39 @@ function emitHostTrap(context: InterpreterIrEmitContext, vector: IrValueExpr, he
 }
 
 function emitContinue(context: InterpreterIrEmitContext, extraDepth = 0): void {
-  context.body.br(context.instructionDoneLabelDepth + extraDepth);
+  context.body.br(context.depths.instructionDone + extraDepth);
 }
 
-function emitGetRm32(
+function emitGetRm(
   context: InterpreterIrEmitContext,
-  binding: Extract<InterpreterOperandBinding, { kind: "rm32" }>
+  binding: Extract<InterpreterOperandBinding, { kind: "rm" }>,
+  accessWidth: OperandWidth
 ): void {
   emitModRmIsRegister(context.body, binding.modRmLocal);
   context.body.ifBlock(undefined, wasmValueType.i32);
-  emitLoadReg32ByIndex(context.body, context.state.regs, () => {
+  emitLoadRegByIndex(context.body, context.state.regs, binding.width, () => {
     emitModRmRmIndex(context.body, binding.modRmLocal);
   });
   context.body.elseBlock();
-  emitWasmIrLoadGuestU32(context, binding.addressLocal, 2);
+  emitWasmIrLoadGuest(context, binding.addressLocal, accessWidth, 2);
   context.body.endBlock();
 }
 
-function emitLoadGuestU32FromStack(context: InterpreterIrEmitContext): void {
+function emitLoadGuestFromStack(context: InterpreterIrEmitContext, width: OperandWidth): void {
   const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
-    emitWasmIrLoadGuestU32FromStack(context, addressLocal);
+    emitWasmIrLoadGuestFromStack(context, addressLocal, width);
   } finally {
     context.scratch.freeLocal(addressLocal);
   }
 }
 
-function emitSetRm32(
+function emitSetRm(
   context: InterpreterIrEmitContext,
-  binding: Extract<InterpreterOperandBinding, { kind: "rm32" }>,
+  binding: Extract<InterpreterOperandBinding, { kind: "rm" }>,
   value: IrValueExpr,
+  accessWidth: OperandWidth,
   helpers: WasmIrEmitHelpers
 ): void {
   const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
@@ -318,15 +337,16 @@ function emitSetRm32(
     helpers.emitValue(value);
     context.body.localSet(valueLocal);
     emitIfModRmRegister(context.body, binding.modRmLocal, () => {
-      emitStoreReg32ByIndex(context.body, context.state.regs, () => {
+      emitStoreRegByIndex(context.body, context.state.regs, binding.width, () => {
         emitModRmRmIndex(context.body, binding.modRmLocal);
       }, valueLocal);
     });
     emitIfModRmMemory(context.body, binding.modRmLocal, () => {
-      emitStoreMem32(
+      emitStoreMem(
         context,
         () => context.body.localGet(binding.addressLocal),
         () => context.body.localGet(valueLocal),
+        accessWidth,
         2
       );
     });
@@ -335,10 +355,11 @@ function emitSetRm32(
   }
 }
 
-function emitStoreMem32(
+function emitStoreMem(
   context: InterpreterIrEmitContext,
   emitAddress: () => void,
   emitValue: () => void,
+  width: OperandWidth,
   faultExtraDepth = 1
 ): void {
   const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
@@ -349,7 +370,7 @@ function emitStoreMem32(
     context.body.localSet(addressLocal);
     emitValue();
     context.body.localSet(valueLocal);
-    emitWasmIrStoreGuestU32(context, addressLocal, valueLocal, faultExtraDepth);
+    emitWasmIrStoreGuest(context, addressLocal, valueLocal, width, faultExtraDepth);
   } finally {
     context.scratch.freeLocal(valueLocal);
     context.scratch.freeLocal(addressLocal);
@@ -366,12 +387,17 @@ function operandBinding(context: InterpreterIrEmitContext, index: number): Inter
   return binding;
 }
 
-function emitLoadDynamicReg32(context: InterpreterIrEmitContext, emitIndex: () => void): void {
-  emitLoadReg32ByIndex(context.body, context.state.regs, emitIndex);
+function emitLoadDynamicReg(
+  context: InterpreterIrEmitContext,
+  width: OperandWidth,
+  emitIndex: () => void
+): void {
+  emitLoadRegByIndex(context.body, context.state.regs, width, emitIndex);
 }
 
-function emitStoreDynamicReg32(
+function emitStoreDynamicReg(
   context: InterpreterIrEmitContext,
+  width: OperandWidth,
   emitIndex: () => void,
   value: IrValueExpr,
   helpers: WasmIrEmitHelpers
@@ -381,7 +407,7 @@ function emitStoreDynamicReg32(
   try {
     helpers.emitValue(value);
     context.body.localSet(valueLocal);
-    emitStoreReg32ByIndex(context.body, context.state.regs, emitIndex, valueLocal);
+    emitStoreRegByIndex(context.body, context.state.regs, width, emitIndex, valueLocal);
   } finally {
     context.scratch.freeLocal(valueLocal);
   }

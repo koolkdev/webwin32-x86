@@ -11,10 +11,11 @@ export function emitWasmIrExitFromI32Stack(
   body: WasmFunctionBodyEncoder,
   target: WasmIrExitTarget,
   exitReason: ExitReason,
-  extraDepth = 0
+  extraDepth = 0,
+  detail = 0
 ): void {
   target.emitBeforeExit?.();
-  body.i64ExtendI32U().i64Const(encodeExit(exitReason, 0)).i64Or().localSet(target.exitLocal);
+  body.i64ExtendI32U().i64Const(encodeExit(exitReason, 0, detail)).i64Or().localSet(target.exitLocal);
   body.br(target.exitLabelDepth + extraDepth);
 }
 
@@ -23,9 +24,10 @@ export function emitWasmIrExitConstPayload(
   target: WasmIrExitTarget,
   exitReason: ExitReason,
   payload: number,
-  extraDepth = 0
+  extraDepth = 0,
+  detail = 0
 ): void {
   target.emitBeforeExit?.();
-  body.i64Const(encodeExit(exitReason, payload)).localSet(target.exitLocal);
+  body.i64Const(encodeExit(exitReason, payload, detail)).localSet(target.exitLocal);
   body.br(target.exitLabelDepth + extraDepth);
 }

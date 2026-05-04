@@ -68,7 +68,7 @@ test("memory ModRM with out-of-range address returns read fault without changing
 
   const exit = interpreter.run(1);
 
-  deepStrictEqual(exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: initialState.ebx });
+  deepStrictEqual(exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: initialState.ebx, detail: 4 });
   assertInterpreterStateEquals(interpreter.stateView, initialState);
 });
 

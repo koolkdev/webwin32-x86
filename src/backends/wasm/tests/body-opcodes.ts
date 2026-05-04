@@ -43,7 +43,10 @@ export function wasmBodyOpcodes(functionBody: Uint8Array<ArrayBuffer>): readonly
         break;
       case wasmOpcode.i32Load:
       case wasmOpcode.i32Load8U:
+      case wasmOpcode.i32Load16U:
       case wasmOpcode.i32Store:
+      case wasmOpcode.i32Store8:
+      case wasmOpcode.i32Store16:
         offset = skipMemoryImmediate(functionBody, offset);
         break;
       case wasmOpcode.else:

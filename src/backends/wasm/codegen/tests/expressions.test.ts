@@ -9,6 +9,19 @@ const v = (id: number) => ({ kind: "var" as const, id });
 const op = (index: number) => ({ kind: "operand" as const, index });
 const reg = (reg: "eax" | "ebx") => ({ kind: "reg" as const, reg });
 const c32 = (value: number) => ({ kind: "const32" as const, value });
+const src32 = (source: ReturnType<typeof op> | ReturnType<typeof reg>) => ({
+  kind: "src32" as const,
+  source,
+  accessWidth: 32 as const
+});
+const set = (
+  target: ReturnType<typeof op> | ReturnType<typeof reg>,
+  value: ReturnType<typeof v> | ReturnType<typeof c32> | ReturnType<typeof src32> | Readonly<{
+    kind: "i32.add" | "i32.sub";
+    a: ReturnType<typeof v> | ReturnType<typeof c32> | ReturnType<typeof src32>;
+    b: ReturnType<typeof v> | ReturnType<typeof c32> | ReturnType<typeof src32>;
+  }>
+) => ({ op: "set" as const, target, value, accessWidth: 32 as const });
 
 test("expression selector inlines allowed single-use get into set", () => {
   deepStrictEqual(
@@ -21,7 +34,7 @@ test("expression selector inlines allowed single-use get into set", () => {
       { canInlineGet: () => true }
     ),
     [
-      { op: "set", target: op(0), value: { kind: "src32", source: op(1) } },
+      set(op(0), src32(op(1))),
       { op: "next" }
     ]
   );
@@ -38,8 +51,8 @@ test("expression selector materializes get when the source cannot be inlined", (
       { canInlineGet: () => false }
     ),
     [
-      { op: "let32", dst: v(0), value: { kind: "src32", source: op(1) } },
-      { op: "set", target: op(0), value: v(0) },
+      { op: "let32", dst: v(0), value: src32(op(1)) },
+      set(op(0), v(0)),
       { op: "next" }
     ]
   );
@@ -58,13 +71,11 @@ test("expression selector folds simple register arithmetic into destination valu
     ),
     [
       {
-        op: "set",
-        target: reg("ebx"),
-        value: {
+        ...set(reg("ebx"), {
           kind: "i32.add",
-          a: { kind: "src32", source: reg("eax") },
+          a: src32(reg("eax")),
           b: c32(1)
-        }
+        })
       },
       { op: "next" }
     ]
@@ -81,13 +92,11 @@ test("expression selector can reuse const32 bindings without a temporary", () =>
     ]),
     [
       {
-        op: "set",
-        target: reg("ebx"),
-        value: {
+        ...set(reg("ebx"), {
           kind: "i32.add",
           a: c32(7),
           b: c32(7)
-        }
+        })
       },
       { op: "next" }
     ]
@@ -107,8 +116,8 @@ test("expression selector materializes flag inputs that still need value refs", 
       { canInlineGet: () => true }
     ),
     [
-      { op: "let32", dst: v(0), value: { kind: "src32", source: op(0) } },
-      { op: "let32", dst: v(1), value: { kind: "src32", source: op(1) } },
+      { op: "let32", dst: v(0), value: src32(op(0)) },
+      { op: "let32", dst: v(1), value: src32(op(1)) },
       { op: "let32", dst: v(2), value: { kind: "i32.sub", a: v(0), b: v(1) } },
       createIrFlagSetOp("sub", { left: v(0), right: v(1), result: v(2) }),
       { op: "next" }
@@ -128,9 +137,9 @@ test("expression selector materializes conditional set values at their definitio
       { canInlineGet: () => true }
     ),
     [
-      { op: "let32", dst: v(0), value: { kind: "src32", source: op(1) } },
+      { op: "let32", dst: v(0), value: src32(op(1)) },
       { op: "let32", dst: v(1), value: { kind: "aluFlags.condition", cc: "E" } },
-      { op: "set.if", condition: v(1), target: op(0), value: v(0) },
+      { op: "set.if", condition: v(1), target: op(0), value: v(0), accessWidth: 32 },
       { op: "next" }
     ]
   );

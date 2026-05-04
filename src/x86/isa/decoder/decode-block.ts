@@ -88,6 +88,13 @@ function decodeInstruction(
 
     return { kind: "instruction", instruction: decoded.instruction };
   } catch (error: unknown) {
+    if (error instanceof IsaDecodeError && error.fault.reason === "instructionTooLong") {
+      return {
+        kind: "decode-fault",
+        fault: error.fault
+      };
+    }
+
     if (error instanceof IsaDecodeError || error instanceof RangeError) {
       return {
         kind: "decode-fault",

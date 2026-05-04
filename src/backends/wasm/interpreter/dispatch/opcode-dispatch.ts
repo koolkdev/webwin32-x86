@@ -2,51 +2,55 @@ import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scr
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { dispatchBytes, interpreterOpcodeDispatchRoot } from "./dispatch.js";
-import { emitWasmIrExitFromI32Stack, type WasmIrExitTarget } from "#backends/wasm/codegen/exit.js";
-import { emitLoadGuestByte } from "#backends/wasm/interpreter/decode/guest-bytes.js";
+import { emitWasmIrExitConstPayload, type WasmIrExitTarget } from "#backends/wasm/codegen/exit.js";
 import { emitInstructionHandlerForLeaf } from "./instruction-handlers.js";
 import type { InterpreterStateCache } from "#backends/wasm/interpreter/codegen/state-cache.js";
+import {
+  emitReadGuestByte,
+  emitReadGuestByteAtRelativeOffset,
+  localDecodeReader,
+  staticDecodeReader,
+  type DecodeReader
+} from "#backends/wasm/interpreter/decode/decode-reader.js";
+import type { OperandSizePrefixMode } from "#x86/isa/schema/types.js";
+import type { InterpreterLocals } from "#backends/wasm/interpreter/codegen/locals.js";
+import { InterpreterDispatchDepths } from "#backends/wasm/interpreter/codegen/depths.js";
 
 type OpcodeDispatchContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   state: InterpreterStateCache;
+  locals: InterpreterLocals;
+  depths: InterpreterDispatchDepths;
   exit: WasmIrExitTarget;
-  eipLocal: number;
-  opcodeOffset: number;
-  byteLocal: number;
-  addressLocal: number;
-  opcodeLocal: number;
+  opcodeOffset: DecodeReader;
+  operandSize: OperandSizePrefixMode;
   scratch: WasmLocalScratchAllocator;
-  instructionDoneLabelDepth: number;
 }>;
+
+const operandSizeOverridePrefix = 0x66;
 
 export function emitOpcodeDispatch(
   body: WasmFunctionBodyEncoder,
   state: InterpreterStateCache,
   exit: WasmIrExitTarget,
-  opcodeOffset: number,
-  byteLocal: number,
-  addressLocal: number,
-  opcodeLocal: number,
+  locals: InterpreterLocals,
   scratch: WasmLocalScratchAllocator
 ): void {
-  body.localGet(byteLocal).localSet(opcodeLocal);
+  body.localGet(locals.byte).localSet(locals.opcode);
   emitOpcodeDispatchNode(interpreterOpcodeDispatchRoot, {
     body,
     state,
+    locals,
+    depths: InterpreterDispatchDepths.root(),
     exit,
-    eipLocal: state.eipLocal,
-    opcodeOffset,
-    byteLocal,
-    addressLocal,
-    opcodeLocal,
-    scratch,
-    instructionDoneLabelDepth: 0
+    opcodeOffset: staticDecodeReader(0),
+    operandSize: "default",
+    scratch
   });
 }
 
 function emitOpcodeDispatchNode(node: typeof interpreterOpcodeDispatchRoot, context: OpcodeDispatchContext): void {
-  const bytes = dispatchBytes(node);
+  const bytes = dispatchBytesForContext(node, context);
 
   if (bytes.length === 0) {
     emitUnsupportedOpcodeExit(context);
@@ -59,7 +63,7 @@ function emitOpcodeDispatchNode(node: typeof interpreterOpcodeDispatchRoot, cont
     context.body.block();
   }
 
-  context.body.localGet(context.byteLocal).brTable(dispatchTable(bytes), bytes.length);
+  context.body.localGet(context.locals.byte).brTable(dispatchTable(bytes), bytes.length);
 
   for (let index = bytes.length - 1; index >= 0; index -= 1) {
     const byte = bytes[index];
@@ -70,7 +74,7 @@ function emitOpcodeDispatchNode(node: typeof interpreterOpcodeDispatchRoot, cont
 
     const child = node.next[byte];
 
-    if (child === undefined) {
+    if (child === undefined && !isOperandSizePrefixCase(byte, context)) {
       continue;
     }
 
@@ -78,33 +82,29 @@ function emitOpcodeDispatchNode(node: typeof interpreterOpcodeDispatchRoot, cont
 
     const caseContext = {
       ...context,
-      instructionDoneLabelDepth: context.instructionDoneLabelDepth + 1 + index,
+      depths: context.depths.caseBranch(index),
       exit: {
         ...context.exit,
         exitLabelDepth: context.exit.exitLabelDepth + 1 + index
       }
     };
 
-    if (child.leaf !== undefined) {
+    if (isOperandSizePrefixCase(byte, context)) {
+      emitOperandSizePrefixCase(caseContext);
+    } else if (child?.leaf !== undefined) {
       const emitted = emitInstructionHandlerForLeaf(child.leaf, caseContext);
 
       if (!emitted) {
         emitUnsupportedOpcodeExit(caseContext);
       }
     } else {
-      emitLoadGuestByte(
-        context.body,
-        context.eipLocal,
-        context.opcodeOffset + 1,
-        context.addressLocal,
-        context.byteLocal,
-        caseContext.exit
-      );
+      emitLoadOpcodeByte(caseContext, 1);
+      context.body.localGet(context.locals.byte).localSet(context.locals.opcode);
       emitOpcodeDispatchNode(
-        child,
+        child!,
         {
           ...caseContext,
-          opcodeOffset: context.opcodeOffset + 1
+          depths: caseContext.depths.opcodeChild()
         }
       );
       emitUnsupportedOpcodeExit(caseContext);
@@ -116,8 +116,75 @@ function emitOpcodeDispatchNode(node: typeof interpreterOpcodeDispatchRoot, cont
 }
 
 function emitUnsupportedOpcodeExit(context: OpcodeDispatchContext): void {
-  context.body.localGet(context.opcodeLocal);
-  emitWasmIrExitFromI32Stack(context.body, context.exit, ExitReason.UNSUPPORTED);
+  emitWasmIrExitConstPayload(context.body, context.exit, ExitReason.UNSUPPORTED, 0);
+}
+
+function emitOperandSizePrefixCase(context: OpcodeDispatchContext): void {
+  materializeNextOpcodeOffset(context);
+  emitLoadOpcodeByte(
+    {
+      ...context,
+      opcodeOffset: localDecodeReader(context.locals.opcodeOffset),
+      depths: context.depths.opcodeRoot()
+    },
+    0
+  );
+  context.body.localGet(context.locals.byte).localSet(context.locals.opcode);
+
+  if (context.depths.prefixLoop !== undefined) {
+    context.body.br(context.depths.prefixLoop);
+    return;
+  }
+
+  context.body.loop();
+  emitOpcodeDispatchNode(interpreterOpcodeDispatchRoot, {
+    ...context,
+    exit: {
+      ...context.exit,
+      exitLabelDepth: context.exit.exitLabelDepth + 1
+    },
+    opcodeOffset: localDecodeReader(context.locals.opcodeOffset),
+    operandSize: "override",
+    depths: context.depths.prefixLoopBody()
+  });
+  context.body.endBlock();
+}
+
+function materializeNextOpcodeOffset(context: OpcodeDispatchContext): void {
+  if (context.opcodeOffset.kind === "static") {
+    context.body.i32Const(context.opcodeOffset.value + 1);
+  } else {
+    context.body.localGet(context.opcodeOffset.local).i32Const(1).i32Add();
+  }
+
+  context.body.localSet(context.locals.opcodeOffset);
+}
+
+function emitLoadOpcodeByte(context: OpcodeDispatchContext, depth: number): void {
+  if (depth === 0) {
+    emitReadGuestByte(context, context.opcodeOffset, context.locals.byte);
+    return;
+  }
+
+  emitReadGuestByteAtRelativeOffset(context, context.opcodeOffset, depth, context.locals.byte);
+}
+
+function dispatchBytesForContext(node: typeof interpreterOpcodeDispatchRoot, context: OpcodeDispatchContext): number[] {
+  const bytes = dispatchBytes(node);
+
+  if (!canDispatchOperandSizePrefix(context) || bytes.includes(operandSizeOverridePrefix)) {
+    return bytes;
+  }
+
+  return [...bytes, operandSizeOverridePrefix];
+}
+
+function canDispatchOperandSizePrefix(context: OpcodeDispatchContext): boolean {
+  return context.depths.opcode === 0;
+}
+
+function isOperandSizePrefixCase(byte: number, context: OpcodeDispatchContext): boolean {
+  return byte === operandSizeOverridePrefix && canDispatchOperandSizePrefix(context);
 }
 
 function dispatchTable(bytes: readonly number[]): number[] {
