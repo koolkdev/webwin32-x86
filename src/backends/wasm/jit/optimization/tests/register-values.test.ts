@@ -2,7 +2,13 @@ import { deepStrictEqual, strictEqual, throws } from "node:assert";
 import { test } from "node:test";
 
 import { ExitReason } from "#backends/wasm/exit.js";
-import { analyzeJitBarriers } from "#backends/wasm/jit/optimization/analyses/barriers.js";
+import { indexJitEffects } from "#backends/wasm/jit/ir/effects.js";
+import {
+  analyzeJitBarriers,
+  jitInstructionBarriersAt,
+  jitInstructionHasBarrier,
+  jitOpBarriersAt
+} from "#backends/wasm/jit/optimization/analyses/barriers.js";
 import {
   analyzeJitRegisterValues,
   validateJitRegisterValueAnalysis,
@@ -12,7 +18,7 @@ import {
 import { c32, syntheticInstruction, v } from "./helpers.js";
 
 test("register barrier analysis identifies exits and register writes", () => {
-  const analysis = analyzeJitBarriers({
+  const block = {
     instructions: [
       syntheticInstruction([
         { op: "get32", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
@@ -20,7 +26,11 @@ test("register barrier analysis identifies exits and register writes", () => {
         { op: "next" }
       ], 0, "exit")
     ]
-  });
+  };
+  const effects = indexJitEffects(block);
+  const analysis = analyzeJitBarriers(block, effects);
+
+  strictEqual(analysis.effects, effects);
 
   deepStrictEqual(analysis.barriers, [
     {
@@ -30,6 +40,24 @@ test("register barrier analysis identifies exits and register writes", () => {
       exitReason: ExitReason.MEMORY_READ_FAULT
     },
     { instructionIndex: 0, opIndex: 1, reason: "write", reg: "eax" },
+    {
+      instructionIndex: 0,
+      opIndex: 2,
+      reason: "exit",
+      exitReasons: [ExitReason.FALLTHROUGH]
+    }
+  ]);
+  deepStrictEqual(jitInstructionBarriersAt(analysis, 0), analysis.barriers);
+  strictEqual(jitInstructionHasBarrier(analysis, 0, "preInstructionExit"), true);
+  deepStrictEqual(jitOpBarriersAt(analysis, 0, 0), [
+    {
+      instructionIndex: 0,
+      opIndex: 0,
+      reason: "preInstructionExit",
+      exitReason: ExitReason.MEMORY_READ_FAULT
+    }
+  ]);
+  deepStrictEqual(jitOpBarriersAt(analysis, 0, 2), [
     {
       instructionIndex: 0,
       opIndex: 2,

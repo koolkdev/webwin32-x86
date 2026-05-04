@@ -8,8 +8,10 @@ import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/
 import {
   analyzeJitBarriers,
   jitOpBarriersAt,
-  jitOpHasBarrier
+  jitOpHasBarrier,
+  type JitBarrierAnalysis
 } from "#backends/wasm/jit/optimization/analyses/barriers.js";
+import { jitConditionUseAt } from "#backends/wasm/jit/ir/effects.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 import {
   JitFlagOwners,
@@ -17,10 +19,7 @@ import {
   type JitFlagOwnerMask
 } from "#backends/wasm/jit/optimization/analyses/flag-owners.js";
 import { buildJitFlagSource, type JitFlagSource } from "#backends/wasm/jit/optimization/analyses/flag-sources.js";
-import {
-  analyzeJitConditionUses,
-  type JitConditionUse
-} from "#backends/wasm/jit/ir/condition-uses.js";
+import type { JitConditionUse } from "#backends/wasm/jit/ir/condition-uses.js";
 
 export type {
   JitFlagOwner,
@@ -52,9 +51,10 @@ export type JitReachingFlags = Readonly<{
   finalOwners: readonly JitFlagOwnerMask[];
 }>;
 
-export function analyzeJitReachingFlags(block: JitIrBlock): JitReachingFlags {
-  const barriers = analyzeJitBarriers(block);
-  const conditionUses = analyzeJitConditionUses(block);
+export function analyzeJitReachingFlags(
+  block: JitIrBlock,
+  barriers: JitBarrierAnalysis = analyzeJitBarriers(block)
+): JitReachingFlags {
   const owners = JitFlagOwners.incoming();
   const sources: JitFlagSource[] = [];
   const reads: JitReachingFlagRead[] = [];
@@ -125,7 +125,7 @@ export function analyzeJitReachingFlags(block: JitIrBlock): JitReachingFlags {
         break;
       }
       case "aluFlags.condition": {
-        const conditionUse = conditionUses.get(instructionIndex)?.get(opIndex);
+        const conditionUse = jitConditionUseAt(barriers.effects, instructionIndex, opIndex);
 
         if (conditionUse !== undefined) {
           recordRead({

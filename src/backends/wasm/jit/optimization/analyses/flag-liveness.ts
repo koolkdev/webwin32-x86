@@ -8,7 +8,8 @@ import type { JitIrBlock, JitIrOp } from "#backends/wasm/jit/types.js";
 import {
   analyzeJitBarriers,
   jitOpHasBarrier,
-  jitOpPreInstructionExitReasonAt
+  jitOpPreInstructionExitReasonAt,
+  type JitBarrierAnalysis
 } from "#backends/wasm/jit/optimization/analyses/barriers.js";
 
 export type JitFlagLivenessOp = Readonly<{
@@ -30,8 +31,10 @@ export type JitFlagLiveness = Readonly<{
   instructions: readonly JitFlagLivenessInstruction[];
 }>;
 
-export function analyzeJitFlagLiveness(block: JitIrBlock): JitFlagLiveness {
-  const barriers = analyzeJitBarriers(block);
+export function analyzeJitFlagLiveness(
+  block: JitIrBlock,
+  barriers: JitBarrierAnalysis = analyzeJitBarriers(block)
+): JitFlagLiveness {
   const instructions = new Array<JitFlagLivenessInstruction>(block.instructions.length);
   let live = IR_FLAG_MASK_NONE;
 

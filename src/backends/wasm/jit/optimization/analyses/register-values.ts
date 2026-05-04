@@ -14,8 +14,10 @@ import {
 } from "#backends/wasm/jit/optimization/registers/policy.js";
 import {
   analyzeJitBarriers,
-  type JitBarrierAnalysis,
-  type JitBarrierReason
+  jitInstructionHasBarrier,
+  jitOpBarriersAt,
+  jitOpHasBarrier,
+  type JitBarrierAnalysis
 } from "#backends/wasm/jit/optimization/analyses/barriers.js";
 
 export type JitRegisterValueProducer = Readonly<{
@@ -91,7 +93,7 @@ export function analyzeJitRegisterValues(
       throw new Error(`missing JIT instruction while analyzing register values: ${instructionIndex}`);
     }
 
-    if (hasInstructionBarrier(barriers, instructionIndex, "preInstructionExit")) {
+    if (jitInstructionHasBarrier(barriers, instructionIndex, "preInstructionExit")) {
       materializeAll(registers, materializations, {
         instructionIndex,
         phase: "beforeInstruction",
@@ -273,7 +275,7 @@ function analyzeInstruction(
         break;
     }
 
-    if (hasOpBarrier(barriers, instructionIndex, opIndex, "exit")) {
+    if (jitOpHasBarrier(barriers, instructionIndex, opIndex, "exit")) {
       materializeAll(registers, materializations, {
         instructionIndex,
         opIndex,
@@ -332,41 +334,15 @@ function materializeRegs(
   }
 }
 
-function hasInstructionBarrier(
-  barriers: JitBarrierAnalysis,
-  instructionIndex: number,
-  reason: JitBarrierReason
-): boolean {
-  return barriers.barriers.some((barrier) =>
-    barrier.instructionIndex === instructionIndex &&
-    barrier.reason === reason
-  );
-}
-
-function hasOpBarrier(
-  barriers: JitBarrierAnalysis,
-  instructionIndex: number,
-  opIndex: number,
-  reason: JitBarrierReason
-): boolean {
-  return barriers.barriers.some((barrier) =>
-    barrier.instructionIndex === instructionIndex &&
-    barrier.opIndex === opIndex &&
-    barrier.reason === reason
-  );
-}
-
 function registerBarrierReg(
   barriers: JitBarrierAnalysis,
   instructionIndex: number,
   opIndex: number,
   reason: "write" | "conditionalWrite"
 ): Reg32 | undefined {
-  return barriers.barriers.find((barrier) =>
-    barrier.instructionIndex === instructionIndex &&
-    barrier.opIndex === opIndex &&
-    barrier.reason === reason
-  )?.reg;
+  return jitOpBarriersAt(barriers, instructionIndex, opIndex)
+    .find((barrier) => barrier.reason === reason)
+    ?.reg;
 }
 
 function isImmediatelyMaterializedAtExit(
@@ -380,7 +356,7 @@ function isImmediatelyMaterializedAtExit(
 
   return nextOp !== undefined &&
     jitIrOpIsTerminator(nextOp) &&
-    hasOpBarrier(barriers, instructionIndex, nextOpIndex, "exit");
+    jitOpHasBarrier(barriers, instructionIndex, nextOpIndex, "exit");
 }
 
 function isFinalBlockTerminatorWithoutExit(
@@ -396,5 +372,5 @@ function isFinalBlockTerminatorWithoutExit(
     instruction !== undefined &&
     opIndex === instruction.ir.length - 1 &&
     jitIrOpIsTerminator(op) &&
-    !hasOpBarrier(barriers, instructionIndex, opIndex, "exit");
+    !jitOpHasBarrier(barriers, instructionIndex, opIndex, "exit");
 }

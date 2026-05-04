@@ -1,6 +1,7 @@
+import type { Reg32 } from "#x86/isa/types.js";
 import type { ValueRef } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 import {
   analyzeJitConditionUses,
   indexJitExitConditionValues,
@@ -8,12 +9,19 @@ import {
   type JitConditionUse
 } from "#backends/wasm/jit/ir/condition-uses.js";
 import { jitMemoryFaultReason, jitPostInstructionExitReasons } from "#backends/wasm/jit/ir/effect-primitives.js";
+import { jitStorageReg } from "#backends/wasm/jit/ir/values.js";
+
+export type JitRegisterWriteEffect = Readonly<{
+  reg: Reg32;
+  kind: "write" | "conditionalWrite";
+}>;
 
 export type JitOpEffects = Readonly<{
   preInstructionExitReason?: ExitReasonValue;
   postInstructionExitReasons: readonly ExitReasonValue[];
   localConditionValues: readonly ValueRef[];
   exitConditionValues: readonly ValueRef[];
+  registerWrite?: JitRegisterWriteEffect;
   conditionUse?: JitConditionUse;
 }>;
 
@@ -64,6 +72,12 @@ export function indexJitEffects(block: JitIrBlock): JitEffectIndex {
 
       if (preInstructionExitReason !== undefined) {
         opEffects = { ...opEffects, preInstructionExitReason };
+      }
+
+      const registerWrite = jitRegisterWriteEffect(op, instruction.operands);
+
+      if (registerWrite !== undefined) {
+        opEffects = { ...opEffects, registerWrite };
       }
 
       const conditionUse = conditionUses.get(instructionIndex)?.get(opIndex);
@@ -155,6 +169,14 @@ export function jitConditionUseAt(
   return jitOpEffectsAt(effects, instructionIndex, opIndex).conditionUse;
 }
 
+export function jitRegisterWriteEffectAt(
+  effects: JitEffectIndex,
+  instructionIndex: number,
+  opIndex: number
+): JitRegisterWriteEffect | undefined {
+  return jitOpEffectsAt(effects, instructionIndex, opIndex).registerWrite;
+}
+
 export function jitInstructionHasPreInstructionExit(
   effects: JitEffectIndex,
   instructionIndex: number
@@ -186,4 +208,22 @@ export function jitLastPreInstructionExitOpIndex(
   }
 
   return instructionEffects.lastPreInstructionExitOpIndex;
+}
+
+function jitRegisterWriteEffect(
+  op: JitIrOp,
+  operands: JitIrBlockInstruction["operands"]
+): JitRegisterWriteEffect | undefined {
+  if (op.op !== "set32" && op.op !== "set32.if") {
+    return undefined;
+  }
+
+  const reg = jitStorageReg(op.target, operands);
+
+  return reg === undefined
+    ? undefined
+    : {
+      reg,
+      kind: op.op === "set32" ? "write" : "conditionalWrite"
+    };
 }

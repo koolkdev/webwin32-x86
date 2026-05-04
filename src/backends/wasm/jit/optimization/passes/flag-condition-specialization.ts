@@ -1,7 +1,9 @@
 import { flagProducerConditionInputNames } from "#x86/ir/model/flag-conditions.js";
 import type { ValueRef } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import { indexJitEffects } from "#backends/wasm/jit/ir/effects.js";
 import type { JitOptimizationPass } from "#backends/wasm/jit/optimization/pass.js";
+import { analyzeJitBarriers } from "#backends/wasm/jit/optimization/analyses/barriers.js";
 import { analyzeJitReachingFlags } from "#backends/wasm/jit/optimization/analyses/reaching-flags.js";
 import {
   indexDirectFlagConditions,
@@ -34,7 +36,9 @@ export function specializeJitFlagConditions(block: JitIrBlock): Readonly<{
   block: JitIrBlock;
   flagConditions: JitFlagConditionSpecialization;
 }> {
-  const reachingFlags = analyzeJitReachingFlags(block);
+  const effects = indexJitEffects(block);
+  const barriers = analyzeJitBarriers(block, effects);
+  const reachingFlags = analyzeJitReachingFlags(block, barriers);
   const directConditions = indexDirectFlagConditions(block, reachingFlags);
   let directConditionCount = 0;
   const instructions = block.instructions.map((instruction, instructionIndex) => {

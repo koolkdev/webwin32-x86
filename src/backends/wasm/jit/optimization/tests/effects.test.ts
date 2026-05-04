@@ -10,7 +10,8 @@ import {
   jitInstructionHasPreInstructionExit,
   jitLastPreInstructionExitOpIndex,
   jitPreInstructionExitReasonAt,
-  jitPostInstructionExitReasonsAt
+  jitPostInstructionExitReasonsAt,
+  jitRegisterWriteEffectAt
 } from "#backends/wasm/jit/ir/effects.js";
 import {
   jitExitConditionValues,
@@ -62,6 +63,10 @@ test("indexJitEffects indexes shared op effects", () => {
   ]);
   deepStrictEqual(jitConditionValuesAt(effects, 0, 1, "localCondition"), [v(0)]);
   deepStrictEqual(jitConditionValuesAt(effects, 0, 2, "exitCondition"), [v(0)]);
+  deepStrictEqual(jitRegisterWriteEffectAt(effects, 0, 1), {
+    reg: "ecx",
+    kind: "conditionalWrite"
+  });
   strictEqual(jitConditionUseAt(effects, 0, 0), "exitCondition");
   strictEqual(jitPreInstructionExitReasonAt(effects, 1, 0), ExitReason.MEMORY_READ_FAULT);
   strictEqual(jitInstructionHasPreInstructionExit(effects, 1), true);

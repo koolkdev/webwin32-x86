@@ -1,14 +1,14 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import type { StorageRef } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import {
   indexJitEffects,
   jitPreInstructionExitReasonAt,
   jitPostInstructionExitReasonsAt,
-  jitOpHasPostInstructionExit
+  jitOpHasPostInstructionExit,
+  jitRegisterWriteEffectAt,
+  type JitEffectIndex
 } from "#backends/wasm/jit/ir/effects.js";
-import { jitStorageReg } from "#backends/wasm/jit/ir/values.js";
 
 export type JitBarrierReason =
   | "preInstructionExit"
@@ -25,36 +25,58 @@ export type JitBarrier = Readonly<{
   reg?: Reg32;
 }>;
 
-export type JitBarrierAnalysis = Readonly<{
+export type JitInstructionBarrierIndex = Readonly<{
   barriers: readonly JitBarrier[];
+  ops: readonly (readonly JitBarrier[])[];
+}>;
+
+export type JitBarrierAnalysis = Readonly<{
+  effects: JitEffectIndex;
+  barriers: readonly JitBarrier[];
+  instructions: readonly JitInstructionBarrierIndex[];
 }>;
 
 export type JitRegisterBarrierReason = JitBarrierReason;
 export type JitRegisterBarrier = JitBarrier;
 export type JitRegisterBarrierAnalysis = JitBarrierAnalysis;
 
-export function analyzeJitBarriers(block: JitIrBlock): JitBarrierAnalysis {
-  const effects = indexJitEffects(block);
+type JitMutableInstructionBarrierIndex = {
+  barriers: JitBarrier[];
+  ops: JitBarrier[][];
+};
+
+export function analyzeJitBarriers(
+  block: JitIrBlock,
+  effects: JitEffectIndex = indexJitEffects(block)
+): JitBarrierAnalysis {
   const barriers: JitBarrier[] = [];
+  const instructions: JitMutableInstructionBarrierIndex[] = [];
 
   for (let instructionIndex = 0; instructionIndex < block.instructions.length; instructionIndex += 1) {
     const instruction = block.instructions[instructionIndex];
 
     if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while analyzing register barriers: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction while analyzing JIT barriers: ${instructionIndex}`);
     }
+
+    const instructionBarriers: JitMutableInstructionBarrierIndex = {
+      barriers: [],
+      ops: instruction.ir.map(() => [])
+    };
+
+    instructions.push(instructionBarriers);
 
     for (let opIndex = 0; opIndex < instruction.ir.length; opIndex += 1) {
       const op = instruction.ir[opIndex];
 
       if (op === undefined) {
-        throw new Error(`missing JIT IR op while analyzing register barriers: ${instructionIndex}:${opIndex}`);
+        throw new Error(`missing JIT IR op while analyzing JIT barriers: ${instructionIndex}:${opIndex}`);
       }
 
       const preInstructionExitReason = jitPreInstructionExitReasonAt(effects, instructionIndex, opIndex);
 
       if (preInstructionExitReason !== undefined) {
-        barriers.push({
+        pushBarrier(barriers, instructionBarriers, {
           instructionIndex,
           opIndex,
           reason: "preInstructionExit",
@@ -62,14 +84,19 @@ export function analyzeJitBarriers(block: JitIrBlock): JitBarrierAnalysis {
         });
       }
 
-      if (op.op === "set32") {
-        pushRegisterWriteBarrier(barriers, instruction, instructionIndex, opIndex, op.target, "write");
-      } else if (op.op === "set32.if") {
-        pushRegisterWriteBarrier(barriers, instruction, instructionIndex, opIndex, op.target, "conditionalWrite");
+      const registerWrite = jitRegisterWriteEffectAt(effects, instructionIndex, opIndex);
+
+      if (registerWrite !== undefined) {
+        pushBarrier(barriers, instructionBarriers, {
+          instructionIndex,
+          opIndex,
+          reason: registerWrite.kind,
+          reg: registerWrite.reg
+        });
       }
 
       if (jitOpHasPostInstructionExit(effects, instructionIndex, opIndex)) {
-        barriers.push({
+        pushBarrier(barriers, instructionBarriers, {
           instructionIndex,
           opIndex,
           reason: "exit",
@@ -79,7 +106,7 @@ export function analyzeJitBarriers(block: JitIrBlock): JitBarrierAnalysis {
     }
   }
 
-  return { barriers };
+  return { effects, barriers, instructions };
 }
 
 export const analyzeJitRegisterBarriers = analyzeJitBarriers;
@@ -89,10 +116,20 @@ export function jitInstructionHasBarrier(
   instructionIndex: number,
   reason: JitBarrierReason
 ): boolean {
-  return analysis.barriers.some((barrier) =>
-    barrier.instructionIndex === instructionIndex &&
-    barrier.reason === reason
-  );
+  return jitInstructionBarriersAt(analysis, instructionIndex).some((barrier) => barrier.reason === reason);
+}
+
+export function jitInstructionBarriersAt(
+  analysis: JitBarrierAnalysis,
+  instructionIndex: number
+): readonly JitBarrier[] {
+  const instruction = analysis.instructions[instructionIndex];
+
+  if (instruction === undefined) {
+    throw new Error(`missing JIT barrier instruction: ${instructionIndex}`);
+  }
+
+  return instruction.barriers;
 }
 
 export function jitOpBarriersAt(
@@ -100,10 +137,19 @@ export function jitOpBarriersAt(
   instructionIndex: number,
   opIndex: number
 ): readonly JitBarrier[] {
-  return analysis.barriers.filter((barrier) =>
-    barrier.instructionIndex === instructionIndex &&
-    barrier.opIndex === opIndex
-  );
+  const instruction = analysis.instructions[instructionIndex];
+
+  if (instruction === undefined) {
+    throw new Error(`missing JIT barrier instruction: ${instructionIndex}`);
+  }
+
+  const barriers = instruction.ops[opIndex];
+
+  if (barriers === undefined) {
+    throw new Error(`missing JIT barrier op: ${instructionIndex}:${opIndex}`);
+  }
+
+  return barriers;
 }
 
 export function jitOpHasBarrier(
@@ -125,17 +171,23 @@ export function jitOpPreInstructionExitReasonAt(
     ?.exitReason;
 }
 
-function pushRegisterWriteBarrier(
+function pushBarrier(
   barriers: JitBarrier[],
-  instruction: JitIrBlockInstruction,
-  instructionIndex: number,
-  opIndex: number,
-  storage: StorageRef,
-  reason: "write" | "conditionalWrite"
+  instruction: JitMutableInstructionBarrierIndex,
+  barrier: JitBarrier
 ): void {
-  const reg = jitStorageReg(storage, instruction.operands);
+  barriers.push(barrier);
+  instruction.barriers.push(barrier);
 
-  if (reg !== undefined) {
-    barriers.push({ instructionIndex, opIndex, reason, reg });
+  if (barrier.opIndex === undefined) {
+    return;
   }
+
+  const opBarriers = instruction.ops[barrier.opIndex];
+
+  if (opBarriers === undefined) {
+    throw new Error(`barrier references missing op ${barrier.instructionIndex}:${barrier.opIndex}`);
+  }
+
+  opBarriers.push(barrier);
 }
