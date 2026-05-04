@@ -1,14 +1,15 @@
-import type { Mem32Operand, Reg32 } from "#x86/isa/types.js";
+import type { MemOperand, OperandWidth, RegisterAlias } from "#x86/isa/types.js";
 import type { SemanticTemplate } from "#x86/ir/model/types.js";
 import type { InstructionSpec, ImmediateExtension } from "#x86/isa/schema/types.js";
 
 export type IsaOperandBinding =
-  | Readonly<{ kind: "reg32"; reg: Reg32 }>
-  | Mem32Operand
+  | Readonly<{ kind: "reg"; alias: RegisterAlias }>
+  | MemOperand
   | Readonly<{
-      kind: "imm32";
+      kind: "imm";
       value: number;
-      encodedWidth: 8 | 16 | 32;
+      encodedWidth: OperandWidth;
+      semanticWidth: OperandWidth;
       extension?: ImmediateExtension;
     }>
   | Readonly<{

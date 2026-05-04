@@ -60,7 +60,7 @@ export const RET = mnemonic("ret", [
   // C2 iw: RET imm16
   form("imm16", {
     opcode: [0xc2],
-    operands: [imm(16, "zero")],
+    operands: [imm(16)],
     format: { syntax: "ret {0}" },
     semantics: retImmSemantic()
   })

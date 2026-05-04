@@ -1,4 +1,5 @@
 import type { ExpandedInstructionSpec, OperandSpec } from "#x86/isa/schema/types.js";
+import { registerAlias } from "#x86/isa/registers.js";
 import type {
   InterpreterInstructionLength,
   InterpreterOperandBinding
@@ -81,7 +82,7 @@ function decodeOperand(
       };
     case "implicit.reg":
       return {
-        binding: { kind: "implicit.reg32", reg: operand.reg },
+        binding: { kind: "implicit.reg32", reg: registerAlias(operand.reg).base },
         nextReader: reader,
         scratchLocals: []
       };

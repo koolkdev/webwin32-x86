@@ -26,7 +26,7 @@ test("formats basic memory operands", () => {
   strictEqual(formatIsaInstruction(decode([0x8b, 0x04, 0x8d, 0x78, 0x56, 0x34, 0x12])), "mov eax, [ecx*4 + 0x12345678]");
 });
 
-test("formats zero and sign-extended immediates as semantic values", () => {
+test("formats unsigned and sign-extended immediates as semantic values", () => {
   strictEqual(formatIsaInstruction(decode([0x83, 0xeb, 0xff])), "sub ebx, 0xffffffff");
   strictEqual(formatIsaInstruction(decode([0xc2, 0x10, 0x00])), "ret 0x10");
 });

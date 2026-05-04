@@ -1,4 +1,4 @@
-import type { OperandSpec } from "#x86/isa/schema/types.js";
+import type { MemOperandType, OperandSpec, RmOperandType } from "#x86/isa/schema/types.js";
 import type { InterpreterOperandBinding } from "#backends/wasm/interpreter/codegen/ir-context.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
@@ -21,7 +21,7 @@ export function decodeModRmRmOperand(
   context: InterpreterHandlerContext,
   modRmLocal: number
 ): Readonly<{ binding: InterpreterOperandBinding; nextDecodeReader: DecodeReader; scratchLocals: readonly number[] }> {
-  if (operand.type === "m32") {
+  if (isMemoryOnlyOperand(operand.type)) {
     emitUnsupportedIfModRmRegister(context, modRmLocal);
   }
 
@@ -29,7 +29,7 @@ export function decodeModRmRmOperand(
   const decoded = decodeDynamicModRmRmAddress(decodeReader, context, modRmLocal, addressLocal, operand.type);
 
   return {
-    binding: operand.type === "m32"
+    binding: isMemoryOnlyOperand(operand.type)
       ? { kind: "mem32", addressLocal }
       : { kind: "rm32", modRmLocal, addressLocal },
     nextDecodeReader: decoded.nextDecodeReader,
@@ -42,11 +42,11 @@ function decodeDynamicModRmRmAddress(
   context: InterpreterHandlerContext,
   modRmLocal: number,
   addressLocal: number,
-  operandType: "rm32" | "m32"
+  operandType: RmOperandType | MemOperandType
 ): Readonly<{ nextDecodeReader: DecodeReader; scratchLocals: readonly number[] }> {
   const nextDecodeReaderLocal = materializeDecodeReader(decodeReader, context);
 
-  if (operandType === "rm32") {
+  if (isRmOperand(operandType)) {
     emitIfModRmMemory(context.body, modRmLocal, () => {
       decodeDynamicMemoryAddress(localDecodeReader(nextDecodeReaderLocal), context, modRmLocal, addressLocal);
     });
@@ -58,6 +58,32 @@ function decodeDynamicModRmRmAddress(
     nextDecodeReader: localDecodeReader(nextDecodeReaderLocal),
     scratchLocals: [nextDecodeReaderLocal]
   };
+}
+
+function isRmOperand(type: RmOperandType | MemOperandType): type is RmOperandType {
+  switch (type) {
+    case "rm8":
+    case "rm16":
+    case "rm32":
+      return true;
+    case "m8":
+    case "m16":
+    case "m32":
+      return false;
+  }
+}
+
+function isMemoryOnlyOperand(type: RmOperandType | MemOperandType): type is MemOperandType {
+  switch (type) {
+    case "m8":
+    case "m16":
+    case "m32":
+      return true;
+    case "rm8":
+    case "rm16":
+    case "rm32":
+      return false;
+  }
 }
 
 function decodeDynamicMemoryAddress(

@@ -29,7 +29,7 @@ export const PUSH = mnemonic("push", [
   // 6A ib: PUSH sign-extended imm8
   form("imm8", {
     opcode: [0x6a],
-    operands: [imm(8, "sign")],
+    operands: [imm(8, "sign", 32)],
     format: { syntax: "push {0}" },
     semantics: pushSemantic()
   })

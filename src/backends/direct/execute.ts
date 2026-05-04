@@ -15,6 +15,7 @@ import { CONDITIONS, type FlagBoolExpr } from "#x86/ir/model/conditions.js";
 import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "#x86/ir/model/flags.js";
 import type { MemRef, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import type { IsaDecodedInstruction, IsaOperandBinding } from "#x86/isa/decoder/types.js";
+import type { MemOperand, OperandWidth, RegisterAlias } from "#x86/isa/types.js";
 
 export type DirectExecutionOptions = Readonly<{
   memory?: GuestMemory;
@@ -87,7 +88,7 @@ function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
     case "address32": {
       const binding = context.instruction.operands[op.operand.index];
 
-      if (binding?.kind !== "mem32") {
+      if (binding?.kind !== "mem") {
         return stop(context.state, StopReason.UNSUPPORTED);
       }
 
@@ -166,25 +167,25 @@ function writeStorage(context: ExecutionContext, storage: StorageRef, value: num
 
 function readOperandBinding(context: ExecutionContext, binding: IsaOperandBinding): ValueResult {
   switch (binding.kind) {
-    case "reg32":
-      return { kind: "value", value: getReg32(context.state, binding.reg) };
-    case "imm32":
+    case "reg":
+      return { kind: "value", value: readRegisterAlias(context.state, binding.alias) };
+    case "imm":
       return { kind: "value", value: binding.value };
     case "relTarget":
       return { kind: "value", value: binding.target };
-    case "mem32":
-      return readGuestU32(context, effectiveAddress(context.state, binding));
+    case "mem":
+      return readGuest(context, effectiveAddress(context.state, binding), binding.accessWidth);
   }
 }
 
 function writeOperandBinding(context: ExecutionContext, binding: IsaOperandBinding, value: number): WriteResult {
   switch (binding.kind) {
-    case "reg32":
-      setReg32(context.state, binding.reg, value);
+    case "reg":
+      writeRegisterAlias(context.state, binding.alias, value);
       return { kind: "ok" };
-    case "mem32":
-      return writeGuestU32(context, effectiveAddress(context.state, binding), value);
-    case "imm32":
+    case "mem":
+      return writeGuest(context, effectiveAddress(context.state, binding), binding.accessWidth, value);
+    case "imm":
     case "relTarget":
       return { kind: "unsupported" };
   }
@@ -196,6 +197,48 @@ function readMemory(context: ExecutionContext, storage: MemRef): ValueResult {
 
 function writeMemory(context: ExecutionContext, storage: MemRef, value: number): WriteResult {
   return writeGuestU32(context, evalValueRef(context, storage.address), value);
+}
+
+function readGuest(context: ExecutionContext, address: number, width: OperandWidth): ValueResult {
+  switch (width) {
+    case 8:
+      return readGuestU8(context, address);
+    case 16:
+      return readGuestU16(context, address);
+    case 32:
+      return readGuestU32(context, address);
+  }
+}
+
+function writeGuest(context: ExecutionContext, address: number, width: OperandWidth, value: number): WriteResult {
+  switch (width) {
+    case 8:
+      return writeGuestU8(context, address, value);
+    case 16:
+      return writeGuestU16(context, address, value);
+    case 32:
+      return writeGuestU32(context, address, value);
+  }
+}
+
+function readGuestU8(context: ExecutionContext, address: number): ValueResult {
+  const read = context.memory?.readU8(address);
+
+  if (read === undefined) {
+    return { kind: "unsupported" };
+  }
+
+  return read.ok ? { kind: "value", value: read.value } : { kind: "memoryFault", fault: read.fault };
+}
+
+function readGuestU16(context: ExecutionContext, address: number): ValueResult {
+  const read = context.memory?.readU16(address);
+
+  if (read === undefined) {
+    return { kind: "unsupported" };
+  }
+
+  return read.ok ? { kind: "value", value: read.value } : { kind: "memoryFault", fault: read.fault };
 }
 
 function readGuestU32(context: ExecutionContext, address: number): ValueResult {
@@ -210,6 +253,26 @@ function readGuestU32(context: ExecutionContext, address: number): ValueResult {
 
 function writeGuestU32(context: ExecutionContext, address: number, value: number): WriteResult {
   const write = context.memory?.writeU32(address, value);
+
+  if (write === undefined) {
+    return { kind: "unsupported" };
+  }
+
+  return write.ok ? { kind: "ok" } : { kind: "memoryFault", fault: write.fault };
+}
+
+function writeGuestU8(context: ExecutionContext, address: number, value: number): WriteResult {
+  const write = context.memory?.writeU8(address, value);
+
+  if (write === undefined) {
+    return { kind: "unsupported" };
+  }
+
+  return write.ok ? { kind: "ok" } : { kind: "memoryFault", fault: write.fault };
+}
+
+function writeGuestU16(context: ExecutionContext, address: number, value: number): WriteResult {
+  const write = context.memory?.writeU16(address, value);
 
   if (write === undefined) {
     return { kind: "unsupported" };
@@ -313,11 +376,35 @@ function setVar(context: ExecutionContext, ref: VarRef, value: number): void {
   context.vars.set(ref.id, u32(value));
 }
 
-function effectiveAddress(state: CpuState, binding: Extract<IsaOperandBinding, { kind: "mem32" }>): number {
+function effectiveAddress(state: CpuState, binding: MemOperand): number {
   const base = binding.base === undefined ? 0 : getReg32(state, binding.base);
   const index = binding.index === undefined ? 0 : u32(getReg32(state, binding.index) * binding.scale);
 
   return u32(base + index + binding.disp);
+}
+
+function readRegisterAlias(state: CpuState, alias: RegisterAlias): number {
+  const value = getReg32(state, alias.base);
+
+  return alias.width === 32
+    ? value
+    : (value >>> alias.bitOffset) & widthMask(alias.width);
+}
+
+function writeRegisterAlias(state: CpuState, alias: RegisterAlias, value: number): void {
+  if (alias.width === 32) {
+    setReg32(state, alias.base, value);
+    return;
+  }
+
+  const mask = widthMask(alias.width) << alias.bitOffset;
+  const base = getReg32(state, alias.base);
+
+  setReg32(state, alias.base, (base & ~mask) | ((value << alias.bitOffset) & mask));
+}
+
+function widthMask(width: OperandWidth): number {
+  return width === 32 ? 0xffff_ffff : width === 16 ? 0xffff : 0xff;
 }
 
 function signMask(width: 8 | 16 | 32): number {

@@ -4,17 +4,24 @@ import { imm, implicitReg, modrmReg, modrmRm, opReg } from "#x86/isa/schema/oper
 import { aluSemantic, incDecSemantic } from "#x86/isa/semantics/alu.js";
 
 export const ADD = mnemonic("add", [
+  // 00 /r: ADD r/m8, r8
+  form("rm8_r8", {
+    opcode: [0x00],
+    operands: [modrmRm("rm8"), modrmReg("r8")],
+    format: { syntax: "add {0}, {1}" },
+    semantics: aluSemantic("add", 32)
+  }),
   // 01 /r: ADD r/m32, r32
   form("rm32_r32", {
     opcode: [0x01],
-    operands: [modrmRm("rm32"), modrmReg("reg32")],
+    operands: [modrmRm("rm32"), modrmReg("r32")],
     format: { syntax: "add {0}, {1}" },
     semantics: aluSemantic("add", 32)
   }),
   // 03 /r: ADD r32, r/m32
   form("r32_rm32", {
     opcode: [0x03],
-    operands: [modrmReg("reg32"), modrmRm("rm32")],
+    operands: [modrmReg("r32"), modrmRm("rm32")],
     format: { syntax: "add {0}, {1}" },
     semantics: aluSemantic("add", 32)
   }),
@@ -37,7 +44,7 @@ export const ADD = mnemonic("add", [
   form("rm32_imm8", {
     opcode: [0x83],
     modrm: { match: { reg: 0 } },
-    operands: [modrmRm("rm32"), imm(8, "sign")],
+    operands: [modrmRm("rm32"), imm(8, "sign", 32)],
     format: { syntax: "add {0}, {1}" },
     semantics: aluSemantic("add", 32)
   })
@@ -47,14 +54,14 @@ export const OR = mnemonic("or", [
   // 09 /r: OR r/m32, r32
   form("rm32_r32", {
     opcode: [0x09],
-    operands: [modrmRm("rm32"), modrmReg("reg32")],
+    operands: [modrmRm("rm32"), modrmReg("r32")],
     format: { syntax: "or {0}, {1}" },
     semantics: aluSemantic("or", 32)
   }),
   // 0B /r: OR r32, r/m32
   form("r32_rm32", {
     opcode: [0x0b],
-    operands: [modrmReg("reg32"), modrmRm("rm32")],
+    operands: [modrmReg("r32"), modrmRm("rm32")],
     format: { syntax: "or {0}, {1}" },
     semantics: aluSemantic("or", 32)
   }),
@@ -77,7 +84,7 @@ export const OR = mnemonic("or", [
   form("rm32_imm8", {
     opcode: [0x83],
     modrm: { match: { reg: 1 } },
-    operands: [modrmRm("rm32"), imm(8, "sign")],
+    operands: [modrmRm("rm32"), imm(8, "sign", 32)],
     format: { syntax: "or {0}, {1}" },
     semantics: aluSemantic("or", 32)
   })
@@ -87,14 +94,14 @@ export const AND = mnemonic("and", [
   // 21 /r: AND r/m32, r32
   form("rm32_r32", {
     opcode: [0x21],
-    operands: [modrmRm("rm32"), modrmReg("reg32")],
+    operands: [modrmRm("rm32"), modrmReg("r32")],
     format: { syntax: "and {0}, {1}" },
     semantics: aluSemantic("and", 32)
   }),
   // 23 /r: AND r32, r/m32
   form("r32_rm32", {
     opcode: [0x23],
-    operands: [modrmReg("reg32"), modrmRm("rm32")],
+    operands: [modrmReg("r32"), modrmRm("rm32")],
     format: { syntax: "and {0}, {1}" },
     semantics: aluSemantic("and", 32)
   }),
@@ -117,7 +124,7 @@ export const AND = mnemonic("and", [
   form("rm32_imm8", {
     opcode: [0x83],
     modrm: { match: { reg: 4 } },
-    operands: [modrmRm("rm32"), imm(8, "sign")],
+    operands: [modrmRm("rm32"), imm(8, "sign", 32)],
     format: { syntax: "and {0}, {1}" },
     semantics: aluSemantic("and", 32)
   })
@@ -127,14 +134,14 @@ export const SUB = mnemonic("sub", [
   // 29 /r: SUB r/m32, r32
   form("rm32_r32", {
     opcode: [0x29],
-    operands: [modrmRm("rm32"), modrmReg("reg32")],
+    operands: [modrmRm("rm32"), modrmReg("r32")],
     format: { syntax: "sub {0}, {1}" },
     semantics: aluSemantic("sub", 32)
   }),
   // 2B /r: SUB r32, r/m32
   form("r32_rm32", {
     opcode: [0x2b],
-    operands: [modrmReg("reg32"), modrmRm("rm32")],
+    operands: [modrmReg("r32"), modrmRm("rm32")],
     format: { syntax: "sub {0}, {1}" },
     semantics: aluSemantic("sub", 32)
   }),
@@ -157,7 +164,7 @@ export const SUB = mnemonic("sub", [
   form("rm32_imm8", {
     opcode: [0x83],
     modrm: { match: { reg: 5 } },
-    operands: [modrmRm("rm32"), imm(8, "sign")],
+    operands: [modrmRm("rm32"), imm(8, "sign", 32)],
     format: { syntax: "sub {0}, {1}" },
     semantics: aluSemantic("sub", 32)
   })
@@ -167,14 +174,14 @@ export const XOR = mnemonic("xor", [
   // 31 /r: XOR r/m32, r32
   form("rm32_r32", {
     opcode: [0x31],
-    operands: [modrmRm("rm32"), modrmReg("reg32")],
+    operands: [modrmRm("rm32"), modrmReg("r32")],
     format: { syntax: "xor {0}, {1}" },
     semantics: aluSemantic("xor", 32)
   }),
   // 33 /r: XOR r32, r/m32
   form("r32_rm32", {
     opcode: [0x33],
-    operands: [modrmReg("reg32"), modrmRm("rm32")],
+    operands: [modrmReg("r32"), modrmRm("rm32")],
     format: { syntax: "xor {0}, {1}" },
     semantics: aluSemantic("xor", 32)
   }),
@@ -197,7 +204,7 @@ export const XOR = mnemonic("xor", [
   form("rm32_imm8", {
     opcode: [0x83],
     modrm: { match: { reg: 6 } },
-    operands: [modrmRm("rm32"), imm(8, "sign")],
+    operands: [modrmRm("rm32"), imm(8, "sign", 32)],
     format: { syntax: "xor {0}, {1}" },
     semantics: aluSemantic("xor", 32)
   })

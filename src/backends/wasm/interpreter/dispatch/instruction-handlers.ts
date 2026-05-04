@@ -1,6 +1,6 @@
 import { buildIr } from "#x86/ir/build/builder.js";
 import type { ExpandedInstructionSpec, ModRmMatch, Reg3 } from "#x86/isa/schema/types.js";
-import type { OpcodeDispatchLeaf } from "#x86/isa/decoder/opcode-dispatch.js";
+import type { OpcodeDispatchCandidateSet, OpcodeDispatchLeaf } from "#x86/isa/decoder/opcode-dispatch.js";
 import type { SemanticTemplate } from "#x86/ir/model/types.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { emitInterpreterIrWithContext } from "#backends/wasm/interpreter/codegen/ir-context.js";
@@ -13,14 +13,32 @@ export function emitInstructionHandlerForLeaf(
   leaf: OpcodeDispatchLeaf,
   context: InterpreterHandlerContext
 ): boolean {
-  const noModRmInstruction = leaf.noModRmCandidates[0];
+  const candidates = leaf.operandSize.default;
 
-  if (noModRmInstruction !== undefined) {
-    emitInstructionHandler(noModRmInstruction, context, undefined);
-    return true;
+  switch (candidates.kind) {
+    case "empty":
+      return false;
+    case "noModRm": {
+      const noModRmInstruction = candidates.noModRmCandidates[0];
+
+      if (noModRmInstruction === undefined) {
+        return false;
+      }
+
+      emitInstructionHandler(noModRmInstruction, context, undefined);
+      return true;
+    }
+    case "modRm":
+      return emitModRmInstructionHandler(leaf, candidates, context);
   }
+}
 
-  const modRmCases = registerModRmDispatchCases(leaf);
+function emitModRmInstructionHandler(
+  leaf: OpcodeDispatchLeaf,
+  candidates: OpcodeDispatchCandidateSet,
+  context: InterpreterHandlerContext
+): boolean {
+  const modRmCases = registerModRmDispatchCases(candidates);
 
   if (modRmCases.length === 0) {
     return false;
@@ -81,11 +99,11 @@ type ModRmCaseSpec = Readonly<{
   regs: readonly Reg3[];
 }>;
 
-function registerModRmDispatchCases(leaf: OpcodeDispatchLeaf): readonly ModRmCaseSpec[] {
+function registerModRmDispatchCases(candidates: OpcodeDispatchCandidateSet): readonly ModRmCaseSpec[] {
   const casesByInstruction = new Map<string, { instruction: ExpandedInstructionSpec<SemanticTemplate>; regs: Reg3[] }>();
 
   for (const reg of reg3Values) {
-    const instruction = supportedRegisterModRmInstruction(leaf, reg);
+    const instruction = supportedRegisterModRmInstruction(candidates, reg);
 
     if (instruction === undefined) {
       continue;
@@ -128,10 +146,10 @@ function bindModRmCases(
 }
 
 function supportedRegisterModRmInstruction(
-  leaf: OpcodeDispatchLeaf,
+  candidates: OpcodeDispatchCandidateSet,
   reg: Reg3
 ): ExpandedInstructionSpec<SemanticTemplate> | undefined {
-  const bucket = leaf.modRmByReg[reg] ?? [];
+  const bucket = candidates.modRmByReg[reg] ?? [];
 
   return bucket.find((candidate) => modRmRegMatches(candidate.spec.modrm?.match, reg));
 }

@@ -1,4 +1,4 @@
-import type { Mem32Operand } from "#x86/isa/types.js";
+import type { MemOperand } from "#x86/isa/types.js";
 import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import type { StorageRef } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
@@ -164,7 +164,7 @@ function emitSetBinding32If(
   }
 }
 
-function emitEffectiveAddress32(body: JitIrContext["body"], regs: WasmIrReg32Storage, ea: Mem32Operand): void {
+function emitEffectiveAddress32(body: JitIrContext["body"], regs: WasmIrReg32Storage, ea: MemOperand): void {
   let hasTerm = false;
 
   if (ea.base !== undefined) {
@@ -192,7 +192,7 @@ function emitEffectiveAddress32(body: JitIrContext["body"], regs: WasmIrReg32Sto
   }
 }
 
-function emitScale(body: JitIrContext["body"], scale: Mem32Operand["scale"]): void {
+function emitScale(body: JitIrContext["body"], scale: MemOperand["scale"]): void {
   const shift = scale === 1 ? 0 : scale === 2 ? 1 : scale === 4 ? 2 : 3;
 
   if (shift !== 0) {

@@ -9,6 +9,13 @@ const fixtures: readonly DecoderFixture[] = [
     format: "nop"
   },
   {
+    name: "operand-size prefixed nop",
+    bytes: [0x66, 0x90],
+    mnemonic: "nop",
+    id: "nop.operand_size_override",
+    format: "nop"
+  },
+  {
     name: "int imm8",
     bytes: [0xcd, 0x2e],
     mnemonic: "int",

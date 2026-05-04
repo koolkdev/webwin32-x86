@@ -8,6 +8,13 @@ export const NOP = mnemonic("nop", [
     opcode: [0x90],
     format: { syntax: "nop" },
     semantics: nopSemantic()
+  }),
+  // 66 90: temporary NOP alias until xchg r16, r16 is modeled.
+  form("operand_size_override", {
+    opcode: [0x90],
+    prefixes: { operandSize: "override" },
+    format: { syntax: "nop" },
+    semantics: nopSemantic()
   })
 ]);
 

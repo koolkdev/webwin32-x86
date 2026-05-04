@@ -1,4 +1,4 @@
-import type { Reg32 } from "#x86/isa/types.js";
+import type { OperandWidth, RegName } from "#x86/isa/types.js";
 
 export type Reg3 = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type FixedHighBits = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
@@ -12,15 +12,18 @@ export type OpcodePathPart =
 
 export type OpcodePath = readonly OpcodePathPart[];
 
-export type ImmediateExtension = "sign" | "zero";
+export type ImmediateExtension = "sign";
+export type RegOperandType = "r8" | "r16" | "r32";
+export type RmOperandType = "rm8" | "rm16" | "rm32";
+export type MemOperandType = "m8" | "m16" | "m32";
+export type OperandSizePrefixMode = "default" | "override";
 
 export type OperandSpec =
-  | Readonly<{ kind: "modrm.reg"; type: "reg32" }>
-  | Readonly<{ kind: "modrm.rm"; type: "rm32" }>
-  | Readonly<{ kind: "modrm.rm"; type: "m32" }>
-  | Readonly<{ kind: "opcode.reg"; type: "reg32" }>
-  | Readonly<{ kind: "implicit.reg"; reg: Reg32; type: "reg32" }>
-  | Readonly<{ kind: "imm"; width: 8 | 16 | 32; extension?: ImmediateExtension }>
+  | Readonly<{ kind: "modrm.reg"; type: RegOperandType }>
+  | Readonly<{ kind: "modrm.rm"; type: RmOperandType | MemOperandType }>
+  | Readonly<{ kind: "opcode.reg"; type: RegOperandType }>
+  | Readonly<{ kind: "implicit.reg"; reg: RegName; type: RegOperandType }>
+  | Readonly<{ kind: "imm"; width: OperandWidth; semanticWidth?: OperandWidth; extension?: ImmediateExtension }>
   | Readonly<{ kind: "rel"; width: 8 | 32 }>;
 
 export type ModRmMatch = Readonly<{
@@ -33,10 +36,15 @@ export type InstructionFormat = Readonly<{
   syntax: string;
 }>;
 
+export type InstructionPrefixes = Readonly<{
+  operandSize?: OperandSizePrefixMode;
+}>;
+
 export type InstructionSpec<TSemantics = unknown> = Readonly<{
   id: string;
   mnemonic: string;
   opcode: OpcodePath;
+  prefixes?: InstructionPrefixes;
   modrm?: Readonly<{
     match?: ModRmMatch;
   }>;

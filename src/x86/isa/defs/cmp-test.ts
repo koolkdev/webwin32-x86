@@ -7,14 +7,14 @@ export const CMP = mnemonic("cmp", [
   // 39 /r: CMP r/m32, r32
   form("rm32_r32", {
     opcode: [0x39],
-    operands: [modrmRm("rm32"), modrmReg("reg32")],
+    operands: [modrmRm("rm32"), modrmReg("r32")],
     format: { syntax: "cmp {0}, {1}" },
     semantics: cmpSemantic()
   }),
   // 3B /r: CMP r32, r/m32
   form("r32_rm32", {
     opcode: [0x3b],
-    operands: [modrmReg("reg32"), modrmRm("rm32")],
+    operands: [modrmReg("r32"), modrmRm("rm32")],
     format: { syntax: "cmp {0}, {1}" },
     semantics: cmpSemantic()
   }),
@@ -33,11 +33,20 @@ export const CMP = mnemonic("cmp", [
     format: { syntax: "cmp {0}, {1}" },
     semantics: cmpSemantic()
   }),
+  // 66 81 /7 iw: CMP r/m16, imm16
+  form("rm16_imm16", {
+    prefixes: { operandSize: "override" },
+    opcode: [0x81],
+    modrm: { match: { reg: 7 } },
+    operands: [modrmRm("rm16"), imm(16)],
+    format: { syntax: "cmp {0}, {1}" },
+    semantics: cmpSemantic()
+  }),
   // 83 /7 ib: CMP r/m32, sign-extended imm8
   form("rm32_imm8", {
     opcode: [0x83],
     modrm: { match: { reg: 7 } },
-    operands: [modrmRm("rm32"), imm(8, "sign")],
+    operands: [modrmRm("rm32"), imm(8, "sign", 32)],
     format: { syntax: "cmp {0}, {1}" },
     semantics: cmpSemantic()
   })
@@ -47,7 +56,7 @@ export const TEST = mnemonic("test", [
   // 85 /r: TEST r/m32, r32
   form("rm32_r32", {
     opcode: [0x85],
-    operands: [modrmRm("rm32"), modrmReg("reg32")],
+    operands: [modrmRm("rm32"), modrmReg("r32")],
     format: { syntax: "test {0}, {1}" },
     semantics: testSemantic()
   }),

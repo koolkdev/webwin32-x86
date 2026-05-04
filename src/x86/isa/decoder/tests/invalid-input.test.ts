@@ -16,14 +16,14 @@ test("reports unsupported opcode without throwing", () => {
   }
 });
 
-test("treats operand-size override as unsupported while prefixes are not modeled", () => {
-  const decoded = decodeBytes([0x66, 0x90]);
+test("reports unsupported opcode after prefix without throwing", () => {
+  const decoded = decodeBytes([0x66, 0x62]);
 
   strictEqual(decoded.kind, "unsupported");
   if (decoded.kind === "unsupported") {
-    strictEqual(decoded.length, 1);
+    strictEqual(decoded.length, 2);
     strictEqual(decoded.unsupportedByte, 0x66);
-    deepStrictEqual(decoded.raw, [0x66]);
+    deepStrictEqual(decoded.raw, [0x66, 0x62]);
   }
 });
 

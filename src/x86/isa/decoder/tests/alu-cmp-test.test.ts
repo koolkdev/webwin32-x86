@@ -1,6 +1,13 @@
-import { imm32, mem32, reg32, signImm8, testDecodeFixtures, type DecoderFixture } from "./helpers.js";
+import { imm16, imm32, mem, mem32, reg, reg32, signImm8, testDecodeFixtures, type DecoderFixture } from "./helpers.js";
 
 const fixtures: readonly DecoderFixture[] = [
+  {
+    name: "add [eax], bl",
+    bytes: [0x00, 0x18],
+    mnemonic: "add",
+    operands: [mem(8, { base: "eax", scale: 1, disp: 0 }), reg("bl")],
+    id: "add.rm8_r8"
+  },
   {
     name: "add eax, ebx",
     bytes: [0x01, 0xd8],
@@ -237,6 +244,16 @@ const fixtures: readonly DecoderFixture[] = [
       imm32(0x1234_5678)
     ],
     id: "cmp.rm32_imm32"
+  },
+  {
+    name: "cmp [ebp-4], imm16 with operand-size override",
+    bytes: [0x66, 0x81, 0x7d, 0xfc, 0x34, 0x12],
+    mnemonic: "cmp",
+    operands: [
+      mem(16, { base: "ebp", scale: 1, disp: -4 }),
+      imm16(0x1234)
+    ],
+    id: "cmp.rm16_imm16"
   }
 ];
 

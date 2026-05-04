@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { ArrayBufferGuestMemory } from "#x86/memory/guest-memory.js";
 import { GuestMemoryDecodeReader } from "#x86/isa/decoder/guest-memory-reader.js";
 import { decodeIsaBlock } from "#x86/isa/decoder/decode-block.js";
-import { ByteArrayDecodeReader } from "./helpers.js";
+import { ByteArrayDecodeReader, imm8 } from "./helpers.js";
 
 const startAddress = 0x1000;
 
@@ -45,9 +45,7 @@ test("decodeIsaBlock_stops_after_int_control_instruction", () => {
   deepStrictEqual(block.instructions.map((instruction) => instruction.spec.id), ["nop.near", "int.imm8"]);
   strictEqual(block.terminator.kind, "control");
   if (block.terminator.kind === "control") {
-    deepStrictEqual(block.terminator.instruction.operands, [
-      { kind: "imm32", value: 0x2e, encodedWidth: 8 }
-    ]);
+    deepStrictEqual(block.terminator.instruction.operands, [imm8(0x2e)]);
   }
 });
 

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { ArrayBufferGuestMemory } from "#x86/memory/guest-memory.js";
 import { GuestMemoryDecodeReader } from "#x86/isa/decoder/guest-memory-reader.js";
 import { decodeIsaInstructionFromReader } from "#x86/isa/decoder/decode.js";
-import { decodeBytes, ok, startAddress } from "./helpers.js";
+import { decodeBytes, imm8, imm32, mem32, ok, reg32, signImm8, startAddress } from "./helpers.js";
 
 test("decodes opcode-encoded register and imm32 operands", () => {
   const decoded = ok(decodeBytes([0xbb, 0x78, 0x56, 0x34, 0x12]));
@@ -14,10 +14,7 @@ test("decodes opcode-encoded register and imm32 operands", () => {
   strictEqual(decoded.length, 5);
   strictEqual(decoded.nextEip, startAddress + 5);
   deepStrictEqual(decoded.raw, [0xbb, 0x78, 0x56, 0x34, 0x12]);
-  deepStrictEqual(decoded.operands, [
-    { kind: "reg32", reg: "ebx" },
-    { kind: "imm32", value: 0x1234_5678, encodedWidth: 32 }
-  ]);
+  deepStrictEqual(decoded.operands, [reg32("ebx"), imm32(0x1234_5678)]);
 });
 
 test("decodes directly from guest memory without requiring a full instruction slice", () => {
@@ -51,8 +48,8 @@ test("decodes multibyte ModRM/SIB instruction directly from guest memory", () =>
   strictEqual(decoded.length, 7);
   deepStrictEqual(decoded.raw, values);
   deepStrictEqual(decoded.operands, [
-    { kind: "reg32", reg: "eax" },
-    { kind: "mem32", base: "eax", index: "ecx", scale: 4, disp: 0x10 }
+    reg32("eax"),
+    mem32({ base: "eax", index: "ecx", scale: 4, disp: 0x10 })
   ]);
 });
 
@@ -64,17 +61,11 @@ test("decodes slash-r register/register operands positionally", () => {
 
   strictEqual(mov.spec.id, "mov.r32_rm32");
   strictEqual(mov.spec.format.syntax, "mov {0}, {1}");
-  deepStrictEqual(mov.operands, [
-    { kind: "reg32", reg: "eax" },
-    { kind: "reg32", reg: "ebx" }
-  ]);
+  deepStrictEqual(mov.operands, [reg32("eax"), reg32("ebx")]);
 
   strictEqual(reverse.spec.id, "mov.rm32_r32");
   strictEqual(reverse.spec.format.syntax, "mov {0}, {1}");
-  deepStrictEqual(reverse.operands, [
-    { kind: "reg32", reg: "ebx" },
-    { kind: "reg32", reg: "eax" }
-  ]);
+  deepStrictEqual(reverse.operands, [reg32("ebx"), reg32("eax")]);
 });
 
 test("uses ModRM match fields for slash-digit groups", () => {
@@ -89,31 +80,19 @@ test("uses ModRM match fields for slash-digit groups", () => {
 
   strictEqual(sub.spec.id, "sub.rm32_imm8");
   strictEqual(sub.spec.format.syntax, "sub {0}, {1}");
-  deepStrictEqual(sub.operands, [
-    { kind: "reg32", reg: "ebx" },
-    { kind: "imm32", value: 0xffff_ffff, encodedWidth: 8, extension: "sign" }
-  ]);
+  deepStrictEqual(sub.operands, [reg32("ebx"), signImm8(0xffff_ffff)]);
 
   strictEqual(or.spec.id, "or.rm32_imm8");
   strictEqual(or.spec.format.syntax, "or {0}, {1}");
-  deepStrictEqual(or.operands, [
-    { kind: "reg32", reg: "ebx" },
-    { kind: "imm32", value: 0x7f, encodedWidth: 8, extension: "sign" }
-  ]);
+  deepStrictEqual(or.operands, [reg32("ebx"), signImm8(0x7f)]);
 
   strictEqual(and.spec.id, "and.rm32_imm32");
   strictEqual(and.spec.format.syntax, "and {0}, {1}");
-  deepStrictEqual(and.operands, [
-    { kind: "reg32", reg: "ebx" },
-    { kind: "imm32", value: 0x1234_5678, encodedWidth: 32 }
-  ]);
+  deepStrictEqual(and.operands, [reg32("ebx"), imm32(0x1234_5678)]);
 
   strictEqual(xor.spec.id, "xor.rm32_imm32");
   strictEqual(xor.spec.format.syntax, "xor {0}, {1}");
-  deepStrictEqual(xor.operands, [
-    { kind: "reg32", reg: "ebx" },
-    { kind: "imm32", value: 0x1234_5678, encodedWidth: 32 }
-  ]);
+  deepStrictEqual(xor.operands, [reg32("ebx"), imm32(0x1234_5678)]);
 });
 
 test("rejects unregistered grouped opcodes after ModRM.reg dispatch", () => {
@@ -176,9 +155,7 @@ test("decodes nop and int imm8 forms", () => {
   strictEqual(trap.spec.id, "int.imm8");
   strictEqual(trap.spec.format.syntax, "int {0}");
   strictEqual(trap.length, 2);
-  deepStrictEqual(trap.operands, [
-    { kind: "imm32", value: 0x2e, encodedWidth: 8 }
-  ]);
+  deepStrictEqual(trap.operands, [imm8(0x2e)]);
 });
 
 test("decodes ModRM memory operands with displacement", () => {
@@ -187,10 +164,7 @@ test("decodes ModRM memory operands with displacement", () => {
 
   strictEqual(decoded.spec.id, "mov.r32_rm32");
   strictEqual(decoded.spec.format.syntax, "mov {0}, {1}");
-  deepStrictEqual(decoded.operands, [
-    { kind: "reg32", reg: "eax" },
-    { kind: "mem32", base: "ebx", scale: 1, disp: 4 }
-  ]);
+  deepStrictEqual(decoded.operands, [reg32("eax"), mem32({ base: "ebx", scale: 1, disp: 4 })]);
 });
 
 test("rejects address-only m32 forms when ModRM encodes a register", () => {

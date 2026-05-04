@@ -5,17 +5,32 @@ import { opcodePlusReg } from "#x86/isa/schema/opcodes.js";
 import { cmovSemantic, movSemantic } from "#x86/isa/semantics/mov.js";
 
 export const MOV = mnemonic("mov", [
+  // 8A /r: MOV r8, r/m8
+  form("r8_rm8", {
+    opcode: [0x8a],
+    operands: [modrmReg("r8"), modrmRm("rm8")],
+    format: { syntax: "mov {0}, {1}" },
+    semantics: movSemantic()
+  }),
+  // 66 8B /r: MOV r16, r/m16
+  form("r16_rm16", {
+    prefixes: { operandSize: "override" },
+    opcode: [0x8b],
+    operands: [modrmReg("r16"), modrmRm("rm16")],
+    format: { syntax: "mov {0}, {1}" },
+    semantics: movSemantic()
+  }),
   // 8B /r: MOV r32, r/m32
   form("r32_rm32", {
     opcode: [0x8b],
-    operands: [modrmReg("reg32"), modrmRm("rm32")],
+    operands: [modrmReg("r32"), modrmRm("rm32")],
     format: { syntax: "mov {0}, {1}" },
     semantics: movSemantic()
   }),
   // 89 /r: MOV r/m32, r32
   form("rm32_r32", {
     opcode: [0x89],
-    operands: [modrmRm("rm32"), modrmReg("reg32")],
+    operands: [modrmRm("rm32"), modrmReg("r32")],
     format: { syntax: "mov {0}, {1}" },
     semantics: movSemantic()
   }),
@@ -41,7 +56,7 @@ export const CMOVCC = CONDITION_CODE_DESCRIPTORS.map((descriptor) =>
     // 0F 40+cc /r: CMOVcc r32, r/m32
     form("r32_rm32", {
       opcode: [0x0f, 0x40 + descriptor.opcodeLow],
-      operands: [modrmReg("reg32"), modrmRm("rm32")],
+      operands: [modrmReg("r32"), modrmRm("rm32")],
       format: { syntax: `cmov${descriptor.suffix} {0}, {1}` },
       semantics: cmovSemantic(descriptor.cc)
     })

@@ -1,9 +1,9 @@
 import type { IsaDecodeReader } from "./reader.js";
 import { readU32LE } from "./reader.js";
 import { signedImm8, signedImm32 } from "./immediate.js";
-import { reg32, type Mem32Operand, type Reg32 } from "#x86/isa/types.js";
+import { reg32, type EffectiveAddress, type Reg32 } from "#x86/isa/types.js";
 
-type Scale = Mem32Operand["scale"];
+type Scale = EffectiveAddress["scale"];
 type Sib = Readonly<{
   baseField: number;
   index: Reg32 | undefined;
@@ -16,12 +16,15 @@ const disp32RmField = 0b101;
 const noIndexField = 0b100;
 const sibScales = [1, 2, 4, 8] as const;
 
-export type Rm32Operand = Readonly<{ kind: "reg32"; reg: Reg32 }> | Mem32Operand;
+export type ModRmRm =
+  | Readonly<{ kind: "reg"; index: number }>
+  | Readonly<{ kind: "mem"; address: EffectiveAddress }>;
 
-export type Rm32ModRm = Readonly<{
+export type DecodedModRmAddressing = Readonly<{
+  mod: number;
   regField: number;
-  reg: Reg32;
-  rm: Rm32Operand;
+  rmField: number;
+  rm: ModRmRm;
   byteLength: number;
 }>;
 
@@ -50,7 +53,7 @@ export function rm32ModRmByteLengthAt(reader: IsaDecodeReader, eip: number): num
   }
 }
 
-export function decodeRm32ModRm(reader: IsaDecodeReader, eip: number): Rm32ModRm {
+export function decodeModRmAddressing(reader: IsaDecodeReader, eip: number): DecodedModRmAddressing {
   const value = reader.readU8(eip);
   const mod = value >>> 6;
   const regField = (value >>> 3) & 0b111;
@@ -59,22 +62,24 @@ export function decodeRm32ModRm(reader: IsaDecodeReader, eip: number): Rm32ModRm
 
   if (mod === modRegister) {
     return {
+      mod,
       regField,
-      reg: register(value >>> 3),
-      rm: { kind: "reg32", reg: register(value) },
+      rmField,
+      rm: { kind: "reg", index: rmField },
       byteLength
     };
   }
 
   return {
+    mod,
     regField,
-    reg: register(value >>> 3),
-    rm: decodeMem32(reader, eip, mod, rmField),
+    rmField,
+    rm: { kind: "mem", address: decodeMemAddress(reader, eip, mod, rmField) },
     byteLength
   };
 }
 
-function decodeMem32(reader: IsaDecodeReader, eip: number, mod: number, rmField: number): Mem32Operand {
+function decodeMemAddress(reader: IsaDecodeReader, eip: number, mod: number, rmField: number): EffectiveAddress {
   const sib = rmField === sibRmField ? decodeSib(reader.readU8(eip + 1)) : undefined;
   const displacementEip = sib === undefined ? eip + 1 : eip + 2;
 
@@ -84,16 +89,16 @@ function decodeMem32(reader: IsaDecodeReader, eip: number, mod: number, rmField:
         const base = sib.baseField === disp32RmField ? undefined : register(sib.baseField);
         const disp = sib.baseField === disp32RmField ? readU32LE(reader, displacementEip) : 0;
 
-        return mem32(base, sib.index, sib.scale, disp);
+        return effectiveAddress(base, sib.index, sib.scale, disp);
       }
 
       return rmField === disp32RmField
-        ? mem32(undefined, undefined, 1, readU32LE(reader, displacementEip))
-        : mem32(register(rmField), undefined, 1, 0);
+        ? effectiveAddress(undefined, undefined, 1, readU32LE(reader, displacementEip))
+        : effectiveAddress(register(rmField), undefined, 1, 0);
     case 1:
-      return mem32(memoryBase(rmField, sib), sib?.index, sib?.scale ?? 1, signedImm8(reader.readU8(displacementEip)));
+      return effectiveAddress(memoryBase(rmField, sib), sib?.index, sib?.scale ?? 1, signedImm8(reader.readU8(displacementEip)));
     case 2:
-      return mem32(
+      return effectiveAddress(
         memoryBase(rmField, sib),
         sib?.index,
         sib?.scale ?? 1,
@@ -104,9 +109,13 @@ function decodeMem32(reader: IsaDecodeReader, eip: number, mod: number, rmField:
   }
 }
 
-function mem32(base: Reg32 | undefined, index: Reg32 | undefined, scale: Scale, disp: number): Mem32Operand {
-  const mem: { kind: "mem32"; base?: Reg32; index?: Reg32; scale: Scale; disp: number } = {
-    kind: "mem32",
+function effectiveAddress(
+  base: Reg32 | undefined,
+  index: Reg32 | undefined,
+  scale: Scale,
+  disp: number
+): EffectiveAddress {
+  const mem: { base?: Reg32; index?: Reg32; scale: Scale; disp: number } = {
     scale: index === undefined ? 1 : scale,
     disp
   };

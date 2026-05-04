@@ -9,18 +9,22 @@ import type { InstructionSpec } from "#x86/isa/schema/types.js";
 
 test("x86-32 core registers the initial instruction surface", () => {
   strictEqual(X86_32_CORE.name, "x86-32-core");
-  strictEqual(X86_32_CORE.instructions.length, 105);
+  strictEqual(X86_32_CORE.instructions.length, 110);
 
   const ids = X86_32_CORE.instructions.map((spec) => spec.id);
 
   for (const id of [
     "mov.r32_rm32",
+    "mov.r8_rm8",
+    "mov.r16_rm16",
     "nop.near",
+    "nop.operand_size_override",
     "mov.rm32_r32",
     "mov.r32_imm32",
     "mov.rm32_imm32",
     "cmove.r32_rm32",
     "lea.r32_m32",
+    "add.rm8_r8",
     "add.rm32_imm8",
     "or.rm32_imm8",
     "and.rm32_imm8",
@@ -31,6 +35,7 @@ test("x86-32 core registers the initial instruction surface", () => {
     "dec.r32",
     "dec.rm32",
     "cmp.rm32_imm8",
+    "cmp.rm16_imm16",
     "test.rm32_imm32",
     "push.r32",
     "pop.r32",
@@ -48,12 +53,21 @@ test("x86-32 core registers the initial instruction surface", () => {
   }
 });
 
+test("operand-size prefixed nop is a temporary alias form", () => {
+  const spec = instruction("nop.operand_size_override");
+
+  deepStrictEqual(spec.opcode, [0x90]);
+  deepStrictEqual(spec.prefixes, { operandSize: "override" });
+  strictEqual(spec.operands, undefined);
+  deepStrictEqual(spec.format, { syntax: "nop" });
+});
+
 test("cmovcc forms are concrete specs with conditional-write semantics", () => {
   const spec = instruction("cmove.r32_rm32");
 
   deepStrictEqual(spec.opcode, [0x0f, 0x44]);
   deepStrictEqual(spec.operands, [
-    { kind: "modrm.reg", type: "reg32" },
+    { kind: "modrm.reg", type: "r32" },
     { kind: "modrm.rm", type: "rm32" }
   ]);
   deepStrictEqual(spec.format, { syntax: "cmove {0}, {1}" });
@@ -84,7 +98,7 @@ test("slash-r forms use ModRM operands without an explicit ModRM match", () => {
   deepStrictEqual(spec.opcode, [0x8b]);
   strictEqual(spec.modrm, undefined);
   deepStrictEqual(spec.operands, [
-    { kind: "modrm.reg", type: "reg32" },
+    { kind: "modrm.reg", type: "r32" },
     { kind: "modrm.rm", type: "rm32" }
   ]);
   deepStrictEqual(spec.format, { syntax: "mov {0}, {1}" });
@@ -100,7 +114,7 @@ test("group opcode forms use modrm.match.reg for Intel slash-digit notation", ()
   deepStrictEqual(or.modrm, { match: { reg: 1 } });
   deepStrictEqual(or.operands, [
     { kind: "modrm.rm", type: "rm32" },
-    { kind: "imm", width: 8, extension: "sign" }
+    { kind: "imm", width: 8, semanticWidth: 32, extension: "sign" }
   ]);
 
   deepStrictEqual(and.opcode, [0x81]);
@@ -114,12 +128,41 @@ test("group opcode forms use modrm.match.reg for Intel slash-digit notation", ()
   deepStrictEqual(sub.modrm, { match: { reg: 5 } });
   deepStrictEqual(sub.operands, [
     { kind: "modrm.rm", type: "rm32" },
-    { kind: "imm", width: 8, extension: "sign" }
+    { kind: "imm", width: 8, semanticWidth: 32, extension: "sign" }
   ]);
 
   deepStrictEqual(call.opcode, [0xff]);
   deepStrictEqual(call.modrm, { match: { reg: 2 } });
   deepStrictEqual(call.operands, [{ kind: "modrm.rm", type: "rm32" }]);
+});
+
+test("width-specific decode forms record operand-size metadata", () => {
+  const mov8 = instruction("mov.r8_rm8");
+  const mov16 = instruction("mov.r16_rm16");
+  const add8 = instruction("add.rm8_r8");
+  const cmp16 = instruction("cmp.rm16_imm16");
+
+  deepStrictEqual(mov8.operands, [
+    { kind: "modrm.reg", type: "r8" },
+    { kind: "modrm.rm", type: "rm8" }
+  ]);
+
+  deepStrictEqual(mov16.prefixes, { operandSize: "override" });
+  deepStrictEqual(mov16.operands, [
+    { kind: "modrm.reg", type: "r16" },
+    { kind: "modrm.rm", type: "rm16" }
+  ]);
+
+  deepStrictEqual(add8.operands, [
+    { kind: "modrm.rm", type: "rm8" },
+    { kind: "modrm.reg", type: "r8" }
+  ]);
+
+  deepStrictEqual(cmp16.prefixes, { operandSize: "override" });
+  deepStrictEqual(cmp16.operands, [
+    { kind: "modrm.rm", type: "rm16" },
+    { kind: "imm", width: 16 }
+  ]);
 });
 
 test("mov r/m32, imm32 uses C7 slash-zero form", () => {
@@ -170,11 +213,11 @@ test("opcode-encoded register forms expand through opcode low bits", () => {
   ]);
 });
 
-test("ret imm16 records zero-extension and generic control semantics", () => {
+test("ret imm16 records unsigned immediate and generic control semantics", () => {
   const spec = instruction("ret.imm16");
 
   deepStrictEqual(spec.opcode, [0xc2]);
-  deepStrictEqual(spec.operands, [{ kind: "imm", width: 16, extension: "zero" }]);
+  deepStrictEqual(spec.operands, [{ kind: "imm", width: 16 }]);
   deepStrictEqual(spec.format, { syntax: "ret {0}" });
 
   const program = buildIr(spec.semantics as SemanticTemplate);

@@ -18,18 +18,18 @@ export function formatIsaInstruction(instruction: IsaDecodedInstruction): string
 
 export function formatIsaOperand(operand: IsaOperandBinding): string {
   switch (operand.kind) {
-    case "reg32":
-      return operand.reg;
-    case "imm32":
+    case "reg":
+      return operand.alias.name;
+    case "imm":
       return hex32(operand.value);
     case "relTarget":
       return hex32(operand.target);
-    case "mem32":
-      return formatMem32Operand(operand);
+    case "mem":
+      return formatMemOperand(operand);
   }
 }
 
-function formatMem32Operand(operand: Extract<IsaOperandBinding, { kind: "mem32" }>): string {
+function formatMemOperand(operand: Extract<IsaOperandBinding, { kind: "mem" }>): string {
   const terms: string[] = [];
 
   if (operand.base !== undefined) {

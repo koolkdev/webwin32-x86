@@ -11,9 +11,11 @@ import type {
   InstructionFormSpec,
   InstructionMnemonic,
   IsaDefinition,
+  InstructionPrefixes,
   InstructionSpec,
   ModRmMatch,
   OperandSpec,
+  OperandSizePrefixMode,
   OpcodePath,
   Reg3
 } from "./types.js";
@@ -69,6 +71,7 @@ export function validateInstructionSpec(spec: InstructionSpec): void {
   validateRequiredText(spec.id, "instruction id");
   validateRequiredText(spec.mnemonic, "instruction mnemonic");
   validateOpcodePath(spec.opcode);
+  validatePrefixes(spec.prefixes);
   validateModRmMatch(spec.modrm?.match);
   validateOpcodeRegUse(spec);
   validateFormat(spec);
@@ -123,7 +126,7 @@ export function instructionSpecsOverlap(left: InstructionSpec, right: Instructio
 
   for (const leftOpcode of leftOpcodes) {
     for (const rightOpcode of rightOpcodes) {
-      if (opcodeBytesEqual(leftOpcode, rightOpcode) && modRmUseOverlaps(left, right)) {
+      if (opcodeBytesEqual(leftOpcode, rightOpcode) && prefixUseOverlaps(left, right) && modRmUseOverlaps(left, right)) {
         return true;
       }
     }
@@ -184,6 +187,24 @@ function validateModRmMatch(match: ModRmMatch | undefined): void {
   validateReg3Value(match.rm, "modrm.match.rm");
 }
 
+function validatePrefixes(prefixes: InstructionPrefixes | undefined): void {
+  if (prefixes === undefined) {
+    return;
+  }
+
+  validateOperandSizePrefixMode(prefixes.operandSize);
+}
+
+function validateOperandSizePrefixMode(value: OperandSizePrefixMode | undefined): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (value !== "default" && value !== "override") {
+    throw new Error(`operand-size prefix mode must be default or override, got ${value}`);
+  }
+}
+
 function validateReg3Value(value: Reg3 | undefined, label: string): void {
   if (value === undefined) {
     return;
@@ -211,6 +232,14 @@ function modRmUseOverlaps(left: InstructionSpec, right: InstructionSpec): boolea
   }
 
   return modRmMatchesOverlap(left.modrm?.match, right.modrm?.match);
+}
+
+function prefixUseOverlaps(left: InstructionSpec, right: InstructionSpec): boolean {
+  return operandSizePrefixMode(left) === operandSizePrefixMode(right);
+}
+
+function operandSizePrefixMode(spec: InstructionSpec): OperandSizePrefixMode {
+  return spec.prefixes?.operandSize ?? "default";
 }
 
 function modRmMatchesOverlap(left: ModRmMatch | undefined, right: ModRmMatch | undefined): boolean {

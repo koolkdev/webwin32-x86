@@ -1,7 +1,8 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
-import type { Mem32Operand, Reg32 } from "#x86/isa/types.js";
+import type { EffectiveAddress, MemOperand, OperandWidth, Reg32, RegName } from "#x86/isa/types.js";
+import { registerAlias } from "#x86/isa/registers.js";
 import {
   decodeFault,
   IsaDecodeError,
@@ -92,28 +93,36 @@ export function testDecodeFixtures(fixtures: readonly DecoderFixture[]): void {
   }
 }
 
-export function reg32(reg: Reg32): IsaOperandBinding {
-  return { kind: "reg32", reg };
+export function reg32(regName: Reg32): IsaOperandBinding {
+  return reg(regName);
 }
 
-export function mem32(operand: Omit<Mem32Operand, "kind">): Mem32Operand {
-  return { kind: "mem32", ...operand };
+export function reg(regName: RegName): IsaOperandBinding {
+  return { kind: "reg", alias: registerAlias(regName) };
+}
+
+export function mem32(operand: EffectiveAddress): MemOperand {
+  return mem(32, operand);
+}
+
+export function mem(width: OperandWidth, operand: EffectiveAddress): MemOperand {
+  return { kind: "mem", accessWidth: width, ...operand };
 }
 
 export function imm32(value: number): IsaOperandBinding {
-  return { kind: "imm32", value, encodedWidth: 32 };
+  return { kind: "imm", value, encodedWidth: 32, semanticWidth: 32 };
 }
 
 export function imm16(value: number): IsaOperandBinding {
-  return { kind: "imm32", value, encodedWidth: 16, extension: "zero" };
+  return { kind: "imm", value, encodedWidth: 16, semanticWidth: 16 };
 }
 
 export function imm8(value: number): IsaOperandBinding {
-  return { kind: "imm32", value, encodedWidth: 8 };
+  return { kind: "imm", value, encodedWidth: 8, semanticWidth: 8 };
 }
 
 export function signImm8(value: number): IsaOperandBinding {
-  return { kind: "imm32", value: value >>> 0, encodedWidth: 8, extension: "sign" };
+  return { kind: "imm", value: value >>> 0, encodedWidth: 8, semanticWidth: 32, extension: "sign" };
 }
 
 export function relTarget(width: 8 | 32, displacement: number, target: number): IsaOperandBinding {

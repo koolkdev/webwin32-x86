@@ -1,9 +1,11 @@
 import { X86_32_CORE } from "#x86/isa/index.js";
 import { buildOpcodeDispatch, type OpcodeDispatchNode } from "#x86/isa/decoder/opcode-dispatch.js";
 import { expandInstructionSpec } from "#x86/isa/schema/builders.js";
+import { registerAlias } from "#x86/isa/registers.js";
+import type { InstructionSpec, OperandSpec } from "#x86/isa/schema/types.js";
 
 export const interpreterOpcodeDispatchRoot: OpcodeDispatchNode = buildOpcodeDispatch(
-  X86_32_CORE.instructions.flatMap((spec) => expandInstructionSpec(spec))
+  X86_32_CORE.instructions.filter(interpreterSupportsInstruction).flatMap((spec) => expandInstructionSpec(spec))
 );
 
 export function dispatchBytes(node: OpcodeDispatchNode): number[] {
@@ -16,4 +18,23 @@ export function dispatchBytes(node: OpcodeDispatchNode): number[] {
   }
 
   return bytes;
+}
+
+function interpreterSupportsInstruction(spec: InstructionSpec): boolean {
+  return spec.prefixes === undefined && (spec.operands ?? []).every(interpreterSupportsOperand);
+}
+
+function interpreterSupportsOperand(operand: OperandSpec): boolean {
+  switch (operand.kind) {
+    case "modrm.reg":
+    case "opcode.reg":
+      return operand.type === "r32";
+    case "modrm.rm":
+      return operand.type === "rm32" || operand.type === "m32";
+    case "implicit.reg":
+      return registerAlias(operand.reg).width === 32;
+    case "imm":
+    case "rel":
+      return true;
+  }
 }
