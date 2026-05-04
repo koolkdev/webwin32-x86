@@ -1,16 +1,19 @@
 import { reg32, type Reg32 } from "#x86/isa/types.js";
+import type { IrBinaryValueOpName } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { OperandRef, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
 
+export type JitBinaryValue = Readonly<{
+  kind: IrBinaryValueOpName;
+  a: JitValue;
+  b: JitValue;
+}>;
+
 export type JitValue =
   | Readonly<{ kind: "const32"; value: number }>
   | Readonly<{ kind: "reg"; reg: Reg32 }>
-  | Readonly<{
-      kind: "i32.add" | "i32.sub" | "i32.xor" | "i32.or" | "i32.and";
-      a: JitValue;
-      b: JitValue;
-    }>;
+  | JitBinaryValue;
 
 export function jitValueForStorage(
   storage: StorageRef,
@@ -125,17 +128,15 @@ export function jitStorageHasRegisterValue(
 }
 
 export function jitValueReadsReg(value: JitValue, reg: Reg32): boolean {
+  if (jitValueIsBinary(value)) {
+    return jitValueReadsReg(value.a, reg) || jitValueReadsReg(value.b, reg);
+  }
+
   switch (value.kind) {
     case "const32":
       return false;
     case "reg":
       return value.reg === reg;
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-      return jitValueReadsReg(value.a, reg) || jitValueReadsReg(value.b, reg);
   }
 }
 
@@ -148,35 +149,34 @@ export function jitValuesEqual(a: JitValue, b: JitValue): boolean {
     return false;
   }
 
+  if (jitValueIsBinary(a)) {
+    const binary = b as JitBinaryValue;
+
+    return jitValuesEqual(a.a, binary.a) && jitValuesEqual(a.b, binary.b);
+  }
+
   switch (a.kind) {
     case "const32":
       return a.value === (b as Extract<JitValue, { kind: "const32" }>).value;
     case "reg":
       return a.reg === (b as Extract<JitValue, { kind: "reg" }>).reg;
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and": {
-      const binary = b as Extract<JitValue, { kind: typeof a.kind }>;
-
-      return jitValuesEqual(a.a, binary.a) && jitValuesEqual(a.b, binary.b);
-    }
   }
 }
 
 export function jitValueCost(value: JitValue): number {
+  if (jitValueIsBinary(value)) {
+    return 1 + jitValueCost(value.a) + jitValueCost(value.b);
+  }
+
   switch (value.kind) {
     case "const32":
     case "reg":
       return 1;
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-      return 1 + jitValueCost(value.a) + jitValueCost(value.b);
   }
+}
+
+export function jitValueIsBinary(value: JitValue): value is JitBinaryValue {
+  return "a" in value && "b" in value;
 }
 
 function jitValueForReg(

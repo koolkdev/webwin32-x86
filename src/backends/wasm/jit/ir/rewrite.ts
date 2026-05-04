@@ -2,7 +2,8 @@ import type { Reg32 } from "#x86/isa/types.js";
 import type { ValueRef, VarRef } from "#x86/ir/model/types.js";
 import { jitIrOpDst } from "#backends/wasm/jit/ir/semantics.js";
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
-import type { JitValue } from "#backends/wasm/jit/ir/values.js";
+import type { JitBinaryValue, JitValue } from "#backends/wasm/jit/ir/values.js";
+import { jitValueIsBinary } from "#backends/wasm/jit/ir/values.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 
 export type JitInstructionRewrite = {
@@ -83,6 +84,14 @@ export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitValue)
     return existingValue;
   }
 
+  if (jitValueIsBinary(value)) {
+    const dst = allocVar(rewrite);
+
+    emitJitBinaryValueOp(rewrite, dst, value);
+    rewrite.values.record(dst.id, value);
+    return dst;
+  }
+
   switch (value.kind) {
     case "const32":
       return { kind: "const32", value: value.value };
@@ -90,22 +99,6 @@ export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitValue)
       const dst = allocVar(rewrite);
 
       rewrite.ops.push({ op: "get32", dst, source: { kind: "reg", reg: value.reg } });
-      rewrite.values.record(dst.id, value);
-      return dst;
-    }
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and": {
-      const dst = allocVar(rewrite);
-
-      rewrite.ops.push({
-        op: value.kind,
-        dst,
-        a: emitJitValueRef(rewrite, value.a),
-        b: emitJitValueRef(rewrite, value.b)
-      });
       rewrite.values.record(dst.id, value);
       return dst;
     }
@@ -117,6 +110,11 @@ export function assignJitValue(
   dst: VarRef,
   value: JitValue
 ): void {
+  if (jitValueIsBinary(value)) {
+    emitJitBinaryValueOp(rewrite, dst, value);
+    return;
+  }
+
   switch (value.kind) {
     case "const32":
       rewrite.ops.push({ op: "const32", dst, value: value.value });
@@ -124,19 +122,20 @@ export function assignJitValue(
     case "reg":
       rewrite.ops.push({ op: "get32", dst, source: { kind: "reg", reg: value.reg } });
       return;
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-      rewrite.ops.push({
-        op: value.kind,
-        dst,
-        a: emitJitValueRef(rewrite, value.a),
-        b: emitJitValueRef(rewrite, value.b)
-      });
-      return;
   }
+}
+
+function emitJitBinaryValueOp(
+  rewrite: JitInstructionRewrite,
+  dst: VarRef,
+  value: JitBinaryValue
+): void {
+  rewrite.ops.push({
+    op: value.kind,
+    dst,
+    a: emitJitValueRef(rewrite, value.a),
+    b: emitJitValueRef(rewrite, value.b)
+  });
 }
 
 function allocVar(rewrite: JitInstructionRewrite): VarRef {

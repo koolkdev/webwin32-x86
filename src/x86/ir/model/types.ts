@@ -49,17 +49,22 @@ export type IrAluFlagsConditionOp = Readonly<{
   cc: ConditionCode;
 }>;
 
+export type IrBinaryValueOpName = "i32.add" | "i32.sub" | "i32.xor" | "i32.or" | "i32.and";
+
+export type IrBinaryValueOp = Readonly<{
+  op: IrBinaryValueOpName;
+  dst: VarRef;
+  a: ValueRef;
+  b: ValueRef;
+}>;
+
 export type IrOp =
   | Readonly<{ op: "get32"; dst: VarRef; source: StorageRef }>
   | Readonly<{ op: "set32"; target: StorageRef; value: ValueRef }>
   | Readonly<{ op: "set32.if"; condition: ValueRef; target: StorageRef; value: ValueRef }>
   | Readonly<{ op: "address32"; dst: VarRef; operand: OperandRef }>
   | Readonly<{ op: "const32"; dst: VarRef; value: number }>
-  | Readonly<{ op: "i32.add"; dst: VarRef; a: ValueRef; b: ValueRef }>
-  | Readonly<{ op: "i32.sub"; dst: VarRef; a: ValueRef; b: ValueRef }>
-  | Readonly<{ op: "i32.xor"; dst: VarRef; a: ValueRef; b: ValueRef }>
-  | Readonly<{ op: "i32.or"; dst: VarRef; a: ValueRef; b: ValueRef }>
-  | Readonly<{ op: "i32.and"; dst: VarRef; a: ValueRef; b: ValueRef }>
+  | IrBinaryValueOp
   | IrFlagSetOp
   | Readonly<{ op: "flags.materialize"; mask: FlagMask }>
   | Readonly<{ op: "flags.boundary"; mask: FlagMask }>

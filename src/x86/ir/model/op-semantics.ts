@@ -1,4 +1,10 @@
-import type { IrOp, StorageRef, ValueRef, VarRef } from "./types.js";
+import type {
+  IrBinaryValueOp,
+  IrOp,
+  StorageRef,
+  ValueRef,
+  VarRef
+} from "./types.js";
 
 export type IrValueUseRole = "condition" | "value";
 export type IrStorageUseRole = "read" | "write";
@@ -19,6 +25,19 @@ export type IrOpResult =
   | Readonly<{ kind: "value"; dst: VarRef; sideEffect: IrResultSideEffect }>;
 
 export type IrTerminatorOp = Extract<IrOp, { op: "next" | "jump" | "conditionalJump" | "hostTrap" }>;
+
+export function irOpIsBinaryValue<T extends { op: string }>(op: T): op is Extract<T, IrBinaryValueOp> {
+  switch (op.op) {
+    case "i32.add":
+    case "i32.sub":
+    case "i32.xor":
+    case "i32.or":
+    case "i32.and":
+      return true;
+    default:
+      return false;
+  }
+}
 
 export function irOpResult(op: IrOp): IrOpResult {
   switch (op.op) {

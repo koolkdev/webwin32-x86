@@ -1,5 +1,6 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import type { ValueRef } from "#x86/ir/model/types.js";
+import { irOpIsBinaryValue } from "#x86/ir/model/op-semantics.js";
+import type { IrBinaryValueOp, ValueRef } from "#x86/ir/model/types.js";
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import {
   jitValueForEffectiveAddress,
@@ -49,14 +50,12 @@ export class JitValueTracker {
       case "const32":
         this.record(op.dst.id, { kind: "const32", value: op.value });
         return true;
-      case "i32.add":
-      case "i32.sub":
-      case "i32.xor":
-      case "i32.or":
-      case "i32.and":
-        this.record(op.dst.id, this.binaryValue(op));
-        return true;
       default:
+        if (irOpIsBinaryValue(op)) {
+          this.record(op.dst.id, this.binaryValue(op));
+          return true;
+        }
+
         return false;
     }
   }
@@ -75,9 +74,7 @@ export class JitValueTracker {
     return undefined;
   }
 
-  private binaryValue(
-    op: Extract<JitIrOp, { op: "i32.add" | "i32.sub" | "i32.xor" | "i32.or" | "i32.and" }>
-  ): JitValue | undefined {
+  private binaryValue(op: Extract<JitIrOp, IrBinaryValueOp>): JitValue | undefined {
     const a = this.valueFor(op.a);
     const b = this.valueFor(op.b);
 

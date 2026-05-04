@@ -1,7 +1,7 @@
 import { assertIrAluFlagMask, IR_FLAG_MASK_NONE } from "#x86/ir/model/flag-effects.js";
 import type { IrFlagProducerDescriptor } from "#x86/ir/model/flag-conditions.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
-import { irOpDst } from "#x86/ir/model/op-semantics.js";
+import { irOpDst, irOpIsBinaryValue, irOpIsTerminator } from "#x86/ir/model/op-semantics.js";
 import type { FlagMask, IrOp, IrBlock, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 
 export type ValidateIrBlockOptions = Readonly<{
@@ -23,7 +23,7 @@ export function validateIrBlock(block: IrBlock, options: ValidateIrBlockOptions 
     validateOpUses(op, definedVars, options);
     defineOpVar(op, definedVars);
 
-    if (isTerminator(op)) {
+    if (irOpIsTerminator(op)) {
       if (terminatorMode === "none") {
         throw new Error(`IR block must not contain a terminator, got ${op.op}`);
       }
@@ -54,6 +54,12 @@ function validateOpUses(
   definedVars: ReadonlySet<number>,
   options: ValidateIrBlockOptions
 ): void {
+  if (irOpIsBinaryValue(op)) {
+    validateValueRef(op.a, definedVars);
+    validateValueRef(op.b, definedVars);
+    return;
+  }
+
   switch (op.op) {
     case "get32":
       validateStorageRef(op.source, definedVars, options);
@@ -69,14 +75,6 @@ function validateOpUses(
       break;
     case "address32":
       validateOperandIndex(op.operand.index, options);
-      break;
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-      validateValueRef(op.a, definedVars);
-      validateValueRef(op.b, definedVars);
       break;
     case "flags.set":
       validateFlagSetDescriptor(op, definedVars);
@@ -219,8 +217,4 @@ function validateOperandIndex(index: number, options: ValidateIrBlockOptions): v
   if (index >= options.operandCount) {
     throw new Error(`IR operand ${index} does not exist in ${options.operandCount}-operand instruction`);
   }
-}
-
-function isTerminator(op: IrOp): boolean {
-  return op.op === "next" || op.op === "jump" || op.op === "conditionalJump" || op.op === "hostTrap";
 }

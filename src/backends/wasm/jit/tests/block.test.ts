@@ -9,7 +9,7 @@ import { stateOffset } from "#backends/wasm/abi.js";
 import { wasmOpcode, wasmSectionId } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
-import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir/semantics.js";
+import { jitIrOpDst, jitIrOpIsTerminator } from "#backends/wasm/jit/ir/semantics.js";
 import { buildJitCodegenIr } from "#backends/wasm/jit/codegen/plan/block.js";
 import { planJitCodegen } from "#backends/wasm/jit/codegen/plan/plan.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
@@ -670,21 +670,9 @@ function codegenIr(block: ReturnType<typeof buildJitIrBlock>): readonly JitIrOp[
 }
 
 function irOpDstId(op: JitIrOp): readonly number[] {
-  switch (op.op) {
-    case "get32":
-    case "address32":
-    case "const32":
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-    case "aluFlags.condition":
-    case "flagProducer.condition":
-      return [op.dst.id];
-    default:
-      return [];
-  }
+  const dst = jitIrOpDst(op);
+
+  return dst === undefined ? [] : [dst.id];
 }
 
 function irOpOperandIndexes(op: JitIrOp): readonly number[] {
