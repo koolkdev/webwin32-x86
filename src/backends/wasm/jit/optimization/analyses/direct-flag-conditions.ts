@@ -6,8 +6,8 @@ import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import type {
   JitFlagInput,
   JitFlagSource
-} from "#backends/wasm/jit/optimization/flags/sources.js";
-import type { JitFlagOwnerMask } from "#backends/wasm/jit/optimization/flags/owners.js";
+} from "#backends/wasm/jit/optimization/analyses/flag-sources.js";
+import type { JitFlagOwnerMask } from "#backends/wasm/jit/optimization/analyses/flag-owners.js";
 import { jitValueReadRegs } from "#backends/wasm/jit/ir/values.js";
 import {
   jitIrLocation,

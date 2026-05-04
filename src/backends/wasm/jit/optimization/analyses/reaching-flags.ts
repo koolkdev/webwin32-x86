@@ -15,8 +15,8 @@ import {
   JitFlagOwners,
   type JitFlagOwner,
   type JitFlagOwnerMask
-} from "#backends/wasm/jit/optimization/flags/owners.js";
-import { buildJitFlagSource, type JitFlagSource } from "#backends/wasm/jit/optimization/flags/sources.js";
+} from "#backends/wasm/jit/optimization/analyses/flag-owners.js";
+import { buildJitFlagSource, type JitFlagSource } from "#backends/wasm/jit/optimization/analyses/flag-sources.js";
 import {
   analyzeJitConditionUses,
   type JitConditionUse

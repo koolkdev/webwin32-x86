@@ -1,10 +1,15 @@
+import { flagProducerConditionInputNames } from "#x86/ir/model/flag-conditions.js";
+import type { ValueRef } from "#x86/ir/model/types.js";
 import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
 import type { JitOptimizationPass } from "#backends/wasm/jit/optimization/pass.js";
 import { analyzeJitReachingFlags } from "#backends/wasm/jit/optimization/analyses/reaching-flags.js";
-import { indexDirectFlagConditions } from "#backends/wasm/jit/optimization/analyses/direct-flag-conditions.js";
-import { emitDirectFlagCondition } from "#backends/wasm/jit/optimization/flags/conditions.js";
+import {
+  indexDirectFlagConditions,
+  type JitDirectFlagCondition
+} from "#backends/wasm/jit/optimization/analyses/direct-flag-conditions.js";
 import {
   createJitInstructionRewrite,
+  emitJitValueRef,
   rewriteJitIrInstructionInto
 } from "#backends/wasm/jit/ir/rewrite.js";
 
@@ -92,4 +97,47 @@ function recordCopiedOp(
 ): void {
   rewrite.values.recordOp(op, instruction);
   rewrite.ops.push(op);
+}
+
+function emitDirectFlagCondition(
+  rewrite: ReturnType<typeof createJitInstructionRewrite>,
+  op: Extract<JitIrOp, { op: "aluFlags.condition" }>,
+  condition: JitDirectFlagCondition
+): void {
+  const inputs: Record<string, ValueRef> = {};
+  const inputNames = flagProducerConditionInputNames({
+    producer: condition.source.producer,
+    cc: op.cc,
+    inputs: flagConditionInputShape(condition)
+  });
+
+  for (const inputName of inputNames) {
+    const input = condition.inputs[inputName];
+
+    if (input?.kind !== "value") {
+      throw new Error(`missing modeled flag condition input '${inputName}' for ${condition.source.producer}/${op.cc}`);
+    }
+
+    inputs[inputName] = emitJitValueRef(rewrite, input.value);
+  }
+
+  rewrite.ops.push({
+    op: "flagProducer.condition",
+    dst: op.dst,
+    cc: op.cc,
+    producer: condition.source.producer,
+    writtenMask: condition.source.writtenMask,
+    undefMask: condition.source.undefMask,
+    inputs
+  });
+}
+
+function flagConditionInputShape(condition: JitDirectFlagCondition): Readonly<Record<string, ValueRef>> {
+  const inputs: Record<string, ValueRef> = {};
+
+  for (const inputName of condition.inputNames) {
+    inputs[inputName] = { kind: "const32", value: 0 };
+  }
+
+  return inputs;
 }
