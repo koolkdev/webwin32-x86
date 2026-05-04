@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
+import { validateJitIrBlock } from "#backends/wasm/jit/ir/validate.js";
 import type { JitIrBlock, JitIrBlockInstruction, JitIrBody } from "#backends/wasm/jit/types.js";
 import { verifyJitIrBlock } from "#backends/wasm/jit/optimization/verify/optimizer-invariants.js";
 import { c32, startAddress, v } from "./helpers.js";
@@ -20,6 +21,21 @@ test("verifyJitIrBlock rejects missing JIT flag condition inputs", () => {
     },
     { op: "next" }
   ]), { phase: "final" }), /missing flag producer condition input 'left'/);
+});
+
+test("validateJitIrBlock rejects JIT flag condition inputs used before definition", () => {
+  throws(() => validateJitIrBlock(jitBlock([
+    {
+      op: "flagProducer.condition",
+      dst: v(0),
+      cc: "E",
+      producer: "sub32",
+      writtenMask: IR_ALU_FLAG_MASK,
+      undefMask: 0,
+      inputs: { left: v(1), right: c32(0) }
+    },
+    { op: "next" }
+  ])), /JIT IR var 1 is used before definition/);
 });
 
 test("verifyJitIrBlock rejects unexpected JIT flag condition inputs", () => {

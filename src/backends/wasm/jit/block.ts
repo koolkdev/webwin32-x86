@@ -1,23 +1,17 @@
 import type { IsaDecodedInstruction } from "#x86/isa/decoder/types.js";
-import type { IrBlock, ValueRef } from "#x86/ir/model/types.js";
-import { validateIrBlock } from "#x86/ir/passes/validator.js";
 import { wasmBlockExportName, wasmImport, wasmMemoryIndex } from "#backends/wasm/abi.js";
 import { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
+import { validateJitIrBlock } from "./ir/validate.js";
 import { JitIrBlockBuilder } from "./lowering/block-builder.js";
 import { buildJitLoweringBlock, prepareJitLowering } from "./lowering-prep/lowering-block.js";
 import { lowerIrWithJitContext, type JitIrInstructionContext } from "./lowering/ir-context.js";
 import { optimizeJitIrBlockOnly } from "./optimization/optimize.js";
 import type { JitBlockOptimization } from "#backends/wasm/jit/lowering-prep/types.js";
-import { jitIrOpDst, visitJitIrOpValueRefs } from "./ir-semantics.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
-import type {
-  JitIrBlock,
-  JitIrBody,
-  JitIrBlockInstruction
-} from "./types.js";
+import type { JitIrBlock } from "./types.js";
 
 export type {
   JitIrBlock,
@@ -52,7 +46,7 @@ export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
     throw new Error("cannot encode empty JIT IR block");
   }
 
-  validateLoweringBlock(loweringBlock);
+  validateJitIrBlock(loweringBlock);
 
   const module = new WasmModuleEncoder();
   const stateMemoryIndex = module.importMemory(wasmImport.moduleName, wasmImport.stateMemoryName, { minPages: 1 });
@@ -97,60 +91,6 @@ function emitExitStateBlocks(body: WasmFunctionBodyEncoder, maxExitStateIndex: n
   for (let index = 0; index <= maxExitStateIndex; index += 1) {
     void index;
     body.block();
-  }
-}
-
-function validateLoweringBlock(block: JitIrBlock): void {
-  for (let index = 0; index < block.instructions.length; index += 1) {
-    const instruction = block.instructions[index];
-
-    if (instruction === undefined) {
-      throw new Error(`missing JIT lowering instruction: ${index}`);
-    }
-
-    validateJitInstructionBody(instruction);
-  }
-}
-
-function validateJitInstructionBody(instruction: JitIrBlockInstruction): void {
-  validateIrBlock(jitValidationIrBlock(instruction.ir), {
-    operandCount: instruction.operands.length,
-    terminatorMode: "single"
-  });
-  validateJitFlagProducerConditionInputUses(instruction.ir);
-}
-
-function jitValidationIrBlock(block: JitIrBody): IrBlock {
-  return block.map((op) => {
-    if (op.op === "flagProducer.condition") {
-      return { op: "aluFlags.condition", dst: op.dst, cc: op.cc };
-    }
-
-    return op;
-  });
-}
-
-function validateJitFlagProducerConditionInputUses(block: JitIrBody): void {
-  const definedVars = new Set<number>();
-
-  for (const op of block) {
-    if (op.op === "flagProducer.condition") {
-      visitJitIrOpValueRefs(op, (value) => {
-        validateJitValueRef(value, definedVars);
-      });
-    }
-
-    const dst = jitIrOpDst(op);
-
-    if (dst !== undefined) {
-      definedVars.add(dst.id);
-    }
-  }
-}
-
-function validateJitValueRef(value: ValueRef, definedVars: ReadonlySet<number>): void {
-  if (value.kind === "var" && !definedVars.has(value.id)) {
-    throw new Error(`JIT IR var ${value.id} is used before definition`);
   }
 }
 
