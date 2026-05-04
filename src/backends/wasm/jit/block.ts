@@ -5,14 +5,14 @@ import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { validateJitIrBlock } from "./ir/validate.js";
-import { JitIrBlockBuilder } from "./lowering/block-builder.js";
-import { buildJitLoweringIr } from "./lowering-plan/lowering-block.js";
-import { planJitLowering } from "./lowering-plan/lowering-plan.js";
-import { lowerIrWithJitContext, type JitIrInstructionContext } from "./lowering/ir-context.js";
+import { JitIrBlockBuilder } from "./codegen/emit/block-builder.js";
+import { buildJitCodegenIr } from "./codegen/plan/block.js";
+import { planJitCodegen } from "./codegen/plan/plan.js";
+import { emitJitIrWithContext, type JitIrInstructionContext } from "./codegen/emit/ir-context.js";
 import { optimizeJitIrBlock } from "./optimization/optimize.js";
-import type { JitLoweringPlan } from "#backends/wasm/jit/lowering-plan/types.js";
+import type { JitCodegenPlan } from "#backends/wasm/jit/codegen/plan/types.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
-import type { JitIrBlock } from "./types.js";
+import type { JitIrBlock } from "./ir/types.js";
 
 export type {
   JitIrBlock,
@@ -40,14 +40,14 @@ export function buildJitIrBlock(instructions: readonly IsaDecodedInstruction[]):
 
 export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
   const optimizedBlock = optimizeJitIrBlock(block);
-  const loweringPlan = planJitLowering(optimizedBlock);
-  const loweringIr = buildJitLoweringIr(loweringPlan);
+  const codegenPlan = planJitCodegen(optimizedBlock);
+  const codegenIr = buildJitCodegenIr(codegenPlan);
 
   if (block.instructions.length === 0) {
     throw new Error("cannot encode empty JIT IR block");
   }
 
-  validateJitIrBlock(loweringIr);
+  validateJitIrBlock(codegenIr);
 
   const module = new WasmModuleEncoder();
   const stateMemoryIndex = module.importMemory(wasmImport.moduleName, wasmImport.stateMemoryName, { minPages: 1 });
@@ -64,19 +64,19 @@ export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
   const body = new WasmFunctionBodyEncoder();
   const scratch = new WasmLocalScratchAllocator(body);
   const exitLocal = body.addLocal(wasmValueType.i64);
-  const state = createJitIrState(body, loweringPlan.exitStates);
+  const state = createJitIrState(body, codegenPlan.exitStates);
   const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitStateIndex };
 
   state.emitLoadInstructionCount();
 
   emitExitStateBlocks(body, state.maxExitStateIndex);
-  lowerIrWithJitContext({
+  emitJitIrWithContext({
     body,
     scratch,
     state,
     exit,
-    instructions: loweringInstructions(loweringIr, loweringPlan),
-    exitPoints: loweringPlan.exitPoints
+    instructions: codegenInstructions(codegenIr, codegenPlan),
+    exitPoints: codegenPlan.exitPoints
   });
   emitExitStateStores(body, state, exitLocal);
   scratch.assertClear();
@@ -95,21 +95,21 @@ function emitExitStateBlocks(body: WasmFunctionBodyEncoder, maxExitStateIndex: n
   }
 }
 
-function loweringInstructions(
+function codegenInstructions(
   block: JitIrBlock,
-  loweringPlan: JitLoweringPlan
+  codegenPlan: JitCodegenPlan
 ): readonly JitIrInstructionContext[] {
-  if (block.instructions.length !== loweringPlan.instructionStates.length) {
+  if (block.instructions.length !== codegenPlan.instructionStates.length) {
     throw new Error(
-      `JIT lowering instruction count mismatch: ${block.instructions.length} !== ${loweringPlan.instructionStates.length}`
+      `JIT codegen instruction count mismatch: ${block.instructions.length} !== ${codegenPlan.instructionStates.length}`
     );
   }
 
   return block.instructions.map((instruction, index) => {
-    const state = loweringPlan.instructionStates[index];
+    const state = codegenPlan.instructionStates[index];
 
     if (state === undefined) {
-      throw new Error(`missing JIT instruction state for lowering: ${index}`);
+      throw new Error(`missing JIT instruction state for codegen: ${index}`);
     }
 
     return {

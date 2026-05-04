@@ -2,7 +2,11 @@ import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scr
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { lowerIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
-import type { IrSet32ExprOp, IrStorageExpr, IrValueExpr } from "#backends/wasm/lowering/expressions.js";
+import type {
+  IrSet32ExprOp,
+  IrStorageExpr,
+  IrValueExpr
+} from "#backends/wasm/lowering/expressions.js";
 import { emitFlagProducerCondition } from "#backends/wasm/lowering/conditions.js";
 import {
   emitJitConditionalJump,
@@ -18,10 +22,9 @@ import {
   emitJitSet32,
   emitJitSet32If
 } from "./operands.js";
-import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/lowering-plan/types.js";
-import { lowerableJitIrBlock } from "#backends/wasm/jit/ir-semantics.js";
+import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
-import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitIrBlockInstruction } from "#backends/wasm/jit/ir/types.js";
 
 export type JitIrInstructionContext = Pick<JitIrBlockInstruction, "ir" | "operands"> & Pick<
   JitInstructionState,
@@ -34,7 +37,7 @@ export type JitIrInstructionContext = Pick<JitIrBlockInstruction, "ir" | "operan
   | "preInstructionExitPointCount"
 >;
 
-export type JitIrBlockLoweringContext = Readonly<{
+export type JitIrBlockEmitContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
   state: JitIrState;
@@ -54,16 +57,16 @@ export type JitIrContext = Readonly<{
   advanceInstruction(): void;
 }>;
 
-export function lowerIrWithJitContext(context: JitIrBlockLoweringContext): void {
+export function emitJitIrWithContext(context: JitIrBlockEmitContext): void {
   const jitContext = createJitIrContext(context);
 
   for (let index = 0; index < context.instructions.length; index += 1) {
     beginInstruction(jitContext, context.exit, jitContext.currentInstruction());
-    lowerCurrentInstruction(jitContext);
+    emitCurrentInstruction(jitContext);
   }
 }
 
-function createJitIrContext(context: JitIrBlockLoweringContext): JitIrContext {
+function createJitIrContext(context: JitIrBlockEmitContext): JitIrContext {
   let instructionIndex = 0;
   let completedPreInstructionExitPointCount = 0;
   const exitPointsByKey = indexExitPoints(context.exitPoints);
@@ -124,12 +127,12 @@ function createJitIrContext(context: JitIrBlockLoweringContext): JitIrContext {
   };
 }
 
-function lowerCurrentInstruction(jitContext: JitIrContext): void {
-  lowerJitIrBlock(jitContext, jitContext.currentInstruction().ir);
+function emitCurrentInstruction(jitContext: JitIrContext): void {
+  emitJitIrBlock(jitContext, jitContext.currentInstruction().ir);
 }
 
-function lowerJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["ir"]): void {
-  lowerIrToWasm(lowerableJitIrBlock(ir), {
+function emitJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["ir"]): void {
+  lowerIrToWasm(ir, {
     body: jitContext.body,
     scratch: jitContext.scratch,
     expression: { canInlineGet32: (source) => canInlineJitGet32(jitContext, source) },

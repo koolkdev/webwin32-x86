@@ -2,7 +2,7 @@ import {
   flagProducerConditionInputNames,
   flagProducerConditionKind
 } from "#x86/ir/model/flag-conditions.js";
-import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock } from "#backends/wasm/jit/ir/types.js";
 import type {
   JitFlagInput,
   JitFlagSource

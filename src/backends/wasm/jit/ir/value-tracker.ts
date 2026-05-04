@@ -1,6 +1,6 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { ValueRef } from "#x86/ir/model/types.js";
-import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import {
   jitValueForEffectiveAddress,
   jitValueForStorage,

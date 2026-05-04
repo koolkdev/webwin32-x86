@@ -2,23 +2,21 @@ import {
   jitIrOpDst,
   jitIrOpResult,
   visitJitIrOpValueRefs
-} from "#backends/wasm/jit/ir-semantics.js";
-import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+} from "#backends/wasm/jit/ir/semantics.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import {
   analyzeJitBarriers,
   jitOpPreInstructionExitReasonAt,
   type JitBarrierAnalysis
-} from "#backends/wasm/jit/optimization/analyses/barriers.js";
+} from "#backends/wasm/jit/ir/barriers.js";
 import type { JitOptimizationPass } from "#backends/wasm/jit/optimization/pass.js";
 
 export type JitLocalDce = Readonly<{
   removedOpCount: number;
 }>;
 
-export type JitDeadLocalValuePruning = JitLocalDce;
-
 export const localDcePass = {
-  name: "local-dce",
+  name: "localDce",
   run(block) {
     const result = pruneDeadJitLocalValues(block);
 
@@ -28,12 +26,12 @@ export const localDcePass = {
       stats: result.localDce
     };
   }
-} satisfies JitOptimizationPass<"local-dce">;
+} satisfies JitOptimizationPass<"localDce">;
 
 export function pruneDeadJitLocalValues(
   block: JitIrBlock,
   barriers: JitBarrierAnalysis = analyzeJitBarriers(block)
-): Readonly<{ block: JitIrBlock; localDce: JitLocalDce; deadLocalValues: JitDeadLocalValuePruning }> {
+): Readonly<{ block: JitIrBlock; localDce: JitLocalDce }> {
   let removedOpCount = 0;
   const instructions = block.instructions.map((instruction, instructionIndex) => {
     const pruned = pruneInstructionDeadLocalValues(instruction, instructionIndex, barriers);
@@ -44,8 +42,7 @@ export function pruneDeadJitLocalValues(
 
   return {
     block: { instructions },
-    localDce: { removedOpCount },
-    deadLocalValues: { removedOpCount }
+    localDce: { removedOpCount }
   };
 }
 

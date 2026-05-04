@@ -1,12 +1,11 @@
 import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
 import type { StorageRef } from "#x86/ir/model/types.js";
-import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
-import { requiredJitOperandBinding } from "#backends/wasm/jit/ir/operand-binding.js";
+import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
 import type {
   JitExitSnapshotKind,
   JitStateSnapshot
-} from "#backends/wasm/jit/lowering-plan/types.js";
+} from "#backends/wasm/jit/codegen/plan/types.js";
 
 export class JitBlockStateTracker {
   private readonly committedRegs = new Set<Reg32>();
@@ -51,7 +50,7 @@ export class JitBlockStateTracker {
         this.speculativeRegs.add(storage.reg);
         return;
       case "operand": {
-        const binding = requiredJitOperandBinding(operands, storage.index);
+        const binding = operands[storage.index]!;
 
         if (binding.kind === "static.reg32") {
           this.speculativeRegs.add(binding.reg);
@@ -69,7 +68,7 @@ export class JitBlockStateTracker {
         this.committedRegs.add(storage.reg);
         return;
       case "operand": {
-        const binding = requiredJitOperandBinding(operands, storage.index);
+        const binding = operands[storage.index]!;
 
         if (binding.kind === "static.reg32") {
           this.committedRegs.add(binding.reg);

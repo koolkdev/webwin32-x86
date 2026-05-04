@@ -2,11 +2,10 @@ import type { StorageRef, ValueRef } from "#x86/ir/model/types.js";
 import {
   jitIrOpStorageReads,
   jitIrOpStorageWrites
-} from "#backends/wasm/jit/ir-semantics.js";
+} from "#backends/wasm/jit/ir/semantics.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
-import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
-import { requiredJitOperandBinding } from "#backends/wasm/jit/ir/operand-binding.js";
+import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
+import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 
 export function jitMemoryFaultReason(
   op: JitIrOp,
@@ -79,6 +78,6 @@ function storageMayAccessMemory(storage: StorageRef, operands: readonly JitOpera
     case "reg":
       return false;
     case "operand":
-      return requiredJitOperandBinding(operands, storage.index).kind === "static.mem32";
+      return operands[storage.index]!.kind === "static.mem32";
   }
 }

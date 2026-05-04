@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
-import { planJitLowering } from "#backends/wasm/jit/lowering-plan/lowering-plan.js";
+import { planJitCodegen } from "#backends/wasm/jit/codegen/plan/plan.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
 import {
   jitIrOptimizationPassOrder,
@@ -27,16 +27,22 @@ test("runJitIrOptimizationPipeline exposes ordered transform results", () => {
   ]));
 
   deepStrictEqual(jitIrOptimizationPassOrder, [
-    "local-dce",
-    "flag-condition-specialization",
-    "flag-dce",
-    "local-dce",
-    "register-value-propagation",
-    "local-dce"
+    "localDce",
+    "flagConditionSpecialization",
+    "flagDce",
+    "localDce",
+    "registerValuePropagation",
+    "localDce"
   ]);
   deepStrictEqual(result.passResults.map((pass) => pass.name), jitIrOptimizationPassOrder);
   strictEqual(result.passResults.some((pass) => pass.changed), true);
-  strictEqual(result.stats["register-value-propagation"]?.removedSetCount, 3);
+  strictEqual(
+    result.stats.localDce?.removedOpCount,
+    result.passResults
+      .filter((pass) => pass.name === "localDce")
+      .reduce((total, pass) => total + (pass.stats.removedOpCount ?? 0), 0)
+  );
+  strictEqual(result.stats["registerValuePropagation"]?.removedSetCount, 3);
   strictEqual(result.block.instructions.every((instruction) => !("prelude" in instruction)), true);
 });
 
@@ -60,9 +66,9 @@ test("runJitIrOptimizationPipeline prunes dead flag producer inputs before regis
   const cmpInstruction = result.block.instructions[2]!;
   const cmoveInstruction = result.block.instructions[3]!;
 
-  strictEqual(result.stats["flag-condition-specialization"]?.directConditionCount, 1);
+  strictEqual(result.stats["flagConditionSpecialization"]?.directConditionCount, 1);
   strictEqual(result.passResults.some((pass) =>
-    pass.name === "local-dce" && pass.stats.removedOpCount === 3
+    pass.name === "localDce" && pass.stats.removedOpCount === 3
   ), true);
   deepStrictEqual(cmpInstruction.ir.map((op) => op.op), ["next"]);
   strictEqual(cmoveInstruction.ir.some((op) =>
@@ -111,36 +117,36 @@ test("runJitIrOptimizationPipeline exposes the new pass pipeline as plain JIT IR
   const result = runJitIrOptimizationPipeline(buildJitIrBlock([cmp, cmove, trap]), { validate: true });
 
   deepStrictEqual(jitIrOptimizationPassOrder, [
-    "local-dce",
-    "flag-condition-specialization",
-    "flag-dce",
-    "local-dce",
-    "register-value-propagation",
-    "local-dce"
+    "localDce",
+    "flagConditionSpecialization",
+    "flagDce",
+    "localDce",
+    "registerValuePropagation",
+    "localDce"
   ]);
   strictEqual(result.passResults.some((pass) =>
-    pass.name === "flag-condition-specialization" && pass.stats.directConditionCount === 1
+    pass.name === "flagConditionSpecialization" && pass.stats.directConditionCount === 1
   ), true);
   strictEqual(result.block.instructions.some((instruction) =>
     instruction.ir.some((op) => op.op === "flagProducer.condition")
   ), true);
 });
 
-test("planJitLowering keeps branch exit flag materialization separate from direct conditions", () => {
+test("planJitCodegen keeps branch exit flag materialization separate from direct conditions", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const inc = ok(decodeBytes([0x40], add.nextEip));
   const je = ok(decodeBytes([0x74, 0x05], inc.nextEip));
-  const loweringPlan = planJitLowering(optimizeJitIrBlock(buildJitIrBlock([add, inc, je])));
-  const branchIr = loweringPlan.block.instructions[2]!.ir;
+  const codegenPlan = planJitCodegen(optimizeJitIrBlock(buildJitIrBlock([add, inc, je])));
+  const branchIr = codegenPlan.block.instructions[2]!.ir;
 
   strictEqual(branchIr.some((op) => op.op === "aluFlags.condition"), false);
   strictEqual(branchIr.some((op) => op.op === "flagProducer.condition"), true);
   strictEqual(
-    loweringPlan.flagMaterializationRequirements.some((requirement) => requirement.reason === "condition"),
+    codegenPlan.flagMaterializationRequirements.some((requirement) => requirement.reason === "condition"),
     false
   );
   deepStrictEqual(
-    loweringPlan.flagMaterializationRequirements.map((requirement) => ({
+    codegenPlan.flagMaterializationRequirements.map((requirement) => ({
       reason: requirement.reason,
       requiredMask: requirement.requiredMask,
       pendingMask: requirement.pendingMask

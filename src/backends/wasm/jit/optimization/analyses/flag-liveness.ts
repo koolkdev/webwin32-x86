@@ -4,13 +4,13 @@ import {
   IR_FLAG_MASK_NONE
 } from "#x86/ir/model/flag-effects.js";
 import type { FlagMask } from "#x86/ir/model/types.js";
-import type { JitIrBlock, JitIrOp } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import {
   analyzeJitBarriers,
   jitOpHasBarrier,
   jitOpPreInstructionExitReasonAt,
   type JitBarrierAnalysis
-} from "#backends/wasm/jit/optimization/analyses/barriers.js";
+} from "#backends/wasm/jit/ir/barriers.js";
 
 export type JitFlagLivenessOp = Readonly<{
   liveBefore: FlagMask;

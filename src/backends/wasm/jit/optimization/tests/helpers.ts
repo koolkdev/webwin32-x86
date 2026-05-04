@@ -4,13 +4,13 @@ import type { Reg32 } from "#x86/isa/types.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import type { ConditionCode, IrBlock, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitExitPoint } from "#backends/wasm/jit/lowering-plan/types.js";
+import type { JitExitPoint } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitFlagOwnerMask } from "#backends/wasm/jit/optimization/analyses/flag-owners.js";
 import type {
   JitIrBlock,
   JitIrBody,
   JitIrBlockInstruction
-} from "#backends/wasm/jit/types.js";
+} from "#backends/wasm/jit/ir/types.js";
 
 export const startAddress = 0x1000;
 
@@ -60,7 +60,7 @@ export function set32TargetRegs(
 ): readonly Reg32[] {
   return instructions.flatMap((instruction) =>
     instructionOps(instruction).flatMap((op) => {
-      if (op.op !== "set32" && op.op !== "set32.materialize") {
+      if (op.op !== "set32") {
         return [];
       }
 

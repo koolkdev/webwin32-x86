@@ -7,8 +7,8 @@ import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/e
 import { emitWasmIrLoadGuestU32FromStack, emitWasmIrStoreGuestU32 } from "#backends/wasm/lowering/memory.js";
 import type { WasmIrReg32Storage } from "#backends/wasm/lowering/registers.js";
 import type { WasmIrEmitHelpers } from "#backends/wasm/lowering/lower.js";
-import type { JitExitPoint } from "#backends/wasm/jit/lowering-plan/types.js";
-import type { JitOperandBinding } from "./operand-bindings.js";
+import type { JitExitPoint } from "#backends/wasm/jit/codegen/plan/types.js";
+import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
 import type { JitIrContext } from "./ir-context.js";
 
 export function canInlineJitGet32(context: JitIrContext, source: StorageRef): boolean {

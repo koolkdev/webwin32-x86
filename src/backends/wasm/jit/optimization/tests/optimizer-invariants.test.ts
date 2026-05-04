@@ -4,12 +4,11 @@ import { test } from "node:test";
 import { IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import { validateJitIrBlock } from "#backends/wasm/jit/ir/validate.js";
-import type { JitIrBlock, JitIrBlockInstruction, JitIrBody } from "#backends/wasm/jit/types.js";
-import { verifyJitIrBlock } from "#backends/wasm/jit/optimization/verify/optimizer-invariants.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrBody } from "#backends/wasm/jit/ir/types.js";
 import { c32, startAddress, v } from "./helpers.js";
 
-test("verifyJitIrBlock rejects missing JIT flag condition inputs", () => {
-  throws(() => verifyJitIrBlock(jitBlock([
+test("validateJitIrBlock rejects missing JIT flag condition inputs", () => {
+  throws(() => validateJitIrBlock(jitBlock([
     {
       op: "flagProducer.condition",
       dst: v(0),
@@ -20,7 +19,7 @@ test("verifyJitIrBlock rejects missing JIT flag condition inputs", () => {
       inputs: { right: c32(0) }
     },
     { op: "next" }
-  ]), { phase: "final" }), /missing flag producer condition input 'left'/);
+  ])), /missing flag producer condition input 'left'/);
 });
 
 test("validateJitIrBlock rejects JIT flag condition inputs used before definition", () => {
@@ -38,8 +37,15 @@ test("validateJitIrBlock rejects JIT flag condition inputs used before definitio
   ])), /JIT IR var 1 is used before definition/);
 });
 
-test("verifyJitIrBlock rejects unexpected JIT flag condition inputs", () => {
-  throws(() => verifyJitIrBlock(jitBlock([
+test("validateJitIrBlock rejects operand indexes before effect analysis", () => {
+  throws(() => validateJitIrBlock(jitBlock([
+    { op: "get32", dst: v(0), source: { kind: "operand", index: 0 } },
+    { op: "next" }
+  ])), /IR operand 0 does not exist in 0-operand instruction/);
+});
+
+test("validateJitIrBlock rejects unexpected JIT flag condition inputs", () => {
+  throws(() => validateJitIrBlock(jitBlock([
     {
       op: "flagProducer.condition",
       dst: v(0),
@@ -50,18 +56,19 @@ test("verifyJitIrBlock rejects unexpected JIT flag condition inputs", () => {
       inputs: { result: c32(0), left: c32(0) }
     },
     { op: "next" }
-  ]), { phase: "final" }), /unexpected input 'left'/);
+  ])), /unexpected input 'left'/);
 });
 
-test("verifyJitIrBlock rejects non-register materialization targets", () => {
-  throws(() => verifyJitIrBlock(jitBlock([
+test("validateJitIrBlock rejects non-register materialization targets", () => {
+  throws(() => validateJitIrBlock(jitBlock([
     {
-      op: "set32.materialize",
+      op: "set32",
+      role: "registerMaterialization",
       target: { kind: "mem", address: c32(0x2000) },
       value: c32(1)
     },
     { op: "next" }
-  ]), { phase: "final" }), /register materialization cannot target mem/);
+  ])), /register materialization cannot target mem/);
 });
 
 function jitBlock(ir: JitIrBody): JitIrBlock {

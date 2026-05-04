@@ -1,7 +1,7 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { ValueRef } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import {
   analyzeJitConditionUses,
   indexJitExitConditionValues,
@@ -214,7 +214,7 @@ function jitRegisterWriteEffect(
   op: JitIrOp,
   operands: JitIrBlockInstruction["operands"]
 ): JitRegisterWriteEffect | undefined {
-  if (op.op !== "set32" && op.op !== "set32.if" && op.op !== "set32.materialize") {
+  if (op.op !== "set32" && op.op !== "set32.if") {
     return undefined;
   }
 

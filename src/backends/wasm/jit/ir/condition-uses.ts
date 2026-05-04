@@ -1,11 +1,12 @@
 import type { ValueRef } from "#x86/ir/model/types.js";
-import { visitJitIrOpValueRefs } from "#backends/wasm/jit/ir-semantics.js";
-import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import { visitJitIrOpValueRefs } from "#backends/wasm/jit/ir/semantics.js";
+import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/ir/types.js";
 import { walkJitIrBlockOps } from "#backends/wasm/jit/ir/walk.js";
 import { jitExitConditionValues, jitLocalConditionValues } from "#backends/wasm/jit/ir/effect-primitives.js";
-import { setJitOpIndexValue, type JitOpIndex } from "#backends/wasm/jit/ir/op-index.js";
 
 export type JitConditionUse = "localCondition" | "exitCondition";
+
+type JitOpIndex<T> = ReadonlyMap<number, ReadonlyMap<number, T>>;
 
 export type JitConditionUseIndex = JitOpIndex<JitConditionUse>;
 export type JitLocalConditionValueIndex = JitOpIndex<readonly ValueRef[]>;
@@ -193,4 +194,20 @@ function addConditionVars(vars: Set<number>, values: readonly ValueRef[]): void 
       vars.add(value.id);
     }
   }
+}
+
+function setJitOpIndexValue<T>(
+  index: Map<number, Map<number, T>>,
+  instructionIndex: number,
+  opIndex: number,
+  value: T
+): void {
+  let instructionValues = index.get(instructionIndex);
+
+  if (instructionValues === undefined) {
+    instructionValues = new Map();
+    index.set(instructionIndex, instructionValues);
+  }
+
+  instructionValues.set(opIndex, value);
 }

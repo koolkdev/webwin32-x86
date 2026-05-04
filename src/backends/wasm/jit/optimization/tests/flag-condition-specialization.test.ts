@@ -5,7 +5,7 @@ import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import type { ConditionCode } from "#x86/ir/model/types.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
-import type { JitIrBlock, JitIrOp } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import { flagConditionSpecializationPass, specializeJitFlagConditions } from "#backends/wasm/jit/optimization/passes/flag-condition-specialization.js";
 import { runJitOptimizationPasses } from "#backends/wasm/jit/optimization/pass.js";
 import { c32, logic32LocalConditionBlock, startAddress, syntheticInstruction, v } from "./helpers.js";
@@ -24,7 +24,7 @@ test("flag-condition-specialization emits direct cmp branch conditions", () => {
     ]
   });
 
-  strictEqual(result.flagConditions.directConditionCount, 1);
+  strictEqual(result.flagConditionSpecialization.directConditionCount, 1);
   strictEqual(opNames(result.block).includes("flagProducer.condition"), true);
   strictEqual(opNames(result.block).includes("aluFlags.condition"), false);
   strictEqual(opNames(result.block).includes("conditionalJump"), true);
@@ -45,7 +45,7 @@ test("flag-condition-specialization emits direct cmp conditional writes", () => 
     ]
   });
 
-  strictEqual(result.flagConditions.directConditionCount, 1);
+  strictEqual(result.flagConditionSpecialization.directConditionCount, 1);
   strictEqual(opNames(result.block).includes("flagProducer.condition"), true);
 });
 
@@ -69,7 +69,7 @@ test("flag-condition-specialization falls back when producer inputs are clobbere
     ]
   });
 
-  strictEqual(result.flagConditions.directConditionCount, 0);
+  strictEqual(result.flagConditionSpecialization.directConditionCount, 0);
   strictEqual(opNames(result.block).includes("aluFlags.condition"), true);
   strictEqual(opNames(result.block).includes("flagProducer.condition"), false);
 });
@@ -88,7 +88,7 @@ test("flag-condition-specialization handles supported result-only partial flag c
     ]
   });
 
-  strictEqual(result.flagConditions.directConditionCount, 1);
+  strictEqual(result.flagConditionSpecialization.directConditionCount, 1);
   strictEqual(opNames(result.block).includes("flagProducer.condition"), true);
 });
 
@@ -108,7 +108,7 @@ test("flag-condition-specialization rejects mixed-owner reads", () => {
     ]
   });
 
-  strictEqual(result.flagConditions.directConditionCount, 0);
+  strictEqual(result.flagConditionSpecialization.directConditionCount, 0);
   strictEqual(opNames(result.block).includes("aluFlags.condition"), true);
 });
 
@@ -139,7 +139,7 @@ test("flag-condition-specialization emits result conditions from writeback regis
   const conditionInstruction = result.block.instructions[2]!;
   const condition = singleDirectCondition(result.block);
 
-  strictEqual(result.flagConditions.directConditionCount, 1);
+  strictEqual(result.flagConditionSpecialization.directConditionCount, 1);
   strictEqual(conditionInstruction.ir.some((op) => op.op === "aluFlags.condition"), false);
   strictEqual(condition.producer, "inc32");
   strictEqual(condition.cc, "E");
@@ -168,7 +168,7 @@ test("flag-condition-specialization emits sub32 equality from writeback register
   });
   const condition = singleDirectCondition(result.block);
 
-  strictEqual(result.flagConditions.directConditionCount, 1);
+  strictEqual(result.flagConditionSpecialization.directConditionCount, 1);
   strictEqual(condition.producer, "sub32");
   strictEqual(condition.cc, "E");
   deepStrictEqual(condition.inputs, { result: v(1) });
@@ -182,7 +182,7 @@ test("flag-condition-specialization handles decoded cmovcc writeback results", (
   const result = specializeJitFlagConditions(buildJitIrBlock([add, inc, cmove, xor]));
   const condition = singleDirectCondition(result.block);
 
-  strictEqual(result.flagConditions.directConditionCount, 1);
+  strictEqual(result.flagConditionSpecialization.directConditionCount, 1);
   strictEqual(condition.producer, "inc32");
   strictEqual(condition.cc, "E");
   deepStrictEqual(condition.inputs, { result: v(2) });
@@ -208,7 +208,7 @@ test("flag-condition-specialization supports logic32 condition variants", () => 
     const result = specializeJitFlagConditions(logic32LocalConditionBlock(cc));
     const condition = singleDirectCondition(result.block);
 
-    strictEqual(result.flagConditions.directConditionCount, 1, cc);
+    strictEqual(result.flagConditionSpecialization.directConditionCount, 1, cc);
     strictEqual(condition.producer, "logic32", cc);
     strictEqual(condition.cc, cc);
     deepStrictEqual(condition.inputs, resultInput ? { result: v(1) } : {}, cc);
@@ -223,7 +223,7 @@ test("flag-condition-specialization emits decoded branch conditions from partial
   const condition = singleDirectCondition(result.block);
   const branchIr = result.block.instructions[2]!.ir;
 
-  strictEqual(result.flagConditions.directConditionCount, 1);
+  strictEqual(result.flagConditionSpecialization.directConditionCount, 1);
   strictEqual(branchIr.some((op) => op.op === "aluFlags.condition"), false);
   strictEqual(condition.producer, "inc32");
   strictEqual(condition.cc, "E");

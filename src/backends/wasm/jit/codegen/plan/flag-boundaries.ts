@@ -1,13 +1,13 @@
-import type { JitLoweringPlan } from "#backends/wasm/jit/lowering-plan/types.js";
-import type { JitIrBlock, JitIrBody, JitIrOp } from "#backends/wasm/jit/types.js";
+import type { JitCodegenPlan } from "#backends/wasm/jit/codegen/plan/types.js";
+import type { JitIrBlock, JitIrBody, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 
 const emptyBoundaryMaskByOpIndex = new Map<number, number>();
 
 export function insertJitFlagBoundaries(
   block: JitIrBlock,
-  loweringPlan: JitLoweringPlan
+  codegenPlan: JitCodegenPlan
 ): JitIrBlock {
-  const boundaryMasks = jitFlagBoundaryMasks(loweringPlan);
+  const boundaryMasks = jitFlagBoundaryMasks(codegenPlan);
 
   if (boundaryMasks.size === 0) {
     return block;
@@ -25,12 +25,12 @@ export function insertJitFlagBoundaries(
 }
 
 export function jitFlagBoundaryMasks(
-  loweringPlan: JitLoweringPlan
+  codegenPlan: JitCodegenPlan
 ): ReadonlyMap<number, ReadonlyMap<number, number>> {
   const masks = new Map<number, Map<number, number>>();
 
-  for (let instructionIndex = 0; instructionIndex < loweringPlan.instructionStates.length; instructionIndex += 1) {
-    const state = loweringPlan.instructionStates[instructionIndex];
+  for (let instructionIndex = 0; instructionIndex < codegenPlan.instructionStates.length; instructionIndex += 1) {
+    const state = codegenPlan.instructionStates[instructionIndex];
 
     if (state === undefined) {
       throw new Error(`missing JIT instruction state while inserting flag boundaries: ${instructionIndex}`);
@@ -41,7 +41,7 @@ export function jitFlagBoundaryMasks(
     }
   }
 
-  for (const exit of loweringPlan.exitPoints) {
+  for (const exit of codegenPlan.exitPoints) {
     if (exit.snapshot.kind === "preInstruction") {
       continue;
     }

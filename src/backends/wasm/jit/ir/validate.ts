@@ -3,14 +3,14 @@ import { assertIrAluFlagMask } from "#x86/ir/model/flag-effects.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import type { IrBlock, ValueRef } from "#x86/ir/model/types.js";
 import { validateIrBlock } from "#x86/ir/passes/validator.js";
-import { jitIrOpDst } from "#backends/wasm/jit/ir-semantics.js";
-import type { JitIrBlock, JitIrBlockInstruction, JitIrBody, JitIrOp } from "#backends/wasm/jit/types.js";
+import { jitIrOpDst } from "#backends/wasm/jit/ir/semantics.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrBody, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import {
   analyzeJitBarriers,
   jitOpBarriersAt,
   type JitBarrier,
   type JitBarrierAnalysis
-} from "#backends/wasm/jit/optimization/analyses/barriers.js";
+} from "#backends/wasm/jit/ir/barriers.js";
 
 export type JitIrValidationOptions = Readonly<{
   barriers?: JitBarrierAnalysis;
@@ -20,6 +20,22 @@ export function validateJitIrBlock(
   block: JitIrBlock,
   options: JitIrValidationOptions = {}
 ): void {
+  for (let instructionIndex = 0; instructionIndex < block.instructions.length; instructionIndex += 1) {
+    const instruction = block.instructions[instructionIndex];
+
+    if (instruction === undefined) {
+      throw new Error(`missing JIT instruction: ${instructionIndex}`);
+    }
+
+    try {
+      validateJitInstructionBody(instruction);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      throw new Error(`invalid JIT IR at instruction ${instructionIndex}: ${message}`);
+    }
+  }
+
   const barriers = options.barriers ?? analyzeJitBarriers(block);
 
   validateJitBarrierIndex(block, barriers);
@@ -32,7 +48,7 @@ export function validateJitIrBlock(
     }
 
     try {
-      validateJitInstructionBody(instruction, instructionIndex, barriers);
+      validateJitRegisterMaterializations(instruction.ir, instructionIndex, barriers);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
 
@@ -42,26 +58,19 @@ export function validateJitIrBlock(
 }
 
 function validateJitInstructionBody(
-  instruction: JitIrBlockInstruction,
-  instructionIndex: number,
-  barriers: JitBarrierAnalysis
+  instruction: JitIrBlockInstruction
 ): void {
   validateIrBlock(jitValidationIrBlock(instruction.ir), {
     operandCount: instruction.operands.length,
     terminatorMode: "single"
   });
   validateJitFlagProducerConditionInputUses(instruction.ir);
-  validateJitRegisterMaterializations(instruction.ir, instructionIndex, barriers);
 }
 
 function jitValidationIrBlock(block: JitIrBody): IrBlock {
   return block.map((op) => {
     if (op.op === "flagProducer.condition") {
       return { op: "aluFlags.condition", dst: op.dst, cc: op.cc };
-    }
-
-    if (op.op === "set32.materialize") {
-      return { op: "set32", target: op.target, value: op.value };
     }
 
     return op;
@@ -202,7 +211,7 @@ function validateJitRegisterMaterializations(
   for (let opIndex = 0; opIndex < block.length; opIndex += 1) {
     const op = block[opIndex];
 
-    if (op?.op !== "set32.materialize") {
+    if (op?.op !== "set32" || op.role !== "registerMaterialization") {
       continue;
     }
 

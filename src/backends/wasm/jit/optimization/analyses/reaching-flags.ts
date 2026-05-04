@@ -4,13 +4,13 @@ import {
 } from "#x86/ir/model/flag-effects.js";
 import type { ConditionCode, FlagMask } from "#x86/ir/model/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import {
   analyzeJitBarriers,
   jitOpBarriersAt,
   jitOpHasBarrier,
   type JitBarrierAnalysis
-} from "#backends/wasm/jit/optimization/analyses/barriers.js";
+} from "#backends/wasm/jit/ir/barriers.js";
 import { jitConditionUseAt } from "#backends/wasm/jit/ir/effects.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 import {

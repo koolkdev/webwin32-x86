@@ -1,6 +1,6 @@
-import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import type { JitOptimizationPass } from "#backends/wasm/jit/optimization/pass.js";
-import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir-semantics.js";
+import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir/semantics.js";
 import {
   assignJitValue,
   materializeJitRegisterValue,
@@ -17,7 +17,7 @@ import {
   type JitRegisterValueFold,
   type JitRegisterValueProducer
 } from "#backends/wasm/jit/optimization/analyses/register-values.js";
-import { analyzeJitBarriers } from "#backends/wasm/jit/optimization/analyses/barriers.js";
+import { analyzeJitBarriers } from "#backends/wasm/jit/ir/barriers.js";
 
 export type JitRegisterValuePropagation = Readonly<{
   removedSetCount: number;
@@ -27,24 +27,24 @@ export type JitRegisterValuePropagation = Readonly<{
 }>;
 
 export const registerValuePropagationPass = {
-  name: "register-value-propagation",
+  name: "registerValuePropagation",
   run(block) {
     const result = propagateJitRegisterValues(block);
 
     return {
       block: result.block,
-      changed: result.registerValues.removedSetCount !== 0 ||
-        result.registerValues.foldedReadCount !== 0 ||
-        result.registerValues.foldedAddressCount !== 0 ||
-        result.registerValues.materializedSetCount !== 0,
-      stats: result.registerValues
+      changed: result.registerValuePropagation.removedSetCount !== 0 ||
+        result.registerValuePropagation.foldedReadCount !== 0 ||
+        result.registerValuePropagation.foldedAddressCount !== 0 ||
+        result.registerValuePropagation.materializedSetCount !== 0,
+      stats: result.registerValuePropagation
     };
   }
-} satisfies JitOptimizationPass<"register-value-propagation">;
+} satisfies JitOptimizationPass<"registerValuePropagation">;
 
 export function propagateJitRegisterValues(block: JitIrBlock): Readonly<{
   block: JitIrBlock;
-  registerValues: JitRegisterValuePropagation;
+  registerValuePropagation: JitRegisterValuePropagation;
 }> {
   const barriers = analyzeJitBarriers(block);
   const analysis = analyzeJitRegisterValues(block, barriers);
@@ -57,7 +57,7 @@ export function propagateJitRegisterValues(block: JitIrBlock): Readonly<{
 
   return {
     block: { instructions },
-    registerValues: stats
+    registerValuePropagation: stats
   };
 }
 

@@ -1,6 +1,6 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { ValueRef } from "#x86/ir/model/types.js";
-import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock } from "#backends/wasm/jit/ir/types.js";
 import {
   walkJitIrOpsBetween,
   type JitIrLocation
@@ -33,7 +33,12 @@ export function findJitRegWritebackBetween(
   let writeback: Readonly<{ reg: Reg32; location: JitIrLocation }> | undefined;
 
   walkJitIrOpsBetween(block, after, before, (instruction, op, location) => {
-    if (writeback !== undefined || op.op !== "set32" || !sameValueRef(op.value, value)) {
+    if (
+      writeback !== undefined ||
+      op.op !== "set32" ||
+      op.role === "registerMaterialization" ||
+      !sameValueRef(op.value, value)
+    ) {
       return;
     }
 

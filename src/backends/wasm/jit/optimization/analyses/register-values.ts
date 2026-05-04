@@ -1,6 +1,6 @@
 import type { Reg32 } from "#x86/isa/types.js";
-import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
-import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir-semantics.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
+import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir/semantics.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 import {
   jitStorageReg,
@@ -18,7 +18,7 @@ import {
   jitOpBarriersAt,
   jitOpHasBarrier,
   type JitBarrierAnalysis
-} from "#backends/wasm/jit/optimization/analyses/barriers.js";
+} from "#backends/wasm/jit/ir/barriers.js";
 
 export type JitRegisterValueProducer = Readonly<{
   instructionIndex: number;
@@ -223,6 +223,21 @@ function analyzeInstruction(
         break;
       }
       case "set32": {
+        if (op.role === "registerMaterialization") {
+          const reg = registerBarrierReg(barriers, instructionIndex, opIndex, "write");
+
+          if (reg !== undefined) {
+            materializeDependencies(registers, materializations, reg, {
+              instructionIndex,
+              opIndex,
+              phase: "beforeOp",
+              reason: "clobber"
+            });
+            registers.delete(reg);
+          }
+          break;
+        }
+
         const reg = registerBarrierReg(barriers, instructionIndex, opIndex, "write");
         const value = values.valueFor(op.value);
         const retained = reg !== undefined &&
@@ -260,20 +275,6 @@ function analyzeInstruction(
             phase: "beforeOp",
             reason: "conditionalWrite"
           });
-          materializeDependencies(registers, materializations, reg, {
-            instructionIndex,
-            opIndex,
-            phase: "beforeOp",
-            reason: "clobber"
-          });
-          registers.delete(reg);
-        }
-        break;
-      }
-      case "set32.materialize": {
-        const reg = registerBarrierReg(barriers, instructionIndex, opIndex, "write");
-
-        if (reg !== undefined) {
           materializeDependencies(registers, materializations, reg, {
             instructionIndex,
             opIndex,

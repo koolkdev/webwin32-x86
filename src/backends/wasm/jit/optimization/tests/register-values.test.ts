@@ -8,7 +8,7 @@ import {
   jitInstructionBarriersAt,
   jitInstructionHasBarrier,
   jitOpBarriersAt
-} from "#backends/wasm/jit/optimization/analyses/barriers.js";
+} from "#backends/wasm/jit/ir/barriers.js";
 import {
   analyzeJitRegisterValues,
   validateJitRegisterValueAnalysis,

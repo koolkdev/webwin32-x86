@@ -1,8 +1,7 @@
 import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { OperandRef, StorageRef, ValueRef } from "#x86/ir/model/types.js";
-import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
-import { requiredJitOperandBinding } from "#backends/wasm/jit/ir/operand-binding.js";
+import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
 
 export type JitValue =
   | Readonly<{ kind: "const32"; value: number }>
@@ -22,7 +21,7 @@ export function jitValueForStorage(
     case "reg":
       return registerValues.get(storage.reg) ?? { kind: "reg", reg: storage.reg };
     case "operand": {
-      const binding = requiredJitOperandBinding(operands, storage.index);
+      const binding = operands[storage.index]!;
 
       return jitValueForOperandBinding(binding, registerValues);
     }
@@ -50,7 +49,7 @@ export function jitValueForEffectiveAddress(
   operands: readonly JitOperandBinding[],
   registerValues: ReadonlyMap<Reg32, JitValue>
 ): JitValue | undefined {
-  const binding = requiredJitOperandBinding(operands, operand.index);
+  const binding = operands[operand.index]!;
 
   if (binding.kind !== "static.mem32") {
     return undefined;
@@ -82,7 +81,7 @@ export function jitRegisterValuesReadByEffectiveAddress(
   operands: readonly JitOperandBinding[],
   registerValues: ReadonlyMap<Reg32, JitValue>
 ): readonly Reg32[] {
-  const binding = requiredJitOperandBinding(operands, operand.index);
+  const binding = operands[operand.index]!;
 
   if (binding.kind !== "static.mem32") {
     return [];
@@ -106,7 +105,7 @@ export function jitStorageReg(storage: StorageRef, operands: readonly JitOperand
     case "reg":
       return storage.reg;
     case "operand": {
-      const binding = requiredJitOperandBinding(operands, storage.index);
+      const binding = operands[storage.index]!;
 
       return binding.kind === "static.reg32" ? binding.reg : undefined;
     }

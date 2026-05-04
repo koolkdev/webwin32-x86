@@ -5,12 +5,12 @@ import type { Reg32 } from "#x86/isa/types.js";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import { propagateJitRegisterValues } from "#backends/wasm/jit/optimization/passes/register-value-propagation.js";
-import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/ir/types.js";
 import { set32TargetRegs, startAddress } from "./helpers.js";
 
 function runRegisterValuePass(block: JitIrBlock): Readonly<{
   block: JitIrBlock;
-  registerValues: Readonly<{
+  registerValuePropagation: Readonly<{
     removedSetCount: number;
     materializedSetCount: number;
   }>;
@@ -19,9 +19,9 @@ function runRegisterValuePass(block: JitIrBlock): Readonly<{
 
   return {
     block: result.block,
-    registerValues: {
-      removedSetCount: result.registerValues.removedSetCount,
-      materializedSetCount: result.registerValues.materializedSetCount
+    registerValuePropagation: {
+      removedSetCount: result.registerValuePropagation.removedSetCount,
+      materializedSetCount: result.registerValuePropagation.materializedSetCount
     }
   };
 }
@@ -40,8 +40,8 @@ test("runRegisterValuePass keeps transient register calculations unmaterialized 
     trap
   ]));
 
-  strictEqual(folded.registerValues.removedSetCount, 4);
-  strictEqual(folded.registerValues.materializedSetCount, 2);
+  strictEqual(folded.registerValuePropagation.removedSetCount, 4);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 2);
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
 
@@ -59,8 +59,8 @@ test("runRegisterValuePass materializes repeated expensive register-value reads"
     trap
   ]));
 
-  strictEqual(folded.registerValues.removedSetCount, 4);
-  strictEqual(folded.registerValues.materializedSetCount, 3);
+  strictEqual(folded.registerValuePropagation.removedSetCount, 4);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 3);
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx", "edx"]);
 });
 
@@ -80,8 +80,8 @@ test("runRegisterValuePass keeps oversized expressions concrete", () => {
     trap
   ]));
 
-  strictEqual(folded.registerValues.removedSetCount, 4);
-  strictEqual(folded.registerValues.materializedSetCount, 0);
+  strictEqual(folded.registerValuePropagation.removedSetCount, 4);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 0);
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
 });
 
@@ -97,11 +97,11 @@ test("runRegisterValuePass folds register values into indirect jump targets", ()
   const jumpInstruction = folded.block.instructions.at(-1)!;
   const jumpIndex = jumpInstruction.ir.findIndex((op) => op.op === "jump");
 
-  strictEqual(folded.registerValues.removedSetCount, 2);
-  strictEqual(folded.registerValues.materializedSetCount, 1);
+  strictEqual(folded.registerValuePropagation.removedSetCount, 2);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 1);
   deepStrictEqual(
-    jumpInstruction.ir.slice(0, jumpIndex).map((op) => op.op),
-    ["get32", "i32.xor", "set32.materialize"]
+    opNames(jumpInstruction.ir.slice(0, jumpIndex)),
+    ["get32", "i32.xor", "set32:registerMaterialization"]
   );
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax"]);
 });
@@ -118,8 +118,8 @@ test("runRegisterValuePass folds register values into effective addresses", () =
     trap
   ]));
 
-  strictEqual(folded.registerValues.removedSetCount, 3);
-  strictEqual(folded.registerValues.materializedSetCount, 2);
+  strictEqual(folded.registerValuePropagation.removedSetCount, 3);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 2);
   strictEqual(folded.block.instructions[1]!.ir.some((op) => op.op === "address32"), false);
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
@@ -136,8 +136,8 @@ test("runRegisterValuePass materializes register values for scaled effective add
     trap
   ]));
 
-  strictEqual(folded.registerValues.removedSetCount, 2);
-  strictEqual(folded.registerValues.materializedSetCount, 2);
+  strictEqual(folded.registerValuePropagation.removedSetCount, 2);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 2);
   strictEqual(folded.block.instructions[1]!.ir.some((op) => op.op === "address32"), true);
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx", "eax"]);
 });
@@ -153,11 +153,17 @@ test("runRegisterValuePass materializes address registers before faultable memor
   ]));
   const loadInstruction = folded.block.instructions[1]!;
 
-  strictEqual(folded.registerValues.removedSetCount, 1);
-  strictEqual(folded.registerValues.materializedSetCount, 1);
+  strictEqual(folded.registerValuePropagation.removedSetCount, 1);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 1);
   strictEqual(hasSet32Reg(folded.block.instructions[0]!, "eax"), false);
   strictEqual(hasSet32Reg(loadInstruction, "eax"), true);
-  deepStrictEqual(loadInstruction.ir.map((op) => op.op), ["get32", "set32.materialize", "get32", "set32", "next"]);
+  deepStrictEqual(opNames(loadInstruction.ir), [
+    "get32",
+    "set32:registerMaterialization",
+    "get32",
+    "set32",
+    "next"
+  ]);
   deepStrictEqual(set32TargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
 
@@ -172,8 +178,8 @@ test("runRegisterValuePass materializes address registers before faultable memor
   ]));
   const storeInstruction = folded.block.instructions[1]!;
 
-  strictEqual(folded.registerValues.removedSetCount, 1);
-  strictEqual(folded.registerValues.materializedSetCount, 1);
+  strictEqual(folded.registerValuePropagation.removedSetCount, 1);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 1);
   strictEqual(hasSet32Reg(folded.block.instructions[0]!, "eax"), false);
   strictEqual(hasSet32Reg(storeInstruction, "eax"), true);
   strictEqual(storeInstruction.ir.some((op) => op.op === "set32" && op.target.kind === "operand"), true);
@@ -185,8 +191,8 @@ test("runRegisterValuePass resumes after the last pre-instruction exit in an ins
   const trap = ok(decodeBytes([0xcd, 0x2e], pushEax.nextEip));
   const folded = runRegisterValuePass(buildJitIrBlock([pushEax, trap]));
 
-  strictEqual(folded.registerValues.removedSetCount, 1);
-  strictEqual(folded.registerValues.materializedSetCount, 1);
+  strictEqual(folded.registerValuePropagation.removedSetCount, 1);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 1);
   strictEqual(
     folded.block.instructions[0]!.ir.some((op) => op.op === "set32" && op.target.kind === "reg" && op.target.reg === "esp"),
     false
@@ -199,8 +205,12 @@ function hasSet32Reg(
   reg: Reg32
 ): boolean {
   return instruction.ir.some((op) =>
-    (op.op === "set32" || op.op === "set32.materialize") &&
+    op.op === "set32" &&
     op.target.kind === "reg" &&
     op.target.reg === reg
   );
+}
+
+function opNames(ops: readonly { op: string; role?: string }[]): readonly string[] {
+  return ops.map((op) => op.role === undefined ? op.op : `${op.op}:${op.role}`);
 }

@@ -1,7 +1,7 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { ValueRef, VarRef } from "#x86/ir/model/types.js";
-import { jitIrOpDst } from "#backends/wasm/jit/ir-semantics.js";
-import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import { jitIrOpDst } from "#backends/wasm/jit/ir/semantics.js";
+import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import type { JitValue } from "#backends/wasm/jit/ir/values.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 
@@ -69,7 +69,8 @@ export function materializeJitRegisterValue(
   value: JitValue
 ): void {
   rewrite.ops.push({
-    op: "set32.materialize",
+    op: "set32",
+    role: "registerMaterialization",
     target: { kind: "reg", reg },
     value: emitJitValueRef(rewrite, value)
   });

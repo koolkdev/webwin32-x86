@@ -1,4 +1,4 @@
-import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import type { JitOptimizationPass } from "#backends/wasm/jit/optimization/pass.js";
 import {
   analyzeJitFlagLiveness,
@@ -11,7 +11,7 @@ export type JitFlagDce = Readonly<{
 }>;
 
 export const flagDcePass = {
-  name: "flag-dce",
+  name: "flagDce",
   run(block) {
     const result = pruneDeadJitFlagSets(block);
 
@@ -21,7 +21,7 @@ export const flagDcePass = {
       stats: result.flagDce
     };
   }
-} satisfies JitOptimizationPass<"flag-dce">;
+} satisfies JitOptimizationPass<"flagDce">;
 
 export function pruneDeadJitFlagSets(block: JitIrBlock): Readonly<{
   block: JitIrBlock;

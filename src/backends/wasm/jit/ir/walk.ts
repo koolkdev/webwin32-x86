@@ -1,4 +1,4 @@
-import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 
 export type JitIrLocation = Readonly<{
   instructionIndex: number;

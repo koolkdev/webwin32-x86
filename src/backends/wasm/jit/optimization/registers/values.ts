@@ -1,6 +1,6 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { OperandRef, StorageRef } from "#x86/ir/model/types.js";
-import type { JitOperandBinding } from "#backends/wasm/jit/lowering/operand-bindings.js";
+import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
 import type { JitValue } from "#backends/wasm/jit/ir/values.js";
 import {
   jitStorageHasRegisterValue,

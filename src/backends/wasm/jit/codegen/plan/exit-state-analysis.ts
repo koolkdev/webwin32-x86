@@ -1,8 +1,8 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import { conditionFlagReadMask } from "#x86/ir/model/flag-effects.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
-import { JitBlockStateTracker } from "#backends/wasm/jit/lowering-plan/block-state-tracker.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
+import { JitBlockStateTracker } from "#backends/wasm/jit/codegen/plan/block-state-tracker.js";
 import {
   indexJitEffects,
   type JitEffectIndex,
@@ -11,18 +11,18 @@ import {
   jitPostInstructionExitReasonsAt
 } from "#backends/wasm/jit/ir/effects.js";
 import type {
-  JitLoweringPlan,
+  JitCodegenPlan,
   JitExitPoint,
   JitExitState,
   JitFlagMaterializationRequirement,
   JitInstructionState,
   JitStateSnapshot
-} from "#backends/wasm/jit/lowering-plan/types.js";
+} from "#backends/wasm/jit/codegen/plan/types.js";
 
-export function analyzeJitLoweringState(
+export function analyzeJitCodegenState(
   block: JitIrBlock,
   effects: JitEffectIndex = indexJitEffects(block)
-): Omit<JitLoweringPlan, "block"> {
+): Omit<JitCodegenPlan, "block"> {
   const state = new JitBlockStateTracker();
   const instructionStates: JitInstructionState[] = [];
   const exitPoints: JitExitPoint[] = [];
@@ -36,7 +36,7 @@ export function analyzeJitLoweringState(
     currentPostState = undefined;
 
     if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while planning JIT lowering: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction while planning JIT codegen: ${instructionIndex}`);
     }
 
     const entry = state.snapshot("preInstruction", instruction.eip);
@@ -46,7 +46,7 @@ export function analyzeJitLoweringState(
       const op = instruction.ir[opIndex];
 
       if (op === undefined) {
-        throw new Error(`missing JIT IR op while planning JIT lowering: ${instructionIndex}:${opIndex}`);
+        throw new Error(`missing JIT IR op while planning JIT codegen: ${instructionIndex}:${opIndex}`);
       }
 
       const faultReason = jitPreInstructionExitReasonAt(effects, instructionIndex, opIndex);
@@ -64,7 +64,7 @@ export function analyzeJitLoweringState(
     }
 
     if (currentPostState === undefined) {
-      throw new Error(`missing JIT instruction terminator while planning JIT lowering: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction terminator while planning JIT codegen: ${instructionIndex}`);
     }
 
     instructionStates.push({
@@ -100,11 +100,12 @@ export function analyzeJitLoweringState(
     opIndex: number
   ): void {
     switch (op.op) {
-      case "set32.materialize":
-        state.recordCommittedStorageWrite(op.target, instruction.operands);
-        return;
       case "set32":
-        state.recordStorageWrite(op.target, instruction.operands);
+        if (op.role === "registerMaterialization") {
+          state.recordCommittedStorageWrite(op.target, instruction.operands);
+        } else {
+          state.recordStorageWrite(op.target, instruction.operands);
+        }
         return;
       case "set32.if":
         state.recordStorageWrite(op.target, instruction.operands);

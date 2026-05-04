@@ -1,4 +1,5 @@
-import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock } from "#backends/wasm/jit/ir/types.js";
+import { validateJitIrBlock } from "#backends/wasm/jit/ir/validate.js";
 import type { JitOptimizationPass, JitOptimizationPassRun, JitPassContext } from "./pass.js";
 import { runJitOptimizationPasses } from "./pass.js";
 import { collectJitPassStats, type JitPassStatsByName } from "./stats.js";
@@ -6,7 +7,6 @@ import { localDcePass } from "./passes/local-dce.js";
 import { flagConditionSpecializationPass } from "./passes/flag-condition-specialization.js";
 import { flagDcePass } from "./passes/flag-dce.js";
 import { registerValuePropagationPass } from "./passes/register-value-propagation.js";
-import { verifyJitIrBlock } from "./verify/optimizer-invariants.js";
 
 export const jitIrOptimizationPasses = [
   localDcePass,
@@ -20,12 +20,12 @@ export const jitIrOptimizationPasses = [
 export type JitIrOptimizationPassName = typeof jitIrOptimizationPasses[number]["name"];
 
 export const jitIrOptimizationPassOrder = [
-  "local-dce",
-  "flag-condition-specialization",
-  "flag-dce",
-  "local-dce",
-  "register-value-propagation",
-  "local-dce"
+  "localDce",
+  "flagConditionSpecialization",
+  "flagDce",
+  "localDce",
+  "registerValuePropagation",
+  "localDce"
 ] as const satisfies readonly JitIrOptimizationPassName[];
 
 export type JitIrOptimizationPipelineResult = Readonly<{
@@ -40,7 +40,7 @@ export function runJitIrOptimizationPipeline(
 ): JitIrOptimizationPipelineResult {
   const result = runJitOptimizationPasses(block, jitIrOptimizationPasses, context);
 
-  verifyJitIrBlock(result.block, { phase: "final" });
+  validateJitIrBlock(result.block);
 
   return {
     block: result.block,

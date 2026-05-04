@@ -1,9 +1,9 @@
 import { flagProducerConditionInputNames } from "#x86/ir/model/flag-conditions.js";
 import type { ValueRef } from "#x86/ir/model/types.js";
-import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import { indexJitEffects } from "#backends/wasm/jit/ir/effects.js";
 import type { JitOptimizationPass } from "#backends/wasm/jit/optimization/pass.js";
-import { analyzeJitBarriers } from "#backends/wasm/jit/optimization/analyses/barriers.js";
+import { analyzeJitBarriers } from "#backends/wasm/jit/ir/barriers.js";
 import { analyzeJitReachingFlags } from "#backends/wasm/jit/optimization/analyses/reaching-flags.js";
 import {
   indexDirectFlagConditions,
@@ -20,21 +20,21 @@ export type JitFlagConditionSpecialization = Readonly<{
 }>;
 
 export const flagConditionSpecializationPass = {
-  name: "flag-condition-specialization",
+  name: "flagConditionSpecialization",
   run(block) {
     const result = specializeJitFlagConditions(block);
 
     return {
       block: result.block,
-      changed: result.flagConditions.directConditionCount !== 0,
-      stats: result.flagConditions
+      changed: result.flagConditionSpecialization.directConditionCount !== 0,
+      stats: result.flagConditionSpecialization
     };
   }
-} satisfies JitOptimizationPass<"flag-condition-specialization">;
+} satisfies JitOptimizationPass<"flagConditionSpecialization">;
 
 export function specializeJitFlagConditions(block: JitIrBlock): Readonly<{
   block: JitIrBlock;
-  flagConditions: JitFlagConditionSpecialization;
+  flagConditionSpecialization: JitFlagConditionSpecialization;
 }> {
   const effects = indexJitEffects(block);
   const barriers = analyzeJitBarriers(block, effects);
@@ -50,7 +50,7 @@ export function specializeJitFlagConditions(block: JitIrBlock): Readonly<{
 
   return {
     block: { instructions },
-    flagConditions: { directConditionCount }
+    flagConditionSpecialization: { directConditionCount }
   };
 }
 

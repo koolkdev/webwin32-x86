@@ -18,10 +18,20 @@ export function collectJitPassStats<TName extends string>(
   const byName: Record<string, JitPassStats> = {};
 
   for (const result of results) {
-    byName[result.name] = result.stats;
+    byName[result.name] = addJitPassStats(byName[result.name] ?? {}, result.stats);
   }
 
   return byName as Record<TName, JitPassStats>;
+}
+
+function addJitPassStats(left: JitPassStats, right: JitPassStats): JitPassStats {
+  const totals: Record<string, number> = { ...left };
+
+  for (const [key, value] of Object.entries(right)) {
+    totals[key] = (totals[key] ?? 0) + value;
+  }
+
+  return totals;
 }
 
 export function sumJitPassStats(results: readonly JitNamedPassStats[]): JitPassStats {

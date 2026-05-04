@@ -9,11 +9,11 @@ import { stateOffset } from "#backends/wasm/abi.js";
 import { wasmOpcode, wasmSectionId } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
-import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir-semantics.js";
-import { buildJitLoweringIr } from "#backends/wasm/jit/lowering-plan/lowering-block.js";
-import { planJitLowering } from "#backends/wasm/jit/lowering-plan/lowering-plan.js";
+import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir/semantics.js";
+import { buildJitCodegenIr } from "#backends/wasm/jit/codegen/plan/block.js";
+import { planJitCodegen } from "#backends/wasm/jit/codegen/plan/plan.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
-import type { JitIrOp } from "#backends/wasm/jit/types.js";
+import type { JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import { runJitIrBlock } from "./helpers.js";
 
 const startAddress = 0x1000;
@@ -48,15 +48,15 @@ test("buildJitIrBlock builds instruction-local IR bodies", () => {
 test("JIT lowering plan keeps instruction-local operand namespaces", () => {
   const first = ok(decodeBytes([0x89, 0x18], startAddress));
   const second = ok(decodeBytes([0x89, 0x11], first.nextEip));
-  const loweringBlock = buildJitLoweringIr(
-    planJitLowering(optimizeJitIrBlock(buildJitIrBlock([first, second])))
+  const codegenBlock = buildJitCodegenIr(
+    planJitCodegen(optimizeJitIrBlock(buildJitIrBlock([first, second])))
   );
-  const firstIr = loweringBlock.instructions[0]!.ir;
-  const secondIr = loweringBlock.instructions[1]!.ir;
+  const firstIr = codegenBlock.instructions[0]!.ir;
+  const secondIr = codegenBlock.instructions[1]!.ir;
 
-  strictEqual("ir" in loweringBlock, false);
-  strictEqual("operands" in loweringBlock, false);
-  strictEqual(loweringBlock.instructions.length, 2);
+  strictEqual("ir" in codegenBlock, false);
+  strictEqual("operands" in codegenBlock, false);
+  strictEqual(codegenBlock.instructions.length, 2);
   strictEqual(firstIr.filter(jitIrOpIsTerminator).length, 1);
   strictEqual(secondIr.filter(jitIrOpIsTerminator).length, 1);
   deepStrictEqual([...new Set(firstIr.flatMap(irOpOperandIndexes))].sort((a, b) => a - b), [0, 1]);
@@ -66,7 +66,7 @@ test("JIT lowering plan keeps instruction-local operand namespaces", () => {
 test("buildJitIrBlock prunes flag producers overwritten inside the block", () => {
   const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], cmp.nextEip));
-  const ir = loweringIr(buildJitIrBlock([cmp, add]));
+  const ir = codegenIr(buildJitIrBlock([cmp, add]));
   const flagSets = ir.filter((op) => op.op === "flags.set");
 
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32"]);
@@ -75,7 +75,7 @@ test("buildJitIrBlock prunes flag producers overwritten inside the block", () =>
 test("buildJitIrBlock leaves condition materialization to JIT flag state", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const jz = ok(decodeBytes([0x74, 0x05], add.nextEip));
-  const branchIr = loweringIr(buildJitIrBlock([add, jz]));
+  const branchIr = codegenIr(buildJitIrBlock([add, jz]));
   const conditionIndex = branchIr.findIndex((op) => op.op === "aluFlags.condition");
   const conditionalJumpIndex = branchIr.findIndex((op) => op.op === "conditionalJump");
 
@@ -86,7 +86,7 @@ test("buildJitIrBlock leaves condition materialization to JIT flag state", () =>
   });
 
   const trap = ok(decodeBytes([0xcd, 0x2e], add.nextEip));
-  const exitIr = loweringIr(buildJitIrBlock([add, trap]));
+  const exitIr = codegenIr(buildJitIrBlock([add, trap]));
   const hostTrapIndex = exitIr.findIndex((op) => op.op === "hostTrap");
 
   deepStrictEqual(exitIr[hostTrapIndex - 1], {
@@ -99,7 +99,7 @@ test("buildJitIrBlock keeps earlier CF producer live across INC", () => {
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const inc = ok(decodeBytes([0x40], add.nextEip));
   const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
-  const ir = loweringIr(buildJitIrBlock([add, inc, jc]));
+  const ir = codegenIr(buildJitIrBlock([add, inc, jc]));
   const flagSets = ir.filter((op) => op.op === "flags.set");
 
   deepStrictEqual(flagSets.map((op) => op.op === "flags.set" ? op.producer : undefined), ["add32", "inc32"]);
@@ -109,7 +109,7 @@ test("buildJitIrBlock keeps earlier CF producer live across INC", () => {
 test("buildJitIrBlock emits direct cmp and jcc branch conditions", () => {
   const cmp = ok(decodeBytes([0x39, 0xd8], startAddress));
   const je = ok(decodeBytes([0x74, 0x05], cmp.nextEip));
-  const ir = loweringIr(buildJitIrBlock([cmp, je]));
+  const ir = codegenIr(buildJitIrBlock([cmp, je]));
 
   strictEqual(ir.some((op) => op.op === "flagProducer.condition"), true);
   strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
@@ -119,7 +119,7 @@ test("buildJitIrBlock does not specialize incoming CF after INC", () => {
   const inc = ok(decodeBytes([0x40], startAddress));
   const jc = ok(decodeBytes([0x72, 0x05], inc.nextEip));
   const block = buildJitIrBlock([inc, jc]);
-  const ir = loweringIr(block);
+  const ir = codegenIr(block);
 
   strictEqual(ir.some((op) => op.op === "flagProducer.condition"), false);
   strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
@@ -127,13 +127,13 @@ test("buildJitIrBlock does not specialize incoming CF after INC", () => {
 });
 
 test("buildJitIrBlock only emits exit flag boundaries for speculative flags", () => {
-  const flagFreeIr = loweringIr(buildJitIrBlock([
+  const flagFreeIr = codegenIr(buildJitIrBlock([
     ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress)),
     ok(decodeBytes([0xbb, 0x02, 0x00, 0x00, 0x00], startAddress + 5)),
     ok(decodeBytes([0xcd, 0x2e], startAddress + 10))
   ]));
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
-  const addTrapIr = loweringIr(buildJitIrBlock([
+  const addTrapIr = codegenIr(buildJitIrBlock([
     add,
     ok(decodeBytes([0xcd, 0x2e], add.nextEip))
   ]));
@@ -142,7 +142,7 @@ test("buildJitIrBlock only emits exit flag boundaries for speculative flags", ()
   strictEqual(flagFreeIr.some((op) => op.op === "flags.boundary"), false);
   deepStrictEqual(addTrapIr[addTrapIndex - 1], { op: "flags.boundary", mask: IR_ALU_FLAG_MASK });
 
-  const jzIr = loweringIr(buildJitIrBlock([ok(decodeBytes([0x74, 0x05], startAddress))]));
+  const jzIr = codegenIr(buildJitIrBlock([ok(decodeBytes([0x74, 0x05], startAddress))]));
 
   strictEqual(jzIr.some((op) => op.op === "flags.materialize"), false);
   strictEqual(jzIr.some((op) => op.op === "flags.boundary"), false);
@@ -663,8 +663,8 @@ test("jit IR block keeps flags live across memory fault exits before later overw
   deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000 });
 });
 
-function loweringIr(block: ReturnType<typeof buildJitIrBlock>): readonly JitIrOp[] {
-  return buildJitLoweringIr(planJitLowering(optimizeJitIrBlock(block))).instructions.flatMap(
+function codegenIr(block: ReturnType<typeof buildJitIrBlock>): readonly JitIrOp[] {
+  return buildJitCodegenIr(planJitCodegen(optimizeJitIrBlock(block))).instructions.flatMap(
     (instruction) => instruction.ir
   );
 }
@@ -692,7 +692,6 @@ function irOpOperandIndexes(op: JitIrOp): readonly number[] {
     case "get32":
       return storageOperandIndexes(op.source);
     case "set32":
-    case "set32.materialize":
       return storageOperandIndexes(op.target);
     case "set32.if":
       return storageOperandIndexes(op.target);

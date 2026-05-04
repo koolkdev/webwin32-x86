@@ -1,6 +1,6 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
-import type { JitIrBlock } from "#backends/wasm/jit/types.js";
+import type { JitIrBlock } from "#backends/wasm/jit/ir/types.js";
 import {
   indexJitEffects,
   jitPreInstructionExitReasonAt,

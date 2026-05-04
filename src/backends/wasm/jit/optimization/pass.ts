@@ -1,5 +1,5 @@
-import type { JitIrBlock } from "#backends/wasm/jit/types.js";
-import { verifyJitIrBlock } from "#backends/wasm/jit/optimization/verify/optimizer-invariants.js";
+import type { JitIrBlock } from "#backends/wasm/jit/ir/types.js";
+import { validateJitIrBlock } from "#backends/wasm/jit/ir/validate.js";
 import type { JitNamedPassStats, JitPassStats } from "./stats.js";
 
 export type JitPassContext = Readonly<{
@@ -36,20 +36,14 @@ export function runJitOptimizationPasses<const TPasses extends readonly JitOptim
 
   for (const pass of passes) {
     if (context.validate === true) {
-      verifyJitIrBlock(current, {
-        phase: "before-pass",
-        passName: pass.name
-      });
+      validateJitIrBlock(current);
     }
 
     const result = pass.run(current, context);
     const stats = result.stats ?? {};
 
     if (context.validate === true) {
-      verifyJitIrBlock(result.block, {
-        phase: "after-pass",
-        passName: pass.name
-      });
+      validateJitIrBlock(result.block);
     }
 
     current = result.block;
