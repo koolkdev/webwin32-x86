@@ -30,7 +30,7 @@ export function emitDirectFlagCondition(
   }
 
   rewrite.ops.push({
-    op: "jit.flagCondition",
+    op: "flagProducer.condition",
     dst: op.dst,
     cc: op.cc,
     producer: condition.source.producer,

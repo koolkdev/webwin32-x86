@@ -28,7 +28,7 @@ test("flag-condition-specialization emits direct cmp branch conditions", () => {
     "flags.set",
     "get32",
     "get32",
-    "jit.flagCondition",
+    "flagProducer.condition",
     "conditionalJump"
   ]);
 });
@@ -49,7 +49,7 @@ test("flag-condition-specialization emits direct cmp conditional writes", () => 
   });
 
   strictEqual(result.flagConditions.directConditionCount, 1);
-  strictEqual(opNames(result.block).includes("jit.flagCondition"), true);
+  strictEqual(opNames(result.block).includes("flagProducer.condition"), true);
 });
 
 test("flag-condition-specialization falls back when producer inputs are clobbered", () => {
@@ -74,7 +74,7 @@ test("flag-condition-specialization falls back when producer inputs are clobbere
 
   strictEqual(result.flagConditions.directConditionCount, 0);
   strictEqual(opNames(result.block).includes("aluFlags.condition"), true);
-  strictEqual(opNames(result.block).includes("jit.flagCondition"), false);
+  strictEqual(opNames(result.block).includes("flagProducer.condition"), false);
 });
 
 test("flag-condition-specialization handles supported result-only partial flag conditions", () => {
@@ -92,7 +92,7 @@ test("flag-condition-specialization handles supported result-only partial flag c
   });
 
   strictEqual(result.flagConditions.directConditionCount, 1);
-  strictEqual(opNames(result.block).includes("jit.flagCondition"), true);
+  strictEqual(opNames(result.block).includes("flagProducer.condition"), true);
 });
 
 test("flag-condition-specialization rejects mixed-owner reads", () => {

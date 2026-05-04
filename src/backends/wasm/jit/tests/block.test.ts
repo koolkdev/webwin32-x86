@@ -110,7 +110,7 @@ test("buildJitIrBlock emits direct cmp and jcc branch conditions", () => {
   const je = ok(decodeBytes([0x74, 0x05], cmp.nextEip));
   const ir = loweringIr(buildJitIrBlock([cmp, je]));
 
-  strictEqual(ir.some((op) => op.op === "jit.flagCondition"), true);
+  strictEqual(ir.some((op) => op.op === "flagProducer.condition"), true);
   strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
 });
 
@@ -120,7 +120,7 @@ test("buildJitIrBlock does not specialize incoming CF after INC", () => {
   const block = buildJitIrBlock([inc, jc]);
   const ir = loweringIr(block);
 
-  strictEqual(ir.some((op) => op.op === "jit.flagCondition"), false);
+  strictEqual(ir.some((op) => op.op === "flagProducer.condition"), false);
   strictEqual(ir.some((op) => op.op === "flags.materialize"), false);
   deepStrictEqual(aluFlagMemoryAccessCounts(block), { loads: 1, stores: 1 });
 });
@@ -679,7 +679,7 @@ function irOpDstId(op: JitIrOp): readonly number[] {
     case "i32.or":
     case "i32.and":
     case "aluFlags.condition":
-    case "jit.flagCondition":
+    case "flagProducer.condition":
       return [op.dst.id];
     default:
       return [];

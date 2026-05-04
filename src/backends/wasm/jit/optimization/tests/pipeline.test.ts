@@ -65,7 +65,7 @@ test("runJitIrOptimizationPipeline prunes dead flag producer inputs before regis
   strictEqual(cmoveInstruction.ir.some((op) =>
     op.op === "set32" && op.target.kind === "reg" && op.target.reg === "eax"
   ), false);
-  strictEqual(cmoveInstruction.ir.some((op) => op.op === "jit.flagCondition"), true);
+  strictEqual(cmoveInstruction.ir.some((op) => op.op === "flagProducer.condition"), true);
 });
 
 test("runJitOptimizationPasses runs named IR-to-IR passes and validates pass output", () => {
@@ -120,6 +120,6 @@ test("runJitIrOptimizationPipeline exposes the new pass pipeline as plain JIT IR
     pass.name === "flag-condition-specialization" && pass.stats.directConditionCount === 1
   ), true);
   strictEqual(result.block.instructions.some((instruction) =>
-    instruction.ir.some((op) => op.op === "jit.flagCondition")
+    instruction.ir.some((op) => op.op === "flagProducer.condition")
   ), true);
 });

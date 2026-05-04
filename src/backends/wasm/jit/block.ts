@@ -117,12 +117,12 @@ function validateJitInstructionBody(instruction: JitIrBlockInstruction): void {
     operandCount: instruction.operands.length,
     terminatorMode: "single"
   });
-  validateJitFlagConditionInputUses(instruction.ir);
+  validateJitFlagProducerConditionInputUses(instruction.ir);
 }
 
 function jitValidationIrBlock(block: JitIrBody): IrBlock {
   return block.map((op) => {
-    if (op.op === "jit.flagCondition") {
+    if (op.op === "flagProducer.condition") {
       return { op: "aluFlags.condition", dst: op.dst, cc: op.cc };
     }
 
@@ -130,11 +130,11 @@ function jitValidationIrBlock(block: JitIrBody): IrBlock {
   });
 }
 
-function validateJitFlagConditionInputUses(block: JitIrBody): void {
+function validateJitFlagProducerConditionInputUses(block: JitIrBody): void {
   const definedVars = new Set<number>();
 
   for (const op of block) {
-    if (op.op === "jit.flagCondition") {
+    if (op.op === "flagProducer.condition") {
       visitJitIrOpValueRefs(op, (value) => {
         validateJitValueRef(value, definedVars);
       });

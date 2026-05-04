@@ -15,13 +15,13 @@ import {
   type IrValueUse,
   type IrValueUseRole
 } from "#x86/ir/model/op-semantics.js";
-import type { IrOp, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
-import type { IrExpressionInputBlock, IrExpressionInputOp } from "#backends/wasm/lowering/expressions.js";
+import type { StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
+import type { IrExpressionInputBlock } from "#backends/wasm/lowering/expressions.js";
 import type { JitIrBody, JitIrOp } from "./types.js";
 
 export function jitIrOpResult(op: JitIrOp): IrOpResult {
   switch (op.op) {
-    case "jit.flagCondition":
+    case "flagProducer.condition":
       return { kind: "value", dst: op.dst, sideEffect: "none" };
     default:
       return irOpResult(op);
@@ -36,7 +36,7 @@ export function jitIrOpDst(op: JitIrOp): VarRef | undefined {
 
 export function jitIrOpIsTerminator(op: JitIrOp): boolean {
   switch (op.op) {
-    case "jit.flagCondition":
+    case "flagProducer.condition":
       return false;
     default:
       return irOpIsTerminator(op);
@@ -57,7 +57,7 @@ export function visitJitIrOpValueRefs(
   visit: (value: ValueRef, role: IrValueUseRole) => void
 ): void {
   switch (op.op) {
-    case "jit.flagCondition":
+    case "flagProducer.condition":
       for (const name of flagProducerConditionInputNames(op)) {
         visit(requiredFlagProducerConditionInput(op, name), "value");
       }
@@ -70,7 +70,7 @@ export function visitJitIrOpValueRefs(
 
 export function jitIrOpStorageUses(op: JitIrOp): readonly IrStorageUse[] {
   switch (op.op) {
-    case "jit.flagCondition":
+    case "flagProducer.condition":
       return [];
     default:
       return irOpStorageUses(op);
@@ -79,7 +79,7 @@ export function jitIrOpStorageUses(op: JitIrOp): readonly IrStorageUse[] {
 
 export function jitIrOpStorageReads(op: JitIrOp): readonly StorageRef[] {
   switch (op.op) {
-    case "jit.flagCondition":
+    case "flagProducer.condition":
       return [];
     default:
       return irOpStorageReads(op);
@@ -88,7 +88,7 @@ export function jitIrOpStorageReads(op: JitIrOp): readonly StorageRef[] {
 
 export function jitIrOpStorageWrites(op: JitIrOp): readonly StorageRef[] {
   switch (op.op) {
-    case "jit.flagCondition":
+    case "flagProducer.condition":
       return [];
     default:
       return irOpStorageWrites(op);
@@ -96,22 +96,5 @@ export function jitIrOpStorageWrites(op: JitIrOp): readonly StorageRef[] {
 }
 
 export function lowerableJitIrBlock(block: JitIrBody): IrExpressionInputBlock {
-  return block.map(lowerableJitIrOp);
-}
-
-function lowerableJitIrOp(op: JitIrOp): IrExpressionInputOp {
-  switch (op.op) {
-    case "jit.flagCondition":
-      return {
-        op: "flagProducer.condition",
-        dst: op.dst,
-        cc: op.cc,
-        producer: op.producer,
-        writtenMask: op.writtenMask,
-        undefMask: op.undefMask,
-        inputs: op.inputs
-      };
-    default:
-      return op;
-  }
+  return block;
 }

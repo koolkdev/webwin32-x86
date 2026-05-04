@@ -33,7 +33,7 @@ export function verifyJitIrBlock(block: JitIrBlock, options: JitOptimizerVerific
         operandCount: instruction.operands.length,
         terminatorMode: "single"
       });
-      validateJitFlagConditionInputUses(instruction.ir);
+      validateJitFlagProducerConditionInputUses(instruction.ir);
       validateJitRegisterMaterializations(instruction.ir, instructionIndex, barriers);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -69,7 +69,7 @@ function verificationPrefix(options: JitOptimizerVerificationOptions): string {
 
 function jitValidationIrBlock(block: JitIrBody): IrBlock {
   return block.map((op) => {
-    if (op.op === "jit.flagCondition") {
+    if (op.op === "flagProducer.condition") {
       return { op: "aluFlags.condition", dst: op.dst, cc: op.cc };
     }
 
@@ -77,12 +77,12 @@ function jitValidationIrBlock(block: JitIrBody): IrBlock {
   });
 }
 
-function validateJitFlagConditionInputUses(block: JitIrBody): void {
+function validateJitFlagProducerConditionInputUses(block: JitIrBody): void {
   const definedVars = new Set<number>();
 
   for (const op of block) {
-    if (op.op === "jit.flagCondition") {
-      validateJitFlagConditionInputs(op, definedVars);
+    if (op.op === "flagProducer.condition") {
+      validateJitFlagProducerConditionInputs(op, definedVars);
     }
 
     const dst = jitIrOpDst(op);
@@ -140,11 +140,11 @@ function validateJitRegisterMaterializations(
   }
 }
 
-function validateJitFlagConditionInputs(
-  op: Extract<JitIrOp, { op: "jit.flagCondition" }>,
+function validateJitFlagProducerConditionInputs(
+  op: Extract<JitIrOp, { op: "flagProducer.condition" }>,
   definedVars: ReadonlySet<number>
 ): void {
-  validateJitFlagConditionMasks(op);
+  validateJitFlagProducerConditionMasks(op);
 
   const inputNames = flagProducerConditionInputNames(op);
   const allowedInputs: ReadonlySet<string> = new Set(inputNames);
@@ -162,11 +162,11 @@ function validateJitFlagConditionInputs(
   }
 }
 
-function validateJitFlagConditionMasks(op: Extract<JitIrOp, { op: "jit.flagCondition" }>): void {
+function validateJitFlagProducerConditionMasks(op: Extract<JitIrOp, { op: "flagProducer.condition" }>): void {
   const producer = FLAG_PRODUCERS[op.producer];
 
-  assertIrAluFlagMask(op.writtenMask, "jit.flagCondition writtenMask");
-  assertIrAluFlagMask(op.undefMask, "jit.flagCondition undefMask");
+  assertIrAluFlagMask(op.writtenMask, "flagProducer.condition writtenMask");
+  assertIrAluFlagMask(op.undefMask, "flagProducer.condition undefMask");
 
   if (op.writtenMask !== producer.writtenMask) {
     throw new Error(`JIT flag condition ${op.producer} writtenMask does not match producer metadata`);

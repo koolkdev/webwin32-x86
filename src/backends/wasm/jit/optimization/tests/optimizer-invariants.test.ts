@@ -10,7 +10,7 @@ import { c32, startAddress, v } from "./helpers.js";
 test("verifyJitIrBlock rejects missing JIT flag condition inputs", () => {
   throws(() => verifyJitIrBlock(jitBlock([
     {
-      op: "jit.flagCondition",
+      op: "flagProducer.condition",
       dst: v(0),
       cc: "E",
       producer: "sub32",
@@ -25,7 +25,7 @@ test("verifyJitIrBlock rejects missing JIT flag condition inputs", () => {
 test("verifyJitIrBlock rejects unexpected JIT flag condition inputs", () => {
   throws(() => verifyJitIrBlock(jitBlock([
     {
-      op: "jit.flagCondition",
+      op: "flagProducer.condition",
       dst: v(0),
       cc: "E",
       producer: "logic32",
