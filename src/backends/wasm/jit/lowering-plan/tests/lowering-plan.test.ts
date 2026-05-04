@@ -7,7 +7,7 @@ import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import { planJitLowering } from "#backends/wasm/jit/lowering-plan/lowering-plan.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
-import { onlyExit, startAddress } from "./helpers.js";
+import { onlyExit, startAddress } from "../../optimization/tests/helpers.js";
 
 test("planJitLowering records post-instruction fallthrough exits", () => {
   const instruction = ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress));
