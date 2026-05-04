@@ -2,7 +2,7 @@ import type { Reg32 } from "#x86/isa/types.js";
 import { conditionFlagReadMask } from "#x86/ir/model/flag-effects.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/types.js";
-import { JitBlockStateTracker } from "#backends/wasm/jit/lowering-prep/block-state-tracker.js";
+import { JitBlockStateTracker } from "#backends/wasm/jit/lowering-plan/block-state-tracker.js";
 import {
   indexJitEffects,
   type JitEffectIndex,
@@ -11,18 +11,18 @@ import {
   jitPostInstructionExitReasonsAt
 } from "#backends/wasm/jit/ir/effects.js";
 import type {
-  JitBlockOptimization,
+  JitLoweringPlan,
   JitExitPoint,
   JitExitState,
   JitFlagMaterializationRequirement,
   JitInstructionState,
   JitStateSnapshot
-} from "#backends/wasm/jit/lowering-prep/types.js";
+} from "#backends/wasm/jit/lowering-plan/types.js";
 
-export function analyzeJitBlockState(
+export function analyzeJitLoweringState(
   block: JitIrBlock,
   effects: JitEffectIndex = indexJitEffects(block)
-): Omit<JitBlockOptimization, "block"> {
+): Omit<JitLoweringPlan, "block"> {
   const state = new JitBlockStateTracker();
   const instructionStates: JitInstructionState[] = [];
   const exitPoints: JitExitPoint[] = [];
@@ -36,7 +36,7 @@ export function analyzeJitBlockState(
     currentPostState = undefined;
 
     if (instruction === undefined) {
-      throw new Error(`missing JIT instruction while optimizing JIT IR block: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction while planning JIT lowering: ${instructionIndex}`);
     }
 
     const entry = state.snapshot("preInstruction", instruction.eip);
@@ -46,7 +46,7 @@ export function analyzeJitBlockState(
       const op = instruction.ir[opIndex];
 
       if (op === undefined) {
-        throw new Error(`missing JIT IR op while optimizing JIT IR block: ${instructionIndex}:${opIndex}`);
+        throw new Error(`missing JIT IR op while planning JIT lowering: ${instructionIndex}:${opIndex}`);
       }
 
       const faultReason = jitPreInstructionExitReasonAt(effects, instructionIndex, opIndex);
@@ -64,7 +64,7 @@ export function analyzeJitBlockState(
     }
 
     if (currentPostState === undefined) {
-      throw new Error(`missing JIT instruction terminator while optimizing JIT IR block: ${instructionIndex}`);
+      throw new Error(`missing JIT instruction terminator while planning JIT lowering: ${instructionIndex}`);
     }
 
     instructionStates.push({

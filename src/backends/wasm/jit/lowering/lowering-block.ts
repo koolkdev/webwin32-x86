@@ -1,1 +1,1 @@
-export { buildJitLoweringBlock } from "#backends/wasm/jit/lowering-prep/lowering-block.js";
+export { buildJitLoweringIr } from "#backends/wasm/jit/lowering-plan/lowering-block.js";

@@ -6,7 +6,7 @@ import { requiredJitOperandBinding } from "#backends/wasm/jit/ir/operand-binding
 import type {
   JitExitSnapshotKind,
   JitStateSnapshot
-} from "#backends/wasm/jit/lowering-prep/types.js";
+} from "#backends/wasm/jit/lowering-plan/types.js";
 
 export class JitBlockStateTracker {
   private readonly committedRegs = new Set<Reg32>();

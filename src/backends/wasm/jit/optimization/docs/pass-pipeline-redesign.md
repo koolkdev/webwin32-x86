@@ -4,7 +4,7 @@ This document describes how to replace the current tracked planner/emitter
 optimizer with a conventional pass pipeline. The goal is not to preserve the
 current architecture. The goal is to preserve the behavioral coverage and move
 to a simpler optimizer where analyses are disposable, passes rewrite IR, and
-lowering preparation is a separate final step.
+lowering planning is a separate final step.
 
 ## Why Change
 
@@ -22,8 +22,8 @@ model is too clever:
 
 The replacement should be boring. Each optimization pass should take a JIT IR
 block and return a JIT IR block. Analyses should be recomputed when needed.
-Exit state analysis and lowering decorations should happen after optimization,
-not during it.
+Exit state analysis and lowering decorations should happen in the lowering plan,
+not during optimization.
 
 ## Target Directory Structure
 
@@ -75,7 +75,7 @@ src/backends/wasm/jit/
         memory-faults.test.ts
         partial-flags.test.ts
 
-  lowering-prep/
+  lowering-plan/
     exit-state-analysis.ts
     flag-boundaries.ts
     register-exit-stores.ts
@@ -92,7 +92,7 @@ The important split is:
 
 - `ir/`: JIT IR type definitions and general-purpose IR utilities.
 - `optimization/`: pure IR-to-IR optimization.
-- `lowering-prep/`: final analysis and decoration for Wasm lowering.
+- `lowering-plan/`: final analysis and decoration for Wasm lowering.
 - `lowering/`: Wasm emission.
 
 Do not recreate `optimization/planner/` or `optimization/tracked/`.
@@ -146,7 +146,7 @@ Keep instruction boundaries. They are required for x86 EIP, instruction count,
 and pre-instruction fault snapshots.
 
 Prefer explicit side effects over side analyses where practical. A memory load
-or store should make its fault behavior visible to verifiers and lowering prep.
+or store should make its fault behavior visible to verifiers and the lowering plan.
 If the current IR cannot represent that cleanly, add explicit metadata or
 wrapper ops rather than relying on a separate effect index that can go stale.
 
@@ -250,7 +250,7 @@ Rules:
 - Keep one clear terminator shape per instruction.
 - Do not do semantic optimization here.
 
-## Lowering Prep Responsibilities
+## Lowering Plan Responsibilities
 
 Lowering prep happens after the optimization pipeline reaches a fixed final IR.
 It should not be mixed into optimization passes.
@@ -458,20 +458,20 @@ Acceptance criteria:
 
 Create:
 
-- `lowering-prep/exit-state-analysis.ts`,
-- `lowering-prep/lowering-block.ts`.
+- `lowering-plan/exit-state-analysis.ts`,
+- `lowering-plan/lowering-block.ts`.
 
 Acceptance criteria:
 
 - `optimizeJitIrBlock` no longer computes exit state as part of optimization.
-- Lowering prep computes equivalent exit states from final IR.
+- Lowering plan computes equivalent exit states from final IR.
 - Runtime JIT tests still pass.
 
-### Slice 11: Move Flag Boundary Insertion To Lowering Prep
+### Slice 11: Move Flag Boundary Insertion To Lowering Plan
 
 Create:
 
-- `lowering-prep/flag-boundaries.ts`.
+- `lowering-plan/flag-boundaries.ts`.
 
 Acceptance criteria:
 
@@ -546,7 +546,7 @@ The migration is complete when:
 - Optimization is a sequence of IR-to-IR passes.
 - No pass returns a stale side table required by another pass.
 - No optimization pass emits `prelude`.
-- Exit state analysis lives under lowering prep.
+- Exit state analysis lives under lowering plan.
 - Flag boundaries are inserted from final IR, not planner records.
 - Register and flag optimizations can be understood independently.
 - The verifier can catch invalid IR after any pass.
@@ -572,4 +572,3 @@ Preserve these instead:
 - register folding wins,
 - direct condition specialization wins,
 - the useful tests, rewritten around observable pass output.
-

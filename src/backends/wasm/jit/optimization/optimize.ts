@@ -1,10 +1,10 @@
 import type { JitIrBlock } from "#backends/wasm/jit/types.js";
 import { runJitIrOptimizationPipeline } from "./pipeline.js";
-import { analyzeJitBlockState } from "#backends/wasm/jit/lowering-prep/exit-state-analysis.js";
-import type { JitBlockOptimization } from "#backends/wasm/jit/lowering-prep/types.js";
+import { analyzeJitLoweringState } from "#backends/wasm/jit/lowering-plan/exit-state-analysis.js";
+import type { JitLoweringPlan } from "#backends/wasm/jit/lowering-plan/types.js";
 
 export type {
-  JitBlockOptimization,
+  JitLoweringPlan,
   JitExitPoint,
   JitExitSnapshotKind,
   JitExitState,
@@ -12,15 +12,15 @@ export type {
   JitFlagSnapshot,
   JitInstructionState,
   JitStateSnapshot
-} from "#backends/wasm/jit/lowering-prep/types.js";
+} from "#backends/wasm/jit/lowering-plan/types.js";
 
 export function optimizeJitIrBlockOnly(block: JitIrBlock): JitIrBlock {
   return runJitIrOptimizationPipeline(block).block;
 }
 
-export function optimizeJitIrBlock(block: JitIrBlock): JitBlockOptimization {
+export function optimizeJitIrBlock(block: JitIrBlock): JitLoweringPlan {
   const optimizedBlock = optimizeJitIrBlockOnly(block);
-  const optimized = analyzeJitBlockState(optimizedBlock);
+  const optimized = analyzeJitLoweringState(optimizedBlock);
 
   return {
     ...optimized,

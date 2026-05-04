@@ -18,7 +18,7 @@ import {
   emitJitSet32,
   emitJitSet32If
 } from "./operands.js";
-import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/lowering-prep/types.js";
+import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/lowering-plan/types.js";
 import { lowerableJitIrBlock } from "#backends/wasm/jit/ir-semantics.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
 import type { JitIrBlockInstruction } from "#backends/wasm/jit/types.js";

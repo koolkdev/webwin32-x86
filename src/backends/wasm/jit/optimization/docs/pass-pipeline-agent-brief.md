@@ -11,7 +11,7 @@ The target shape is:
 ```txt
 jit/ir/              shared JIT IR utilities and validation
 jit/optimization/    pure optimization passes and analyses
-jit/lowering-prep/   exit state analysis and lowering-only decorations
+jit/lowering-plan/   exit state analysis and lowering-only decorations
 jit/lowering/        Wasm emission
 ```
 
@@ -26,8 +26,8 @@ jit/lowering/        Wasm emission
 7. Implement `flag-condition-specialization` for safe direct `jcc`/`cmovcc` conditions.
 8. Implement register value and barrier analyses.
 9. Implement `register-value-propagation`, inserting real `set32` materialization at barriers in normal IR.
-10. Move exit state analysis out of optimization into `lowering-prep/`.
-11. Move flag boundary insertion into `lowering-prep/`.
+10. Move exit state analysis out of optimization into `lowering-plan/`.
+11. Move flag boundary insertion into `lowering-plan/`.
 12. Delete the old planner/tracked optimizer and replace planner-record tests with pass-output and runtime-equivalence tests.
 
 ## Non-Negotiables

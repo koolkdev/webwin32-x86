@@ -50,7 +50,7 @@ export type JitExitState = Readonly<{
   regs: readonly Reg32[];
 }>;
 
-export type JitBlockOptimization = Readonly<{
+export type JitLoweringPlan = Readonly<{
   block: JitIrBlock;
   instructionStates: readonly JitInstructionState[];
   exitPoints: readonly JitExitPoint[];

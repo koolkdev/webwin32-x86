@@ -6,10 +6,10 @@ import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { validateJitIrBlock } from "./ir/validate.js";
 import { JitIrBlockBuilder } from "./lowering/block-builder.js";
-import { buildJitLoweringBlock, prepareJitLowering } from "./lowering-prep/lowering-block.js";
+import { buildJitLoweringIr, planJitLowering } from "./lowering-plan/lowering-block.js";
 import { lowerIrWithJitContext, type JitIrInstructionContext } from "./lowering/ir-context.js";
 import { optimizeJitIrBlockOnly } from "./optimization/optimize.js";
-import type { JitBlockOptimization } from "#backends/wasm/jit/lowering-prep/types.js";
+import type { JitLoweringPlan } from "#backends/wasm/jit/lowering-plan/types.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
 import type { JitIrBlock } from "./types.js";
 
@@ -39,14 +39,14 @@ export function buildJitIrBlock(instructions: readonly IsaDecodedInstruction[]):
 
 export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
   const optimizedBlock = optimizeJitIrBlockOnly(block);
-  const optimization = prepareJitLowering(optimizedBlock);
-  const loweringBlock = buildJitLoweringBlock(optimization);
+  const loweringPlan = planJitLowering(optimizedBlock);
+  const loweringIr = buildJitLoweringIr(loweringPlan);
 
   if (block.instructions.length === 0) {
     throw new Error("cannot encode empty JIT IR block");
   }
 
-  validateJitIrBlock(loweringBlock);
+  validateJitIrBlock(loweringIr);
 
   const module = new WasmModuleEncoder();
   const stateMemoryIndex = module.importMemory(wasmImport.moduleName, wasmImport.stateMemoryName, { minPages: 1 });
@@ -63,7 +63,7 @@ export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
   const body = new WasmFunctionBodyEncoder();
   const scratch = new WasmLocalScratchAllocator(body);
   const exitLocal = body.addLocal(wasmValueType.i64);
-  const state = createJitIrState(body, optimization.exitStates);
+  const state = createJitIrState(body, loweringPlan.exitStates);
   const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitStateIndex };
 
   state.emitLoadInstructionCount();
@@ -74,8 +74,8 @@ export function encodeJitIrBlock(block: JitIrBlock): Uint8Array<ArrayBuffer> {
     scratch,
     state,
     exit,
-    instructions: loweringInstructions(loweringBlock, optimization),
-    exitPoints: optimization.exitPoints
+    instructions: loweringInstructions(loweringIr, loweringPlan),
+    exitPoints: loweringPlan.exitPoints
   });
   emitExitStateStores(body, state, exitLocal);
   scratch.assertClear();
@@ -96,16 +96,16 @@ function emitExitStateBlocks(body: WasmFunctionBodyEncoder, maxExitStateIndex: n
 
 function loweringInstructions(
   block: JitIrBlock,
-  optimization: JitBlockOptimization
+  loweringPlan: JitLoweringPlan
 ): readonly JitIrInstructionContext[] {
-  if (block.instructions.length !== optimization.instructionStates.length) {
+  if (block.instructions.length !== loweringPlan.instructionStates.length) {
     throw new Error(
-      `JIT lowering instruction count mismatch: ${block.instructions.length} !== ${optimization.instructionStates.length}`
+      `JIT lowering instruction count mismatch: ${block.instructions.length} !== ${loweringPlan.instructionStates.length}`
     );
   }
 
   return block.instructions.map((instruction, index) => {
-    const state = optimization.instructionStates[index];
+    const state = loweringPlan.instructionStates[index];
 
     if (state === undefined) {
       throw new Error(`missing JIT instruction state for lowering: ${index}`);
