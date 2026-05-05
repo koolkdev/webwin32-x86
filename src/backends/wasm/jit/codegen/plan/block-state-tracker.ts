@@ -52,8 +52,8 @@ export class JitBlockStateTracker {
       case "operand": {
         const binding = operands[storage.index]!;
 
-        if (binding.kind === "static.reg32") {
-          this.speculativeRegs.add(binding.reg);
+        if (binding.kind === "static.reg") {
+          this.speculativeRegs.add(binding.alias.base);
         }
         return;
       }
@@ -70,8 +70,8 @@ export class JitBlockStateTracker {
       case "operand": {
         const binding = operands[storage.index]!;
 
-        if (binding.kind === "static.reg32") {
-          this.committedRegs.add(binding.reg);
+        if (binding.kind === "static.reg") {
+          this.committedRegs.add(binding.alias.base);
         }
         return;
       }

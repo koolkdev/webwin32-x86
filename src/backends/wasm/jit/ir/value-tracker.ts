@@ -36,10 +36,9 @@ export class JitValueTracker {
   ): boolean {
     switch (op.op) {
       case "get":
-        this.record(
-          op.dst.id,
-          jitValueForStorage(op.source, instruction.operands, registerValues)
-        );
+        this.record(op.dst.id, (op.accessWidth ?? 32) === 32
+          ? jitValueForStorage(op.source, instruction.operands, registerValues)
+          : undefined);
         return true;
       case "address":
         this.record(

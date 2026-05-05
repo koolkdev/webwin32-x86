@@ -71,6 +71,28 @@ test("register-value-propagation materializes dependencies before clobbers", () 
   strictEqual(result.registerValuePropagation.materializedSetCount, 1);
 });
 
+test("register-value-propagation materializes tracked full registers before partial reads", () => {
+  const result = propagateJitRegisterValues({
+    instructions: [
+      syntheticInstruction([
+        { op: "const32", dst: v(0), value: 0x1234_5678 },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" }, accessWidth: 8 },
+        { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(1), accessWidth: 8 },
+        { op: "next" }
+      ], 0, "exit")
+    ]
+  });
+
+  deepStrictEqual(result.registerValuePropagation, {
+    removedSetCount: 1,
+    foldedReadCount: 0,
+    foldedAddressCount: 0,
+    materializedSetCount: 1
+  });
+  deepStrictEqual(opNames(result.block), ["const32", "set:registerMaterialization", "get", "set", "next"]);
+});
+
 test("register-value-propagation is a validating repeatable optimization pass", () => {
   const first = runJitOptimizationPasses({
     instructions: [

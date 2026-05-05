@@ -78,6 +78,6 @@ function storageMayAccessMemory(storage: StorageRef, operands: readonly JitOpera
     case "reg":
       return false;
     case "operand":
-      return operands[storage.index]!.kind === "static.mem32";
+      return operands[storage.index]!.kind === "static.mem";
   }
 }

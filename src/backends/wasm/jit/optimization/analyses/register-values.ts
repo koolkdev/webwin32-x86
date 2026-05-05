@@ -162,6 +162,21 @@ function analyzeInstruction(
       case "get": {
         const reg = jitStorageReg(op.source, instruction.operands);
         const value = registers.valueForStorage(op.source, instruction.operands);
+        const accessWidth = op.accessWidth ?? 32;
+
+        if (accessWidth !== 32) {
+          if (reg !== undefined && registers.has(reg)) {
+            materializeRegs(registers, materializations, [reg], {
+              instructionIndex,
+              opIndex,
+              phase: "beforeOp",
+              reason: "read"
+            });
+          }
+
+          values.record(op.dst.id, undefined);
+          break;
+        }
 
         if (reg !== undefined && value !== undefined && registers.hasStorageValue(op.source, instruction.operands)) {
           if (shouldMaterializeRepeatedRegisterRead(reg, value, registers)) {
@@ -240,7 +255,9 @@ function analyzeInstruction(
 
         const reg = registerBarrierReg(barriers, instructionIndex, opIndex, "write");
         const value = values.valueFor(op.value);
+        const accessWidth = op.accessWidth ?? 32;
         const retained = reg !== undefined &&
+          accessWidth === 32 &&
           value !== undefined &&
           shouldRetainRegisterValue(value) &&
           !isImmediatelyMaterializedAtExit(instruction, instructionIndex, opIndex, barriers);
@@ -259,7 +276,7 @@ function analyzeInstruction(
             registers.delete(reg);
           }
 
-          if (value !== undefined) {
+          if (accessWidth === 32 && value !== undefined) {
             producers.push({ instructionIndex, opIndex, reg, value, retained });
           }
         }

@@ -217,6 +217,115 @@ test("jit IR block emits memory mov with static effective addresses", async () =
   strictEqual(storeImmediate.guestView.getUint32(0x200c, true), 0x1234_5678);
 });
 
+test("jit IR block handles partial register MOV writes", async () => {
+  const movAl = await runJitIrBlock([0xb0, 0x44], createCpuState({
+    eax: 0x1122_3300,
+    eip: startAddress
+  }));
+  const movAh = await runJitIrBlock([0xb4, 0x55], createCpuState({
+    eax: 0x1122_0033,
+    eip: startAddress
+  }));
+  const movAx = await runJitIrBlock([0x66, 0xb8, 0x78, 0x56], createCpuState({
+    eax: 0x1234_0000,
+    eip: startAddress
+  }));
+
+  strictEqual(movAl.state.eax, 0x1122_3344);
+  strictEqual(movAh.state.eax, 0x1122_5533);
+  strictEqual(movAx.state.eax, 0x1234_5678);
+});
+
+test("jit IR block coalesces independent low-byte register writes correctly", async () => {
+  const result = await runJitIrBlock([
+    0xb0, 0x05, // mov al, 5
+    0xb4, 0x05 // mov ah, 5
+  ], createCpuState({
+    eax: 0x1122_3300,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0x1122_0505);
+  strictEqual(result.state.eip, startAddress + 4);
+  strictEqual(result.state.instructionCount, 2);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + 4 });
+});
+
+test("jit IR block materializes partial register writes before full-register copies", async () => {
+  const result = await runJitIrBlock([
+    0xb0, 0x05, // mov al, 5
+    0x89, 0xc3 // mov ebx, eax
+  ], createCpuState({
+    eax: 0x1122_3300,
+    ebx: 0xcccc_cccc,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0x1122_3305);
+  strictEqual(result.state.ebx, 0x1122_3305);
+  strictEqual(result.state.eip, startAddress + 4);
+  strictEqual(result.state.instructionCount, 2);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + 4 });
+});
+
+test("jit IR block reads known partial register lanes across instructions", async () => {
+  const result = await runJitIrBlock([
+    0xb0, 0x78, // mov al, 0x78
+    0x88, 0xc3, // mov bl, al
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eax: 0xaaaa_aa00,
+    ebx: 0xbbbb_bb00,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0xaaaa_aa78);
+  strictEqual(result.state.ebx, 0xbbbb_bb78);
+  strictEqual(result.state.eip, startAddress + 6);
+  strictEqual(result.state.instructionCount, 3);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
+test("jit IR block handles byte and word memory MOV accesses", async () => {
+  const byteStore = await runJitIrBlock([0x88, 0x03], createCpuState({
+    eax: 0xaabb_ccdd,
+    ebx: 0x40,
+    eip: startAddress
+  }));
+  const wordLoad = await runJitIrBlock(
+    [0x66, 0x8b, 0x03],
+    createCpuState({
+      eax: 0xffff_0000,
+      ebx: 0x40,
+      eip: startAddress
+    }),
+    [{ address: 0x40, bytes: [0x34, 0x12] }]
+  );
+  const wordStore = await runJitIrBlock([0x66, 0x89, 0x03], createCpuState({
+    eax: 0xaaaa_babe,
+    ebx: 0x44,
+    eip: startAddress
+  }));
+
+  strictEqual(byteStore.guestView.getUint8(0x40), 0xdd);
+  strictEqual(wordLoad.state.eax, 0xffff_1234);
+  strictEqual(wordStore.guestView.getUint16(0x44, true), 0xbabe);
+  strictEqual(wordStore.guestView.getUint8(0x46), 0);
+});
+
+test("jit IR block handles partial-width ALU register writeback", async () => {
+  const result = await runJitIrBlock([0x04, 0x01], createCpuState({
+    eax: 0xffff_ffff,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0xffff_ff00);
+  strictEqual(result.state.eflags, (preservedEflags | addWraparoundEflags) >>> 0);
+  strictEqual(result.state.eip, startAddress + 2);
+  strictEqual(result.state.instructionCount, 1);
+});
+
 test("jit IR block emits cmovcc as a conditional register write", async () => {
   const taken = await runJitIrBlock(
     [0x0f, 0x44, 0xd1], // cmove edx, ecx
@@ -774,7 +883,10 @@ function memoryAccesses(functionBody: Uint8Array<ArrayBuffer>): readonly WasmMem
         break;
       case wasmOpcode.i32Load:
       case wasmOpcode.i32Load8U:
-      case wasmOpcode.i32Store: {
+      case wasmOpcode.i32Load16U:
+      case wasmOpcode.i32Store:
+      case wasmOpcode.i32Store8:
+      case wasmOpcode.i32Store16: {
         const memory = readMemoryImmediate(functionBody, offset);
 
         offset = memory.nextOffset;

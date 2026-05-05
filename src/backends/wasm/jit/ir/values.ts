@@ -54,7 +54,7 @@ export function jitValueForEffectiveAddress(
 ): JitValue | undefined {
   const binding = operands[operand.index]!;
 
-  if (binding.kind !== "static.mem32") {
+  if (binding.kind !== "static.mem") {
     return undefined;
   }
 
@@ -86,7 +86,7 @@ export function jitRegisterValuesReadByEffectiveAddress(
 ): readonly Reg32[] {
   const binding = operands[operand.index]!;
 
-  if (binding.kind !== "static.mem32") {
+  if (binding.kind !== "static.mem") {
     return [];
   }
 
@@ -110,7 +110,7 @@ export function jitStorageReg(storage: StorageRef, operands: readonly JitOperand
     case "operand": {
       const binding = operands[storage.index]!;
 
-      return binding.kind === "static.reg32" ? binding.reg : undefined;
+      return binding.kind === "static.reg" ? binding.alias.base : undefined;
     }
     case "mem":
       return undefined;
@@ -191,13 +191,15 @@ function jitValueForOperandBinding(
   registerValues: ReadonlyMap<Reg32, JitValue>
 ): JitValue | undefined {
   switch (binding.kind) {
-    case "static.reg32":
-      return registerValues.get(binding.reg) ?? { kind: "reg", reg: binding.reg };
+    case "static.reg":
+      return binding.alias.width === 32
+        ? registerValues.get(binding.alias.base) ?? { kind: "reg", reg: binding.alias.base }
+        : undefined;
     case "static.imm32":
       return { kind: "const32", value: i32(binding.value) };
     case "static.relTarget":
       return { kind: "const32", value: i32(binding.target) };
-    case "static.mem32":
+    case "static.mem":
       return undefined;
   }
 }

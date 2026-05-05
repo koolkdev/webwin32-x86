@@ -181,14 +181,14 @@ function emitJitSet32WithRole(
   helpers: WasmIrEmitHelpers,
   op: IrSetExprOp
 ): void {
-  if (accessWidth !== 32) {
-    throw new Error(`JIT codegen does not support ${accessWidth}-bit writes`);
-  }
-
-  emitJitSet32(jitContext, target, value, helpers);
+  emitJitSet32(jitContext, target, value, accessWidth, helpers);
 
   if (op.role !== "registerMaterialization") {
     return;
+  }
+
+  if (accessWidth !== 32) {
+    throw new Error(`JIT register materialization cannot use ${accessWidth}-bit writes`);
   }
 
   if (target.kind !== "reg") {

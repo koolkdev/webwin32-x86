@@ -70,7 +70,7 @@ export function setTargetRegs(
         case "operand": {
           const binding = instruction.operands[op.target.index];
 
-          return binding?.kind === "static.reg32" ? [binding.reg] : [];
+          return binding?.kind === "static.reg" ? [binding.alias.base] : [];
         }
         case "mem":
           return [];
