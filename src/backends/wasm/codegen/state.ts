@@ -3,6 +3,22 @@ import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-bo
 
 export const stateU32Align = 2;
 
+export function emitLoadStateU8(body: WasmFunctionBodyEncoder, offset: number): void {
+  body.i32Const(0).i32Load8U({
+    align: 0,
+    memoryIndex: wasmMemoryIndex.state,
+    offset
+  });
+}
+
+export function emitLoadStateU16(body: WasmFunctionBodyEncoder, offset: number): void {
+  body.i32Const(0).i32Load16U({
+    align: offset % 2 === 0 ? 1 : 0,
+    memoryIndex: wasmMemoryIndex.state,
+    offset
+  });
+}
+
 export function emitLoadStateU32(body: WasmFunctionBodyEncoder, offset: number): void {
   body.i32Const(0).i32Load({
     align: stateU32Align,

@@ -9,10 +9,13 @@ import {
   type WasmIrEmitValueOptions,
   type ValueWidth
 } from "#backends/wasm/codegen/value-width.js";
-import { emitLoadStateU32, emitStoreStateU32 } from "#backends/wasm/codegen/state.js";
+import { emitLoadStateU16, emitLoadStateU32, emitLoadStateU8, emitStoreStateU32 } from "#backends/wasm/codegen/state.js";
 import {
+  aliasByteRange,
   byteCount,
+  byteSourceAt,
   byteSourcesForAlias,
+  byteWidth,
   clearPartialBytes,
   directFullLocalForRead,
   emptyRegValueState,
@@ -110,6 +113,11 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
 
     if (byteSources !== undefined) {
       emitComposedByteSources(body, byteSources);
+      return cleanValueWidth(alias.width);
+    }
+
+    if (canLoadAliasFromState(alias, pending, committed)) {
+      emitLoadAliasFromState(alias);
       return cleanValueWidth(alias.width);
     }
 
@@ -217,6 +225,41 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     }
 
     emitMergedBytes(body, state);
+  }
+
+  function canLoadAliasFromState(
+    alias: RegisterAlias,
+    pending: RegValueState | undefined,
+    committed: RegValueState | undefined
+  ): boolean {
+    if (alias.width === fullWidth) {
+      return false;
+    }
+
+    const { startByte, byteLength } = aliasByteRange(alias);
+
+    for (let index = 0; index < byteLength; index += 1) {
+      if (byteSourceAt(startByte + index, pending, committed) !== undefined) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function emitLoadAliasFromState(alias: RegisterAlias): void {
+    const offset = stateOffset[alias.base] + alias.bitOffset / byteWidth;
+
+    switch (alias.width) {
+      case 8:
+        emitLoadStateU8(body, offset);
+        return;
+      case 16:
+        emitLoadStateU16(body, offset);
+        return;
+      case 32:
+        throw new Error("full-width aliases must use full state loads");
+    }
   }
 
   function emitPartialStateStores(reg: Reg32, stores: readonly RegisterStoreOp[]): void {

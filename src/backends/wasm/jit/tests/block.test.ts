@@ -5,7 +5,7 @@ import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
 import type { StorageRef } from "#x86/ir/model/types.js";
 import { createCpuState } from "#x86/state/cpu-state.js";
-import { stateOffset } from "#backends/wasm/abi.js";
+import { stateOffset, wasmMemoryIndex } from "#backends/wasm/abi.js";
 import { wasmOpcode, wasmSectionId } from "#backends/wasm/encoder/types.js";
 import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
 import { ExitReason } from "#backends/wasm/exit.js";
@@ -501,9 +501,66 @@ test("jit IR block omits narrow bitwise operand masks", () => {
   assertNoOperandMaskBefore(singleInstructionBodyOpcodes([0x66, 0x0d, 0x32, 0x04]), wasmOpcode.i32Or);
 });
 
-test("jit IR block keeps narrow add and sub operand masking", () => {
-  assertSomeOperandMaskBefore(singleInstructionBodyOpcodes([0x66, 0x05, 0x01, 0x00]), wasmOpcode.i32Add);
-  assertSomeOperandMaskBefore(singleInstructionBodyOpcodes([0x66, 0x2d, 0x01, 0x00]), wasmOpcode.i32Sub);
+test("jit IR block keeps cold AH xor state traffic byte-width", async () => {
+  const bytes = [0x80, 0xf4, 0x05]; // xor ah, 5
+  const block = buildJitIrBlock([ok(decodeBytes(bytes, startAddress))]);
+  const result = await runJitIrBlock(bytes, createCpuState({
+    eax: 0x1234_5678,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0x1234_5378);
+  strictEqual(result.state.eflags, (preservedEflags | 0x04) >>> 0);
+  strictEqual(result.state.eip, startAddress + bytes.length);
+  strictEqual(result.state.instructionCount, 1);
+  deepStrictEqual(registerStateMemoryAccesses(block, stateOffset.eax), [
+    { opcode: wasmOpcode.i32Load8U, offset: stateOffset.eax + 1 },
+    { opcode: wasmOpcode.i32Store8, offset: stateOffset.eax + 1 }
+  ]);
+});
+
+test("jit IR block keeps cold AX xor state traffic word-width", async () => {
+  const bytes = [0x66, 0x35, 0x32, 0x04]; // xor ax, 0x432
+  const block = buildJitIrBlock([ok(decodeBytes(bytes, startAddress))]);
+  const result = await runJitIrBlock(bytes, createCpuState({
+    eax: 0x1234_5678,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0x1234_524a);
+  strictEqual(result.state.eflags, preservedEflags);
+  strictEqual(result.state.eip, startAddress + bytes.length);
+  strictEqual(result.state.instructionCount, 1);
+  deepStrictEqual(registerStateMemoryAccesses(block, stateOffset.eax), [
+    { opcode: wasmOpcode.i32Load16U, offset: stateOffset.eax },
+    { opcode: wasmOpcode.i32Store16, offset: stateOffset.eax }
+  ]);
+});
+
+test("jit IR block materializes a later full read after cold AH xor", async () => {
+  const bytes = [
+    0x80, 0xf4, 0x05, // xor ah, 5
+    0x89, 0xc3 // mov ebx, eax
+  ];
+  const result = await runJitIrBlock(bytes, createCpuState({
+    eax: 0x1234_5678,
+    ebx: 0xaaaa_aaaa,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0x1234_5378);
+  strictEqual(result.state.ebx, 0x1234_5378);
+  strictEqual(result.state.eflags, (preservedEflags | 0x04) >>> 0);
+  strictEqual(result.state.eip, startAddress + bytes.length);
+  strictEqual(result.state.instructionCount, 2);
+});
+
+test("jit IR block omits redundant masks before cold narrow add and sub state loads", () => {
+  assertNoOperandMaskBefore(singleInstructionBodyOpcodes([0x66, 0x05, 0x01, 0x00]), wasmOpcode.i32Add);
+  assertNoOperandMaskBefore(singleInstructionBodyOpcodes([0x66, 0x2d, 0x01, 0x00]), wasmOpcode.i32Sub);
 });
 
 test("jit IR block keeps mixed partial-register bitwise mask count bounded", () => {
@@ -987,14 +1044,6 @@ function assertNoOperandMaskBefore(opcodes: readonly number[], opcode: number): 
   strictEqual(opcodes.slice(Math.max(0, index - 3), index).includes(wasmOpcode.i32And), false);
 }
 
-function assertSomeOperandMaskBefore(opcodes: readonly number[], opcode: number): void {
-  const matchingOpcodeHasMask = opcodeIndexes(opcodes, opcode).some((index) =>
-    opcodes.slice(Math.max(0, index - 12), index).includes(wasmOpcode.i32And)
-  );
-
-  strictEqual(matchingOpcodeHasMask, true);
-}
-
 function requiredOpcodeIndex(opcodes: readonly number[], opcode: number): number {
   const index = opcodes.indexOf(opcode);
 
@@ -1076,6 +1125,19 @@ function stateMemoryLoads(block: ReturnType<typeof buildJitIrBlock>): readonly n
   return memoryAccesses(extractOnlyFunctionBody(encodeJitIrBlock([block])))
     .filter((access) => access.memoryIndex === 0 && access.opcode === wasmOpcode.i32Load)
     .map((access) => access.offset);
+}
+
+function registerStateMemoryAccesses(
+  block: ReturnType<typeof buildJitIrBlock>,
+  regOffset: number
+): readonly Readonly<{ opcode: number; offset: number }>[] {
+  return memoryAccesses(extractOnlyFunctionBody(encodeJitIrBlock([block])))
+    .filter((access) =>
+      access.memoryIndex === wasmMemoryIndex.state &&
+      access.offset >= regOffset &&
+      access.offset < regOffset + 4
+    )
+    .map((access) => ({ opcode: access.opcode, offset: access.offset }));
 }
 
 type WasmMemoryAccess = Readonly<{

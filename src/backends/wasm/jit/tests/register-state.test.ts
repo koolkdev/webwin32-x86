@@ -325,7 +325,8 @@ test("jit register state keeps byte-only alu updates narrow", () => {
 
   const opcodes = wasmBodyOpcodes(body.encode());
 
-  strictEqual(countOpcode(opcodes, wasmOpcode.i32Load), 1);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Load), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Load8U), 1);
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Store), 0);
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Store8), 1);
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Store16), 0);
