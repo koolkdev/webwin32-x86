@@ -6,7 +6,6 @@ import { i32 } from "#x86/state/cpu-state.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { emitWasmIrLoadGuestFromStack, emitWasmIrStoreGuest } from "#backends/wasm/codegen/memory.js";
-import type { WasmIrReg32Storage } from "#backends/wasm/codegen/registers.js";
 import type { WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 import type { JitExitPoint } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
@@ -49,7 +48,7 @@ export function emitJitGet(
     case "operand":
       return emitGetBinding(context, operandBinding(context, source.index), accessWidth, options);
     case "reg":
-      return regs.emitGetAlias(regAccess(source.reg, accessWidth), options);
+      return regs.emitReadAlias(regAccess(source.reg, accessWidth), options);
     case "mem":
       helpers.emitValue(source.address, { requestedWidth: 32 });
       emitLoadGuestFromStack(context, accessWidth);
@@ -71,7 +70,7 @@ export function emitJitSet(
       emitSetBinding(context, operandBinding(context, target.index), value, helpers);
       return;
     case "reg":
-      regs.emitSetAlias(regAccess(target.reg, accessWidth), () => helpers.emitValue(value));
+      regs.emitWriteAlias(regAccess(target.reg, accessWidth), () => helpers.emitValue(value));
       return;
     case "mem":
       emitStoreMem(
@@ -101,7 +100,7 @@ export function emitJitSetIf(
       emitSetBindingIf(context, operandBinding(context, target.index), condition, value, accessWidth, helpers);
       return;
     case "reg":
-      regs.emitSetAliasIf(
+      regs.emitWriteAliasIf(
         regAccess(target.reg, accessWidth),
         () => helpers.emitValue(condition, { requestedWidth: 32 }),
         () => helpers.emitValue(value)
@@ -137,7 +136,7 @@ function emitGetBinding(
   switch (binding.kind) {
     case "static.reg":
       assertAccessWidth(accessWidth, binding.alias.width, "read");
-      return regs.emitGetAlias(binding.alias, options);
+      return regs.emitReadAlias(binding.alias, options);
     case "static.mem":
       emitEffectiveAddress(context.body, regs, binding.ea);
       emitLoadGuestFromStack(context, accessWidth);
@@ -170,7 +169,7 @@ function emitSetBinding(
 
   switch (binding.kind) {
     case "static.reg":
-      regs.emitSetAlias(binding.alias, () => helpers.emitValue(value));
+      regs.emitWriteAlias(binding.alias, () => helpers.emitValue(value));
       return;
     case "static.mem":
       emitStoreMem(
@@ -201,7 +200,7 @@ function emitSetBindingIf(
   switch (binding.kind) {
     case "static.reg":
       assertAccessWidth(accessWidth, binding.alias.width, "conditional write");
-      regs.emitSetAliasIf(
+      regs.emitWriteAliasIf(
         binding.alias,
         () => helpers.emitValue(condition, { requestedWidth: 32 }),
         () => helpers.emitValue(value)
@@ -215,16 +214,16 @@ function emitSetBindingIf(
   }
 }
 
-function emitEffectiveAddress(body: JitIrContext["body"], regs: WasmIrReg32Storage, ea: MemOperand): void {
+function emitEffectiveAddress(body: JitIrContext["body"], regs: JitIrContext["state"]["regs"], ea: MemOperand): void {
   let hasTerm = false;
 
   if (ea.base !== undefined) {
-    regs.emitGet(ea.base);
+    regs.emitReadReg32(ea.base);
     hasTerm = true;
   }
 
   if (ea.index !== undefined) {
-    regs.emitGet(ea.index);
+    regs.emitReadReg32(ea.index);
     emitScale(body, ea.scale);
 
     if (hasTerm) {

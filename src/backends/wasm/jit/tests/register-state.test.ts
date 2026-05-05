@@ -2,11 +2,12 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { createCpuState } from "#x86/state/cpu-state.js";
-import type { RegisterAlias } from "#x86/isa/types.js";
+import type { RegisterAlias, Reg32 } from "#x86/isa/types.js";
 import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { wasmOpcode } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
-import { createJitReg32State } from "#backends/wasm/jit/state/register-state.js";
+import { createJitReg32State, type JitReg32State } from "#backends/wasm/jit/state/register-state.js";
+import type { ValueWidth } from "#backends/wasm/codegen/value-width.js";
 import {
   emitByteSourceForStore8,
   emitStoreStateU16,
@@ -24,17 +25,25 @@ const ah: RegisterAlias = { name: "ah", base: "eax", bitOffset: 8, width: 8 };
 const bl: RegisterAlias = { name: "bl", base: "ebx", bitOffset: 0, width: 8 };
 const ax: RegisterAlias = { name: "ax", base: "eax", bitOffset: 0, width: 16 };
 
+function emitWriteReg32(
+  regs: JitReg32State,
+  reg: Reg32,
+  emitValue: () => ValueWidth | void
+): void {
+  regs.emitWriteAlias({ name: reg, base: reg, bitOffset: 0, width: 32 }, emitValue);
+}
+
 test("jit register state writes register-only instructions to committed locals", () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSet("eax", () => {
+  emitWriteReg32(regs, "eax", () => {
     body.i32Const(1);
   });
   regs.commitPending();
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSet("eax", () => {
+  emitWriteReg32(regs, "eax", () => {
     body.i32Const(2);
   });
   regs.commitPending();
@@ -48,12 +57,12 @@ test("jit register state stages writes when pre-instruction exits need committed
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSet("eax", () => {
+  emitWriteReg32(regs, "eax", () => {
     body.i32Const(1);
   });
   regs.commitPending();
   regs.beginInstruction({ preserveCommittedRegs: true });
-  regs.emitSet("eax", () => {
+  emitWriteReg32(regs, "eax", () => {
     body.i32Const(2);
   });
   regs.commitPending();
@@ -67,11 +76,11 @@ test("jit register state returns to committed writes after pre-instruction exits
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: true });
-  regs.emitSet("eax", () => {
+  emitWriteReg32(regs, "eax", () => {
     body.i32Const(1);
   });
   regs.commitPending();
-  regs.emitSet("eax", () => {
+  emitWriteReg32(regs, "eax", () => {
     body.i32Const(2);
   });
   regs.commitPending();
@@ -108,12 +117,12 @@ test("jit register state reads known partial lanes without loading the full regi
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSetAlias(al, () => {
+  regs.emitWriteAlias(al, () => {
     body.i32Const(0x44);
   });
   regs.commitPending();
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitGetAlias(al);
+  regs.emitReadAlias(al);
   regs.commitPending();
   body.end();
 
@@ -125,12 +134,12 @@ test("jit register state materializes full registers when a wider read needs unk
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSetAlias(al, () => {
+  regs.emitWriteAlias(al, () => {
     body.i32Const(0x44);
   });
   regs.commitPending();
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitGetAlias(ax);
+  regs.emitReadAlias(ax);
   regs.commitPending();
   body.end();
 
@@ -142,12 +151,12 @@ test("jit register state materializes full registers after partial writes when f
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSetAlias(al, () => {
+  regs.emitWriteAlias(al, () => {
     body.i32Const(0x44);
   });
   regs.commitPending();
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitGet("eax");
+  regs.emitReadReg32("eax");
   regs.commitPending();
   body.end();
 
@@ -159,7 +168,7 @@ test("jit register exit stores use byte stores for isolated partial writes", () 
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSetAlias(ah, () => {
+  regs.emitWriteAlias(ah, () => {
     body.i32Const(0x05);
   });
   regs.commitPending();
@@ -215,12 +224,12 @@ test("jit register exit stores coalesce al and ah partial writes into a word sto
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSetAlias(al, () => {
+  regs.emitWriteAlias(al, () => {
     body.i32Const(0x05);
   });
   regs.commitPending();
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSetAlias(ah, () => {
+  regs.emitWriteAlias(ah, () => {
     body.i32Const(0x05);
   });
   regs.commitPending();
@@ -240,7 +249,7 @@ test("jit register exit stores direct word partial writes without byte recomposi
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSetAlias(ax, () => {
+  regs.emitWriteAlias(ax, () => {
     body.i32Const(0x12345);
   });
   regs.commitPending();
@@ -300,14 +309,14 @@ test("jit register state keeps byte-only alu updates narrow", () => {
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSetAlias(ah, () => {
+  regs.emitWriteAlias(ah, () => {
     body.i32Const(0x05);
   });
   regs.commitPending();
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSetAlias(ah, () => {
-    regs.emitGetAlias(ah);
-    regs.emitGetAlias(bl);
+  regs.emitWriteAlias(ah, () => {
+    regs.emitReadAlias(ah);
+    regs.emitReadAlias(bl);
     body.i32Xor();
   });
   regs.commitPending();
@@ -327,13 +336,13 @@ test("jit register state stores full registers after a partial write is material
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSetAlias(al, () => {
+  regs.emitWriteAlias(al, () => {
     body.i32Const(0x05);
   });
   regs.commitPending();
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitSet("ebx", () => {
-    regs.emitGet("eax");
+  emitWriteReg32(regs, "ebx", () => {
+    regs.emitReadReg32("eax");
   });
   regs.commitPending();
   regs.emitCommittedStore("eax");

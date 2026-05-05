@@ -2,7 +2,6 @@ import type { OperandWidth, RegisterAlias, Reg32 } from "#x86/isa/types.js";
 import { stateOffset } from "#backends/wasm/abi.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
-import type { WasmIrReg32Storage } from "#backends/wasm/codegen/registers.js";
 import {
   cleanValueWidth,
   emitCleanValueForFullUse,
@@ -39,14 +38,18 @@ export type JitReg32InstructionOptions = Readonly<{
   preserveCommittedRegs: boolean;
 }>;
 
-export type JitReg32State = WasmIrReg32Storage & Readonly<{
+export type JitReg32State = Readonly<{
   beginInstruction(options: JitReg32InstructionOptions): void;
   commitPending(): void;
   commitPendingReg(reg: Reg32): void;
-  emitGetAlias(alias: RegisterAlias, options?: WasmIrEmitValueOptions): ValueWidth;
-  emitSetAlias(alias: RegisterAlias, emitValue: () => ValueWidth | void): void;
-  emitSetAliasIf(alias: RegisterAlias, emitCondition: () => ValueWidth | void, emitValue: () => ValueWidth | void): void;
-  emitSetIf(reg: Reg32, emitCondition: () => void, emitValue: () => void): void;
+  emitReadReg32(reg: Reg32): ValueWidth;
+  emitReadAlias(alias: RegisterAlias, options?: WasmIrEmitValueOptions): ValueWidth;
+  emitWriteAlias(alias: RegisterAlias, emitValue: () => ValueWidth | void): void;
+  emitWriteAliasIf(
+    alias: RegisterAlias,
+    emitCondition: () => ValueWidth | void,
+    emitValue: () => ValueWidth | void
+  ): void;
   emitCommittedStore(reg: Reg32): void;
 }>;
 
@@ -60,31 +63,10 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
       assertNoPending();
       preserveCommittedRegs = options.preserveCommittedRegs;
     },
-    emitGet: (reg) => {
-      emitGetAlias(fullRegAccess(reg));
-    },
-    emitSet: (reg, emitValue) => {
-      emitSetAlias(fullRegAccess(reg), () => {
-        emitValue();
-        return cleanValueWidth(32);
-      });
-    },
-    emitGetAlias,
-    emitSetAlias,
-    emitSetIf: (reg, emitCondition, emitValue) => {
-      emitSetAliasIf(
-        fullRegAccess(reg),
-        () => {
-          emitCondition();
-          return cleanValueWidth(32);
-        },
-        () => {
-          emitValue();
-          return cleanValueWidth(32);
-        }
-      );
-    },
-    emitSetAliasIf,
+    emitReadReg32: (reg) => emitReadAlias(fullRegAccess(reg)),
+    emitReadAlias,
+    emitWriteAlias,
+    emitWriteAliasIf,
     commitPending: () => {
       for (const reg of [...pendingStates.keys()]) {
         commitPendingReg(reg);
@@ -115,7 +97,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     }
   };
 
-  function emitGetAlias(alias: RegisterAlias, options: WasmIrEmitValueOptions = {}): ValueWidth {
+  function emitReadAlias(alias: RegisterAlias, options: WasmIrEmitValueOptions = {}): ValueWidth {
     const pending = pendingStates.get(alias.base);
     const committed = committedStates.get(alias.base);
     const directFullLocal = directFullLocalForRead(alias, pending, committed);
@@ -137,7 +119,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     return emitExtractAliasFromLocal(body, fullLocal, alias, options);
   }
 
-  function emitSetAlias(alias: RegisterAlias, emitValue: () => ValueWidth | void): void {
+  function emitWriteAlias(alias: RegisterAlias, emitValue: () => ValueWidth | void): void {
     const state = writableStateForReg(alias.base);
 
     if (alias.width === fullWidth) {
@@ -160,7 +142,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     recordPartialValue(state, alias, valueLocal);
   }
 
-  function emitSetAliasIf(
+  function emitWriteAliasIf(
     alias: RegisterAlias,
     emitCondition: () => ValueWidth | void,
     emitValue: () => ValueWidth | void
