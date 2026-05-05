@@ -7,7 +7,8 @@ export type WasmFeatureName =
   | "multi-memory"
   | "i64-return-bigint"
   | "imported-memory-sharing"
-  | "branch-hint-metadata";
+  | "branch-hint-metadata"
+  | "sign-extension-ops";
 
 export type WasmFeatureCheck =
   | Readonly<{ feature: WasmFeatureName; supported: true }>
@@ -36,6 +37,7 @@ export async function probeWasmFeatures(): Promise<WasmFeatureReport> {
   checks.push(await runFeatureCheck("i64-return-bigint", probeI64ReturnBigInt));
   checks.push(await runFeatureCheck("imported-memory-sharing", probeImportedMemorySharing));
   checks.push(await runFeatureCheck("branch-hint-metadata", probeBranchHintMetadata));
+  checks.push(await runFeatureCheck("sign-extension-ops", probeSignExtensionOps));
 
   const missingFeatures = checks.filter((check): check is Extract<WasmFeatureCheck, { supported: false }> => {
     return !check.supported;
@@ -122,6 +124,16 @@ async function probeBranchHintMetadata(): Promise<void> {
   }
 }
 
+async function probeSignExtensionOps(): Promise<void> {
+  const instance = await instantiateProbeModule(encodeSignExtensionProbeModule());
+  const extend8 = readExportedFunction(instance, "extend8");
+  const extend16 = readExportedFunction(instance, "extend16");
+
+  if (extend8(0x80) !== -128 || extend16(0x8000) !== -32768) {
+    throw new Error("sign-extension opcode probe returned an unexpected value");
+  }
+}
+
 async function instantiateProbeModule(
   bytes: Uint8Array<ArrayBuffer>,
   state?: WebAssembly.Memory,
@@ -173,6 +185,27 @@ function encodeI64ReturnProbeModule(value: bigint): Uint8Array<ArrayBuffer> {
   const functionIndex = module.addFunction(typeIndex, new WasmFunctionBodyEncoder().i64Const(value).end());
 
   module.exportFunction("encodedExit", functionIndex);
+
+  return module.encode();
+}
+
+function encodeSignExtensionProbeModule(): Uint8Array<ArrayBuffer> {
+  const module = new WasmModuleEncoder();
+  const typeIndex = module.addFunctionType({
+    params: [wasmValueType.i32],
+    results: [wasmValueType.i32]
+  });
+  const extend8Body = new WasmFunctionBodyEncoder(1)
+    .localGet(0)
+    .i32Extend8S()
+    .end();
+  const extend16Body = new WasmFunctionBodyEncoder(1)
+    .localGet(0)
+    .i32Extend16S()
+    .end();
+
+  module.exportFunction("extend8", module.addFunction(typeIndex, extend8Body));
+  module.exportFunction("extend16", module.addFunction(typeIndex, extend16Body));
 
   return module.encode();
 }

@@ -28,7 +28,9 @@ export const wasmOpcode = {
   localSet: 0x21,
   localTee: 0x22,
   i32Load: 0x28,
+  i32Load8S: 0x2c,
   i32Load8U: 0x2d,
+  i32Load16S: 0x2e,
   i32Load16U: 0x2f,
   i32Store: 0x36,
   i32Store8: 0x3a,
@@ -49,6 +51,8 @@ export const wasmOpcode = {
   i32ShrU: 0x76,
   i64Or: 0x84,
   i64ExtendI32U: 0xad,
+  i32Extend8S: 0xc0,
+  i32Extend16S: 0xc1,
   end: 0x0b
 } as const;
 

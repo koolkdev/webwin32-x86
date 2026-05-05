@@ -73,7 +73,7 @@ test("typed if expression compiles and returns branch values", async () => {
   strictEqual(select(1), 10);
 });
 
-test("i32 load16/store8/store16 opcodes compile", async () => {
+test("i32 signed and unsigned narrow memory and sign-extension opcodes compile", async () => {
   const body = encodeWidthMemoryOpcodeBody();
   const bytes = encodeWidthMemoryOpcodeModule(body);
 
@@ -81,9 +81,13 @@ test("i32 load16/store8/store16 opcodes compile", async () => {
 
   const opcodes = wasmBodyOpcodes(body.encode());
 
+  strictEqual(opcodes.includes(wasmOpcode.i32Load8S), true);
   strictEqual(opcodes.includes(wasmOpcode.i32Load16U), true);
+  strictEqual(opcodes.includes(wasmOpcode.i32Load16S), true);
   strictEqual(opcodes.includes(wasmOpcode.i32Store8), true);
   strictEqual(opcodes.includes(wasmOpcode.i32Store16), true);
+  strictEqual(opcodes.includes(wasmOpcode.i32Extend8S), true);
+  strictEqual(opcodes.includes(wasmOpcode.i32Extend16S), true);
 });
 
 type CompileResult =
@@ -208,7 +212,15 @@ function encodeWidthMemoryOpcodeBody(): WasmFunctionBodyEncoder {
 
   body
     .localGet(0)
+    .i32Load8S({ align: 0, memoryIndex: 0, offset: 0 })
+    .i32Extend8S()
+    .localSet(valueLocal)
+    .localGet(0)
     .i32Load16U({ align: 1, memoryIndex: 0, offset: 0 })
+    .i32Extend16S()
+    .localSet(valueLocal)
+    .localGet(0)
+    .i32Load16S({ align: 1, memoryIndex: 0, offset: 0 })
     .localSet(valueLocal)
     .localGet(0)
     .localGet(1)

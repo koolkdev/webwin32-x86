@@ -1,4 +1,38 @@
-import { wasmOpcode } from "#backends/wasm/encoder/types.js";
+import { wasmOpcode, wasmSectionId } from "#backends/wasm/encoder/types.js";
+
+export type WasmBodyMemoryAccess = Readonly<{
+  opcode: number;
+  memoryIndex: number;
+  offset: number;
+}>;
+
+export function extractOnlyWasmFunctionBody(moduleBytes: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
+  let offset = 8;
+
+  while (offset < moduleBytes.length) {
+    const sectionId = requiredByte(moduleBytes, offset);
+    const sectionSize = readU32Leb128(moduleBytes, offset + 1);
+    const sectionStart = sectionSize.nextOffset;
+    const sectionEnd = sectionStart + sectionSize.value;
+
+    if (sectionId === wasmSectionId.code) {
+      const functionCount = readU32Leb128(moduleBytes, sectionStart);
+
+      if (functionCount.value !== 1) {
+        throw new Error(`expected exactly one Wasm function body, got ${functionCount.value}`);
+      }
+
+      const bodySize = readU32Leb128(moduleBytes, functionCount.nextOffset);
+      const bodyStart = bodySize.nextOffset;
+
+      return moduleBytes.slice(bodyStart, bodyStart + bodySize.value);
+    }
+
+    offset = sectionEnd;
+  }
+
+  throw new Error("missing Wasm code section");
+}
 
 export function wasmBodyOpcodes(functionBody: Uint8Array<ArrayBuffer>): readonly number[] {
   const opcodes: number[] = [];
@@ -42,7 +76,9 @@ export function wasmBodyOpcodes(functionBody: Uint8Array<ArrayBuffer>): readonly
         offset = skipLeb128(functionBody, offset);
         break;
       case wasmOpcode.i32Load:
+      case wasmOpcode.i32Load8S:
       case wasmOpcode.i32Load8U:
+      case wasmOpcode.i32Load16S:
       case wasmOpcode.i32Load16U:
       case wasmOpcode.i32Store:
       case wasmOpcode.i32Store8:
@@ -64,6 +100,8 @@ export function wasmBodyOpcodes(functionBody: Uint8Array<ArrayBuffer>): readonly
       case wasmOpcode.i32ShrU:
       case wasmOpcode.i64Or:
       case wasmOpcode.i64ExtendI32U:
+      case wasmOpcode.i32Extend8S:
+      case wasmOpcode.i32Extend16S:
       case wasmOpcode.end:
         break;
       default:
@@ -72,6 +110,92 @@ export function wasmBodyOpcodes(functionBody: Uint8Array<ArrayBuffer>): readonly
   }
 
   return opcodes;
+}
+
+export function wasmBodyMemoryAccesses(functionBody: Uint8Array<ArrayBuffer>): readonly WasmBodyMemoryAccess[] {
+  const accesses: WasmBodyMemoryAccess[] = [];
+  let offset = skipLocalDeclarations(functionBody);
+
+  while (offset < functionBody.length) {
+    const opcode = requiredByte(functionBody, offset);
+
+    offset += 1;
+
+    switch (opcode) {
+      case wasmOpcode.localGet:
+      case wasmOpcode.localSet:
+      case wasmOpcode.localTee:
+      case wasmOpcode.br:
+      case wasmOpcode.call:
+      case wasmOpcode.returnCall:
+      case wasmOpcode.memorySize:
+        offset = readU32Leb128(functionBody, offset).nextOffset;
+        break;
+      case wasmOpcode.brTable: {
+        const tableLength = readU32Leb128(functionBody, offset);
+
+        offset = tableLength.nextOffset;
+
+        for (let index = 0; index < tableLength.value; index += 1) {
+          offset = readU32Leb128(functionBody, offset).nextOffset;
+        }
+
+        offset = readU32Leb128(functionBody, offset).nextOffset;
+        break;
+      }
+      case wasmOpcode.block:
+      case wasmOpcode.loop:
+      case wasmOpcode.if:
+        offset += 1;
+        break;
+      case wasmOpcode.i32Const:
+      case wasmOpcode.i64Const:
+        offset = skipLeb128(functionBody, offset);
+        break;
+      case wasmOpcode.i32Load:
+      case wasmOpcode.i32Load8S:
+      case wasmOpcode.i32Load8U:
+      case wasmOpcode.i32Load16S:
+      case wasmOpcode.i32Load16U:
+      case wasmOpcode.i32Store:
+      case wasmOpcode.i32Store8:
+      case wasmOpcode.i32Store16:
+        {
+          const memory = readMemoryImmediate(functionBody, offset);
+
+          offset = memory.nextOffset;
+          accesses.push({
+            opcode,
+            memoryIndex: memory.memoryIndex,
+            offset: memory.offset
+          });
+        }
+        break;
+      case wasmOpcode.else:
+      case wasmOpcode.return:
+      case wasmOpcode.i32Eqz:
+      case wasmOpcode.i32LtU:
+      case wasmOpcode.i32GtU:
+      case wasmOpcode.i32Popcnt:
+      case wasmOpcode.i32Add:
+      case wasmOpcode.i32Sub:
+      case wasmOpcode.i32And:
+      case wasmOpcode.i32Or:
+      case wasmOpcode.i32Xor:
+      case wasmOpcode.i32Shl:
+      case wasmOpcode.i32ShrU:
+      case wasmOpcode.i64Or:
+      case wasmOpcode.i64ExtendI32U:
+      case wasmOpcode.i32Extend8S:
+      case wasmOpcode.i32Extend16S:
+      case wasmOpcode.end:
+        break;
+      default:
+        throw new Error(`unsupported Wasm opcode in test body: 0x${opcode.toString(16)}`);
+    }
+  }
+
+  return accesses;
 }
 
 function skipLocalDeclarations(bytes: Uint8Array<ArrayBuffer>): number {
@@ -88,16 +212,30 @@ function skipLocalDeclarations(bytes: Uint8Array<ArrayBuffer>): number {
 }
 
 function skipMemoryImmediate(bytes: Uint8Array<ArrayBuffer>, offset: number): number {
+  return readMemoryImmediate(bytes, offset).nextOffset;
+}
+
+function readMemoryImmediate(
+  bytes: Uint8Array<ArrayBuffer>,
+  offset: number
+): Readonly<{ memoryIndex: number; offset: number; nextOffset: number }> {
   const align = readU32Leb128(bytes, offset);
   const hasMemoryIndex = (align.value & 0x40) !== 0;
 
   if (!hasMemoryIndex) {
-    return readU32Leb128(bytes, align.nextOffset).nextOffset;
+    const memoryOffset = readU32Leb128(bytes, align.nextOffset);
+
+    return { memoryIndex: 0, offset: memoryOffset.value, nextOffset: memoryOffset.nextOffset };
   }
 
   const memoryIndex = readU32Leb128(bytes, align.nextOffset);
+  const memoryOffset = readU32Leb128(bytes, memoryIndex.nextOffset);
 
-  return readU32Leb128(bytes, memoryIndex.nextOffset).nextOffset;
+  return {
+    memoryIndex: memoryIndex.value,
+    offset: memoryOffset.value,
+    nextOffset: memoryOffset.nextOffset
+  };
 }
 
 function skipLeb128(bytes: Uint8Array<ArrayBuffer>, offset: number): number {
