@@ -27,19 +27,19 @@ export function emitFlagProducerCondition(
 ): void {
   switch (flagProducerConditionKind(condition)) {
     case "eq":
-      emitInputCompare(body, condition, helpers);
+      emitInputCompare(condition, helpers);
       body.i32Xor().i32Eqz();
       return;
     case "ne":
-      emitInputCompare(body, condition, helpers);
+      emitInputCompare(condition, helpers);
       body.i32Xor().i32Eqz().i32Eqz();
       return;
     case "uLt":
-      emitInputCompare(body, condition, helpers);
+      emitInputCompare(condition, helpers);
       body.i32LtU();
       return;
     case "uGe":
-      emitInputCompare(body, condition, helpers);
+      emitInputCompare(condition, helpers);
       body.i32LtU().i32Eqz();
       return;
     case "sLt":
@@ -59,11 +59,11 @@ export function emitFlagProducerCondition(
       body.i32GtU();
       return;
     case "zero":
-      emitResultInput(body, condition, helpers);
+      emitResultInput(condition, helpers);
       body.i32Eqz();
       return;
     case "nonZero":
-      emitResultInput(body, condition, helpers);
+      emitResultInput(condition, helpers);
       body.i32Eqz().i32Eqz();
       return;
     case "sign":
@@ -88,14 +88,14 @@ export function emitFlagProducerCondition(
       body.i32Const(0);
       return;
     case "zeroOrSign":
-      emitResultInput(body, condition, helpers);
+      emitResultInput(condition, helpers);
       body.i32Eqz();
       emitResultSign(body, condition, helpers);
       body.i32Eqz().i32Eqz();
       body.i32Or();
       return;
     case "nonZeroAndNotSign":
-      emitResultInput(body, condition, helpers);
+      emitResultInput(condition, helpers);
       body.i32Eqz().i32Eqz();
       emitResultSign(body, condition, helpers);
       body.i32Eqz();
@@ -139,12 +139,11 @@ function emitFlagBoolExpr(
 }
 
 function emitInputCompare(
-  body: WasmFunctionBodyEncoder,
   condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>,
   helpers: WasmIrEmitHelpers
 ): void {
-  emitMaskedConditionInput(body, condition, helpers, "left");
-  emitMaskedConditionInput(body, condition, helpers, "right");
+  emitMaskedConditionInput(condition, helpers, "left");
+  emitMaskedConditionInput(condition, helpers, "right");
 }
 
 function emitSignedInputCompare(
@@ -167,7 +166,6 @@ function emitSignedCompareInput(
 }
 
 function emitResultInput(
-  body: WasmFunctionBodyEncoder,
   condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>,
   helpers: WasmIrEmitHelpers
 ): void {
@@ -179,7 +177,7 @@ function emitResultSign(
   condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>,
   helpers: WasmIrEmitHelpers
 ): void {
-  emitResultInput(body, condition, helpers);
+  emitResultInput(condition, helpers);
   body.i32Const(signMask(conditionWidth(condition))).i32And();
 }
 
@@ -188,12 +186,11 @@ function emitResultParity(
   condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>,
   helpers: WasmIrEmitHelpers
 ): void {
-  emitResultInput(body, condition, helpers);
+  emitResultInput(condition, helpers);
   body.i32Const(0xff).i32And().i32Popcnt().i32Const(1).i32And().i32Eqz();
 }
 
 function emitMaskedConditionInput(
-  body: WasmFunctionBodyEncoder,
   condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>,
   helpers: WasmIrEmitHelpers,
   inputName: string
