@@ -285,6 +285,113 @@ test("jit IR block reads known partial register lanes across instructions", asyn
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
+test("jit IR block preserves al, ax, and ah reads from tracked full registers", async () => {
+  const al = await runJitIrBlock([
+    0xb8, 0x78, 0x56, 0x34, 0x12, // mov eax, 0x12345678
+    0x88, 0xc3, // mov bl, al
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    ebx: 0xaaaa_aa00,
+    eip: startAddress
+  }));
+  const ax = await runJitIrBlock([
+    0xb8, 0x78, 0x56, 0x34, 0x12, // mov eax, 0x12345678
+    0x66, 0x89, 0xc3, // mov bx, ax
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    ebx: 0xaaaa_0000,
+    eip: startAddress
+  }));
+  const ah = await runJitIrBlock([
+    0xb8, 0x78, 0x56, 0x34, 0x12, // mov eax, 0x12345678
+    0x88, 0xe3, // mov bl, ah
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    ebx: 0xbbbb_bb00,
+    eip: startAddress
+  }));
+
+  strictEqual(al.state.eax, 0x1234_5678);
+  strictEqual(al.state.ebx, 0xaaaa_aa78);
+  strictEqual(al.state.eip, startAddress + 9);
+  strictEqual(al.state.instructionCount, 3);
+  deepStrictEqual(al.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+
+  strictEqual(ax.state.eax, 0x1234_5678);
+  strictEqual(ax.state.ebx, 0xaaaa_5678);
+  strictEqual(ax.state.eip, startAddress + 10);
+  strictEqual(ax.state.instructionCount, 3);
+  deepStrictEqual(ax.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+
+  strictEqual(ah.state.eax, 0x1234_5678);
+  strictEqual(ah.state.ebx, 0xbbbb_bb56);
+  strictEqual(ah.state.eip, startAddress + 9);
+  strictEqual(ah.state.instructionCount, 3);
+  deepStrictEqual(ah.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
+test("jit IR block preserves mixed al, ah, ax, and eax alias interactions", async () => {
+  const alAhToAx = await runJitIrBlock([
+    0xb0, 0x34, // mov al, 0x34
+    0xb4, 0x12, // mov ah, 0x12
+    0x66, 0x89, 0xc3, // mov bx, ax
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    ebx: 0,
+    eip: startAddress
+  }));
+  const axToAh = await runJitIrBlock([
+    0x66, 0xb8, 0x34, 0x12, // mov ax, 0x1234
+    0x88, 0xe3, // mov bl, ah
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    ebx: 0,
+    eip: startAddress
+  }));
+  const alToAxPreservesAh = await runJitIrBlock([
+    0xb0, 0x34, // mov al, 0x34
+    0x66, 0x89, 0xc3, // mov bx, ax
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eax: 0xaaaa_1200,
+    ebx: 0,
+    eip: startAddress
+  }));
+  const fullAfterPartial = await runJitIrBlock([
+    0xb8, 0x78, 0x56, 0x34, 0x12, // mov eax, 0x12345678
+    0xb0, 0xaa, // mov al, 0xaa
+    0x89, 0xc3, // mov ebx, eax
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    ebx: 0,
+    eip: startAddress
+  }));
+
+  strictEqual(alAhToAx.state.eax, 0x1234);
+  strictEqual(alAhToAx.state.ebx, 0x1234);
+  strictEqual(alAhToAx.state.eip, startAddress + 9);
+  strictEqual(alAhToAx.state.instructionCount, 4);
+  deepStrictEqual(alAhToAx.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+
+  strictEqual(axToAh.state.eax, 0x1234);
+  strictEqual(axToAh.state.ebx, 0x12);
+  strictEqual(axToAh.state.eip, startAddress + 8);
+  strictEqual(axToAh.state.instructionCount, 3);
+  deepStrictEqual(axToAh.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+
+  strictEqual(alToAxPreservesAh.state.eax, 0xaaaa_1234);
+  strictEqual(alToAxPreservesAh.state.ebx, 0x1234);
+  strictEqual(alToAxPreservesAh.state.eip, startAddress + 7);
+  strictEqual(alToAxPreservesAh.state.instructionCount, 3);
+  deepStrictEqual(alToAxPreservesAh.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+
+  strictEqual(fullAfterPartial.state.eax, 0x1234_56aa);
+  strictEqual(fullAfterPartial.state.ebx, 0x1234_56aa);
+  strictEqual(fullAfterPartial.state.eip, startAddress + 11);
+  strictEqual(fullAfterPartial.state.instructionCount, 4);
+  deepStrictEqual(fullAfterPartial.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
 test("jit IR block handles byte and word memory MOV accesses", async () => {
   const byteStore = await runJitIrBlock([0x88, 0x03], createCpuState({
     eax: 0xaabb_ccdd,

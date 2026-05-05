@@ -116,6 +116,9 @@ function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
     case "i32.and":
       setVar(context, op.dst, u32(evalValueRef(context, op.a) & evalValueRef(context, op.b)));
       return undefined;
+    case "i32.shr_u":
+      setVar(context, op.dst, u32(evalValueRef(context, op.a) >>> (evalValueRef(context, op.b) & 31)));
+      return undefined;
     case "flags.set":
       setFlags(context, op);
       return undefined;

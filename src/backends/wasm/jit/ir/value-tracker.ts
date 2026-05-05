@@ -1,4 +1,3 @@
-import type { Reg32 } from "#x86/isa/types.js";
 import { irOpIsBinaryValue } from "#x86/ir/model/op-semantics.js";
 import type { IrBinaryValueOp, ValueRef } from "#x86/ir/model/types.js";
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
@@ -9,6 +8,7 @@ import {
   jitValuesEqual,
   type JitValue
 } from "#backends/wasm/jit/ir/values.js";
+import type { JitRegisterValueMap } from "#backends/wasm/jit/ir/register-lane-values.js";
 
 export class JitValueTracker {
   private readonly locals = new Map<number, JitValue>();
@@ -32,13 +32,16 @@ export class JitValueTracker {
   recordOp(
     op: JitIrOp,
     instruction: JitIrBlockInstruction,
-    registerValues: ReadonlyMap<Reg32, JitValue> = new Map()
+    registerValues: JitRegisterValueMap = new Map()
   ): boolean {
     switch (op.op) {
       case "get":
-        this.record(op.dst.id, (op.accessWidth ?? 32) === 32
-          ? jitValueForStorage(op.source, instruction.operands, registerValues)
-          : undefined);
+        this.record(op.dst.id, jitValueForStorage(
+          op.source,
+          instruction.operands,
+          registerValues,
+          op.accessWidth ?? 32
+        ));
         return true;
       case "address":
         this.record(

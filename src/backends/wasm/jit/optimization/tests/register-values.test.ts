@@ -98,6 +98,112 @@ test("register value analysis tracks foldable register reads", () => {
   })), [{ opIndex: 3, phase: "beforeOp", reason: "blockEnd", regs: ["eax"] }]);
 });
 
+test("register value analysis folds low-byte reads from tracked full registers", () => {
+  const analysis = analyzeJitRegisterValues({
+    instructions: [
+      syntheticInstruction([
+        { op: "const32", dst: v(0), value: 0x1234_5678 },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" }, accessWidth: 8 },
+        { op: "next" }
+      ])
+    ]
+  });
+
+  deepStrictEqual(analysis.folds.map((fold) => ({
+    opIndex: fold.opIndex,
+    kind: fold.kind,
+    value: fold.value,
+    regs: fold.regs
+  })), [{
+    opIndex: 2,
+    kind: "get",
+    value: { kind: "const32", value: 0x78 },
+    regs: ["eax"]
+  }]);
+  deepStrictEqual(analysis.materializations.map((entry) => ({
+    opIndex: entry.opIndex,
+    phase: entry.phase,
+    reason: entry.reason,
+    regs: entry.regs
+  })), [{ opIndex: 3, phase: "beforeOp", reason: "blockEnd", regs: ["eax"] }]);
+});
+
+test("register value analysis folds low-word reads from tracked full registers", () => {
+  const analysis = analyzeJitRegisterValues({
+    instructions: [
+      syntheticInstruction([
+        { op: "const32", dst: v(0), value: 0x1234_5678 },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" }, accessWidth: 16 },
+        { op: "next" }
+      ])
+    ]
+  });
+
+  deepStrictEqual(analysis.folds.map((fold) => ({
+    opIndex: fold.opIndex,
+    kind: fold.kind,
+    value: fold.value,
+    regs: fold.regs
+  })), [{
+    opIndex: 2,
+    kind: "get",
+    value: { kind: "const32", value: 0x5678 },
+    regs: ["eax"]
+  }]);
+  deepStrictEqual(analysis.materializations.map((entry) => ({
+    opIndex: entry.opIndex,
+    reason: entry.reason,
+    regs: entry.regs
+  })), [{ opIndex: 3, reason: "blockEnd", regs: ["eax"] }]);
+});
+
+test("register value analysis folds same-lane reads after partial writes", () => {
+  const analysis = analyzeJitRegisterValues({
+    instructions: [
+      syntheticInstruction([
+        { op: "const32", dst: v(0), value: 0x44 },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0), accessWidth: 8 },
+        { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" }, accessWidth: 8 },
+        { op: "next" }
+      ])
+    ]
+  });
+
+  strictEqual(analysis.producers.length, 0);
+  deepStrictEqual(analysis.folds.map((fold) => ({
+    opIndex: fold.opIndex,
+    kind: fold.kind,
+    value: fold.value,
+    regs: fold.regs
+  })), [{
+    opIndex: 2,
+    kind: "get",
+    value: { kind: "const32", value: 0x44 },
+    regs: ["eax"]
+  }]);
+  deepStrictEqual(analysis.materializations, []);
+  deepStrictEqual([...analysis.finalValues], []);
+});
+
+test("register value analysis keeps wider reads after partial-only writes conservative", () => {
+  const analysis = analyzeJitRegisterValues({
+    instructions: [
+      syntheticInstruction([
+        { op: "const32", dst: v(0), value: 0x44 },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0), accessWidth: 8 },
+        { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" }, accessWidth: 16 },
+        { op: "next" }
+      ])
+    ]
+  });
+
+  deepStrictEqual(analysis.folds, []);
+  deepStrictEqual(analysis.materializations, []);
+  deepStrictEqual([...analysis.finalValues], []);
+});
+
 test("register value analysis materializes dependencies before clobbers", () => {
   const analysis = analyzeJitRegisterValues({
     instructions: [

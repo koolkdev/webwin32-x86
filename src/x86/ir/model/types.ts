@@ -50,7 +50,13 @@ export type IrAluFlagsConditionOp = Readonly<{
   cc: ConditionCode;
 }>;
 
-export type IrBinaryValueOpName = "i32.add" | "i32.sub" | "i32.xor" | "i32.or" | "i32.and";
+export type IrBinaryValueOpName =
+  | "i32.add"
+  | "i32.sub"
+  | "i32.xor"
+  | "i32.or"
+  | "i32.and"
+  | "i32.shr_u";
 
 export type IrBinaryValueOp = Readonly<{
   op: IrBinaryValueOpName;
@@ -96,6 +102,7 @@ export interface IrBuilder {
   i32Xor(a: ValueInput, b: ValueInput): VarRef;
   i32Or(a: ValueInput, b: ValueInput): VarRef;
   i32And(a: ValueInput, b: ValueInput): VarRef;
+  i32ShrU(a: ValueInput, b: ValueInput): VarRef;
 
   setFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueInput>>, width?: OperandWidth): void;
   materializeFlags(mask: FlagMask): void;

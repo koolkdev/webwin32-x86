@@ -157,6 +157,7 @@ function collectValueVarUses(value: IrValueExpr, visit: (id: number) => void): v
     case "i32.xor":
     case "i32.or":
     case "i32.and":
+    case "i32.shr_u":
       collectValueVarUses(value.a, visit);
       collectValueVarUses(value.b, visit);
       return;

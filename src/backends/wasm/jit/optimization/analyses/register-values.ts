@@ -7,6 +7,7 @@ import {
   jitValueReadsReg,
   type JitValue
 } from "#backends/wasm/jit/ir/values.js";
+import { jitStorageRegisterAccess } from "#backends/wasm/jit/ir/register-lane-values.js";
 import { JitRegisterValues } from "#backends/wasm/jit/optimization/registers/values.js";
 import {
   shouldMaterializeRepeatedRegisterRead,
@@ -161,25 +162,11 @@ function analyzeInstruction(
     switch (op.op) {
       case "get": {
         const reg = jitStorageReg(op.source, instruction.operands);
-        const value = registers.valueForStorage(op.source, instruction.operands);
         const accessWidth = op.accessWidth ?? 32;
+        const value = registers.valueForStorage(op.source, instruction.operands, accessWidth);
 
-        if (accessWidth !== 32) {
-          if (reg !== undefined && registers.has(reg)) {
-            materializeRegs(registers, materializations, [reg], {
-              instructionIndex,
-              opIndex,
-              phase: "beforeOp",
-              reason: "read"
-            });
-          }
-
-          values.record(op.dst.id, undefined);
-          break;
-        }
-
-        if (reg !== undefined && value !== undefined && registers.hasStorageValue(op.source, instruction.operands)) {
-          if (shouldMaterializeRepeatedRegisterRead(reg, value, registers)) {
+        if (reg !== undefined && value !== undefined && registers.hasStorageValue(op.source, instruction.operands, accessWidth)) {
+          if (registers.get(reg) !== undefined && shouldMaterializeRepeatedRegisterRead(reg, value, registers)) {
             materializeRegs(registers, materializations, [reg], {
               instructionIndex,
               opIndex,
@@ -194,7 +181,16 @@ function analyzeInstruction(
           }
         }
 
-        values.recordOp(op, instruction, registers.trackedValues);
+        if (reg !== undefined && value === undefined && registers.get(reg) !== undefined) {
+          materializeRegs(registers, materializations, [reg], {
+            instructionIndex,
+            opIndex,
+            phase: "beforeOp",
+            reason: "read"
+          });
+        }
+
+        values.recordOp(op, instruction, registers.trackedRegisterValues);
         break;
       }
       case "address": {
@@ -234,7 +230,7 @@ function analyzeInstruction(
           }
         }
 
-        values.recordOp(op, instruction, registers.trackedValues);
+        values.recordOp(op, instruction, registers.trackedRegisterValues);
         break;
       }
       case "set": {
@@ -256,13 +252,23 @@ function analyzeInstruction(
         const reg = registerBarrierReg(barriers, instructionIndex, opIndex, "write");
         const value = values.valueFor(op.value);
         const accessWidth = op.accessWidth ?? 32;
-        const retained = reg !== undefined &&
-          accessWidth === 32 &&
+        const access = jitStorageRegisterAccess(op.target, instruction.operands, accessWidth);
+        const retained = access !== undefined &&
+          access.width === 32 &&
           value !== undefined &&
           shouldRetainRegisterValue(value) &&
           !isImmediatelyMaterializedAtExit(instruction, instructionIndex, opIndex, barriers);
 
-        if (reg !== undefined) {
+        if (reg !== undefined && access !== undefined) {
+          if (access.width !== 32) {
+            materializeRegs(registers, materializations, [reg], {
+              instructionIndex,
+              opIndex,
+              phase: "beforeOp",
+              reason: "clobber"
+            });
+          }
+
           materializeDependencies(registers, materializations, reg, {
             instructionIndex,
             opIndex,
@@ -272,11 +278,13 @@ function analyzeInstruction(
 
           if (retained && value !== undefined) {
             registers.set(reg, value);
+          } else if (value !== undefined && access.width !== 32) {
+            registers.write(reg, access.width, access.bitOffset, value);
           } else {
             registers.delete(reg);
           }
 
-          if (accessWidth === 32 && value !== undefined) {
+          if (access.width === 32 && value !== undefined) {
             producers.push({ instructionIndex, opIndex, reg, value, retained });
           }
         }
@@ -303,7 +311,7 @@ function analyzeInstruction(
         break;
       }
       default:
-        values.recordOp(op, instruction, registers.trackedValues);
+        values.recordOp(op, instruction, registers.trackedRegisterValues);
         break;
     }
 
@@ -337,6 +345,7 @@ function materializeDependencies(
   );
 
   materializeRegs(registers, materializations, regs, point);
+  registers.deletePartialDependencies(clobberedReg);
 }
 
 function materializeRegs(

@@ -183,6 +183,11 @@ class IrExprWasmEmitter {
         this.#emitValue(value.b);
         this.#context.body.i32And();
         return;
+      case "i32.shr_u":
+        this.#emitValue(value.a);
+        this.#emitValue(value.b);
+        this.#context.body.i32ShrU();
+        return;
     }
   }
 

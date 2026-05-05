@@ -165,6 +165,13 @@ export class IrEmitter implements IrBuilder {
     return dst;
   }
 
+  i32ShrU(a: ValueInput, b: ValueInput): VarRef {
+    const dst = this.#allocVar();
+
+    this.#push({ op: "i32.shr_u", dst, a: toValueRef(a), b: toValueRef(b) });
+    return dst;
+  }
+
   setFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueInput>>, width?: OperandWidth): void {
     this.#push(
       createIrFlagSetOp(

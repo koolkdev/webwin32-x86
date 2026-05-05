@@ -33,6 +33,7 @@ export function irOpIsBinaryValue<T extends { op: string }>(op: T): op is Extrac
     case "i32.xor":
     case "i32.or":
     case "i32.and":
+    case "i32.shr_u":
       return true;
     default:
       return false;
@@ -50,6 +51,7 @@ export function irOpResult(op: IrOp): IrOpResult {
     case "i32.xor":
     case "i32.or":
     case "i32.and":
+    case "i32.shr_u":
     case "aluFlags.condition":
       return { kind: "value", dst: op.dst, sideEffect: "none" };
     case "set":
@@ -90,6 +92,7 @@ export function irOpIsTerminator(op: IrOp): op is IrTerminatorOp {
     case "i32.xor":
     case "i32.or":
     case "i32.and":
+    case "i32.shr_u":
     case "flags.set":
     case "flags.materialize":
     case "flags.boundary":
@@ -134,6 +137,7 @@ export function visitIrOpValueRefs(
     case "i32.xor":
     case "i32.or":
     case "i32.and":
+    case "i32.shr_u":
       visit(op.a, "value");
       visit(op.b, "value");
       return;
@@ -203,6 +207,7 @@ export function visitIrOpStorageRefs(
     case "i32.xor":
     case "i32.or":
     case "i32.and":
+    case "i32.shr_u":
     case "flags.set":
     case "flags.materialize":
     case "flags.boundary":

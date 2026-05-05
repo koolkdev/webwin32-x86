@@ -38,7 +38,8 @@ export type IrValueExpr =
   | Readonly<{ kind: "i32.sub"; a: IrValueExpr; b: IrValueExpr }>
   | Readonly<{ kind: "i32.xor"; a: IrValueExpr; b: IrValueExpr }>
   | Readonly<{ kind: "i32.or"; a: IrValueExpr; b: IrValueExpr }>
-  | Readonly<{ kind: "i32.and"; a: IrValueExpr; b: IrValueExpr }>;
+  | Readonly<{ kind: "i32.and"; a: IrValueExpr; b: IrValueExpr }>
+  | Readonly<{ kind: "i32.shr_u"; a: IrValueExpr; b: IrValueExpr }>;
 
 export type IrSetExprOp = Readonly<{
   op: "set";
@@ -145,6 +146,7 @@ class ExpressionBuilder {
         case "i32.xor":
         case "i32.or":
         case "i32.and":
+        case "i32.shr_u":
           this.#defineValue(op.dst, { kind: op.op, a: this.#valueExpr(op.a), b: this.#valueExpr(op.b) }, true);
           break;
         case "aluFlags.condition":
@@ -310,6 +312,7 @@ function countVarUses(block: IrExpressionInputBlock): Map<number, number> {
       case "i32.xor":
       case "i32.or":
       case "i32.and":
+      case "i32.shr_u":
         countValueUse(counts, op.a);
         countValueUse(counts, op.b);
         break;

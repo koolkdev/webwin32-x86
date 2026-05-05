@@ -1,8 +1,17 @@
-import { reg32, type Reg32 } from "#x86/isa/types.js";
+import { reg32, type OperandWidth, type Reg32 } from "#x86/isa/types.js";
 import type { IrBinaryValueOpName } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { OperandRef, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
+import {
+  extractJitRegisterAccessValue,
+  fullRegisterValueForEntry,
+  jitStorageRegisterAccess,
+  readRegisterValueEntry,
+  registerValueEntryHasFullValue,
+  type JitRegisterAccess,
+  type JitRegisterValueMap
+} from "#backends/wasm/jit/ir/register-lane-values.js";
 
 export type JitBinaryValue = Readonly<{
   kind: IrBinaryValueOpName;
@@ -18,15 +27,16 @@ export type JitValue =
 export function jitValueForStorage(
   storage: StorageRef,
   operands: readonly JitOperandBinding[],
-  registerValues: ReadonlyMap<Reg32, JitValue> = new Map()
+  registerValues: JitRegisterValueMap = new Map(),
+  accessWidth: OperandWidth = 32
 ): JitValue | undefined {
   switch (storage.kind) {
     case "reg":
-      return registerValues.get(storage.reg) ?? { kind: "reg", reg: storage.reg };
+      return jitValueForRegisterAccess({ reg: storage.reg, width: accessWidth, bitOffset: 0 }, registerValues);
     case "operand": {
       const binding = operands[storage.index]!;
 
-      return jitValueForOperandBinding(binding, registerValues);
+      return jitValueForOperandBinding(binding, registerValues, accessWidth);
     }
     case "mem":
       return undefined;
@@ -50,7 +60,7 @@ export function jitValueForValue(
 export function jitValueForEffectiveAddress(
   operand: OperandRef,
   operands: readonly JitOperandBinding[],
-  registerValues: ReadonlyMap<Reg32, JitValue>
+  registerValues: JitRegisterValueMap
 ): JitValue | undefined {
   const binding = operands[operand.index]!;
 
@@ -82,7 +92,7 @@ export function jitValueForEffectiveAddress(
 export function jitRegisterValuesReadByEffectiveAddress(
   operand: OperandRef,
   operands: readonly JitOperandBinding[],
-  registerValues: ReadonlyMap<Reg32, JitValue>
+  registerValues: JitRegisterValueMap
 ): readonly Reg32[] {
   const binding = operands[operand.index]!;
 
@@ -92,11 +102,11 @@ export function jitRegisterValuesReadByEffectiveAddress(
 
   const regs = new Set<Reg32>();
 
-  if (binding.ea.base !== undefined && registerValues.has(binding.ea.base)) {
+  if (binding.ea.base !== undefined && registerValueEntryHasFullValue(registerValues.get(binding.ea.base))) {
     regs.add(binding.ea.base);
   }
 
-  if (binding.ea.index !== undefined && registerValues.has(binding.ea.index)) {
+  if (binding.ea.index !== undefined && registerValueEntryHasFullValue(registerValues.get(binding.ea.index))) {
     regs.add(binding.ea.index);
   }
 
@@ -104,27 +114,19 @@ export function jitRegisterValuesReadByEffectiveAddress(
 }
 
 export function jitStorageReg(storage: StorageRef, operands: readonly JitOperandBinding[]): Reg32 | undefined {
-  switch (storage.kind) {
-    case "reg":
-      return storage.reg;
-    case "operand": {
-      const binding = operands[storage.index]!;
-
-      return binding.kind === "static.reg" ? binding.alias.base : undefined;
-    }
-    case "mem":
-      return undefined;
-  }
+  return jitStorageRegisterAccess(storage, operands)?.reg;
 }
 
 export function jitStorageHasRegisterValue(
   storage: StorageRef,
   operands: readonly JitOperandBinding[],
-  registerValues: ReadonlyMap<Reg32, JitValue>
+  registerValues: JitRegisterValueMap,
+  accessWidth: OperandWidth = 32
 ): boolean {
-  const reg = jitStorageReg(storage, operands);
+  const access = jitStorageRegisterAccess(storage, operands, accessWidth);
 
-  return reg !== undefined && registerValues.has(reg);
+  return access !== undefined &&
+    readRegisterValueEntry(registerValues.get(access.reg), access.width, access.bitOffset) !== undefined;
 }
 
 export function jitValueReadsReg(value: JitValue, reg: Reg32): boolean {
@@ -181,25 +183,43 @@ export function jitValueIsBinary(value: JitValue): value is JitBinaryValue {
 
 function jitValueForReg(
   reg: Reg32,
-  registerValues: ReadonlyMap<Reg32, JitValue>
+  registerValues: JitRegisterValueMap
 ): JitValue {
-  return registerValues.get(reg) ?? { kind: "reg", reg };
+  return fullRegisterValueForEntry(registerValues.get(reg)) ?? { kind: "reg", reg };
 }
 
 function jitValueForOperandBinding(
   binding: JitOperandBinding,
-  registerValues: ReadonlyMap<Reg32, JitValue>
+  registerValues: JitRegisterValueMap,
+  accessWidth: OperandWidth
 ): JitValue | undefined {
   switch (binding.kind) {
     case "static.reg":
-      return binding.alias.width === 32
-        ? registerValues.get(binding.alias.base) ?? { kind: "reg", reg: binding.alias.base }
-        : undefined;
+      return jitValueForRegisterAccess({
+        reg: binding.alias.base,
+        width: binding.alias.width,
+        bitOffset: binding.alias.bitOffset
+      }, registerValues);
     case "static.imm32":
-      return { kind: "const32", value: i32(binding.value) };
+      return extractJitRegisterAccessValue({ kind: "const32", value: i32(binding.value) }, accessWidth, 0);
     case "static.relTarget":
-      return { kind: "const32", value: i32(binding.target) };
+      return extractJitRegisterAccessValue({ kind: "const32", value: i32(binding.target) }, accessWidth, 0);
     case "static.mem":
       return undefined;
   }
+}
+
+function jitValueForRegisterAccess(
+  access: JitRegisterAccess,
+  registerValues: JitRegisterValueMap
+): JitValue | undefined {
+  const value = readRegisterValueEntry(registerValues.get(access.reg), access.width, access.bitOffset);
+
+  if (value !== undefined) {
+    return value;
+  }
+
+  return access.width === 32 && access.bitOffset === 0
+    ? { kind: "reg", reg: access.reg }
+    : undefined;
 }
