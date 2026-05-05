@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { ArrayBufferGuestMemory } from "#x86/memory/guest-memory.js";
 import { GuestMemoryDecodeReader } from "#x86/isa/decoder/guest-memory-reader.js";
 import { decodeIsaInstructionFromReader } from "#x86/isa/decoder/decode.js";
-import { decodeBytes, imm8, imm32, mem32, ok, reg32, signImm8, startAddress } from "./helpers.js";
+import { decodeBytes, imm8, imm32, mem, mem32, ok, reg32, signImm8, startAddress } from "./helpers.js";
 
 test("decodes opcode-encoded register and imm32 operands", () => {
   const decoded = ok(decodeBytes([0xbb, 0x78, 0x56, 0x34, 0x12]));
@@ -145,12 +145,24 @@ test("decodes concrete jcc rel8 and rel32 forms", () => {
 
 test("decodes nop and int imm8 forms", () => {
   const nop = ok(decodeBytes([0x90]));
+  const multiByteNop = ok(decodeBytes([0x0f, 0x1f, 0x40, 0x00]));
+  const wordNop = ok(decodeBytes([0x66, 0x0f, 0x1f, 0x00]));
   const trap = ok(decodeBytes([0xcd, 0x2e]));
 
   strictEqual(nop.spec.id, "nop.near");
   strictEqual(nop.spec.format.syntax, "nop");
   strictEqual(nop.length, 1);
   deepStrictEqual(nop.operands, []);
+
+  strictEqual(multiByteNop.spec.id, "nop.rm32");
+  strictEqual(multiByteNop.spec.format.syntax, "nop {0}");
+  strictEqual(multiByteNop.length, 4);
+  deepStrictEqual(multiByteNop.operands, [mem32({ base: "eax", scale: 1, disp: 0 })]);
+
+  strictEqual(wordNop.spec.id, "nop.rm16");
+  strictEqual(wordNop.spec.format.syntax, "nop {0}");
+  strictEqual(wordNop.length, 4);
+  deepStrictEqual(wordNop.operands, [mem(16, { base: "eax", scale: 1, disp: 0 })]);
 
   strictEqual(trap.spec.id, "int.imm8");
   strictEqual(trap.spec.format.syntax, "int {0}");

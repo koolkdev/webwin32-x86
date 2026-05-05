@@ -212,6 +212,13 @@ const fixtures: readonly DecoderFixture[] = [
     id: "lea.r32_m32"
   },
   {
+    name: "lea ax, [ebx + ecx*4 + 0x10] with operand-size override",
+    bytes: [0x66, 0x8d, 0x44, 0x8b, 0x10],
+    mnemonic: "lea",
+    operands: [reg("ax"), mem(16, { base: "ebx", index: "ecx", scale: 4, disp: 0x10 })],
+    id: "lea.r16_m16"
+  },
+  {
     name: "lea eax, [ecx*4 + 0x00402000]",
     bytes: [0x8d, 0x04, 0x8d, 0x00, 0x20, 0x40, 0x00],
     mnemonic: "lea",

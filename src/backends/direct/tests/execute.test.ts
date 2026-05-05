@@ -301,6 +301,30 @@ test("lea does not modify flags", () => {
   strictEqual(state.eflags, flags);
 });
 
+test("executes lea r16 and preserves high register bits and flags", () => {
+  const flags = 0x8d5;
+  const state = createCpuState({ eax: 0x1234_0000, ebx: 0x100, ecx: 3, eflags: flags, eip: startAddress });
+
+  execute(state, [0x66, 0x8d, 0x44, 0x8b, 0x10]);
+
+  strictEqual(state.eax, 0x1234_011c);
+  strictEqual(state.eflags, flags);
+});
+
+test("executes multi-byte nop without reading memory or modifying flags", () => {
+  const flags = 0x8d5;
+  const state = createCpuState({ eax: 0x1_0000, eflags: flags, eip: startAddress });
+
+  execute(state, [0x0f, 0x1f, 0x40, 0x00]);
+  strictEqual(state.eip, startAddress + 4);
+  strictEqual(state.eflags, flags);
+
+  executeAtStateEip(state, [0x66, 0x0f, 0x1f, 0x00]);
+  strictEqual(state.eip, startAddress + 8);
+  strictEqual(state.eflags, flags);
+  strictEqual(state.instructionCount, 2);
+});
+
 test("executes direct jumps", () => {
   const state = createCpuState({ eip: startAddress });
 

@@ -9,7 +9,7 @@ import type { InstructionSpec } from "#x86/isa/schema/types.js";
 
 test("x86-32 core registers the initial instruction surface", () => {
   strictEqual(X86_32_CORE.name, "x86-32-core");
-  strictEqual(X86_32_CORE.instructions.length, 180);
+  strictEqual(X86_32_CORE.instructions.length, 189);
 
   const ids = X86_32_CORE.instructions.map((spec) => spec.id);
 
@@ -21,10 +21,19 @@ test("x86-32 core registers the initial instruction surface", () => {
     "mov.r16_imm16",
     "nop.near",
     "nop.operand_size_override",
+    "nop.rm16",
+    "nop.rm32",
     "mov.rm32_r32",
     "mov.r32_imm32",
     "mov.rm32_imm32",
+    "movzx.r16_rm8",
+    "movzx.r32_rm8",
+    "movzx.r32_rm16",
+    "movsx.r16_rm8",
+    "movsx.r32_rm8",
+    "movsx.r32_rm16",
     "cmove.r32_rm32",
+    "lea.r16_m16",
     "lea.r32_m32",
     "add.rm8_r8",
     "add.rm16_imm8",
@@ -69,6 +78,20 @@ test("operand-size prefixed nop is a temporary alias form", () => {
   deepStrictEqual(spec.prefixes, { operandSize: "override" });
   strictEqual(spec.operands, undefined);
   deepStrictEqual(spec.format, { syntax: "nop" });
+});
+
+test("multi-byte nop forms use slash-zero ModRM operands without side effects", () => {
+  const near = instruction("nop.rm32");
+  const operandSize = instruction("nop.rm16");
+
+  deepStrictEqual(near.opcode, [0x0f, 0x1f]);
+  deepStrictEqual(near.modrm, { match: { reg: 0 } });
+  deepStrictEqual(near.operands, [{ kind: "modrm.rm", type: "rm32" }]);
+  deepStrictEqual(near.format, { syntax: "nop {0}" });
+  deepStrictEqual(buildIr(near.semantics as SemanticTemplate), [{ op: "next" }]);
+
+  deepStrictEqual(operandSize.prefixes, { operandSize: "override" });
+  deepStrictEqual(operandSize.operands, [{ kind: "modrm.rm", type: "rm16" }]);
 });
 
 test("cmovcc forms are concrete specs with conditional-write semantics", () => {
@@ -149,6 +172,9 @@ test("group opcode forms use modrm.match.reg for Intel slash-digit notation", ()
 test("width-specific decode forms record operand-size metadata", () => {
   const mov8 = instruction("mov.r8_rm8");
   const mov16 = instruction("mov.r16_rm16");
+  const movzx16 = instruction("movzx.r16_rm8");
+  const movsx16 = instruction("movsx.r16_rm8");
+  const lea16 = instruction("lea.r16_m16");
   const add8 = instruction("add.rm8_r8");
   const cmp16 = instruction("cmp.rm16_imm16");
 
@@ -161,6 +187,24 @@ test("width-specific decode forms record operand-size metadata", () => {
   deepStrictEqual(mov16.operands, [
     { kind: "modrm.reg", type: "r16" },
     { kind: "modrm.rm", type: "rm16" }
+  ]);
+
+  deepStrictEqual(movzx16.prefixes, { operandSize: "override" });
+  deepStrictEqual(movzx16.operands, [
+    { kind: "modrm.reg", type: "r16" },
+    { kind: "modrm.rm", type: "rm8" }
+  ]);
+
+  deepStrictEqual(movsx16.prefixes, { operandSize: "override" });
+  deepStrictEqual(movsx16.operands, [
+    { kind: "modrm.reg", type: "r16" },
+    { kind: "modrm.rm", type: "rm8" }
+  ]);
+
+  deepStrictEqual(lea16.prefixes, { operandSize: "override" });
+  deepStrictEqual(lea16.operands, [
+    { kind: "modrm.reg", type: "r16" },
+    { kind: "modrm.rm", type: "m16" }
   ]);
 
   deepStrictEqual(add8.operands, [
@@ -184,6 +228,34 @@ test("mov r/m32, imm32 uses C7 slash-zero form", () => {
     { kind: "modrm.rm", type: "rm32" },
     { kind: "imm", width: 32 }
   ]);
+});
+
+test("extension move semantics are flagless and encode source and destination widths", () => {
+  const movzx = buildIr(instruction("movzx.r32_rm8").semantics as SemanticTemplate);
+  const movsx = buildIr(instruction("movsx.r16_rm8").semantics as SemanticTemplate);
+
+  deepStrictEqual(movzx, [
+    { op: "get", dst: { kind: "var", id: 0 }, source: { kind: "operand", index: 1 }, accessWidth: 8 },
+    {
+      op: "set",
+      target: { kind: "operand", index: 0 },
+      value: { kind: "var", id: 0 },
+      accessWidth: 32
+    },
+    { op: "next" }
+  ]);
+  deepStrictEqual(movsx, [
+    { op: "get", dst: { kind: "var", id: 0 }, source: { kind: "operand", index: 1 }, accessWidth: 8, signed: true },
+    {
+      op: "set",
+      target: { kind: "operand", index: 0 },
+      value: { kind: "var", id: 0 },
+      accessWidth: 16
+    },
+    { op: "next" }
+  ]);
+  strictEqual(movzx.some((op) => op.op.startsWith("flags.")), false);
+  strictEqual(movsx.some((op) => op.op.startsWith("flags.")), false);
 });
 
 test("opcode-encoded register forms expand through opcode low bits", () => {

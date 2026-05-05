@@ -111,6 +111,26 @@ test("executes LEA r32, [base + index*scale + disp8] without reading memory", as
   assertCompletedInstruction(state, startAddress + 4, 8);
 });
 
+test("executes LEA r16 without reading memory or modifying flags", async () => {
+  const initialState = createCpuState({
+    eax: 0x1234_0000,
+    ebx: 0x100,
+    esi: 3,
+    eflags: 0x8d5,
+    eip: startAddress,
+    instructionCount: 7
+  });
+
+  const { exit, state } = await executeMemoryInstruction([0x66, 0x8d, 0x44, 0xb3, 0x08], initialState);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0x1234_0114);
+  strictEqual(state.eflags, initialState.eflags);
+  strictEqual(state.ebx, initialState.ebx);
+  strictEqual(state.esi, initialState.esi);
+  assertCompletedInstruction(state, startAddress + 5, 8);
+});
+
 test("executes MOV r32, [disp32]", async () => {
   const initialState = createCpuState({
     eip: startAddress,

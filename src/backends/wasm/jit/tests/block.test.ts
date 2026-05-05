@@ -1034,6 +1034,44 @@ test("jit IR block materializes register values for scaled effective addresses",
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
+test("jit IR block emits lea r16 without reading memory or modifying flags", async () => {
+  const result = await runJitIrBlock([0x66, 0x8d, 0x44, 0xb3, 0x08], createCpuState({
+    eax: 0x1234_0000,
+    ebx: 0x100,
+    esi: 3,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0x1234_0114);
+  strictEqual(result.state.eflags, preservedEflags);
+  strictEqual(result.state.eip, startAddress + 5);
+  strictEqual(result.state.instructionCount, 1);
+});
+
+test("jit IR block emits multi-byte nop without reading memory or modifying flags", async () => {
+  const dword = await runJitIrBlock([0x0f, 0x1f, 0x40, 0x00], createCpuState({
+    eax: 0x1_0000,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+  const word = await runJitIrBlock([0x66, 0x0f, 0x1f, 0x00], createCpuState({
+    eax: 0x1_0000,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(dword.state.eip, startAddress + 4);
+  strictEqual(dword.state.eflags, preservedEflags);
+  strictEqual(dword.state.instructionCount, 1);
+  deepStrictEqual(dword.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + 4 });
+
+  strictEqual(word.state.eip, startAddress + 4);
+  strictEqual(word.state.eflags, preservedEflags);
+  strictEqual(word.state.instructionCount, 1);
+  deepStrictEqual(word.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + 4 });
+});
+
 test("jit IR block preserves CF across INC partial flag writes", async () => {
   const result = await runJitIrBlock([
     0x83, 0xc0, 0x01, // add eax, 1

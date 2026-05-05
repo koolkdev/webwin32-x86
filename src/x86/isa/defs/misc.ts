@@ -1,5 +1,5 @@
 import { form, mnemonic } from "#x86/isa/schema/builders.js";
-import { imm } from "#x86/isa/schema/operands.js";
+import { imm, modrmRm } from "#x86/isa/schema/operands.js";
 import { intSemantic, nopSemantic } from "#x86/isa/semantics/misc.js";
 
 export const NOP = mnemonic("nop", [
@@ -14,6 +14,23 @@ export const NOP = mnemonic("nop", [
     opcode: [0x90],
     prefixes: { operandSize: "override" },
     format: { syntax: "nop" },
+    semantics: nopSemantic()
+  }),
+  // 66 0F 1F /0: multi-byte NOP r/m16
+  form("rm16", {
+    opcode: [0x0f, 0x1f],
+    prefixes: { operandSize: "override" },
+    modrm: { match: { reg: 0 } },
+    operands: [modrmRm("rm16")],
+    format: { syntax: "nop {0}" },
+    semantics: nopSemantic()
+  }),
+  // 0F 1F /0: multi-byte NOP r/m32
+  form("rm32", {
+    opcode: [0x0f, 0x1f],
+    modrm: { match: { reg: 0 } },
+    operands: [modrmRm("rm32")],
+    format: { syntax: "nop {0}" },
     semantics: nopSemantic()
   })
 ]);
