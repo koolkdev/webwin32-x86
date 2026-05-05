@@ -9,7 +9,7 @@ import type { InstructionSpec } from "#x86/isa/schema/types.js";
 
 test("x86-32 core registers the initial instruction surface", () => {
   strictEqual(X86_32_CORE.name, "x86-32-core");
-  strictEqual(X86_32_CORE.instructions.length, 189);
+  strictEqual(X86_32_CORE.instructions.length, 192);
 
   const ids = X86_32_CORE.instructions.map((spec) => spec.id);
 
@@ -33,6 +33,9 @@ test("x86-32 core registers the initial instruction surface", () => {
     "movsx.r32_rm8",
     "movsx.r32_rm16",
     "cmove.r32_rm32",
+    "xchg.rm8_r8",
+    "xchg.rm16_r16",
+    "xchg.rm32_r32",
     "lea.r16_m16",
     "lea.r32_m32",
     "add.rm8_r8",
@@ -135,6 +138,57 @@ test("slash-r forms use ModRM operands without an explicit ModRM match", () => {
     { kind: "modrm.rm", type: "rm32" }
   ]);
   deepStrictEqual(spec.format, { syntax: "mov {0}, {1}" });
+});
+
+test("xchg slash-r forms allow register or memory r/m operands", () => {
+  const byte = instruction("xchg.rm8_r8");
+  const word = instruction("xchg.rm16_r16");
+  const dword = instruction("xchg.rm32_r32");
+
+  deepStrictEqual(byte.opcode, [0x86]);
+  strictEqual(byte.modrm, undefined);
+  deepStrictEqual(byte.operands, [
+    { kind: "modrm.rm", type: "rm8" },
+    { kind: "modrm.reg", type: "r8" }
+  ]);
+  deepStrictEqual(byte.format, { syntax: "xchg {0}, {1}" });
+
+  deepStrictEqual(word.opcode, [0x87]);
+  deepStrictEqual(word.prefixes, { operandSize: "override" });
+  strictEqual(word.modrm, undefined);
+  deepStrictEqual(word.operands, [
+    { kind: "modrm.rm", type: "rm16" },
+    { kind: "modrm.reg", type: "r16" }
+  ]);
+
+  deepStrictEqual(dword.opcode, [0x87]);
+  strictEqual(dword.modrm, undefined);
+  deepStrictEqual(dword.operands, [
+    { kind: "modrm.rm", type: "rm32" },
+    { kind: "modrm.reg", type: "r32" }
+  ]);
+});
+
+test("xchg semantics read both operands before writing either operand", () => {
+  const program = buildIr(instruction("xchg.rm32_r32").semantics as SemanticTemplate);
+
+  deepStrictEqual(program, [
+    { op: "get", dst: { kind: "var", id: 0 }, source: { kind: "operand", index: 0 }, accessWidth: 32 },
+    { op: "get", dst: { kind: "var", id: 1 }, source: { kind: "operand", index: 1 }, accessWidth: 32 },
+    {
+      op: "set",
+      target: { kind: "operand", index: 0 },
+      value: { kind: "var", id: 1 },
+      accessWidth: 32
+    },
+    {
+      op: "set",
+      target: { kind: "operand", index: 1 },
+      value: { kind: "var", id: 0 },
+      accessWidth: 32
+    },
+    { op: "next" }
+  ]);
 });
 
 test("group opcode forms use modrm.match.reg for Intel slash-digit notation", () => {

@@ -245,6 +245,7 @@ function analyzeInstruction(
               reason: "clobber"
             });
             registers.delete(reg);
+            values.deleteValuesReadingReg(reg);
           }
           break;
         }
@@ -283,6 +284,7 @@ function analyzeInstruction(
           } else {
             registers.delete(reg);
           }
+          values.deleteValuesReadingReg(reg);
 
           if (access.width === 32 && value !== undefined) {
             producers.push({ instructionIndex, opIndex, reg, value, retained });
@@ -307,6 +309,7 @@ function analyzeInstruction(
             reason: "clobber"
           });
           registers.delete(reg);
+          values.deleteValuesReadingReg(reg);
         }
         break;
       }

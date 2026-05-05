@@ -22,7 +22,8 @@ import {
   emitJitAddress,
   emitJitGet,
   emitJitSet,
-  emitJitSetIf
+  emitJitSetIf,
+  jitStorageRefsMayAlias
 } from "./operands.js";
 import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
@@ -151,7 +152,12 @@ function emitJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["i
   emitIrToWasm(ir, {
     body: jitContext.body,
     scratch: jitContext.scratch,
-    expression: { canInlineGet: (source) => canInlineJitGet(jitContext, source) },
+    expression: {
+      canInlineGet: (source) => canInlineJitGet(jitContext, source),
+      alias: {
+        storageMayAlias: (write, read) => jitStorageRefsMayAlias(jitContext, write, read)
+      }
+    },
     emitGet: (source, accessWidth, helpers, options) => emitJitGet(jitContext, source, accessWidth, helpers, options),
     emitSet: (target, value, accessWidth, helpers, op) =>
       emitJitSetWithRole(jitContext, target, value, accessWidth, helpers, op),

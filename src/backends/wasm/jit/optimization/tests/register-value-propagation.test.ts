@@ -72,6 +72,37 @@ test("register-value-propagation materializes dependencies before clobbers", () 
   strictEqual(result.registerValuePropagation.materializedSetCount, 1);
 });
 
+test("register-value-propagation preserves register swap ordering", () => {
+  const result = propagateJitRegisterValues({
+    instructions: [
+      syntheticInstruction([
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "get", dst: v(1), source: { kind: "reg", reg: "ebx" } },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(0) },
+        { op: "next" }
+      ], 0, "exit")
+    ]
+  });
+  const sets = result.block.instructions[0]!.ir.flatMap((op) => op.op === "set" ? [op] : []);
+
+  deepStrictEqual(result.registerValuePropagation, {
+    removedSetCount: 1,
+    foldedReadCount: 0,
+    foldedAddressCount: 0,
+    materializedSetCount: 1
+  });
+  deepStrictEqual(opNames(result.block), [
+    "get",
+    "get",
+    "set:registerMaterialization",
+    "set",
+    "next"
+  ]);
+  deepStrictEqual(setRegs(result.block), ["eax", "ebx"]);
+  deepStrictEqual(sets.map((op) => op.value), [v(1), v(0)]);
+});
+
 test("register-value-propagation folds low-byte reads from tracked full registers", () => {
   const result = propagateJitRegisterValues({
     instructions: [

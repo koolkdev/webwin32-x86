@@ -5,10 +5,12 @@ import {
   jitValueForEffectiveAddress,
   jitValueForStorage,
   jitValueForValue,
+  jitValueReadsReg,
   jitValuesEqual,
   type JitValue
 } from "#backends/wasm/jit/ir/values.js";
 import type { JitRegisterValueMap } from "#backends/wasm/jit/ir/register-lane-values.js";
+import type { Reg32 } from "#x86/isa/types.js";
 
 export class JitValueTracker {
   private readonly locals = new Map<number, JitValue>();
@@ -26,6 +28,14 @@ export class JitValueTracker {
       this.locals.delete(id);
     } else {
       this.locals.set(id, value);
+    }
+  }
+
+  deleteValuesReadingReg(reg: Reg32): void {
+    for (const [id, value] of this.locals) {
+      if (jitValueReadsReg(value, reg)) {
+        this.locals.delete(id);
+      }
     }
   }
 

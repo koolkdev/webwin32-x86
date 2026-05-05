@@ -13,6 +13,12 @@ import { readInterpreterWasmArtifact } from "#backends/wasm/interpreter/artifact
 export type ExecutedInstruction = Readonly<{
   exit: DecodedExit;
   state: CpuState;
+  guestView: DataView;
+}>;
+
+export type GuestMemoryBytes = Readonly<{
+  address: number;
+  bytes: readonly number[];
 }>;
 
 let interpreterModule: WebAssembly.Module | undefined;
@@ -24,17 +30,21 @@ export async function instantiateWasmInterpreter(): Promise<InterpreterModuleIns
 
 export async function executeInstruction(
   bytes: readonly number[],
-  initialState: CpuState
+  initialState: CpuState,
+  memory: readonly GuestMemoryBytes[] = []
 ): Promise<ExecutedInstruction> {
   const interpreter = await instantiateWasmInterpreter();
 
   writeInterpreterState(interpreter.stateView, initialState);
   writeGuestBytes(interpreter.guestView, initialState.eip, bytes);
+  for (const entry of memory) {
+    writeGuestBytes(interpreter.guestView, entry.address, entry.bytes);
+  }
 
   const exit = interpreter.run(1);
   const state = readInterpreterState(interpreter.stateView);
 
-  return { exit, state };
+  return { exit, state, guestView: interpreter.guestView };
 }
 
 export function writeGuestBytes(view: DataView, address: number, bytes: readonly number[]): void {

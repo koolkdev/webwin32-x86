@@ -1,4 +1,4 @@
-import type { OperandWidth, RegisterAlias } from "#x86/isa/types.js";
+import type { OperandWidth, RegisterAlias, Reg32 } from "#x86/isa/types.js";
 import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import type {
   IrBlock,
@@ -78,7 +78,12 @@ export function emitInterpreterIrWithContext(block: IrBlock, context: Interprete
   emitIrToWasm(block, {
     body: context.body,
     scratch: context.scratch,
-    expression: { canInlineGet: (source) => canInlineGet(context, source) },
+    expression: {
+      canInlineGet: (source) => canInlineGet(context, source),
+      alias: {
+        storageMayAlias: (write, read) => interpreterStorageRefsMayAlias(context, write, read)
+      }
+    },
     emitGet: (source, accessWidth, helpers, options) => emitGetStorage(context, source, accessWidth, helpers, options),
     emitSet: (target, value, accessWidth, helpers) =>
       emitSetStorage(context, target, value, accessWidth, helpers),
@@ -136,6 +141,71 @@ function canInlineGet(context: InterpreterIrEmitContext, source: StorageRef): bo
         binding.kind === "relTarget"
       );
     }
+  }
+}
+
+type InterpreterStorageAlias =
+  | Readonly<{ kind: "memory" }>
+  | Readonly<{ kind: "dynamicRegister" }>
+  | Readonly<{ kind: "dynamicRm" }>
+  | Readonly<{ kind: "fixedRegister"; alias: RegisterAlias }>
+  | Readonly<{ kind: "constant" }>;
+
+function interpreterStorageRefsMayAlias(
+  context: InterpreterIrEmitContext,
+  write: StorageRef,
+  read: StorageRef
+): boolean {
+  const writeAlias = interpreterStorageAlias(context, write);
+  const readAlias = interpreterStorageAlias(context, read);
+
+  if (writeAlias.kind === "constant" || readAlias.kind === "constant") {
+    return false;
+  }
+
+  if (writeAlias.kind === "dynamicRm" || readAlias.kind === "dynamicRm") {
+    return true;
+  }
+
+  if (writeAlias.kind === "memory" || readAlias.kind === "memory") {
+    return writeAlias.kind === "memory" && readAlias.kind === "memory";
+  }
+
+  if (writeAlias.kind === "dynamicRegister" || readAlias.kind === "dynamicRegister") {
+    return true;
+  }
+
+  return registerAliasesMayOverlap(writeAlias.alias, readAlias.alias);
+}
+
+function interpreterStorageAlias(
+  context: InterpreterIrEmitContext,
+  storage: StorageRef
+): InterpreterStorageAlias {
+  switch (storage.kind) {
+    case "reg":
+      return { kind: "fixedRegister", alias: regAccess(storage.reg) };
+    case "mem":
+      return { kind: "memory" };
+    case "operand":
+      return interpreterOperandAlias(operandBinding(context, storage.index));
+  }
+}
+
+function interpreterOperandAlias(binding: InterpreterOperandBinding): InterpreterStorageAlias {
+  switch (binding.kind) {
+    case "opcode.reg":
+    case "modrm.reg":
+      return { kind: "dynamicRegister" };
+    case "rm":
+      return { kind: "dynamicRm" };
+    case "mem":
+      return { kind: "memory" };
+    case "implicit.reg":
+      return { kind: "fixedRegister", alias: binding.alias };
+    case "imm":
+    case "relTarget":
+      return { kind: "constant" };
   }
 }
 
@@ -433,6 +503,16 @@ function operandBinding(context: InterpreterIrEmitContext, index: number): Inter
   }
 
   return binding;
+}
+
+function regAccess(reg: Reg32): RegisterAlias {
+  return { name: reg, base: reg, bitOffset: 0, width: 32 };
+}
+
+function registerAliasesMayOverlap(left: RegisterAlias, right: RegisterAlias): boolean {
+  return left.base === right.base &&
+    left.bitOffset < right.bitOffset + right.width &&
+    right.bitOffset < left.bitOffset + left.width;
 }
 
 function emitLoadDynamicReg(

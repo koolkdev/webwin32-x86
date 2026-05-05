@@ -158,10 +158,6 @@ function modRmRegMatches(match: ModRmMatch | undefined, reg: Reg3): boolean {
     return true;
   }
 
-  if (match.mod !== undefined || match.rm !== undefined) {
-    throw new Error("Wasm interpreter ModRM dispatch only supports instruction-selection matches on ModRM.reg");
-  }
-
   return match.reg === undefined || match.reg === reg;
 }
 

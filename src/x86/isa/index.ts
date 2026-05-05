@@ -6,6 +6,7 @@ import { LEA } from "./defs/lea.js";
 import { INT, NOP } from "./defs/misc.js";
 import { CMOVCC, MOV, MOVSX, MOVZX } from "./defs/mov.js";
 import { LEAVE, POP, PUSH } from "./defs/stack.js";
+import { XCHG } from "./defs/xchg.js";
 
 export const X86_32_CORE = defineIsa({
   name: "x86-32-core",
@@ -15,6 +16,7 @@ export const X86_32_CORE = defineIsa({
     MOVZX,
     MOVSX,
     ...CMOVCC,
+    XCHG,
     LEA,
     ADD,
     OR,

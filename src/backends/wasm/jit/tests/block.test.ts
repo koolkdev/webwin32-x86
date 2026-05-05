@@ -237,6 +237,212 @@ test("jit IR block handles partial register MOV writes", async () => {
   strictEqual(movAx.state.eax, 0x1234_5678);
 });
 
+test("jit IR block emits register-only xchg forms after reading both operands", async () => {
+  const cases: readonly Readonly<{
+    name: string;
+    bytes: readonly number[];
+    initial: ReturnType<typeof createCpuState>;
+    expected: Pick<ReturnType<typeof createCpuState>, "eax" | "ebx" | "eflags">;
+  }>[] = [
+    {
+      name: "xchg eax, ebx",
+      bytes: [0x87, 0xd8],
+      initial: createCpuState({
+        eax: 0x1111_1111,
+        ebx: 0x2222_2222,
+        eflags: preservedEflags,
+        eip: startAddress
+      }),
+      expected: { eax: 0x2222_2222, ebx: 0x1111_1111, eflags: preservedEflags }
+    },
+    {
+      name: "xchg al, bl",
+      bytes: [0x86, 0xd8],
+      initial: createCpuState({
+        eax: 0x1234_5678,
+        ebx: 0xaabb_ccdd,
+        eflags: preservedEflags,
+        eip: startAddress
+      }),
+      expected: { eax: 0x1234_56dd, ebx: 0xaabb_cc78, eflags: preservedEflags }
+    },
+    {
+      name: "xchg ax, bx",
+      bytes: [0x66, 0x87, 0xd8],
+      initial: createCpuState({
+        eax: 0x1234_5678,
+        ebx: 0xaabb_ccdd,
+        eflags: preservedEflags,
+        eip: startAddress
+      }),
+      expected: { eax: 0x1234_ccdd, ebx: 0xaabb_5678, eflags: preservedEflags }
+    },
+    {
+      name: "xchg al, ah",
+      bytes: [0x86, 0xe0],
+      initial: createCpuState({
+        eax: 0x1234_5678,
+        ebx: 0xaabb_ccdd,
+        eflags: preservedEflags,
+        eip: startAddress
+      }),
+      expected: { eax: 0x1234_7856, ebx: 0xaabb_ccdd, eflags: preservedEflags }
+    }
+  ];
+
+  for (const entry of cases) {
+    const result = await runJitIrBlock(entry.bytes, entry.initial);
+
+    strictEqual(result.state.eax, entry.expected.eax, entry.name);
+    strictEqual(result.state.ebx, entry.expected.ebx, entry.name);
+    strictEqual(result.state.eflags, entry.expected.eflags, entry.name);
+    strictEqual(result.state.eip, startAddress + entry.bytes.length, entry.name);
+    strictEqual(result.state.instructionCount, 1, entry.name);
+    deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + entry.bytes.length });
+  }
+});
+
+test("jit IR block emits same-register xchg forms as flagless no-ops", async () => {
+  const cases: readonly Readonly<{ name: string; bytes: readonly number[] }>[] = [
+    { name: "xchg eax, eax", bytes: [0x87, 0xc0] },
+    { name: "xchg ax, ax", bytes: [0x66, 0x87, 0xc0] },
+    { name: "xchg al, al", bytes: [0x86, 0xc0] },
+    { name: "xchg ah, ah", bytes: [0x86, 0xe4] }
+  ];
+
+  for (const entry of cases) {
+    const initial = createCpuState({
+      eax: 0x1234_5678,
+      ebx: 0xaabb_ccdd,
+      eflags: preservedEflags,
+      eip: startAddress
+    });
+    const result = await runJitIrBlock(entry.bytes, initial);
+
+    strictEqual(result.state.eax, initial.eax, entry.name);
+    strictEqual(result.state.ebx, initial.ebx, entry.name);
+    strictEqual(result.state.eflags, preservedEflags, entry.name);
+    strictEqual(result.state.eip, startAddress + entry.bytes.length, entry.name);
+    strictEqual(result.state.instructionCount, 1, entry.name);
+  }
+});
+
+test("jit IR block emits memory xchg forms after reading memory and register operands", async () => {
+  const cases: readonly Readonly<{
+    name: string;
+    bytes: readonly number[];
+    width: 8 | 16 | 32;
+    initial: ReturnType<typeof createCpuState>;
+    memoryValue: number;
+    expected: Pick<ReturnType<typeof createCpuState>, "eax" | "ebx" | "eflags">;
+    expectedMemoryValue: number;
+  }>[] = [
+    {
+      name: "xchg [eax], ebx",
+      bytes: [0x87, 0x18],
+      width: 32,
+      initial: createCpuState({ eax: 0x20, ebx: 0xaabb_ccdd, eflags: preservedEflags, eip: startAddress }),
+      memoryValue: 0x1122_3344,
+      expected: { eax: 0x20, ebx: 0x1122_3344, eflags: preservedEflags },
+      expectedMemoryValue: 0xaabb_ccdd
+    },
+    {
+      name: "xchg [eax], bl",
+      bytes: [0x86, 0x18],
+      width: 8,
+      initial: createCpuState({ eax: 0x20, ebx: 0xaabb_ccdd, eflags: preservedEflags, eip: startAddress }),
+      memoryValue: 0x78,
+      expected: { eax: 0x20, ebx: 0xaabb_cc78, eflags: preservedEflags },
+      expectedMemoryValue: 0xdd
+    },
+    {
+      name: "xchg [eax], bx",
+      bytes: [0x66, 0x87, 0x18],
+      width: 16,
+      initial: createCpuState({ eax: 0x20, ebx: 0xaabb_ccdd, eflags: preservedEflags, eip: startAddress }),
+      memoryValue: 0x1357,
+      expected: { eax: 0x20, ebx: 0xaabb_1357, eflags: preservedEflags },
+      expectedMemoryValue: 0xccdd
+    }
+  ];
+
+  for (const entry of cases) {
+    const result = await runJitIrBlock(
+      entry.bytes,
+      entry.initial,
+      [{ address: entry.initial.eax, bytes: littleEndianBytes(entry.memoryValue, entry.width) }]
+    );
+
+    strictEqual(result.state.eax, entry.expected.eax, entry.name);
+    strictEqual(result.state.ebx, entry.expected.ebx, entry.name);
+    strictEqual(result.state.eflags, entry.expected.eflags, entry.name);
+    strictEqual(readGuestValue(result.guestView, entry.initial.eax, entry.width), entry.expectedMemoryValue, entry.name);
+    strictEqual(result.state.eip, startAddress + entry.bytes.length, entry.name);
+    strictEqual(result.state.instructionCount, 1, entry.name);
+    deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + entry.bytes.length });
+  }
+});
+
+test("jit IR block exits on XCHG memory read fault before changing registers", async () => {
+  const initial = createCpuState({
+    eax: 0x1_0000,
+    ebx: 0x2222_2222,
+    eflags: preservedEflags,
+    eip: startAddress,
+    instructionCount: 7
+  });
+  const result = await runJitIrBlock([0x87, 0x18], initial);
+
+  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x1_0000, detail: 4 });
+  strictEqual(result.state.eax, initial.eax);
+  strictEqual(result.state.ebx, initial.ebx);
+  strictEqual(result.state.eflags, initial.eflags);
+  strictEqual(result.state.eip, initial.eip);
+  strictEqual(result.state.instructionCount, initial.instructionCount);
+});
+
+test("jit register value propagation preserves XCHG swap ordering for tracked values", async () => {
+  const bytes = [
+    0xb8, 0x11, 0x11, 0x11, 0x11, // mov eax, 0x11111111
+    0xbb, 0x22, 0x22, 0x22, 0x22, // mov ebx, 0x22222222
+    0x87, 0xd8 // xchg eax, ebx
+  ];
+  const result = await runJitIrBlock(bytes, createCpuState({
+    eax: 0,
+    ebx: 0,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0x2222_2222);
+  strictEqual(result.state.ebx, 0x1111_1111);
+  strictEqual(result.state.eip, startAddress + bytes.length);
+  strictEqual(result.state.instructionCount, 3);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + bytes.length });
+});
+
+test("jit register value propagation preserves chained XCHG register cycles", async () => {
+  const bytes = [
+    0x87, 0xd8, // xchg eax, ebx
+    0x87, 0xcb, // xchg ebx, ecx
+    0x87, 0xc1, // xchg ecx, eax
+    0x87, 0xd9 // xchg ecx, ebx
+  ];
+  const initial = createCpuState({
+    eax: 0x1111_1111,
+    ebx: 0x2222_2222,
+    ecx: 0x3333_3333,
+    eip: startAddress
+  });
+  const result = await runJitIrBlock(bytes, initial);
+
+  strictEqual(result.state.eax, initial.eax);
+  strictEqual(result.state.ebx, initial.ebx);
+  strictEqual(result.state.ecx, initial.ecx);
+  strictEqual(result.state.eip, startAddress + bytes.length);
+  strictEqual(result.state.instructionCount, 4);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + bytes.length });
+});
+
 test("jit IR block emits movzx and movsx without modifying flags", async () => {
   const movzxByte = await runJitIrBlock([0x0f, 0xb6, 0xc7], createCpuState({
     eax: 0xaaaa_aaaa,
@@ -1239,6 +1445,23 @@ function codegenIr(block: ReturnType<typeof buildJitIrBlock>): readonly JitIrOp[
   return buildJitCodegenIr(planJitCodegen(optimizeJitIrBlock(block))).instructions.flatMap(
     (instruction) => instruction.ir
   );
+}
+
+function littleEndianBytes(value: number, width: 8 | 16 | 32): readonly number[] {
+  const byteCount = width / 8;
+
+  return Array.from({ length: byteCount }, (_, index) => (value >>> (index * 8)) & 0xff);
+}
+
+function readGuestValue(view: DataView, address: number, width: 8 | 16 | 32): number {
+  switch (width) {
+    case 8:
+      return view.getUint8(address);
+    case 16:
+      return view.getUint16(address, true);
+    case 32:
+      return view.getUint32(address, true);
+  }
 }
 
 function singleInstructionBodyOpcodes(bytes: readonly number[]): readonly number[] {

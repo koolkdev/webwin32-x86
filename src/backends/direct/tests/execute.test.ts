@@ -81,6 +81,125 @@ test("executes byte and word mov through register aliases", () => {
   strictEqual(state.instructionCount, 3);
 });
 
+test("executes register-only xchg after reading both operands", () => {
+  const flags = 0x8d5;
+  const dword = createCpuState({
+    eax: 0x1111_1111,
+    ebx: 0x2222_2222,
+    eflags: flags,
+    eip: startAddress
+  });
+  const byte = createCpuState({
+    eax: 0x1234_5678,
+    ebx: 0xaabb_ccdd,
+    eflags: flags,
+    eip: startAddress
+  });
+  const word = createCpuState({
+    eax: 0x1234_5678,
+    ebx: 0xaabb_ccdd,
+    eflags: flags,
+    eip: startAddress
+  });
+  const highByte = createCpuState({
+    eax: 0x1234_5678,
+    eflags: flags,
+    eip: startAddress
+  });
+
+  execute(dword, [0x87, 0xd8]);
+  strictEqual(dword.eax, 0x2222_2222);
+  strictEqual(dword.ebx, 0x1111_1111);
+  strictEqual(dword.eflags, flags);
+
+  execute(byte, [0x86, 0xd8]);
+  strictEqual(byte.eax, 0x1234_56dd);
+  strictEqual(byte.ebx, 0xaabb_cc78);
+  strictEqual(byte.eflags, flags);
+
+  execute(word, [0x66, 0x87, 0xd8]);
+  strictEqual(word.eax, 0x1234_ccdd);
+  strictEqual(word.ebx, 0xaabb_5678);
+  strictEqual(word.eflags, flags);
+
+  execute(highByte, [0x86, 0xe0]);
+  strictEqual(highByte.eax, 0x1234_7856);
+  strictEqual(highByte.eflags, flags);
+});
+
+test("executes same-register xchg as a flagless no-op", () => {
+  const flags = 0x8d5;
+  const state = createCpuState({
+    eax: 0x1234_5678,
+    ebx: 0xaabb_ccdd,
+    eflags: flags,
+    eip: startAddress
+  });
+
+  execute(state, [0x87, 0xc0]);
+  executeAtStateEip(state, [0x66, 0x87, 0xc0]);
+  executeAtStateEip(state, [0x86, 0xc0]);
+  executeAtStateEip(state, [0x86, 0xe4]);
+
+  strictEqual(state.eax, 0x1234_5678);
+  strictEqual(state.ebx, 0xaabb_ccdd);
+  strictEqual(state.eflags, flags);
+  strictEqual(state.instructionCount, 4);
+});
+
+test("executes memory xchg after reading memory and register operands", () => {
+  const flags = 0x8d5;
+  const dwordMemory = new ArrayBufferGuestMemory(0x40);
+  const byteMemory = new ArrayBufferGuestMemory(0x40);
+  const wordMemory = new ArrayBufferGuestMemory(0x40);
+  const dword = createCpuState({ eax: 0x20, ebx: 0xaabb_ccdd, eflags: flags, eip: startAddress });
+  const byte = createCpuState({ eax: 0x20, ebx: 0xaabb_ccdd, eflags: flags, eip: startAddress });
+  const word = createCpuState({ eax: 0x20, ebx: 0xaabb_ccdd, eflags: flags, eip: startAddress });
+
+  deepStrictEqual(dwordMemory.writeU32(0x20, 0x1122_3344), { ok: true });
+  execute(dword, [0x87, 0x18], dwordMemory);
+  strictEqual(dword.eax, 0x20);
+  strictEqual(dword.ebx, 0x1122_3344);
+  strictEqual(dword.eflags, flags);
+  deepStrictEqual(dwordMemory.readU32(0x20), { ok: true, value: 0xaabb_ccdd });
+
+  deepStrictEqual(byteMemory.writeU8(0x20, 0x78), { ok: true });
+  execute(byte, [0x86, 0x18], byteMemory);
+  strictEqual(byte.eax, 0x20);
+  strictEqual(byte.ebx, 0xaabb_cc78);
+  strictEqual(byte.eflags, flags);
+  deepStrictEqual(byteMemory.readU8(0x20), { ok: true, value: 0xdd });
+
+  deepStrictEqual(wordMemory.writeU16(0x20, 0x1357), { ok: true });
+  execute(word, [0x66, 0x87, 0x18], wordMemory);
+  strictEqual(word.eax, 0x20);
+  strictEqual(word.ebx, 0xaabb_1357);
+  strictEqual(word.eflags, flags);
+  deepStrictEqual(wordMemory.readU16(0x20), { ok: true, value: 0xccdd });
+});
+
+test("memory xchg read fault is atomic", () => {
+  const memory = new ArrayBufferGuestMemory(0x40);
+  const state = createCpuState({
+    eax: 0x40,
+    ebx: 0x2222_2222,
+    eflags: 0x8d5,
+    eip: startAddress,
+    instructionCount: 7
+  });
+  const result = execute(state, [0x87, 0x18], memory);
+
+  strictEqual(result.stopReason, StopReason.MEMORY_FAULT);
+  strictEqual(result.faultAddress, 0x40);
+  strictEqual(result.faultSize, 4);
+  strictEqual(result.faultOperation, "read");
+  strictEqual(state.eax, 0x40);
+  strictEqual(state.ebx, 0x2222_2222);
+  strictEqual(state.eflags, 0x8d5);
+  strictEqual(state.eip, startAddress);
+  strictEqual(state.instructionCount, 7);
+});
+
 test("executes movzx and movsx without modifying flags", () => {
   const flags = 0x8d5;
   const registerState = createCpuState({ eax: 0xaaaa_aaaa, ebx: 0x1234_807f, eflags: flags, eip: startAddress });

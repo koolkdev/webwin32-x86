@@ -88,8 +88,13 @@ export type IrExpressionInputOp =
   | IrExpressionFlagProducerConditionOp;
 export type IrExpressionInputBlock = readonly IrExpressionInputOp[];
 
+export type IrExpressionAliasModel = Readonly<{
+  storageMayAlias?: (write: StorageRef, read: StorageRef) => boolean;
+}>;
+
 export type IrExpressionOptions = Readonly<{
   canInlineGet?: (source: StorageRef) => boolean;
+  alias?: IrExpressionAliasModel;
 }>;
 
 export function buildIrExpressionBlock(
@@ -116,7 +121,13 @@ class ExpressionBuilder {
   }
 
   build(): IrExprBlock {
-    for (const op of this.block) {
+    for (let opIndex = 0; opIndex < this.block.length; opIndex += 1) {
+      const op = this.block[opIndex];
+
+      if (op === undefined) {
+        throw new Error(`missing IR expression input op: ${opIndex}`);
+      }
+
       switch (op.op) {
         case "get":
           this.#defineValue(
@@ -127,7 +138,8 @@ class ExpressionBuilder {
               accessWidth: op.accessWidth ?? 32,
               ...(op.signed === true ? { signed: true } : {})
             },
-            this.options.canInlineGet?.(op.source) === true
+            this.options.canInlineGet?.(op.source) === true &&
+              !this.#inlineGetWouldCrossAliasBarrier(op.dst, op.source, opIndex)
           );
           break;
         case "set":
@@ -213,6 +225,28 @@ class ExpressionBuilder {
     }
 
     return this.#ops;
+  }
+
+  #inlineGetWouldCrossAliasBarrier(dst: VarRef, readStorage: StorageRef, opIndex: number): boolean {
+    for (let index = opIndex + 1; index < this.block.length; index += 1) {
+      const op = this.block[index];
+
+      if (op === undefined) {
+        throw new Error(`missing IR expression input op: ${index}`);
+      }
+
+      if (opUsesVar(op, dst.id)) {
+        return false;
+      }
+
+      if (opWriteStorages(op).some((writeStorage) =>
+        storagesMayAlias(writeStorage, readStorage, this.options.alias)
+      )) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   #defineValue(dst: VarRef, value: IrValueExpr, inlineable: boolean): void {
@@ -365,6 +399,94 @@ function countStorageUses(counts: Map<number, number>, storage: StorageRef): voi
 function countValueUse(counts: Map<number, number>, value: ValueRef): void {
   if (value.kind === "var") {
     counts.set(value.id, remainingUses(counts, value.id) + 1);
+  }
+}
+
+function opUsesVar(op: IrExpressionInputOp, id: number): boolean {
+  switch (op.op) {
+    case "get":
+      return storageUsesVar(op.source, id);
+    case "set":
+      return storageUsesVar(op.target, id) || valueUsesVar(op.value, id);
+    case "set.if":
+      return valueUsesVar(op.condition, id) ||
+        storageUsesVar(op.target, id) ||
+        valueUsesVar(op.value, id);
+    case "address":
+      return false;
+    case "const32":
+      return false;
+    case "aluFlags.condition":
+      return false;
+    case "flagProducer.condition":
+      return flagProducerConditionInputNames(op).some((name) =>
+        valueUsesVar(requiredFlagProducerConditionInput(op, name), id)
+      );
+    case "i32.add":
+    case "i32.sub":
+    case "i32.xor":
+    case "i32.or":
+    case "i32.and":
+    case "i32.shr_u":
+      return valueUsesVar(op.a, id) || valueUsesVar(op.b, id);
+    case "i32.extend8_s":
+    case "i32.extend16_s":
+      return valueUsesVar(op.value, id);
+    case "flags.set":
+      return Object.values(op.inputs).some((value) => valueUsesVar(value, id));
+    case "flags.materialize":
+    case "flags.boundary":
+    case "next":
+      return false;
+    case "jump":
+      return valueUsesVar(op.target, id);
+    case "conditionalJump":
+      return valueUsesVar(op.condition, id) ||
+        valueUsesVar(op.taken, id) ||
+        valueUsesVar(op.notTaken, id);
+    case "hostTrap":
+      return valueUsesVar(op.vector, id);
+  }
+}
+
+function valueUsesVar(value: ValueRef, id: number): boolean {
+  return value.kind === "var" && value.id === id;
+}
+
+function storageUsesVar(storage: StorageRef, id: number): boolean {
+  return storage.kind === "mem" && valueUsesVar(storage.address, id);
+}
+
+function opWriteStorages(op: IrExpressionInputOp): readonly StorageRef[] {
+  switch (op.op) {
+    case "set":
+    case "set.if":
+      return [op.target];
+    default:
+      return [];
+  }
+}
+
+function storagesMayAlias(
+  write: StorageRef,
+  read: StorageRef,
+  alias: IrExpressionAliasModel | undefined
+): boolean {
+  return (alias?.storageMayAlias ?? storageRefsMayOverlap)(write, read);
+}
+
+function storageRefsMayOverlap(left: StorageRef, right: StorageRef): boolean {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+
+  switch (left.kind) {
+    case "reg":
+      return right.kind === "reg" && left.reg === right.reg;
+    case "operand":
+      return right.kind === "operand" && left.index === right.index;
+    case "mem":
+      return true;
   }
 }
 

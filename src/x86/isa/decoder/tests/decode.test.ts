@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { ArrayBufferGuestMemory } from "#x86/memory/guest-memory.js";
 import { GuestMemoryDecodeReader } from "#x86/isa/decoder/guest-memory-reader.js";
 import { decodeIsaInstructionFromReader } from "#x86/isa/decoder/decode.js";
-import { decodeBytes, imm8, imm32, mem, mem32, ok, reg32, signImm8, startAddress } from "./helpers.js";
+import { decodeBytes, imm8, imm32, mem, mem32, ok, reg, reg32, signImm8, startAddress } from "./helpers.js";
 
 test("decodes opcode-encoded register and imm32 operands", () => {
   const decoded = ok(decodeBytes([0xbb, 0x78, 0x56, 0x34, 0x12]));
@@ -66,6 +66,38 @@ test("decodes slash-r register/register operands positionally", () => {
   strictEqual(reverse.spec.id, "mov.rm32_r32");
   strictEqual(reverse.spec.format.syntax, "mov {0}, {1}");
   deepStrictEqual(reverse.operands, [reg32("ebx"), reg32("eax")]);
+});
+
+test("decodes xchg ModRM register and memory forms", () => {
+  const dword = ok(decodeBytes([0x87, 0xd8]));
+  const byte = ok(decodeBytes([0x86, 0xd8]));
+  const word = ok(decodeBytes([0x66, 0x87, 0xd8]));
+  const highByte = ok(decodeBytes([0x86, 0xe0]));
+  const dwordMem = ok(decodeBytes([0x87, 0x18]));
+  const byteMem = ok(decodeBytes([0x86, 0x18]));
+  const wordMem = ok(decodeBytes([0x66, 0x87, 0x18]));
+
+  strictEqual(dword.spec.id, "xchg.rm32_r32");
+  strictEqual(dword.spec.format.syntax, "xchg {0}, {1}");
+  deepStrictEqual(dword.operands, [reg32("eax"), reg32("ebx")]);
+
+  strictEqual(byte.spec.id, "xchg.rm8_r8");
+  deepStrictEqual(byte.operands, [reg("al"), reg("bl")]);
+
+  strictEqual(word.spec.id, "xchg.rm16_r16");
+  deepStrictEqual(word.operands, [reg("ax"), reg("bx")]);
+
+  strictEqual(highByte.spec.id, "xchg.rm8_r8");
+  deepStrictEqual(highByte.operands, [reg("al"), reg("ah")]);
+
+  strictEqual(dwordMem.spec.id, "xchg.rm32_r32");
+  deepStrictEqual(dwordMem.operands, [mem32({ base: "eax", scale: 1, disp: 0 }), reg32("ebx")]);
+
+  strictEqual(byteMem.spec.id, "xchg.rm8_r8");
+  deepStrictEqual(byteMem.operands, [mem(8, { base: "eax", scale: 1, disp: 0 }), reg("bl")]);
+
+  strictEqual(wordMem.spec.id, "xchg.rm16_r16");
+  deepStrictEqual(wordMem.operands, [mem(16, { base: "eax", scale: 1, disp: 0 }), reg("bx")]);
 });
 
 test("uses ModRM match fields for slash-digit groups", () => {

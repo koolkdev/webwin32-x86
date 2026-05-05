@@ -63,6 +63,36 @@ test("expression selector materializes get when the source cannot be inlined", (
   );
 });
 
+test("expression selector materializes get before an aliasing write barrier", () => {
+  deepStrictEqual(
+    buildIrExpressionBlock(
+      [
+        { op: "get", dst: v(0), source: op(0) },
+        { op: "get", dst: v(1), source: op(1) },
+        { op: "set", target: reg("eax"), value: v(1) },
+        { op: "set", target: op(1), value: v(0) },
+        { op: "next" }
+      ],
+      {
+        canInlineGet: () => true,
+        alias: {
+          storageMayAlias: (write, read) =>
+            write.kind === "reg" &&
+            write.reg === "eax" &&
+            read.kind === "operand" &&
+            read.index === 0
+        }
+      }
+    ),
+    [
+      { op: "let32", dst: v(0), value: sourceValue(op(0)) },
+      set(reg("eax"), sourceValue(op(1))),
+      set(op(1), v(0)),
+      { op: "next" }
+    ]
+  );
+});
+
 test("expression selector preserves signed source reads", () => {
   deepStrictEqual(
     buildIrExpressionBlock(

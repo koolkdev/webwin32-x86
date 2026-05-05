@@ -36,6 +36,19 @@ export function canInlineJitGet(context: JitIrContext, source: StorageRef): bool
   }
 }
 
+export function jitStorageRefsMayAlias(context: JitIrContext, write: StorageRef, read: StorageRef): boolean {
+  if (write.kind === "mem" || read.kind === "mem") {
+    return write.kind === "mem" && read.kind === "mem";
+  }
+
+  const writeAlias = storageRegisterAlias(context, write);
+  const readAlias = storageRegisterAlias(context, read);
+
+  return writeAlias !== undefined &&
+    readAlias !== undefined &&
+    registerAliasesMayOverlap(writeAlias, readAlias);
+}
+
 export function emitJitGet(
   context: JitIrContext,
   source: IrStorageExpr,
@@ -333,4 +346,24 @@ function operandBinding(context: JitIrContext, index: number): JitOperandBinding
   }
 
   return binding;
+}
+
+function storageRegisterAlias(context: JitIrContext, storage: StorageRef): RegisterAlias | undefined {
+  switch (storage.kind) {
+    case "reg":
+      return regAccess(storage.reg, 32);
+    case "mem":
+      return undefined;
+    case "operand": {
+      const binding = operandBinding(context, storage.index);
+
+      return binding.kind === "static.reg" ? binding.alias : undefined;
+    }
+  }
+}
+
+function registerAliasesMayOverlap(left: RegisterAlias, right: RegisterAlias): boolean {
+  return left.base === right.base &&
+    left.bitOffset < right.bitOffset + right.width &&
+    right.bitOffset < left.bitOffset + left.width;
 }
