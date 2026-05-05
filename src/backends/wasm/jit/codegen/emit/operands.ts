@@ -77,14 +77,12 @@ export function emitJitSet(
   accessWidth: OperandWidth,
   helpers: WasmIrEmitHelpers
 ): void {
-  const regs = context.state.regs;
-
   switch (target.kind) {
     case "operand":
       emitSetBinding(context, operandBinding(context, target.index), value, helpers);
       return;
     case "reg":
-      regs.emitWriteAlias(regAccess(target.reg, accessWidth), () => helpers.emitValue(value));
+      emitSetRegisterAlias(context, regAccess(target.reg, accessWidth), value, helpers);
       return;
     case "mem":
       emitStoreMem(
@@ -188,7 +186,7 @@ function emitSetBinding(
 
   switch (binding.kind) {
     case "static.reg":
-      regs.emitWriteAlias(binding.alias, () => helpers.emitValue(value));
+      emitSetRegisterAlias(context, binding.alias, value, helpers);
       return;
     case "static.mem":
       emitStoreMem(
@@ -204,6 +202,22 @@ function emitSetBinding(
     case "static.relTarget":
       throw new Error(`cannot set ${binding.kind} operand`);
   }
+}
+
+function emitSetRegisterAlias(
+  context: JitIrContext,
+  target: RegisterAlias,
+  value: IrValueExpr,
+  helpers: WasmIrEmitHelpers
+): void {
+  const rebindLocal = rebindLocalForSetValue(context, target, value);
+
+  context.state.regs.emitWriteAlias(target, rebindLocal === undefined
+    ? () => helpers.emitValue(value)
+    : {
+        emitValue: () => helpers.emitValue(value),
+        rebindLocal
+      });
 }
 
 function emitSetBindingIf(
@@ -348,7 +362,7 @@ function operandBinding(context: JitIrContext, index: number): JitOperandBinding
   return binding;
 }
 
-function storageRegisterAlias(context: JitIrContext, storage: StorageRef): RegisterAlias | undefined {
+function storageRegisterAlias(context: JitIrContext, storage: StorageRef | IrStorageExpr): RegisterAlias | undefined {
   switch (storage.kind) {
     case "reg":
       return regAccess(storage.reg, 32);
@@ -366,4 +380,25 @@ function registerAliasesMayOverlap(left: RegisterAlias, right: RegisterAlias): b
   return left.base === right.base &&
     left.bitOffset < right.bitOffset + right.width &&
     right.bitOffset < left.bitOffset + left.width;
+}
+
+function rebindLocalForSetValue(
+  context: JitIrContext,
+  target: RegisterAlias,
+  value: IrValueExpr
+): number | undefined {
+  // Only exact full-width register sources can be rebound. Expressions,
+  // constants, memory loads, signed/narrow reads, and conditionals all continue
+  // through the normal value-emission path.
+  if (target.width !== 32 || value.kind !== "source" || value.accessWidth !== 32 || value.signed === true) {
+    return undefined;
+  }
+
+  const sourceAlias = storageRegisterAlias(context, value.source);
+
+  if (sourceAlias === undefined) {
+    return undefined;
+  }
+
+  return context.state.regs.rebindableLocalForAlias(sourceAlias);
 }

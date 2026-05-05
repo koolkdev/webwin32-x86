@@ -61,11 +61,12 @@ export function recordPartialValue(state: RegValueState, alias: RegisterAlias, v
   }
 }
 
-export function directFullLocalForRead(
-  alias: RegisterAlias,
+export function existingLocalForRegisterValue(
   pending: RegValueState | undefined,
   committed: RegValueState | undefined
 ): number | undefined {
+  // This is a pure state query: it may return an existing local, but must not
+  // force a state load or compose partial bytes into a new local.
   if (pending?.fullLocal !== undefined) {
     return pending.fullLocal;
   }
@@ -75,6 +76,20 @@ export function directFullLocalForRead(
   }
 
   return committed?.fullLocal;
+}
+
+export function rebindableLocalForAlias(
+  alias: RegisterAlias,
+  pending: RegValueState | undefined,
+  committed: RegValueState | undefined
+): number | undefined {
+  // Rebinding is only valid when the alias denotes the whole register value.
+  // Narrow aliases still need extraction, masking, or byte merging.
+  if (alias.width !== fullWidth || alias.bitOffset !== 0) {
+    return undefined;
+  }
+
+  return existingLocalForRegisterValue(pending, committed);
 }
 
 export function byteSourcesForAlias(

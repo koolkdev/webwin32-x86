@@ -2,9 +2,13 @@ import { deepStrictEqual, strictEqual } from "node:assert";
 import { test } from "node:test";
 
 import { createCpuState } from "#x86/state/cpu-state.js";
+import type { CpuState } from "#x86/state/cpu-state.js";
 import type { RegisterAlias, Reg32 } from "#x86/isa/types.js";
 import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmOpcode } from "#backends/wasm/encoder/types.js";
+import { wasmImport } from "#backends/wasm/abi.js";
+import { readWasmCpuState, writeWasmCpuState } from "#backends/wasm/state-layout.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { createJitReg32State, type JitReg32State } from "#backends/wasm/jit/state/register-state.js";
 import type { ValueWidth } from "#backends/wasm/codegen/value-width.js";
@@ -25,12 +29,16 @@ const ah: RegisterAlias = { name: "ah", base: "eax", bitOffset: 8, width: 8 };
 const bl: RegisterAlias = { name: "bl", base: "ebx", bitOffset: 0, width: 8 };
 const ax: RegisterAlias = { name: "ax", base: "eax", bitOffset: 0, width: 16 };
 
+function fullAlias(reg: Reg32): RegisterAlias {
+  return { name: reg, base: reg, bitOffset: 0, width: 32 };
+}
+
 function emitWriteReg32(
   regs: JitReg32State,
   reg: Reg32,
   emitValue: () => ValueWidth | void
 ): void {
-  regs.emitWriteAlias({ name: reg, base: reg, bitOffset: 0, width: 32 }, emitValue);
+  regs.emitWriteAlias(fullAlias(reg), emitValue);
 }
 
 test("jit register state writes register-only instructions to committed locals", () => {
@@ -87,6 +95,127 @@ test("jit register state returns to committed writes after pre-instruction exits
   body.end();
 
   strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.localSet), 2);
+});
+
+test("jit register state exposes full locals only for direct full-register reads", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  emitWriteReg32(regs, "eax", () => {
+    body.i32Const(0x1122_3344);
+  });
+  regs.commitPending();
+
+  strictEqual(regs.rebindableLocalForAlias(al), undefined);
+  strictEqual(regs.rebindableLocalForAlias(ax), undefined);
+  strictEqual(typeof regs.rebindableLocalForAlias(fullAlias("eax")), "number");
+});
+
+test("jit register state rebinds full-register writes from known locals without a local copy", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  emitWriteReg32(regs, "eax", () => {
+    body.i32Const(0x1122_3344);
+  });
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAlias(fullAlias("ebx"), {
+    emitValue: unexpectedWriteValue,
+    rebindLocal: requiredRebindableLocal(regs, "eax")
+  });
+  regs.commitPending();
+  body.end();
+
+  strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.localSet), 1);
+});
+
+test("jit register state detaches shared locals before later full writes", async () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  emitWriteReg32(regs, "eax", () => {
+    body.i32Const(0x1111_1111);
+  });
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAlias(fullAlias("ebx"), {
+    emitValue: unexpectedWriteValue,
+    rebindLocal: requiredRebindableLocal(regs, "eax")
+  });
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  emitWriteReg32(regs, "eax", () => {
+    body.i32Const(0x2222_2222);
+  });
+  regs.commitPending();
+  regs.emitCommittedStore("eax");
+  regs.emitCommittedStore("ebx");
+  body.end();
+
+  const state = await runRegisterStateBody(body);
+
+  strictEqual(state.eax, 0x2222_2222);
+  strictEqual(state.ebx, 0x1111_1111);
+});
+
+test("jit register state detaches shared locals before partial writes", async () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  emitWriteReg32(regs, "eax", () => {
+    body.i32Const(0x1122_3344);
+  });
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAlias(fullAlias("ebx"), {
+    emitValue: unexpectedWriteValue,
+    rebindLocal: requiredRebindableLocal(regs, "eax")
+  });
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAlias(bl, () => {
+    body.i32Const(0xaa);
+  });
+  regs.commitPending();
+  regs.emitCommittedStore("eax");
+  regs.emitCommittedStore("ebx");
+  body.end();
+
+  const state = await runRegisterStateBody(body);
+
+  strictEqual(state.eax, 0x1122_3344);
+  strictEqual(state.ebx, 0x1122_33aa);
+});
+
+test("jit register state rebinding preserves committed locals while writes are pending", async () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  emitWriteReg32(regs, "eax", () => {
+    body.i32Const(0x1111_1111);
+  });
+  emitWriteReg32(regs, "ebx", () => {
+    body.i32Const(0x2222_2222);
+  });
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: true });
+  regs.emitWriteAlias(fullAlias("eax"), {
+    emitValue: unexpectedWriteValue,
+    rebindLocal: requiredRebindableLocal(regs, "ebx")
+  });
+  regs.emitCommittedStore("eax");
+  regs.commitPending();
+  body.end();
+
+  const state = await runRegisterStateBody(body);
+
+  strictEqual(state.eax, 0x1111_1111);
 });
 
 test("jit register state feeds later instructions from committed register locals", async () => {
@@ -384,6 +513,55 @@ test("jit register exit states store committed registers on a later memory fault
   strictEqual(result.state.eip, startAddress + 10);
   strictEqual(result.state.instructionCount, 42);
 });
+
+function requiredRebindableLocal(regs: JitReg32State, reg: Reg32): number {
+  const local = regs.rebindableLocalForAlias(fullAlias(reg));
+
+  if (local === undefined) {
+    throw new Error(`missing full local for ${reg}`);
+  }
+
+  return local;
+}
+
+function unexpectedWriteValue(): never {
+  throw new Error("known full-local writes should not emit their fallback value");
+}
+
+async function runRegisterStateBody(
+  body: WasmFunctionBodyEncoder,
+  initialState: CpuState = createCpuState()
+): Promise<CpuState> {
+  const module = new WasmModuleEncoder();
+  const memoryIndex = module.importMemory(wasmImport.moduleName, wasmImport.stateMemoryName, { minPages: 1 });
+
+  strictEqual(memoryIndex, 0);
+
+  const typeIndex = module.addFunctionType({ params: [], results: [] });
+  const functionIndex = module.addFunction(typeIndex, body);
+
+  module.exportFunction("run", functionIndex);
+
+  const stateMemory = new WebAssembly.Memory({ initial: 1 });
+  const stateView = new DataView(stateMemory.buffer);
+
+  writeWasmCpuState(stateView, initialState);
+
+  const instance = await WebAssembly.instantiate(new WebAssembly.Module(module.encode()), {
+    [wasmImport.moduleName]: {
+      [wasmImport.stateMemoryName]: stateMemory
+    }
+  });
+  const run = instance.exports.run;
+
+  if (typeof run !== "function") {
+    throw new Error("expected exported register-state test function");
+  }
+
+  run();
+
+  return readWasmCpuState(stateView);
+}
 
 function countOpcode(opcodes: readonly number[], opcode: number): number {
   return opcodes.filter((entry) => entry === opcode).length;
