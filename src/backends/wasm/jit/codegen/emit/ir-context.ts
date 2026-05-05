@@ -1,7 +1,7 @@
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import type { OperandWidth } from "#x86/isa/types.js";
-import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
+import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitModuleLinkTable } from "#backends/wasm/jit/compiled-blocks/module-link-table.js";
 import { emitIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 import type {

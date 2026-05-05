@@ -1,9 +1,4 @@
-import type {
-  IrOp,
-  StorageRef,
-  ValueRef,
-  VarRef
-} from "#x86/ir/model/types.js";
+import type { IrOp, VarRef } from "#x86/ir/model/types.js";
 import type { IrFlagProducerConditionDescriptor } from "#x86/ir/model/flag-conditions.js";
 import type { JitOperandBinding } from "./operand-bindings.js";
 

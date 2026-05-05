@@ -3,7 +3,6 @@ import {
   requiredFlagProducerConditionInput
 } from "#x86/ir/model/flag-conditions.js";
 import {
-  irOpDst,
   irOpResult,
   irOpIsTerminator,
   irOpStorageUses,

@@ -1,7 +1,7 @@
 import type { IsaDecodedInstruction } from "#x86/isa/decoder/types.js";
 import { operand } from "#x86/ir/build/builder.js";
 import { IrBlockBuilder } from "#x86/ir/build/block.js";
-import { jitBindingsFromIsaInstruction, type JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
+import { jitBindingsFromIsaInstruction } from "#backends/wasm/jit/ir/operand-bindings.js";
 import type { JitIrBlock, JitIrBlockInstruction } from "#backends/wasm/jit/ir/types.js";
 
 export type AppendJitIrInstructionOptions = Readonly<{

@@ -76,7 +76,6 @@ test("buildJitIrBlock leaves condition materialization to JIT flag state", () =>
   const add = ok(decodeBytes([0x83, 0xc0, 0x01], startAddress));
   const jz = ok(decodeBytes([0x74, 0x05], add.nextEip));
   const branchIr = codegenIr(buildJitIrBlock([add, jz]));
-  const conditionIndex = branchIr.findIndex((op) => op.op === "aluFlags.condition");
   const conditionalJumpIndex = branchIr.findIndex((op) => op.op === "conditionalJump");
 
   strictEqual(branchIr.some((op) => op.op === "flags.materialize"), false);

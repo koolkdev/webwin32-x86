@@ -1,4 +1,4 @@
-import type { OperandWidth, RegisterAlias, Reg32 } from "#x86/isa/types.js";
+import type { OperandWidth, RegisterAlias } from "#x86/isa/types.js";
 import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import type {
   IrBlock,
