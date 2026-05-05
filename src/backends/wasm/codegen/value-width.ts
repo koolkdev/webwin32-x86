@@ -12,6 +12,7 @@ export type ValueWidth = Readonly<{
 export type WasmIrEmitValueOptions = Readonly<{
   widthInsensitive?: boolean;
   requestedWidth?: OperandWidth;
+  signed?: boolean;
 }>;
 
 export function untrackedValueWidth(): ValueWidth {
@@ -58,6 +59,22 @@ export function emitCleanValueForFullUse(
   }
 
   return valueWidth;
+}
+
+export function emitSignExtendValueToWidth(
+  body: WasmFunctionBodyEncoder,
+  width: 8 | 16
+): ValueWidth {
+  switch (width) {
+    case 8:
+      body.i32Extend8S();
+      break;
+    case 16:
+      body.i32Extend16S();
+      break;
+  }
+
+  return cleanValueWidth(32);
 }
 
 export function maskedConstValue(value: number, width: OperandWidth): number {

@@ -1,5 +1,5 @@
-import { irOpIsBinaryValue } from "#x86/ir/model/op-semantics.js";
-import type { IrBinaryValueOp, ValueRef } from "#x86/ir/model/types.js";
+import { irOpIsBinaryValue, irOpIsUnaryValue } from "#x86/ir/model/op-semantics.js";
+import type { IrBinaryValueOp, IrUnaryValueOp, ValueRef } from "#x86/ir/model/types.js";
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import {
   jitValueForEffectiveAddress,
@@ -40,7 +40,8 @@ export class JitValueTracker {
           op.source,
           instruction.operands,
           registerValues,
-          op.accessWidth ?? 32
+          op.accessWidth ?? 32,
+          op.signed === true
         ));
         return true;
       case "address":
@@ -55,6 +56,11 @@ export class JitValueTracker {
       default:
         if (irOpIsBinaryValue(op)) {
           this.record(op.dst.id, this.binaryValue(op));
+          return true;
+        }
+
+        if (irOpIsUnaryValue(op)) {
+          this.record(op.dst.id, this.unaryValue(op));
           return true;
         }
 
@@ -83,5 +89,11 @@ export class JitValueTracker {
     return a !== undefined && b !== undefined
       ? { kind: op.op, a, b }
       : undefined;
+  }
+
+  private unaryValue(op: Extract<JitIrOp, IrUnaryValueOp>): JitValue | undefined {
+    const value = this.valueFor(op.value);
+
+    return value === undefined ? undefined : { kind: op.op, value };
   }
 }

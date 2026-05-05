@@ -25,6 +25,7 @@ import {
   constValueWidth,
   emitCleanValueForFullUse,
   emitMaskValueToWidth,
+  emitSignExtendValueToWidth,
   maskedConstValue,
   untrackedValueWidth,
   type WasmIrEmitValueOptions,
@@ -190,7 +191,10 @@ class IrExprWasmEmitter {
         this.#context.emitNextEip(this.#helpers);
         return untrackedValueWidth();
       case "source":
-        return this.#context.emitGet(value.source, value.accessWidth, this.#helpers, options);
+        return this.#context.emitGet(value.source, value.accessWidth, this.#helpers, {
+          ...options,
+          signed: options.signed === true || value.signed === true
+        });
       case "address":
         this.#context.emitAddress(value.operand, this.#helpers);
         return untrackedValueWidth();
@@ -245,7 +249,20 @@ class IrExprWasmEmitter {
         this.#emitValue(value.b, { requestedWidth: 32 });
         this.#context.body.i32ShrU();
         return untrackedValueWidth();
+      case "i32.extend8_s":
+        return this.#emitSignExtend(value.value, 8, options);
+      case "i32.extend16_s":
+        return this.#emitSignExtend(value.value, 16, options);
     }
+  }
+
+  #emitSignExtend(value: IrValueExpr, width: 8 | 16, options: WasmIrEmitValueOptions): ValueWidth {
+    if (value.kind === "source" && value.accessWidth === width) {
+      return this.#context.emitGet(value.source, value.accessWidth, this.#helpers, { ...options, signed: true });
+    }
+
+    this.#emitValue(value, { widthInsensitive: true });
+    return emitSignExtendValueToWidth(this.#context.body, width);
   }
 
   #freeSlotLocals(): void {

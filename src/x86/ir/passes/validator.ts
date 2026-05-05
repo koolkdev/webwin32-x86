@@ -1,7 +1,7 @@
 import { assertIrAluFlagMask, IR_FLAG_MASK_NONE } from "#x86/ir/model/flag-effects.js";
 import type { IrFlagProducerDescriptor } from "#x86/ir/model/flag-conditions.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
-import { irOpDst, irOpIsBinaryValue, irOpIsTerminator } from "#x86/ir/model/op-semantics.js";
+import { irOpDst, irOpIsBinaryValue, irOpIsTerminator, irOpIsUnaryValue } from "#x86/ir/model/op-semantics.js";
 import type { OperandWidth } from "#x86/isa/types.js";
 import type { FlagMask, IrOp, IrBlock, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 
@@ -61,9 +61,15 @@ function validateOpUses(
     return;
   }
 
+  if (irOpIsUnaryValue(op)) {
+    validateValueRef(op.value, definedVars);
+    return;
+  }
+
   switch (op.op) {
     case "get":
       validateAccessWidth(op.accessWidth);
+      validateSignedGet(op);
       validateStorageRef(op.source, definedVars, options);
       break;
     case "set":
@@ -161,6 +167,16 @@ function validateFlagSetDescriptor(op: IrFlagProducerDescriptor, definedVars: Re
 function validateAccessWidth(width: OperandWidth | undefined): void {
   if (width !== undefined && width !== 8 && width !== 16 && width !== 32) {
     throw new Error(`IR access width must be 8, 16, or 32, got ${width}`);
+  }
+}
+
+function validateSignedGet(op: Extract<IrOp, { op: "get" }>): void {
+  if (op.signed !== true) {
+    return;
+  }
+
+  if (op.accessWidth !== 8 && op.accessWidth !== 16) {
+    throw new Error("IR signed get requires access width 8 or 16");
   }
 }
 

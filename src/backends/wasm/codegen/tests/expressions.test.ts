@@ -9,10 +9,15 @@ const v = (id: number) => ({ kind: "var" as const, id });
 const op = (index: number) => ({ kind: "operand" as const, index });
 const reg = (reg: "eax" | "ebx") => ({ kind: "reg" as const, reg });
 const c32 = (value: number) => ({ kind: "const32" as const, value });
-const sourceValue = (source: ReturnType<typeof op> | ReturnType<typeof reg>) => ({
+const sourceValue = (
+  source: ReturnType<typeof op> | ReturnType<typeof reg>,
+  accessWidth: 8 | 16 | 32 = 32,
+  signed = false
+) => ({
   kind: "source" as const,
   source,
-  accessWidth: 32 as const
+  accessWidth,
+  ...(signed ? { signed: true as const } : {})
 });
 const set = (
   target: ReturnType<typeof op> | ReturnType<typeof reg>,
@@ -53,6 +58,23 @@ test("expression selector materializes get when the source cannot be inlined", (
     [
       { op: "let32", dst: v(0), value: sourceValue(op(1)) },
       set(op(0), v(0)),
+      { op: "next" }
+    ]
+  );
+});
+
+test("expression selector preserves signed source reads", () => {
+  deepStrictEqual(
+    buildIrExpressionBlock(
+      [
+        { op: "get", dst: v(0), source: op(1), accessWidth: 8, signed: true },
+        { op: "set", target: op(0), value: v(0), accessWidth: 32 },
+        { op: "next" }
+      ],
+      { canInlineGet: () => true }
+    ),
+    [
+      set(op(0), sourceValue(op(1), 8, true)),
       { op: "next" }
     ]
   );

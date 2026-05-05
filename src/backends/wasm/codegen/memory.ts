@@ -54,20 +54,22 @@ export function emitWasmIrLoadGuest(
   context: WasmIrMemoryContext,
   addressLocal: number,
   width: OperandWidth,
-  faultExtraDepth = 1
+  faultExtraDepth = 1,
+  signed = false
 ): void {
   emitFaultIfOutOfBounds(context, addressLocal, width, "read", faultExtraDepth);
-  emitGuestLoad(context.body, addressLocal, width);
+  emitGuestLoad(context.body, addressLocal, width, signed);
 }
 
 export function emitWasmIrLoadGuestFromStack(
   context: WasmIrMemoryContext,
   addressLocal: number,
   width: OperandWidth,
-  faultExtraDepth = 1
+  faultExtraDepth = 1,
+  signed = false
 ): void {
   emitFaultIfStackOutOfBounds(context, addressLocal, width, "read", faultExtraDepth);
-  emitGuestLoad(context.body, addressLocal, width);
+  emitGuestLoad(context.body, addressLocal, width, signed);
 }
 
 export function emitWasmIrStoreGuest(
@@ -119,7 +121,7 @@ function emitLastValidGuestAddress(body: WasmFunctionBodyEncoder, width: Operand
     .i32Sub();
 }
 
-function emitGuestLoad(body: WasmFunctionBodyEncoder, addressLocal: number, width: OperandWidth): void {
+function emitGuestLoad(body: WasmFunctionBodyEncoder, addressLocal: number, width: OperandWidth, signed: boolean): void {
   const immediate = {
     align: memoryWidthAlign[width],
     memoryIndex: wasmMemoryIndex.guest,
@@ -130,10 +132,18 @@ function emitGuestLoad(body: WasmFunctionBodyEncoder, addressLocal: number, widt
 
   switch (width) {
     case 8:
-      body.i32Load8U(immediate);
+      if (signed) {
+        body.i32Load8S(immediate);
+      } else {
+        body.i32Load8U(immediate);
+      }
       return;
     case 16:
-      body.i32Load16U(immediate);
+      if (signed) {
+        body.i32Load16S(immediate);
+      } else {
+        body.i32Load16U(immediate);
+      }
       return;
     case 32:
       body.i32Load(immediate);

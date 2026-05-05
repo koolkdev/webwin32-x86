@@ -51,6 +51,10 @@ export function emitLoadRegByIndex(
     emitLoadRegAlias(body, regs, registerAliasByIndex(width, caseIndex), options);
   });
 
+  if (options.signed === true && width < 32) {
+    return cleanValueWidth(32);
+  }
+
   return options.widthInsensitive === true && width < 32 ? dirtyValueWidth(width) : cleanValueWidth(width);
 }
 

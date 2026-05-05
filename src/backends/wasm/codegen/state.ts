@@ -11,8 +11,24 @@ export function emitLoadStateU8(body: WasmFunctionBodyEncoder, offset: number): 
   });
 }
 
+export function emitLoadStateS8(body: WasmFunctionBodyEncoder, offset: number): void {
+  body.i32Const(0).i32Load8S({
+    align: 0,
+    memoryIndex: wasmMemoryIndex.state,
+    offset
+  });
+}
+
 export function emitLoadStateU16(body: WasmFunctionBodyEncoder, offset: number): void {
   body.i32Const(0).i32Load16U({
+    align: offset % 2 === 0 ? 1 : 0,
+    memoryIndex: wasmMemoryIndex.state,
+    offset
+  });
+}
+
+export function emitLoadStateS16(body: WasmFunctionBodyEncoder, offset: number): void {
+  body.i32Const(0).i32Load16S({
     align: offset % 2 === 0 ? 1 : 0,
     memoryIndex: wasmMemoryIndex.state,
     offset

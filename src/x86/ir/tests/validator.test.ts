@@ -60,6 +60,21 @@ test("validator rejects duplicate vars, use before definition, and missing opera
   );
 });
 
+test("validator rejects signed get without byte or word access width", () => {
+  throws(
+    () => validateIrBlock([{ op: "get", dst: irVar(0), source: operand(0), signed: true }, { op: "next" }]),
+    /signed get requires access width 8 or 16/
+  );
+
+  throws(
+    () => validateIrBlock([
+      { op: "get", dst: irVar(0), source: operand(0), accessWidth: 32, signed: true },
+      { op: "next" }
+    ]),
+    /signed get requires access width 8 or 16/
+  );
+});
+
 test("validator rejects invalid aluFlags operation masks", () => {
   throws(
     () => validateIrBlock([{ op: "flags.materialize", mask: 0 }, { op: "next" }]),

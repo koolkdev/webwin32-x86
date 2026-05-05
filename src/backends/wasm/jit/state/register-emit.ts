@@ -5,6 +5,7 @@ import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-bo
 import {
   cleanValueWidth,
   dirtyValueWidth,
+  emitSignExtendValueToWidth,
   emitMaskValueToWidth,
   type WasmIrEmitValueOptions,
   type ValueWidth
@@ -112,6 +113,10 @@ export function emitExtractAliasFromLocal(
 
   if (alias.bitOffset !== 0) {
     body.i32Const(alias.bitOffset).i32ShrU();
+  }
+
+  if (options.signed === true && alias.width < 32) {
+    return emitSignExtendValueToWidth(body, alias.width as 8 | 16);
   }
 
   if (options.widthInsensitive === true && alias.width < 32) {

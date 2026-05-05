@@ -163,7 +163,7 @@ function analyzeInstruction(
       case "get": {
         const reg = jitStorageReg(op.source, instruction.operands);
         const accessWidth = op.accessWidth ?? 32;
-        const value = registers.valueForStorage(op.source, instruction.operands, accessWidth);
+        const value = registers.valueForStorage(op.source, instruction.operands, accessWidth, op.signed === true);
 
         if (reg !== undefined && value !== undefined && registers.hasStorageValue(op.source, instruction.operands, accessWidth)) {
           if (registers.get(reg) !== undefined && shouldMaterializeRepeatedRegisterRead(reg, value, registers)) {

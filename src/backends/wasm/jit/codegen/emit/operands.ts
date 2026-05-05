@@ -16,6 +16,7 @@ import {
   dirtyValueWidth,
   emitCleanValueForFullUse,
   emitMaskValueToWidth,
+  emitSignExtendValueToWidth,
   maskedConstValue,
   type WasmIrEmitValueOptions,
   type ValueWidth
@@ -51,8 +52,8 @@ export function emitJitGet(
       return regs.emitReadAlias(regAccess(source.reg, accessWidth), options);
     case "mem":
       helpers.emitValue(source.address, { requestedWidth: 32 });
-      emitLoadGuestFromStack(context, accessWidth);
-      return cleanValueWidth(accessWidth);
+      emitLoadGuestFromStack(context, accessWidth, options.signed === true);
+      return signedLoadValueWidth(accessWidth, options);
   }
 }
 
@@ -139,9 +140,14 @@ function emitGetBinding(
       return regs.emitReadAlias(binding.alias, options);
     case "static.mem":
       emitEffectiveAddress(context.body, regs, binding.ea);
-      emitLoadGuestFromStack(context, accessWidth);
-      return cleanValueWidth(accessWidth);
+      emitLoadGuestFromStack(context, accessWidth, options.signed === true);
+      return signedLoadValueWidth(accessWidth, options);
     case "static.imm32":
+      if (options.signed === true && accessWidth < 32) {
+        context.body.i32Const(i32(binding.value));
+        return emitSignExtendValueToWidth(context.body, accessWidth as 8 | 16);
+      }
+
       if (options.widthInsensitive !== true && accessWidth < 32) {
         const masked = maskedConstValue(binding.value, accessWidth);
 
@@ -250,17 +256,25 @@ function emitScale(body: JitIrContext["body"], scale: MemOperand["scale"]): void
   }
 }
 
-function emitLoadGuestFromStack(context: JitIrContext, width: OperandWidth): void {
+function emitLoadGuestFromStack(context: JitIrContext, width: OperandWidth, signed = false): void {
   const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
     const exitPoint = prepareMemoryFaultExit(context, ExitReason.MEMORY_READ_FAULT);
 
-    emitWasmIrLoadGuestFromStack(context, addressLocal, width);
+    emitWasmIrLoadGuestFromStack(context, addressLocal, width, 1, signed);
     context.completeExitPoint(exitPoint);
   } finally {
     context.scratch.freeLocal(addressLocal);
   }
+}
+
+function signedLoadValueWidth(width: OperandWidth, options: WasmIrEmitValueOptions): ValueWidth {
+  if (options.signed === true && width < 32) {
+    return cleanValueWidth(32);
+  }
+
+  return cleanValueWidth(width);
 }
 
 function emitStoreMem(

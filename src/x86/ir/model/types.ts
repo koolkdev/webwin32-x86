@@ -58,6 +58,10 @@ export type IrBinaryValueOpName =
   | "i32.and"
   | "i32.shr_u";
 
+export type IrUnaryValueOpName =
+  | "i32.extend8_s"
+  | "i32.extend16_s";
+
 export type IrBinaryValueOp = Readonly<{
   op: IrBinaryValueOpName;
   dst: VarRef;
@@ -65,13 +69,24 @@ export type IrBinaryValueOp = Readonly<{
   b: ValueRef;
 }>;
 
+export type IrUnaryValueOp = Readonly<{
+  op: IrUnaryValueOpName;
+  dst: VarRef;
+  value: ValueRef;
+}>;
+
+export type IrGetOptions = Readonly<{
+  signed?: boolean;
+}>;
+
 export type IrOp =
-  | Readonly<{ op: "get"; dst: VarRef; source: StorageRef; accessWidth?: OperandWidth }>
+  | Readonly<{ op: "get"; dst: VarRef; source: StorageRef; accessWidth?: OperandWidth; signed?: boolean }>
   | Readonly<{ op: "set"; target: StorageRef; value: ValueRef; accessWidth?: OperandWidth }>
   | Readonly<{ op: "set.if"; condition: ValueRef; target: StorageRef; value: ValueRef; accessWidth?: OperandWidth }>
   | Readonly<{ op: "address"; dst: VarRef; operand: OperandRef }>
   | Readonly<{ op: "const32"; dst: VarRef; value: number }>
   | IrBinaryValueOp
+  | IrUnaryValueOp
   | IrFlagSetOp
   | Readonly<{ op: "flags.materialize"; mask: FlagMask }>
   | Readonly<{ op: "flags.boundary"; mask: FlagMask }>
@@ -91,7 +106,7 @@ export interface IrBuilder {
   reg(reg: Reg32): RegRef;
   mem(address: ValueInput): MemRef;
 
-  get(source: StorageInput, accessWidth?: OperandWidth): VarRef;
+  get(source: StorageInput, accessWidth?: OperandWidth, options?: IrGetOptions): VarRef;
   set(target: StorageInput, value: ValueInput, accessWidth?: OperandWidth): void;
   setIf(condition: ValueInput, target: StorageInput, value: ValueInput, accessWidth?: OperandWidth): void;
   address(operand: OperandInput): VarRef;
@@ -103,6 +118,8 @@ export interface IrBuilder {
   i32Or(a: ValueInput, b: ValueInput): VarRef;
   i32And(a: ValueInput, b: ValueInput): VarRef;
   i32ShrU(a: ValueInput, b: ValueInput): VarRef;
+  i32Extend8S(value: ValueInput): VarRef;
+  i32Extend16S(value: ValueInput): VarRef;
 
   setFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueInput>>, width?: OperandWidth): void;
   materializeFlags(mask: FlagMask): void;

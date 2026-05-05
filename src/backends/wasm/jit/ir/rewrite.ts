@@ -2,8 +2,8 @@ import type { Reg32 } from "#x86/isa/types.js";
 import type { ValueRef, VarRef } from "#x86/ir/model/types.js";
 import { jitIrOpDst } from "#backends/wasm/jit/ir/semantics.js";
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
-import type { JitBinaryValue, JitValue } from "#backends/wasm/jit/ir/values.js";
-import { jitValueIsBinary } from "#backends/wasm/jit/ir/values.js";
+import type { JitBinaryValue, JitUnaryValue, JitValue } from "#backends/wasm/jit/ir/values.js";
+import { jitValueIsBinary, jitValueIsUnary } from "#backends/wasm/jit/ir/values.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 
 export type JitInstructionRewrite = {
@@ -92,6 +92,14 @@ export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitValue)
     return dst;
   }
 
+  if (jitValueIsUnary(value)) {
+    const dst = allocVar(rewrite);
+
+    emitJitUnaryValueOp(rewrite, dst, value);
+    rewrite.values.record(dst.id, value);
+    return dst;
+  }
+
   switch (value.kind) {
     case "const32":
       return { kind: "const32", value: value.value };
@@ -115,6 +123,11 @@ export function assignJitValue(
     return;
   }
 
+  if (jitValueIsUnary(value)) {
+    emitJitUnaryValueOp(rewrite, dst, value);
+    return;
+  }
+
   switch (value.kind) {
     case "const32":
       rewrite.ops.push({ op: "const32", dst, value: value.value });
@@ -135,6 +148,18 @@ function emitJitBinaryValueOp(
     dst,
     a: emitJitValueRef(rewrite, value.a),
     b: emitJitValueRef(rewrite, value.b)
+  });
+}
+
+function emitJitUnaryValueOp(
+  rewrite: JitInstructionRewrite,
+  dst: VarRef,
+  value: JitUnaryValue
+): void {
+  rewrite.ops.push({
+    op: value.kind,
+    dst,
+    value: emitJitValueRef(rewrite, value.value)
   });
 }
 

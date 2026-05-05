@@ -94,6 +94,39 @@ test("register-value-propagation folds low-byte reads from tracked full register
   deepStrictEqual(opNames(result.block), ["const32", "const32", "set", "set:registerMaterialization", "next"]);
 });
 
+test("register-value-propagation keeps signed and unsigned low-byte reads distinct", () => {
+  const propagateLowByteRead = (signed: boolean) => propagateJitRegisterValues({
+    instructions: [
+      syntheticInstruction([
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "ecx" } },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        {
+          op: "get",
+          dst: v(1),
+          source: { kind: "reg", reg: "eax" },
+          accessWidth: 8,
+          ...(signed ? { signed: true as const } : {})
+        },
+        { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(1) },
+        { op: "next" }
+      ], 0, "exit")
+    ]
+  });
+  const unsignedResult = propagateLowByteRead(false);
+  const signedResult = propagateLowByteRead(true);
+
+  strictEqual(unsignedResult.registerValuePropagation.foldedReadCount, 1);
+  strictEqual(signedResult.registerValuePropagation.foldedReadCount, 1);
+  strictEqual(countOps(unsignedResult.block, "get"), 1);
+  strictEqual(countOps(signedResult.block, "get"), 1);
+  strictEqual(countOps(unsignedResult.block, "i32.and"), 1);
+  strictEqual(countOps(signedResult.block, "i32.and"), 1);
+  strictEqual(countOps(unsignedResult.block, "i32.extend8_s"), 0);
+  strictEqual(countOps(signedResult.block, "i32.extend8_s"), 1);
+  deepStrictEqual(setRegs(unsignedResult.block), ["ebx", "eax"]);
+  deepStrictEqual(setRegs(signedResult.block), ["ebx", "eax"]);
+});
+
 test("register-value-propagation folds high-byte aliases through an unsigned shift", () => {
   const result = propagateJitRegisterValues({
     instructions: [

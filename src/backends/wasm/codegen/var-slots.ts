@@ -161,5 +161,9 @@ function collectValueVarUses(value: IrValueExpr, visit: (id: number) => void): v
       collectValueVarUses(value.a, visit);
       collectValueVarUses(value.b, visit);
       return;
+    case "i32.extend8_s":
+    case "i32.extend16_s":
+      collectValueVarUses(value.value, visit);
+      return;
   }
 }

@@ -43,6 +43,7 @@ import {
   dirtyValueWidth,
   emitCleanValueForFullUse,
   emitMaskValueToWidth,
+  emitSignExtendValueToWidth,
   type WasmIrEmitValueOptions,
   type ValueWidth
 } from "#backends/wasm/codegen/value-width.js";
@@ -113,8 +114,8 @@ function emitGetStorage(
       return emitLoadRegAccess(context.body, context.state.regs, source.reg, accessWidth, options);
     case "mem":
       helpers.emitValue(source.address, { requestedWidth: 32 });
-      emitLoadGuestFromStack(context, accessWidth);
-      return cleanValueWidth(accessWidth);
+      emitLoadGuestFromStack(context, accessWidth, options.signed === true);
+      return signedLoadValueWidth(accessWidth, options);
   }
 }
 
@@ -209,13 +210,16 @@ function emitGetOperand(
     case "rm":
       return emitGetRm(context, binding, accessWidth, options);
     case "mem":
-      emitWasmIrLoadGuest(context, binding.addressLocal, accessWidth);
-      return cleanValueWidth(accessWidth);
+      emitWasmIrLoadGuest(context, binding.addressLocal, accessWidth, 1, options.signed === true);
+      return signedLoadValueWidth(accessWidth, options);
     case "implicit.reg":
       return emitLoadRegAlias(context.body, context.state.regs, binding.alias, options);
     case "imm":
     case "relTarget":
       context.body.localGet(binding.local);
+      if (options.signed === true && accessWidth < 32) {
+        return emitSignExtendValueToWidth(context.body, accessWidth as 8 | 16);
+      }
       if (options.widthInsensitive === true && accessWidth < 32) {
         return dirtyValueWidth(accessWidth);
       }
@@ -337,19 +341,27 @@ function emitGetRm(
     emitModRmRmIndex(context.body, binding.modRmLocal);
   }, options);
   context.body.elseBlock();
-  emitWasmIrLoadGuest(context, binding.addressLocal, accessWidth, 2);
+  emitWasmIrLoadGuest(context, binding.addressLocal, accessWidth, 2, options.signed === true);
   context.body.endBlock();
-  return options.widthInsensitive === true && accessWidth < 32 ? dirtyValueWidth(accessWidth) : cleanValueWidth(accessWidth);
+  return signedLoadValueWidth(accessWidth, options);
 }
 
-function emitLoadGuestFromStack(context: InterpreterIrEmitContext, width: OperandWidth): void {
+function emitLoadGuestFromStack(context: InterpreterIrEmitContext, width: OperandWidth, signed = false): void {
   const addressLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
-    emitWasmIrLoadGuestFromStack(context, addressLocal, width);
+    emitWasmIrLoadGuestFromStack(context, addressLocal, width, 1, signed);
   } finally {
     context.scratch.freeLocal(addressLocal);
   }
+}
+
+function signedLoadValueWidth(width: OperandWidth, options: WasmIrEmitValueOptions): ValueWidth {
+  if (options.signed === true && width < 32) {
+    return cleanValueWidth(32);
+  }
+
+  return options.widthInsensitive === true && width < 32 ? dirtyValueWidth(width) : cleanValueWidth(width);
 }
 
 function emitSetRm(

@@ -63,13 +63,16 @@ export function executeDirectInstruction(
 function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
   switch (op.op) {
     case "get": {
-      const read = readStorage(context, op.source, op.accessWidth ?? 32);
+      const accessWidth = op.accessWidth ?? 32;
+      const read = readStorage(context, op.source, accessWidth);
 
       if (read.kind !== "value") {
         return stopFromAccess(context.state, read);
       }
 
-      setVar(context, op.dst, read.value);
+      setVar(context, op.dst, op.signed === true && accessWidth < 32
+        ? signExtendValue(read.value, accessWidth as 8 | 16)
+        : read.value);
       return undefined;
     }
     case "set": {
@@ -118,6 +121,12 @@ function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
       return undefined;
     case "i32.shr_u":
       setVar(context, op.dst, u32(evalValueRef(context, op.a) >>> (evalValueRef(context, op.b) & 31)));
+      return undefined;
+    case "i32.extend8_s":
+      setVar(context, op.dst, signExtendValue(evalValueRef(context, op.value), 8));
+      return undefined;
+    case "i32.extend16_s":
+      setVar(context, op.dst, signExtendValue(evalValueRef(context, op.value), 16));
       return undefined;
     case "flags.set":
       setFlags(context, op);
@@ -418,6 +427,12 @@ function maskValue(value: number, width: OperandWidth): number {
 
 function signMask(width: 8 | 16 | 32): number {
   return width === 32 ? 0x8000_0000 : width === 16 ? 0x8000 : 0x80;
+}
+
+function signExtendValue(value: number, width: 8 | 16): number {
+  const shift = 32 - width;
+
+  return u32((value << shift) >> shift);
 }
 
 function completeInstruction(context: ExecutionContext, target: number): RunResult {

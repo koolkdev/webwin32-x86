@@ -61,9 +61,10 @@ export class JitRegisterValues {
   valueForStorage(
     storage: StorageRef,
     operands: readonly JitOperandBinding[],
-    accessWidth: OperandWidth = 32
+    accessWidth: OperandWidth = 32,
+    signed = false
   ): JitValue | undefined {
-    return jitValueForStorage(storage, operands, this.values, accessWidth);
+    return jitValueForStorage(storage, operands, this.values, accessWidth, signed);
   }
 
   regsReadByEffectiveAddress(

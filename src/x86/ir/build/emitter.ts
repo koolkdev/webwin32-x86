@@ -23,6 +23,7 @@ import type {
   OperandRef,
   RegRef,
   IrBuilder,
+  IrGetOptions,
   IrOp,
   IrBlock,
   StorageInput,
@@ -95,10 +96,16 @@ export class IrEmitter implements IrBuilder {
     return mem(address);
   }
 
-  get(source: StorageInput, accessWidth: OperandWidth = 32): VarRef {
+  get(source: StorageInput, accessWidth: OperandWidth = 32, options: IrGetOptions = {}): VarRef {
     const dst = this.#allocVar();
 
-    this.#push({ op: "get", dst, source: toStorageRef(source), accessWidth });
+    this.#push({
+      op: "get",
+      dst,
+      source: toStorageRef(source),
+      accessWidth,
+      ...(options.signed === true ? { signed: true } : {})
+    });
     return dst;
   }
 
@@ -169,6 +176,20 @@ export class IrEmitter implements IrBuilder {
     const dst = this.#allocVar();
 
     this.#push({ op: "i32.shr_u", dst, a: toValueRef(a), b: toValueRef(b) });
+    return dst;
+  }
+
+  i32Extend8S(value: ValueInput): VarRef {
+    const dst = this.#allocVar();
+
+    this.#push({ op: "i32.extend8_s", dst, value: toValueRef(value) });
+    return dst;
+  }
+
+  i32Extend16S(value: ValueInput): VarRef {
+    const dst = this.#allocVar();
+
+    this.#push({ op: "i32.extend16_s", dst, value: toValueRef(value) });
     return dst;
   }
 

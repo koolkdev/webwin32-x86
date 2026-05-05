@@ -1,6 +1,6 @@
 import { reg32, type OperandWidth, type Reg32 } from "#x86/isa/types.js";
-import type { IrBinaryValueOpName } from "#x86/ir/model/types.js";
-import { i32 } from "#x86/state/cpu-state.js";
+import type { IrBinaryValueOpName, IrUnaryValueOpName } from "#x86/ir/model/types.js";
+import { i32, widthMask } from "#x86/state/cpu-state.js";
 import type { OperandRef, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
 import {
@@ -19,16 +19,36 @@ export type JitBinaryValue = Readonly<{
   b: JitValue;
 }>;
 
+export type JitUnaryValue = Readonly<{
+  kind: IrUnaryValueOpName;
+  value: JitValue;
+}>;
+
 export type JitValue =
   | Readonly<{ kind: "const32"; value: number }>
   | Readonly<{ kind: "reg"; reg: Reg32 }>
+  | JitUnaryValue
   | JitBinaryValue;
 
 export function jitValueForStorage(
   storage: StorageRef,
   operands: readonly JitOperandBinding[],
   registerValues: JitRegisterValueMap = new Map(),
-  accessWidth: OperandWidth = 32
+  accessWidth: OperandWidth = 32,
+  signed = false
+): JitValue | undefined {
+  const value = jitValueForStorageUnsigned(storage, operands, registerValues, accessWidth);
+
+  return value === undefined || !signed || accessWidth >= 32
+    ? value
+    : signExtendJitValue(value, accessWidth as 8 | 16);
+}
+
+function jitValueForStorageUnsigned(
+  storage: StorageRef,
+  operands: readonly JitOperandBinding[],
+  registerValues: JitRegisterValueMap,
+  accessWidth: OperandWidth
 ): JitValue | undefined {
   switch (storage.kind) {
     case "reg":
@@ -134,6 +154,10 @@ export function jitValueReadsReg(value: JitValue, reg: Reg32): boolean {
     return jitValueReadsReg(value.a, reg) || jitValueReadsReg(value.b, reg);
   }
 
+  if (jitValueIsUnary(value)) {
+    return jitValueReadsReg(value.value, reg);
+  }
+
   switch (value.kind) {
     case "const32":
       return false;
@@ -157,6 +181,10 @@ export function jitValuesEqual(a: JitValue, b: JitValue): boolean {
     return jitValuesEqual(a.a, binary.a) && jitValuesEqual(a.b, binary.b);
   }
 
+  if (jitValueIsUnary(a)) {
+    return jitValuesEqual(a.value, (b as JitUnaryValue).value);
+  }
+
   switch (a.kind) {
     case "const32":
       return a.value === (b as Extract<JitValue, { kind: "const32" }>).value;
@@ -170,6 +198,10 @@ export function jitValueCost(value: JitValue): number {
     return 1 + jitValueCost(value.a) + jitValueCost(value.b);
   }
 
+  if (jitValueIsUnary(value)) {
+    return 1 + jitValueCost(value.value);
+  }
+
   switch (value.kind) {
     case "const32":
     case "reg":
@@ -179,6 +211,10 @@ export function jitValueCost(value: JitValue): number {
 
 export function jitValueIsBinary(value: JitValue): value is JitBinaryValue {
   return "a" in value && "b" in value;
+}
+
+export function jitValueIsUnary(value: JitValue): value is JitUnaryValue {
+  return value.kind === "i32.extend8_s" || value.kind === "i32.extend16_s";
 }
 
 function jitValueForReg(
@@ -207,6 +243,24 @@ function jitValueForOperandBinding(
     case "static.mem":
       return undefined;
   }
+}
+
+function signExtendJitValue(value: JitValue, width: 8 | 16): JitValue {
+  if (value.kind === "const32") {
+    return { kind: "const32", value: signExtendConst(value.value, width) };
+  }
+
+  return {
+    kind: width === 8 ? "i32.extend8_s" : "i32.extend16_s",
+    value
+  };
+}
+
+function signExtendConst(value: number, width: 8 | 16): number {
+  const masked = value & widthMask(width);
+  const shift = 32 - width;
+
+  return i32((masked << shift) >> shift);
 }
 
 function jitValueForRegisterAccess(

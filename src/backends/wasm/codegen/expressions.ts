@@ -22,7 +22,7 @@ export type IrStorageExpr =
 
 export type IrValueExpr =
   | ValueRef
-  | Readonly<{ kind: "source"; source: IrStorageExpr; accessWidth: OperandWidth }>
+  | Readonly<{ kind: "source"; source: IrStorageExpr; accessWidth: OperandWidth; signed?: boolean }>
   | Readonly<{ kind: "address"; operand: OperandRef }>
   | Readonly<{ kind: "aluFlags.condition"; cc: ConditionCode }>
   | Readonly<{
@@ -39,7 +39,9 @@ export type IrValueExpr =
   | Readonly<{ kind: "i32.xor"; a: IrValueExpr; b: IrValueExpr }>
   | Readonly<{ kind: "i32.or"; a: IrValueExpr; b: IrValueExpr }>
   | Readonly<{ kind: "i32.and"; a: IrValueExpr; b: IrValueExpr }>
-  | Readonly<{ kind: "i32.shr_u"; a: IrValueExpr; b: IrValueExpr }>;
+  | Readonly<{ kind: "i32.shr_u"; a: IrValueExpr; b: IrValueExpr }>
+  | Readonly<{ kind: "i32.extend8_s"; value: IrValueExpr }>
+  | Readonly<{ kind: "i32.extend16_s"; value: IrValueExpr }>;
 
 export type IrSetExprOp = Readonly<{
   op: "set";
@@ -119,7 +121,12 @@ class ExpressionBuilder {
         case "get":
           this.#defineValue(
             op.dst,
-            { kind: "source", source: this.#storageExpr(op.source), accessWidth: op.accessWidth ?? 32 },
+            {
+              kind: "source",
+              source: this.#storageExpr(op.source),
+              accessWidth: op.accessWidth ?? 32,
+              ...(op.signed === true ? { signed: true } : {})
+            },
             this.options.canInlineGet?.(op.source) === true
           );
           break;
@@ -148,6 +155,10 @@ class ExpressionBuilder {
         case "i32.and":
         case "i32.shr_u":
           this.#defineValue(op.dst, { kind: op.op, a: this.#valueExpr(op.a), b: this.#valueExpr(op.b) }, true);
+          break;
+        case "i32.extend8_s":
+        case "i32.extend16_s":
+          this.#defineValue(op.dst, { kind: op.op, value: this.#valueExpr(op.value) }, true);
           break;
         case "aluFlags.condition":
           this.#defineValue(op.dst, { kind: "aluFlags.condition", cc: op.cc }, false);
@@ -315,6 +326,10 @@ function countVarUses(block: IrExpressionInputBlock): Map<number, number> {
       case "i32.shr_u":
         countValueUse(counts, op.a);
         countValueUse(counts, op.b);
+        break;
+      case "i32.extend8_s":
+      case "i32.extend16_s":
+        countValueUse(counts, op.value);
         break;
       case "flags.set":
         for (const value of Object.values(op.inputs)) {

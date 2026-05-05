@@ -129,6 +129,33 @@ test("register value analysis folds low-byte reads from tracked full registers",
   })), [{ opIndex: 3, phase: "beforeOp", reason: "blockEnd", regs: ["eax"] }]);
 });
 
+test("register value analysis keeps signed and unsigned low-byte reads distinct", () => {
+  const lowByteOfEcx = {
+    kind: "i32.and" as const,
+    a: { kind: "reg" as const, reg: "ecx" as const },
+    b: { kind: "const32" as const, value: 0xff }
+  };
+  const foldedLowByteValue = (signed: boolean) => analyzeJitRegisterValues({
+    instructions: [
+      syntheticInstruction([
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "ecx" } },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        {
+          op: "get",
+          dst: v(1),
+          source: { kind: "reg", reg: "eax" },
+          accessWidth: 8,
+          ...(signed ? { signed: true as const } : {})
+        },
+        { op: "next" }
+      ])
+    ]
+  }).folds[0]?.value;
+
+  deepStrictEqual(foldedLowByteValue(false), lowByteOfEcx);
+  deepStrictEqual(foldedLowByteValue(true), { kind: "i32.extend8_s", value: lowByteOfEcx });
+});
+
 test("register value analysis folds low-word reads from tracked full registers", () => {
   const analysis = analyzeJitRegisterValues({
     instructions: [

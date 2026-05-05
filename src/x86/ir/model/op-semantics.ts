@@ -1,5 +1,6 @@
 import type {
   IrBinaryValueOp,
+  IrUnaryValueOp,
   IrOp,
   StorageRef,
   ValueRef,
@@ -40,6 +41,16 @@ export function irOpIsBinaryValue<T extends { op: string }>(op: T): op is Extrac
   }
 }
 
+export function irOpIsUnaryValue<T extends { op: string }>(op: T): op is Extract<T, IrUnaryValueOp> {
+  switch (op.op) {
+    case "i32.extend8_s":
+    case "i32.extend16_s":
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function irOpResult(op: IrOp): IrOpResult {
   switch (op.op) {
     case "get":
@@ -52,6 +63,8 @@ export function irOpResult(op: IrOp): IrOpResult {
     case "i32.or":
     case "i32.and":
     case "i32.shr_u":
+    case "i32.extend8_s":
+    case "i32.extend16_s":
     case "aluFlags.condition":
       return { kind: "value", dst: op.dst, sideEffect: "none" };
     case "set":
@@ -93,6 +106,8 @@ export function irOpIsTerminator(op: IrOp): op is IrTerminatorOp {
     case "i32.or":
     case "i32.and":
     case "i32.shr_u":
+    case "i32.extend8_s":
+    case "i32.extend16_s":
     case "flags.set":
     case "flags.materialize":
     case "flags.boundary":
@@ -140,6 +155,10 @@ export function visitIrOpValueRefs(
     case "i32.shr_u":
       visit(op.a, "value");
       visit(op.b, "value");
+      return;
+    case "i32.extend8_s":
+    case "i32.extend16_s":
+      visit(op.value, "value");
       return;
     case "flags.set":
       for (const value of Object.values(op.inputs)) {
@@ -208,6 +227,8 @@ export function visitIrOpStorageRefs(
     case "i32.or":
     case "i32.and":
     case "i32.shr_u":
+    case "i32.extend8_s":
+    case "i32.extend16_s":
     case "flags.set":
     case "flags.materialize":
     case "flags.boundary":

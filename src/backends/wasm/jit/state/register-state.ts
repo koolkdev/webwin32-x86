@@ -6,10 +6,18 @@ import {
   cleanValueWidth,
   emitCleanValueForFullUse,
   emitMaskValueToWidth,
+  emitSignExtendValueToWidth,
   type WasmIrEmitValueOptions,
   type ValueWidth
 } from "#backends/wasm/codegen/value-width.js";
-import { emitLoadStateU16, emitLoadStateU32, emitLoadStateU8, emitStoreStateU32 } from "#backends/wasm/codegen/state.js";
+import {
+  emitLoadStateS16,
+  emitLoadStateS8,
+  emitLoadStateU16,
+  emitLoadStateU32,
+  emitLoadStateU8,
+  emitStoreStateU32
+} from "#backends/wasm/codegen/state.js";
 import {
   aliasByteRange,
   byteCount,
@@ -113,12 +121,13 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
 
     if (byteSources !== undefined) {
       emitComposedByteSources(body, byteSources);
-      return cleanValueWidth(alias.width);
+      return options.signed === true && alias.width < fullWidth
+        ? emitSignExtendValueToWidth(body, alias.width as 8 | 16)
+        : cleanValueWidth(alias.width);
     }
 
     if (canLoadAliasFromState(alias, pending, committed)) {
-      emitLoadAliasFromState(alias);
-      return cleanValueWidth(alias.width);
+      return emitLoadAliasFromState(alias, options);
     }
 
     const target = pending ?? committedStateForReg(alias.base);
@@ -247,16 +256,24 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     return true;
   }
 
-  function emitLoadAliasFromState(alias: RegisterAlias): void {
+  function emitLoadAliasFromState(alias: RegisterAlias, options: WasmIrEmitValueOptions): ValueWidth {
     const offset = stateOffset[alias.base] + alias.bitOffset / byteWidth;
 
     switch (alias.width) {
       case 8:
+        if (options.signed === true) {
+          emitLoadStateS8(body, offset);
+          return cleanValueWidth(fullWidth);
+        }
         emitLoadStateU8(body, offset);
-        return;
+        return cleanValueWidth(8);
       case 16:
+        if (options.signed === true) {
+          emitLoadStateS16(body, offset);
+          return cleanValueWidth(fullWidth);
+        }
         emitLoadStateU16(body, offset);
-        return;
+        return cleanValueWidth(16);
       case 32:
         throw new Error("full-width aliases must use full state loads");
     }

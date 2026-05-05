@@ -6,6 +6,7 @@ import {
   dirtyValueWidth,
   emitCleanValueForFullUse,
   emitMaskValueToWidth,
+  emitSignExtendValueToWidth,
   type WasmIrEmitValueOptions,
   type ValueWidth
 } from "./value-width.js";
@@ -75,6 +76,10 @@ export function emitLoadRegAccess(
 ): ValueWidth {
   body.localGet(locals[reg]);
 
+  if (options.signed === true && width < 32) {
+    return emitSignExtendValueToWidth(body, width as 8 | 16);
+  }
+
   if (options.widthInsensitive === true && width < 32) {
     return dirtyValueWidth(width);
   }
@@ -99,6 +104,10 @@ export function emitExtractRegAliasFromStack(
 ): ValueWidth {
   if (alias.bitOffset !== 0) {
     body.i32Const(alias.bitOffset).i32ShrU();
+  }
+
+  if (options.signed === true && alias.width < 32) {
+    return emitSignExtendValueToWidth(body, alias.width as 8 | 16);
   }
 
   if (options.widthInsensitive === true && alias.width < 32) {
