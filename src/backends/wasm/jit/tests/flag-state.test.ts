@@ -10,6 +10,12 @@ import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js
 import { wasmOpcode, wasmValueType } from "#backends/wasm/encoder/types.js";
 import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
 import { createJitFlagState } from "#backends/wasm/jit/state/flag-state.js";
+import {
+  constValueWidth,
+  emitMaskValueToWidth,
+  untrackedValueWidth,
+  type ValueWidth
+} from "#backends/wasm/codegen/value-width.js";
 
 test("JIT flag state materializes only requested pending flags", () => {
   const body = new WasmFunctionBodyEncoder(3);
@@ -28,7 +34,8 @@ test("JIT flag state materializes only requested pending flags", () => {
   });
 
   flags.emitSet(createIrFlagSetOp("add", { left: v(0), right: v(1), result: v(2) }), {
-    emitValue: (value) => emitValueExpr(body, value)
+    emitValue: (value) => emitValueExpr(body, value),
+    emitMaskedValue: (value, width) => emitMaskValueToWidth(body, width, emitValueExpr(body, value))
   });
   flags.emitMaterialize(IR_ALU_FLAG_MASKS.ZF);
   flags.emitAluFlagsCondition("E");
@@ -58,7 +65,8 @@ test("JIT flag state emits supported pending flag conditions directly", () => {
   });
 
   flags.emitSet(createIrFlagSetOp("sub", { left: v(0), right: v(1), result: v(2) }), {
-    emitValue: (value) => emitValueExpr(body, value)
+    emitValue: (value) => emitValueExpr(body, value),
+    emitMaskedValue: (value, width) => emitMaskValueToWidth(body, width, emitValueExpr(body, value))
   });
   flags.emitAluFlagsCondition("E");
   body.localSet(conditionLocal).end();
@@ -83,7 +91,8 @@ test("JIT flag state keeps const32 pending flag inputs direct", () => {
   });
 
   flags.emitSet(createIrFlagSetOp("sub", { left: v(0), right: c32(1), result: v(1) }), {
-    emitValue: (value) => emitValueExpr(body, value)
+    emitValue: (value) => emitValueExpr(body, value),
+    emitMaskedValue: (value, width) => emitMaskValueToWidth(body, width, emitValueExpr(body, value))
   });
   flags.emitAluFlagsCondition("E");
   body.localSet(conditionLocal).end();
@@ -91,14 +100,14 @@ test("JIT flag state keeps const32 pending flag inputs direct", () => {
   strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.localSet), 3);
 });
 
-function emitValueExpr(body: WasmFunctionBodyEncoder, value: IrValueExpr): void {
+function emitValueExpr(body: WasmFunctionBodyEncoder, value: IrValueExpr): ValueWidth {
   switch (value.kind) {
     case "var":
       body.localGet(value.id);
-      return;
+      return untrackedValueWidth();
     case "const32":
       body.i32Const(i32(value.value));
-      return;
+      return constValueWidth(value.value);
     case "nextEip":
       throw new Error("nextEip is not a valid flag test input");
     default:

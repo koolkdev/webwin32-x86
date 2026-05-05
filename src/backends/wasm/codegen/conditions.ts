@@ -162,8 +162,7 @@ function emitSignedCompareInput(
   width: OperandWidth,
   value: IrValueExpr
 ): void {
-  helpers.emitValue(value);
-  emitMaskValueToWidth(body, width);
+  helpers.emitMaskedValue(value, width);
   body.i32Const(signMask(width)).i32Xor();
 }
 
@@ -172,8 +171,7 @@ function emitResultInput(
   condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>,
   helpers: WasmIrEmitHelpers
 ): void {
-  helpers.emitValue(requiredFlagProducerConditionInput(condition, "result"));
-  emitMaskValueToWidth(body, conditionWidth(condition));
+  helpers.emitMaskedValue(requiredFlagProducerConditionInput(condition, "result"), conditionWidth(condition));
 }
 
 function emitResultSign(
@@ -200,16 +198,7 @@ function emitMaskedConditionInput(
   helpers: WasmIrEmitHelpers,
   inputName: string
 ): void {
-  helpers.emitValue(requiredFlagProducerConditionInput(condition, inputName));
-  emitMaskValueToWidth(body, conditionWidth(condition));
-}
-
-function emitMaskValueToWidth(body: WasmFunctionBodyEncoder, width: OperandWidth): void {
-  if (width === 32) {
-    return;
-  }
-
-  body.i32Const(width === 16 ? 0xffff : 0xff).i32And();
+  helpers.emitMaskedValue(requiredFlagProducerConditionInput(condition, inputName), conditionWidth(condition));
 }
 
 function conditionWidth(condition: Extract<IrValueExpr, { kind: "flagProducer.condition" }>): OperandWidth {

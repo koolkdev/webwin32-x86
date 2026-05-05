@@ -17,7 +17,6 @@ import {
 import {
   emitLoadRegAccess,
   emitLoadRegAlias,
-  emitMaskValueToWidth,
   emitStoreRegAccess,
   emitStoreRegAlias
 } from "#backends/wasm/codegen/registers.js";
@@ -39,6 +38,14 @@ import { emitAluFlagsCondition, emitFlagProducerCondition } from "#backends/wasm
 import { ExitReason } from "#backends/wasm/exit.js";
 import type { InterpreterLocals } from "./locals.js";
 import type { InterpreterDispatchDepths } from "./depths.js";
+import {
+  cleanValueWidth,
+  dirtyValueWidth,
+  emitCleanValueForFullUse,
+  emitMaskValueToWidth,
+  type WasmIrEmitValueOptions,
+  type ValueWidth
+} from "#backends/wasm/codegen/value-width.js";
 
 export type InterpreterOperandBinding =
   | Readonly<{ kind: "opcode.reg"; opcodeLocal: number; width: OperandWidth }>
@@ -71,7 +78,7 @@ export function emitInterpreterIrWithContext(block: IrBlock, context: Interprete
     body: context.body,
     scratch: context.scratch,
     expression: { canInlineGet: (source) => canInlineGet(context, source) },
-    emitGet: (source, accessWidth, helpers) => emitGetStorage(context, source, accessWidth, helpers),
+    emitGet: (source, accessWidth, helpers, options) => emitGetStorage(context, source, accessWidth, helpers, options),
     emitSet: (target, value, accessWidth, helpers) =>
       emitSetStorage(context, target, value, accessWidth, helpers),
     emitSetIf: (condition, target, value, accessWidth, helpers) =>
@@ -96,19 +103,18 @@ function emitGetStorage(
   context: InterpreterIrEmitContext,
   source: IrStorageExpr,
   accessWidth: OperandWidth,
-  helpers: WasmIrEmitHelpers
-): void {
+  helpers: WasmIrEmitHelpers,
+  options: WasmIrEmitValueOptions = {}
+): ValueWidth {
   switch (source.kind) {
     case "operand":
-      emitGetOperand(context, source.index, accessWidth);
-      return;
+      return emitGetOperand(context, source.index, accessWidth, options);
     case "reg":
-      emitLoadRegAccess(context.body, context.state.regs, source.reg, accessWidth);
-      return;
+      return emitLoadRegAccess(context.body, context.state.regs, source.reg, accessWidth, options);
     case "mem":
-      helpers.emitValue(source.address);
+      helpers.emitValue(source.address, { requestedWidth: 32 });
       emitLoadGuestFromStack(context, accessWidth);
-      return;
+      return cleanValueWidth(accessWidth);
   }
 }
 
@@ -147,7 +153,14 @@ function emitSetStorage(
       emitStoreRegAccess(context.body, context.state.regs, target.reg, accessWidth, () => helpers.emitValue(value));
       return;
     case "mem":
-      emitStoreMem(context, () => helpers.emitValue(target.address), () => helpers.emitValue(value), accessWidth);
+      emitStoreMem(
+        context,
+        () => {
+          helpers.emitValue(target.address, { requestedWidth: 32 });
+        },
+        () => helpers.emitValue(value),
+        accessWidth
+      );
       return;
   }
 }
@@ -160,7 +173,7 @@ function emitSetStorageIf(
   accessWidth: OperandWidth,
   helpers: WasmIrEmitHelpers
 ): void {
-  helpers.emitValue(condition);
+  helpers.emitValue(condition, { requestedWidth: 32 });
   context.body.ifBlock();
   emitSetStorage(context, target, value, accessWidth, helpers);
   context.body.endBlock();
@@ -183,31 +196,31 @@ function emitAddress(context: InterpreterIrEmitContext, source: IrStorageExpr): 
 function emitGetOperand(
   context: InterpreterIrEmitContext,
   index: number,
-  accessWidth: OperandWidth
-): void {
+  accessWidth: OperandWidth,
+  options: WasmIrEmitValueOptions = {}
+): ValueWidth {
   const binding = operandBinding(context, index);
 
   switch (binding.kind) {
     case "opcode.reg":
-      emitLoadDynamicReg(context, binding.width, () => emitOpcodeRegIndex(context.body, binding.opcodeLocal));
-      return;
+      return emitLoadDynamicReg(context, binding.width, () => emitOpcodeRegIndex(context.body, binding.opcodeLocal), options);
     case "modrm.reg":
-      emitLoadDynamicReg(context, binding.width, () => emitModRmRegIndex(context.body, binding.modRmLocal));
-      return;
+      return emitLoadDynamicReg(context, binding.width, () => emitModRmRegIndex(context.body, binding.modRmLocal), options);
     case "rm":
-      emitGetRm(context, binding, accessWidth);
-      return;
+      return emitGetRm(context, binding, accessWidth, options);
     case "mem":
       emitWasmIrLoadGuest(context, binding.addressLocal, accessWidth);
-      return;
+      return cleanValueWidth(accessWidth);
     case "implicit.reg":
-      emitLoadRegAlias(context.body, context.state.regs, binding.alias);
-      return;
+      return emitLoadRegAlias(context.body, context.state.regs, binding.alias, options);
     case "imm":
     case "relTarget":
       context.body.localGet(binding.local);
-      emitMaskValueToWidth(context.body, accessWidth);
-      return;
+      if (options.widthInsensitive === true && accessWidth < 32) {
+        return dirtyValueWidth(accessWidth);
+      }
+
+      return emitMaskValueToWidth(context.body, accessWidth);
   }
 }
 
@@ -231,7 +244,14 @@ function emitSetOperand(
       emitSetRm(context, binding, value, accessWidth, helpers);
       return;
     case "mem":
-      emitStoreMem(context, () => context.body.localGet(binding.addressLocal), () => helpers.emitValue(value), accessWidth);
+      emitStoreMem(
+        context,
+        () => {
+          context.body.localGet(binding.addressLocal);
+        },
+        () => helpers.emitValue(value),
+        accessWidth
+      );
       return;
     case "implicit.reg":
       emitStoreRegAlias(context.body, context.state.regs, binding.alias, () => helpers.emitValue(value));
@@ -264,7 +284,9 @@ function emitNextEip(context: InterpreterIrEmitContext): void {
 }
 
 function emitJump(context: InterpreterIrEmitContext, target: IrValueExpr, helpers: WasmIrEmitHelpers): void {
-  emitCompleteInstructionWithTarget(context.body, context.state, () => helpers.emitValue(target));
+  emitCompleteInstructionWithTarget(context.body, context.state, () => {
+    helpers.emitValue(target, { requestedWidth: 32 });
+  });
   emitContinue(context);
 }
 
@@ -275,12 +297,16 @@ function emitConditionalJump(
   notTaken: IrValueExpr,
   helpers: WasmIrEmitHelpers
 ): void {
-  helpers.emitValue(condition);
+  helpers.emitValue(condition, { requestedWidth: 32 });
   context.body.ifBlock();
-  emitCompleteInstructionWithTarget(context.body, context.state, () => helpers.emitValue(taken));
+  emitCompleteInstructionWithTarget(context.body, context.state, () => {
+    helpers.emitValue(taken, { requestedWidth: 32 });
+  });
   emitContinue(context, 1);
   context.body.endBlock();
-  emitCompleteInstructionWithTarget(context.body, context.state, () => helpers.emitValue(notTaken));
+  emitCompleteInstructionWithTarget(context.body, context.state, () => {
+    helpers.emitValue(notTaken, { requestedWidth: 32 });
+  });
   emitContinue(context);
 }
 
@@ -291,7 +317,7 @@ function emitHostTrap(context: InterpreterIrEmitContext, vector: IrValueExpr, he
     emitCompleteInstructionWithTarget(context.body, context.state, () => emitNextEip(context));
   }
 
-  helpers.emitValue(vector);
+  helpers.emitValue(vector, { requestedWidth: 32 });
   emitWasmIrExitFromI32Stack(context.body, context.exit, ExitReason.HOST_TRAP);
 }
 
@@ -302,16 +328,18 @@ function emitContinue(context: InterpreterIrEmitContext, extraDepth = 0): void {
 function emitGetRm(
   context: InterpreterIrEmitContext,
   binding: Extract<InterpreterOperandBinding, { kind: "rm" }>,
-  accessWidth: OperandWidth
-): void {
+  accessWidth: OperandWidth,
+  options: WasmIrEmitValueOptions = {}
+): ValueWidth {
   emitModRmIsRegister(context.body, binding.modRmLocal);
   context.body.ifBlock(undefined, wasmValueType.i32);
   emitLoadRegByIndex(context.body, context.state.regs, binding.width, () => {
     emitModRmRmIndex(context.body, binding.modRmLocal);
-  });
+  }, options);
   context.body.elseBlock();
   emitWasmIrLoadGuest(context, binding.addressLocal, accessWidth, 2);
   context.body.endBlock();
+  return options.widthInsensitive === true && accessWidth < 32 ? dirtyValueWidth(accessWidth) : cleanValueWidth(accessWidth);
 }
 
 function emitLoadGuestFromStack(context: InterpreterIrEmitContext, width: OperandWidth): void {
@@ -334,18 +362,23 @@ function emitSetRm(
   const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
-    helpers.emitValue(value);
+    const valueWidth = helpers.emitValue(value);
     context.body.localSet(valueLocal);
     emitIfModRmRegister(context.body, binding.modRmLocal, () => {
       emitStoreRegByIndex(context.body, context.state.regs, binding.width, () => {
         emitModRmRmIndex(context.body, binding.modRmLocal);
-      }, valueLocal);
+      }, valueLocal, valueWidth);
     });
     emitIfModRmMemory(context.body, binding.modRmLocal, () => {
       emitStoreMem(
         context,
-        () => context.body.localGet(binding.addressLocal),
-        () => context.body.localGet(valueLocal),
+        () => {
+          context.body.localGet(binding.addressLocal);
+        },
+        () => {
+          context.body.localGet(valueLocal);
+          return valueWidth;
+        },
         accessWidth,
         2
       );
@@ -358,7 +391,7 @@ function emitSetRm(
 function emitStoreMem(
   context: InterpreterIrEmitContext,
   emitAddress: () => void,
-  emitValue: () => void,
+  emitValue: () => ValueWidth,
   width: OperandWidth,
   faultExtraDepth = 1
 ): void {
@@ -368,7 +401,10 @@ function emitStoreMem(
   try {
     emitAddress();
     context.body.localSet(addressLocal);
-    emitValue();
+    const valueWidth = emitValue();
+    if (width === 32) {
+      emitCleanValueForFullUse(context.body, valueWidth);
+    }
     context.body.localSet(valueLocal);
     emitWasmIrStoreGuest(context, addressLocal, valueLocal, width, faultExtraDepth);
   } finally {
@@ -390,9 +426,10 @@ function operandBinding(context: InterpreterIrEmitContext, index: number): Inter
 function emitLoadDynamicReg(
   context: InterpreterIrEmitContext,
   width: OperandWidth,
-  emitIndex: () => void
-): void {
-  emitLoadRegByIndex(context.body, context.state.regs, width, emitIndex);
+  emitIndex: () => void,
+  options: WasmIrEmitValueOptions = {}
+): ValueWidth {
+  return emitLoadRegByIndex(context.body, context.state.regs, width, emitIndex, options);
 }
 
 function emitStoreDynamicReg(
@@ -405,9 +442,9 @@ function emitStoreDynamicReg(
   const valueLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
-    helpers.emitValue(value);
+    const valueWidth = helpers.emitValue(value);
     context.body.localSet(valueLocal);
-    emitStoreRegByIndex(context.body, context.state.regs, width, emitIndex, valueLocal);
+    emitStoreRegByIndex(context.body, context.state.regs, width, emitIndex, valueLocal, valueWidth);
   } finally {
     context.scratch.freeLocal(valueLocal);
   }

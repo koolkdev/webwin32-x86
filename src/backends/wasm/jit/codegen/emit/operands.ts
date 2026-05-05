@@ -3,7 +3,6 @@ import type { OperandWidth } from "#x86/isa/types.js";
 import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import type { StorageRef } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
-import { emitMaskValueToWidth } from "#backends/wasm/codegen/registers.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { ExitReason, type ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import { emitWasmIrLoadGuestFromStack, emitWasmIrStoreGuest } from "#backends/wasm/codegen/memory.js";
@@ -12,6 +11,16 @@ import type { WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 import type { JitExitPoint } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
 import type { JitIrContext } from "./ir-context.js";
+import {
+  cleanValueWidth,
+  constValueWidth,
+  dirtyValueWidth,
+  emitCleanValueForFullUse,
+  emitMaskValueToWidth,
+  maskedConstValue,
+  type WasmIrEmitValueOptions,
+  type ValueWidth
+} from "#backends/wasm/codegen/value-width.js";
 
 export function canInlineJitGet(context: JitIrContext, source: StorageRef): boolean {
   switch (source.kind) {
@@ -31,21 +40,20 @@ export function emitJitGet(
   context: JitIrContext,
   source: IrStorageExpr,
   accessWidth: OperandWidth,
-  helpers: WasmIrEmitHelpers
-): void {
+  helpers: WasmIrEmitHelpers,
+  options: WasmIrEmitValueOptions = {}
+): ValueWidth {
   const regs = context.state.regs;
 
   switch (source.kind) {
     case "operand":
-      emitGetBinding(context, operandBinding(context, source.index), accessWidth);
-      return;
+      return emitGetBinding(context, operandBinding(context, source.index), accessWidth, options);
     case "reg":
-      regs.emitGetAlias(regAccess(source.reg, accessWidth));
-      return;
+      return regs.emitGetAlias(regAccess(source.reg, accessWidth), options);
     case "mem":
-      helpers.emitValue(source.address);
+      helpers.emitValue(source.address, { requestedWidth: 32 });
       emitLoadGuestFromStack(context, accessWidth);
-      return;
+      return cleanValueWidth(accessWidth);
   }
 }
 
@@ -66,7 +74,14 @@ export function emitJitSet(
       regs.emitSetAlias(regAccess(target.reg, accessWidth), () => helpers.emitValue(value));
       return;
     case "mem":
-      emitStoreMem(context, () => helpers.emitValue(target.address), () => helpers.emitValue(value), accessWidth);
+      emitStoreMem(
+        context,
+        () => {
+          helpers.emitValue(target.address, { requestedWidth: 32 });
+        },
+        () => helpers.emitValue(value),
+        accessWidth
+      );
       return;
   }
 }
@@ -88,7 +103,7 @@ export function emitJitSetIf(
     case "reg":
       regs.emitSetAliasIf(
         regAccess(target.reg, accessWidth),
-        () => helpers.emitValue(condition),
+        () => helpers.emitValue(condition, { requestedWidth: 32 }),
         () => helpers.emitValue(value)
       );
       return;
@@ -111,25 +126,37 @@ export function emitJitAddress(context: JitIrContext, source: IrStorageExpr): vo
   emitEffectiveAddress(context.body, context.state.regs, binding.ea);
 }
 
-function emitGetBinding(context: JitIrContext, binding: JitOperandBinding, accessWidth: OperandWidth): void {
+function emitGetBinding(
+  context: JitIrContext,
+  binding: JitOperandBinding,
+  accessWidth: OperandWidth,
+  options: WasmIrEmitValueOptions = {}
+): ValueWidth {
   const regs = context.state.regs;
 
   switch (binding.kind) {
     case "static.reg":
       assertAccessWidth(accessWidth, binding.alias.width, "read");
-      regs.emitGetAlias(binding.alias);
-      return;
+      return regs.emitGetAlias(binding.alias, options);
     case "static.mem":
       emitEffectiveAddress(context.body, regs, binding.ea);
       emitLoadGuestFromStack(context, accessWidth);
-      return;
+      return cleanValueWidth(accessWidth);
     case "static.imm32":
+      if (options.widthInsensitive !== true && accessWidth < 32) {
+        const masked = maskedConstValue(binding.value, accessWidth);
+
+        context.body.i32Const(masked);
+        return constValueWidth(masked);
+      }
+
       context.body.i32Const(i32(binding.value));
-      emitMaskValueToWidth(context.body, accessWidth);
-      return;
+      return options.widthInsensitive === true && accessWidth < 32
+        ? dirtyValueWidth(accessWidth)
+        : emitMaskValueToWidth(context.body, accessWidth, constValueWidth(binding.value));
     case "static.relTarget":
       context.body.i32Const(i32(binding.target));
-      return;
+      return constValueWidth(binding.target);
   }
 }
 
@@ -148,7 +175,9 @@ function emitSetBinding(
     case "static.mem":
       emitStoreMem(
         context,
-        () => emitEffectiveAddress(context.body, regs, binding.ea),
+        () => {
+          emitEffectiveAddress(context.body, regs, binding.ea);
+        },
         () => helpers.emitValue(value),
         binding.ea.accessWidth
       );
@@ -172,7 +201,11 @@ function emitSetBindingIf(
   switch (binding.kind) {
     case "static.reg":
       assertAccessWidth(accessWidth, binding.alias.width, "conditional write");
-      regs.emitSetAliasIf(binding.alias, () => helpers.emitValue(condition), () => helpers.emitValue(value));
+      regs.emitSetAliasIf(
+        binding.alias,
+        () => helpers.emitValue(condition, { requestedWidth: 32 }),
+        () => helpers.emitValue(value)
+      );
       return;
     case "static.mem":
       throw new Error("JIT conditional memory writes are not supported");
@@ -234,7 +267,7 @@ function emitLoadGuestFromStack(context: JitIrContext, width: OperandWidth): voi
 function emitStoreMem(
   context: JitIrContext,
   emitAddress: () => void,
-  emitValue: () => void,
+  emitValue: () => ValueWidth,
   width: OperandWidth,
   faultExtraDepth = 1
 ): void {
@@ -244,7 +277,10 @@ function emitStoreMem(
   try {
     emitAddress();
     context.body.localSet(addressLocal);
-    emitValue();
+    const valueWidth = emitValue();
+    if (width === 32) {
+      emitCleanValueForFullUse(context.body, valueWidth);
+    }
     context.body.localSet(valueLocal);
     const exitPoint = prepareMemoryFaultExit(context, ExitReason.MEMORY_WRITE_FAULT);
 

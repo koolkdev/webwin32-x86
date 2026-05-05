@@ -11,6 +11,7 @@ import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
 import { wasmOpcode, wasmValueType, type WasmValueType } from "#backends/wasm/encoder/types.js";
 import { emitIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
+import { untrackedValueWidth, type ValueWidth } from "#backends/wasm/codegen/value-width.js";
 
 const nextEipValue = 0x1234_5678;
 
@@ -231,17 +232,17 @@ function emitGet(
   body: WasmFunctionBodyEncoder,
   regLocals: Partial<Record<Reg32, number>>,
   source: IrStorageExpr
-): void {
+): ValueWidth {
   switch (source.kind) {
     case "operand":
       if (source.index > 1) {
         throw new Error(`missing test operand: ${source.index}`);
       }
       body.localGet(source.index);
-      return;
+      return untrackedValueWidth();
     case "reg":
       body.localGet(requireRegLocal(regLocals, source.reg));
-      return;
+      return untrackedValueWidth();
     case "mem":
       unsupported("mem get");
   }

@@ -7,6 +7,12 @@ import {
   emitLoadRegAlias,
   emitStoreRegAlias
 } from "#backends/wasm/codegen/registers.js";
+import {
+  cleanValueWidth,
+  dirtyValueWidth,
+  type WasmIrEmitValueOptions,
+  type ValueWidth
+} from "#backends/wasm/codegen/value-width.js";
 
 type Reg32Locals = Readonly<Record<Reg32, number>>;
 type EmitIndex = () => void;
@@ -33,16 +39,19 @@ export function emitLoadRegByIndex(
   body: WasmFunctionBodyEncoder,
   regs: Reg32Locals,
   width: OperandWidth,
-  emitIndex: EmitIndex
-): void {
+  emitIndex: EmitIndex,
+  options: WasmIrEmitValueOptions = {}
+): ValueWidth {
   emitRegisterIndexSwitch(body, wasmValueType.i32, emitIndex, (caseIndex) => {
     if (caseIndex === DEFAULT_REGISTER_CASE) {
       body.i32Const(0);
       return;
     }
 
-    emitLoadRegAlias(body, regs, registerAliasByIndex(width, caseIndex));
+    emitLoadRegAlias(body, regs, registerAliasByIndex(width, caseIndex), options);
   });
+
+  return options.widthInsensitive === true && width < 32 ? dirtyValueWidth(width) : cleanValueWidth(width);
 }
 
 export function emitStoreRegByIndex(
@@ -50,7 +59,8 @@ export function emitStoreRegByIndex(
   regs: Reg32Locals,
   width: OperandWidth,
   emitIndex: EmitIndex,
-  valueLocal: number
+  valueLocal: number,
+  valueWidth: ValueWidth = cleanValueWidth(32)
 ): void {
   emitRegisterIndexSwitch(body, undefined, emitIndex, (caseIndex) => {
     if (caseIndex === DEFAULT_REGISTER_CASE) {
@@ -59,6 +69,7 @@ export function emitStoreRegByIndex(
 
     emitStoreRegAlias(body, regs, registerAliasByIndex(width, caseIndex), () => {
       body.localGet(valueLocal);
+      return valueWidth;
     });
   });
 }

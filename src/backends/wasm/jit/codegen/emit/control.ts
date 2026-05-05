@@ -39,7 +39,7 @@ export function emitJitControlExit(
   const targetLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
-    helpers.emitValue(target);
+    helpers.emitValue(target, { requestedWidth: 32 });
     context.body.localSet(targetLocal);
     const exitPoint = context.currentExitPoint(exitReason);
 
@@ -63,7 +63,7 @@ export function emitJitConditionalJump(
   notTaken: IrValueExpr,
   helpers: WasmIrEmitHelpers
 ): void {
-  helpers.emitValue(condition);
+  helpers.emitValue(condition, { requestedWidth: 32 });
   context.body.ifBlock();
   emitJitControlTransfer(context, taken, ExitReason.BRANCH_TAKEN, helpers, 1);
   context.body.endBlock();
@@ -74,7 +74,7 @@ export function emitJitHostTrap(context: JitIrContext, vector: IrValueExpr, help
   const vectorLocal = context.scratch.allocLocal(wasmValueType.i32);
 
   try {
-    helpers.emitValue(vector);
+    helpers.emitValue(vector, { requestedWidth: 32 });
     context.body.localSet(vectorLocal);
     const instruction = context.currentInstruction();
     const exitPoint = context.currentExitPoint(ExitReason.HOST_TRAP);

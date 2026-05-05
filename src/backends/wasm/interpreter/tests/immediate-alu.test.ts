@@ -57,6 +57,76 @@ test("executes SUB EAX, imm32", async () => {
   strictEqual(state.eflags, preservedEflags | subBorrowEflags);
 });
 
+test("executes ADD AX, imm16 with 16-bit wraparound", async () => {
+  const initialState = createCpuState({
+    eax: 0xffff_0001,
+    eip: startAddress,
+    instructionCount: 7
+  });
+
+  const { exit, state } = await executeInstruction([0x66, 0x05, 0xff, 0xff], initialState);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0xffff_0000);
+  assertCompletedInstruction(state, startAddress + 4, 8);
+});
+
+test("executes ADD AX, imm16 without leaking carry into high EAX", async () => {
+  const initialState = createCpuState({
+    eax: 0x1234_ffff,
+    eip: startAddress,
+    instructionCount: 7
+  });
+
+  const { exit, state } = await executeInstruction([0x66, 0x05, 0x01, 0x00], initialState);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0x1234_0000);
+  assertCompletedInstruction(state, startAddress + 4, 8);
+});
+
+test("executes SUB AX, imm16 without borrowing from high EAX", async () => {
+  const initialState = createCpuState({
+    eax: 0x1234_0000,
+    eip: startAddress,
+    instructionCount: 7
+  });
+
+  const { exit, state } = await executeInstruction([0x66, 0x2d, 0x01, 0x00], initialState);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0x1234_ffff);
+  assertCompletedInstruction(state, startAddress + 4, 8);
+});
+
+test("executes ADD AL, imm8 without leaking carry into high EAX", async () => {
+  const initialState = createCpuState({
+    eax: 0xffff_00ff,
+    eip: startAddress,
+    instructionCount: 7
+  });
+
+  const { exit, state } = await executeInstruction([0x04, 0x01], initialState);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0xffff_0000);
+  assertCompletedInstruction(state, startAddress + 2, 8);
+});
+
+test("executes SUB AL, imm8 without borrowing from high EAX", async () => {
+  const initialState = createCpuState({
+    eax: 0xffff_0000,
+    eip: startAddress,
+    instructionCount: 7
+  });
+
+  const { exit, state } = await executeInstruction([0x2c, 0x01], initialState);
+
+  assertSingleInstructionExit(exit);
+  strictEqual(state.eax, 0xffff_00ff);
+  assertCompletedInstruction(state, startAddress + 2, 8);
+});
+
 test("executes XOR EAX, imm32", async () => {
   const initialState = createCpuState({
     eax: 0xffff_ffff,

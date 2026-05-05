@@ -18,12 +18,29 @@ import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scr
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { assignIrExprVarSlots, type IrExprVarSlotAssignment } from "./var-slots.js";
+import {
+  arithmeticResultValueWidth,
+  bitwiseResultValueWidth,
+  cleanValueWidth,
+  constValueWidth,
+  emitCleanValueForFullUse,
+  emitMaskValueToWidth,
+  maskedConstValue,
+  untrackedValueWidth,
+  type WasmIrEmitValueOptions,
+  type ValueWidth
+} from "./value-width.js";
 
 export type WasmIrEmitContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
   expression?: IrExpressionOptions;
-  emitGet(source: IrStorageExpr, accessWidth: OperandWidth, helpers: WasmIrEmitHelpers): void;
+  emitGet(
+    source: IrStorageExpr,
+    accessWidth: OperandWidth,
+    helpers: WasmIrEmitHelpers,
+    options?: WasmIrEmitValueOptions
+  ): ValueWidth;
   emitSet(
     target: IrStorageExpr,
     value: IrValueExpr,
@@ -52,7 +69,8 @@ export type WasmIrEmitContext = Readonly<{
 }>;
 
 export type WasmIrEmitHelpers = Readonly<{
-  emitValue(value: IrValueExpr): void;
+  emitValue(value: IrValueExpr, options?: WasmIrEmitValueOptions): ValueWidth;
+  emitMaskedValue(value: IrValueExpr, width: OperandWidth): ValueWidth;
 }>;
 
 export function emitIrToWasm(block: IrExpressionInputBlock, context: WasmIrEmitContext): void {
@@ -78,8 +96,10 @@ class IrExprWasmEmitter {
   readonly #context: WasmIrEmitContext;
   readonly #slots: IrExprVarSlotAssignment;
   readonly #slotLocals: readonly number[];
+  readonly #localValueWidths = new Map<number, ValueWidth>();
   readonly #helpers: WasmIrEmitHelpers = {
-    emitValue: (value) => this.#emitValue(value)
+    emitValue: (value, options) => this.#emitValue(value, options),
+    emitMaskedValue: (value, width) => this.#emitMaskedValue(value, width)
   };
 
   constructor(block: IrExprBlock, context: WasmIrEmitContext) {
@@ -102,7 +122,7 @@ class IrExprWasmEmitter {
   #emitOp(op: IrExprOp): void {
     switch (op.op) {
       case "let32":
-        this.#emitValue(op.value);
+        this.#localValueWidths.set(op.dst.id, this.#emitValue(op.value));
         this.#context.body.localSet(this.#wasmLocalForVar(op.dst.id));
         return;
       case "set":
@@ -135,59 +155,96 @@ class IrExprWasmEmitter {
     }
   }
 
-  #emitValue(value: IrValueExpr): void {
+  #emitValue(value: IrValueExpr, options: WasmIrEmitValueOptions = {}): ValueWidth {
+    const valueWidth = this.#emitValueUnmasked(value, options);
+
+    if (options.requestedWidth === undefined) {
+      return valueWidth;
+    }
+
+    return options.requestedWidth === 32
+      ? emitCleanValueForFullUse(this.#context.body, valueWidth)
+      : emitMaskValueToWidth(this.#context.body, options.requestedWidth, valueWidth);
+  }
+
+  #emitMaskedValue(value: IrValueExpr, width: OperandWidth): ValueWidth {
+    if (value.kind === "const32") {
+      const masked = maskedConstValue(value.value, width);
+
+      this.#context.body.i32Const(masked);
+      return constValueWidth(masked);
+    }
+
+    return emitMaskValueToWidth(this.#context.body, width, this.#emitValue(value));
+  }
+
+  #emitValueUnmasked(value: IrValueExpr, options: WasmIrEmitValueOptions): ValueWidth {
     switch (value.kind) {
       case "var":
         this.#context.body.localGet(this.#wasmLocalForVar(value.id));
-        return;
+        return this.#localValueWidths.get(value.id) ?? untrackedValueWidth();
       case "const32":
         this.#context.body.i32Const(i32(value.value));
-        return;
+        return constValueWidth(value.value);
       case "nextEip":
         this.#context.emitNextEip(this.#helpers);
-        return;
+        return untrackedValueWidth();
       case "source":
-        this.#context.emitGet(value.source, value.accessWidth, this.#helpers);
-        return;
+        return this.#context.emitGet(value.source, value.accessWidth, this.#helpers, options);
       case "address":
         this.#context.emitAddress(value.operand, this.#helpers);
-        return;
+        return untrackedValueWidth();
       case "aluFlags.condition":
         this.#context.emitAluFlagsCondition(value.cc);
-        return;
+        return cleanValueWidth(8);
       case "flagProducer.condition":
         this.#context.emitFlagProducerCondition(value, this.#helpers);
-        return;
+        return cleanValueWidth(8);
       case "i32.add":
-        this.#emitValue(value.a);
-        this.#emitValue(value.b);
-        this.#context.body.i32Add();
-        return;
+        {
+          const left = this.#emitValue(value.a, { requestedWidth: 32 });
+          const right = this.#emitValue(value.b, { requestedWidth: 32 });
+
+          this.#context.body.i32Add();
+          return arithmeticResultValueWidth(left, right);
+        }
       case "i32.sub":
-        this.#emitValue(value.a);
-        this.#emitValue(value.b);
-        this.#context.body.i32Sub();
-        return;
+        {
+          const left = this.#emitValue(value.a, { requestedWidth: 32 });
+          const right = this.#emitValue(value.b, { requestedWidth: 32 });
+
+          this.#context.body.i32Sub();
+          return arithmeticResultValueWidth(left, right);
+        }
       case "i32.xor":
-        this.#emitValue(value.a);
-        this.#emitValue(value.b);
-        this.#context.body.i32Xor();
-        return;
+        {
+          const left = this.#emitValue(value.a, { widthInsensitive: true });
+          const right = this.#emitValue(value.b, { widthInsensitive: true });
+
+          this.#context.body.i32Xor();
+          return bitwiseResultValueWidth("i32.xor", left, right);
+        }
       case "i32.or":
-        this.#emitValue(value.a);
-        this.#emitValue(value.b);
-        this.#context.body.i32Or();
-        return;
+        {
+          const left = this.#emitValue(value.a, { widthInsensitive: true });
+          const right = this.#emitValue(value.b, { widthInsensitive: true });
+
+          this.#context.body.i32Or();
+          return bitwiseResultValueWidth("i32.or", left, right);
+        }
       case "i32.and":
-        this.#emitValue(value.a);
-        this.#emitValue(value.b);
-        this.#context.body.i32And();
-        return;
+        {
+          const left = this.#emitValue(value.a, { widthInsensitive: true });
+          const right = this.#emitValue(value.b, { widthInsensitive: true });
+
+          this.#context.body.i32And();
+          return bitwiseResultValueWidth("i32.and", left, right);
+        }
       case "i32.shr_u":
-        this.#emitValue(value.a);
-        this.#emitValue(value.b);
+        this.#emitValue(value.a, { requestedWidth: 32 });
+        this.#emitValue(value.b, { requestedWidth: 32 });
         this.#context.body.i32ShrU();
-        return;
+        return untrackedValueWidth();
     }
   }
 

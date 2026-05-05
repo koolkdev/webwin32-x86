@@ -2,7 +2,13 @@ import type { RegisterAlias } from "#x86/isa/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import { wasmMemoryIndex } from "#backends/wasm/abi.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
-import { emitMaskValueToWidth } from "#backends/wasm/codegen/registers.js";
+import {
+  cleanValueWidth,
+  dirtyValueWidth,
+  emitMaskValueToWidth,
+  type WasmIrEmitValueOptions,
+  type ValueWidth
+} from "#backends/wasm/codegen/value-width.js";
 import { aliasMask, byteCount, byteMask, byteWidth, type ByteSource, type RegValueState } from "./register-lanes.js";
 
 export function emitStoreStateU8(
@@ -99,15 +105,21 @@ export function emitMergedBytes(body: WasmFunctionBodyEncoder, state: RegValueSt
 export function emitExtractAliasFromLocal(
   body: WasmFunctionBodyEncoder,
   local: number,
-  alias: RegisterAlias
-): void {
+  alias: RegisterAlias,
+  options: WasmIrEmitValueOptions = {}
+): ValueWidth {
   body.localGet(local);
 
   if (alias.bitOffset !== 0) {
     body.i32Const(alias.bitOffset).i32ShrU();
   }
 
+  if (options.widthInsensitive === true && alias.width < 32) {
+    return dirtyValueWidth(alias.width);
+  }
+
   emitMaskValueToWidth(body, alias.width);
+  return cleanValueWidth(alias.width);
 }
 
 export function emitComposedByteSources(

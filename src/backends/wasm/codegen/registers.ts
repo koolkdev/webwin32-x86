@@ -1,6 +1,16 @@
 import { i32, widthMask } from "#x86/state/cpu-state.js";
 import type { OperandWidth, RegisterAlias, Reg32 } from "#x86/isa/types.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import {
+  cleanValueWidth,
+  dirtyValueWidth,
+  emitCleanValueForFullUse,
+  emitMaskValueToWidth,
+  type WasmIrEmitValueOptions,
+  type ValueWidth
+} from "./value-width.js";
+
+export { emitMaskValueToWidth } from "./value-width.js";
 
 export type WasmIrReg32Storage = Readonly<{
   emitGet(reg: Reg32): void;
@@ -25,20 +35,21 @@ export function wasmIrLocalReg32Storage(
 export function emitLoadRegAlias(
   body: WasmFunctionBodyEncoder,
   locals: Readonly<Record<Reg32, number>>,
-  alias: RegisterAlias
-): void {
+  alias: RegisterAlias,
+  options: WasmIrEmitValueOptions = {}
+): ValueWidth {
   body.localGet(locals[alias.base]);
-  emitExtractRegAliasFromStack(body, alias);
+  return emitExtractRegAliasFromStack(body, alias, options);
 }
 
 export function emitStoreRegAlias(
   body: WasmFunctionBodyEncoder,
   locals: Readonly<Record<Reg32, number>>,
   alias: RegisterAlias,
-  emitValue: () => void
+  emitValue: () => ValueWidth | void
 ): void {
   if (alias.width === 32) {
-    emitValue();
+    emitCleanValueForFullUse(body, emitValue() ?? undefined);
     body.localSet(locals[alias.base]);
     return;
   }
@@ -46,8 +57,7 @@ export function emitStoreRegAlias(
   const shiftedMask = widthMask(alias.width) << alias.bitOffset;
 
   body.localGet(locals[alias.base]).i32Const(i32(~shiftedMask)).i32And();
-  emitValue();
-  emitMaskValueToWidth(body, alias.width);
+  emitMaskValueToWidth(body, alias.width, emitValue() ?? undefined);
 
   if (alias.bitOffset !== 0) {
     body.i32Const(alias.bitOffset).i32Shl();
@@ -60,10 +70,16 @@ export function emitLoadRegAccess(
   body: WasmFunctionBodyEncoder,
   locals: Readonly<Record<Reg32, number>>,
   reg: Reg32,
-  width: OperandWidth
-): void {
+  width: OperandWidth,
+  options: WasmIrEmitValueOptions = {}
+): ValueWidth {
   body.localGet(locals[reg]);
-  emitMaskValueToWidth(body, width);
+
+  if (options.widthInsensitive === true && width < 32) {
+    return dirtyValueWidth(width);
+  }
+
+  return emitMaskValueToWidth(body, width);
 }
 
 export function emitStoreRegAccess(
@@ -71,23 +87,24 @@ export function emitStoreRegAccess(
   locals: Readonly<Record<Reg32, number>>,
   reg: Reg32,
   width: OperandWidth,
-  emitValue: () => void
+  emitValue: () => ValueWidth | void
 ): void {
   emitStoreRegAlias(body, locals, { name: reg, base: reg, bitOffset: 0, width }, emitValue);
 }
 
-export function emitExtractRegAliasFromStack(body: WasmFunctionBodyEncoder, alias: RegisterAlias): void {
+export function emitExtractRegAliasFromStack(
+  body: WasmFunctionBodyEncoder,
+  alias: RegisterAlias,
+  options: WasmIrEmitValueOptions = {}
+): ValueWidth {
   if (alias.bitOffset !== 0) {
     body.i32Const(alias.bitOffset).i32ShrU();
   }
 
-  emitMaskValueToWidth(body, alias.width);
-}
-
-export function emitMaskValueToWidth(body: WasmFunctionBodyEncoder, width: OperandWidth): void {
-  if (width === 32) {
-    return;
+  if (options.widthInsensitive === true && alias.width < 32) {
+    return dirtyValueWidth(alias.width);
   }
 
-  body.i32Const(widthMask(width)).i32And();
+  emitMaskValueToWidth(body, alias.width);
+  return cleanValueWidth(alias.width);
 }

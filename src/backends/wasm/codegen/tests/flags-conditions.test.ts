@@ -13,6 +13,12 @@ import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
 import { emitAluFlagsCondition, emitFlagProducerCondition } from "#backends/wasm/codegen/conditions.js";
 import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/codegen/alu-flags.js";
 import { emitSetFlags } from "#backends/wasm/codegen/flags.js";
+import {
+  constValueWidth,
+  emitMaskValueToWidth,
+  untrackedValueWidth,
+  type ValueWidth
+} from "#backends/wasm/codegen/value-width.js";
 
 const unmodeledStorageBit = 1 << 9;
 
@@ -63,7 +69,8 @@ test("emitSetFlags does not allocate an accumulator local", () => {
   const aluFlags = wasmIrLocalAluFlagsStorage(body, 3);
 
   emitSetFlags(body, aluFlags, createIrFlagSetOp("logic", { result: v(2) }), {
-    emitValue: (value) => emitValueExpr(body, value)
+    emitValue: (value) => emitValueExpr(body, value),
+    emitMaskedValue: (value, width) => emitMaskValueToWidth(body, width, emitValueExpr(body, value))
   });
   body.localGet(3).end();
 
@@ -167,9 +174,16 @@ function encodeSetFlagsFunctionBody(producer: FlagProducerName, mask?: number): 
     ? { result: v(2) }
     : { left: v(0), right: v(1), result: v(2) };
 
-  emitSetFlags(body, aluFlags, createIrFlagSetOp(producer, inputs), {
-    emitValue: (value) => emitValueExpr(body, value)
-  }, mask === undefined ? undefined : { mask });
+  emitSetFlags(
+    body,
+    aluFlags,
+    createIrFlagSetOp(producer, inputs),
+    {
+      emitValue: (value) => emitValueExpr(body, value),
+      emitMaskedValue: (value, width) => emitMaskValueToWidth(body, width, emitValueExpr(body, value))
+    },
+    mask === undefined ? undefined : { mask }
+  );
   body.localGet(3).end();
 
   return body;
@@ -234,7 +248,8 @@ function encodeFlagProducerConditionModule(cc: ConditionCode): Uint8Array<ArrayB
     undefMask: 0,
     inputs: { left: v(0), right: v(1) }
   }, {
-    emitValue: (value) => emitValueExpr(body, value)
+    emitValue: (value) => emitValueExpr(body, value),
+    emitMaskedValue: (value, width) => emitMaskValueToWidth(body, width, emitValueExpr(body, value))
   });
   body.end();
 
@@ -279,7 +294,8 @@ function encodeResultFlagProducerConditionModule(
     undefMask: descriptor.undefMask,
     inputs: { result: v(0) }
   }, {
-    emitValue: (value) => emitValueExpr(body, value)
+    emitValue: (value) => emitValueExpr(body, value),
+    emitMaskedValue: (value, width) => emitMaskValueToWidth(body, width, emitValueExpr(body, value))
   });
   body.end();
 
@@ -289,17 +305,17 @@ function encodeResultFlagProducerConditionModule(
   return module.encode();
 }
 
-function emitValueExpr(body: WasmFunctionBodyEncoder, value: IrValueExpr): void {
+function emitValueExpr(body: WasmFunctionBodyEncoder, value: IrValueExpr): ValueWidth {
   switch (value.kind) {
     case "var":
       body.localGet(value.id);
-      return;
+      return untrackedValueWidth();
     case "const32":
       body.i32Const(i32(value.value));
-      return;
+      return constValueWidth(value.value);
     case "nextEip":
       body.i32Const(0);
-      return;
+      return constValueWidth(0);
     default:
       throw new Error(`unsupported flag test value expression: ${value.kind}`);
   }

@@ -152,7 +152,7 @@ function emitJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["i
     body: jitContext.body,
     scratch: jitContext.scratch,
     expression: { canInlineGet: (source) => canInlineJitGet(jitContext, source) },
-    emitGet: (source, accessWidth, helpers) => emitJitGet(jitContext, source, accessWidth, helpers),
+    emitGet: (source, accessWidth, helpers, options) => emitJitGet(jitContext, source, accessWidth, helpers, options),
     emitSet: (target, value, accessWidth, helpers, op) =>
       emitJitSetWithRole(jitContext, target, value, accessWidth, helpers, op),
     emitSetIf: (condition, target, value, accessWidth, helpers) =>

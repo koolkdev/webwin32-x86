@@ -20,6 +20,11 @@ import {
 import { wasmIrLocalAluFlagsStorage } from "#backends/wasm/codegen/alu-flags.js";
 import { emitSetFlags } from "#backends/wasm/codegen/flags.js";
 import type { WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
+import {
+  constValueWidth,
+  emitMaskValueToWidth,
+  type ValueWidth
+} from "#backends/wasm/codegen/value-width.js";
 
 type PendingFlags = Readonly<{
   producer: IrFlagSetOp["producer"];
@@ -30,7 +35,7 @@ type PendingFlags = Readonly<{
 }>;
 
 type PendingInput =
-  | Readonly<{ kind: "local"; local: number }>
+  | Readonly<{ kind: "local"; local: number; valueWidth: ValueWidth }>
   | Readonly<{ kind: "value"; value: ValueRef }>;
 
 type PendingInputRefs = Readonly<{
@@ -91,9 +96,10 @@ export function createJitFlagState(
         // A pending producer may outlive later flag producers. Allocate fresh
         // captured inputs so ADD.CF can survive a later INC, for example.
         const local = localForInput();
-        helpers.emitValue(input);
+        const valueWidth = helpers.emitValue(input);
+
         body.localSet(local);
-        pendingInputs.set(inputName, { kind: "local", local });
+        pendingInputs.set(inputName, { kind: "local", local, valueWidth });
       }
 
       const pendingFlags = {
@@ -213,7 +219,9 @@ export function createJitFlagState(
         inputs: inputs.inputRefs
       },
       {
-        emitValue: (value) => emitPendingInputValue(inputs.inputsByVarId, value, "pending flag input")
+        emitValue: (value) => emitPendingInputValue(inputs.inputsByVarId, value, "pending flag input"),
+        emitMaskedValue: (value, width) =>
+          emitMaskValueToWidth(body, width, emitPendingInputValue(inputs.inputsByVarId, value, "pending flag input"))
       },
       { mask }
     );
@@ -237,7 +245,13 @@ export function createJitFlagState(
         inputs: inputs.inputRefs
       },
       {
-        emitValue: (value) => emitPendingInputValue(inputs.inputsByVarId, value, "pending flag condition input")
+        emitValue: (value) => emitPendingInputValue(inputs.inputsByVarId, value, "pending flag condition input"),
+        emitMaskedValue: (value, width) =>
+          emitMaskValueToWidth(
+            body,
+            width,
+            emitPendingInputValue(inputs.inputsByVarId, value, "pending flag condition input")
+          )
       }
     );
   }
@@ -269,7 +283,7 @@ export function createJitFlagState(
     inputsByVarId: ReadonlyMap<number, PendingInput>,
     value: IrValueExpr,
     context: string
-  ): void {
+  ): ValueWidth {
     switch (value.kind) {
       case "var": {
         const input = requiredPendingInput(inputsByVarId, value.id);
@@ -277,15 +291,14 @@ export function createJitFlagState(
         switch (input.kind) {
           case "local":
             body.localGet(input.local);
-            return;
+            return input.valueWidth;
           case "value":
-            emitDirectPendingInput(input.value, context);
-            return;
+            return emitDirectPendingInput(input.value, context);
         }
       }
       case "const32":
         body.i32Const(i32(value.value));
-        return;
+        return constValueWidth(value.value);
       case "nextEip":
         throw new Error(`nextEip is not a valid ${context}`);
       default:
@@ -293,11 +306,11 @@ export function createJitFlagState(
     }
   }
 
-  function emitDirectPendingInput(value: ValueRef, context: string): void {
+  function emitDirectPendingInput(value: ValueRef, context: string): ValueWidth {
     switch (value.kind) {
       case "const32":
         body.i32Const(i32(value.value));
-        return;
+        return constValueWidth(value.value);
       case "nextEip":
         throw new Error(`nextEip is not a valid ${context}`);
       default:

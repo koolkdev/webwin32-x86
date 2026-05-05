@@ -7,6 +7,7 @@ import type { StorageRef } from "#x86/ir/model/types.js";
 import { createCpuState } from "#x86/state/cpu-state.js";
 import { stateOffset } from "#backends/wasm/abi.js";
 import { wasmOpcode, wasmSectionId } from "#backends/wasm/encoder/types.js";
+import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
 import { jitIrOpDst, jitIrOpIsTerminator } from "#backends/wasm/jit/ir/semantics.js";
@@ -20,6 +21,7 @@ const startAddress = 0x1000;
 const preservedEflags = 0xffff_0000;
 const zeroFlag = 1 << 6;
 const addWraparoundEflags = 0x55;
+const subBorrowEflags = 0x95;
 const zeroResultEflags = 0x44;
 
 test("buildJitIrBlock builds instruction-local IR bodies", () => {
@@ -430,6 +432,87 @@ test("jit IR block handles partial-width ALU register writeback", async () => {
   strictEqual(result.state.eflags, (preservedEflags | addWraparoundEflags) >>> 0);
   strictEqual(result.state.eip, startAddress + 2);
   strictEqual(result.state.instructionCount, 1);
+});
+
+test("jit IR block keeps partial-width immediate ALU inside the destination lane", async () => {
+  const cases = [
+    {
+      name: "ADD AX wraps at 16 bits",
+      bytes: [0x66, 0x05, 0xff, 0xff],
+      eax: 0xffff_0001,
+      expectedEax: 0xffff_0000,
+      expectedEflags: addWraparoundEflags
+    },
+    {
+      name: "ADD AX does not carry into high EAX",
+      bytes: [0x66, 0x05, 0x01, 0x00],
+      eax: 0x1234_ffff,
+      expectedEax: 0x1234_0000,
+      expectedEflags: addWraparoundEflags
+    },
+    {
+      name: "SUB AX does not borrow from high EAX",
+      bytes: [0x66, 0x2d, 0x01, 0x00],
+      eax: 0x1234_0000,
+      expectedEax: 0x1234_ffff,
+      expectedEflags: subBorrowEflags
+    },
+    {
+      name: "ADD AL does not carry into high EAX",
+      bytes: [0x04, 0x01],
+      eax: 0xffff_00ff,
+      expectedEax: 0xffff_0000,
+      expectedEflags: addWraparoundEflags
+    },
+    {
+      name: "SUB AL does not borrow from high EAX",
+      bytes: [0x2c, 0x01],
+      eax: 0xffff_0000,
+      expectedEax: 0xffff_00ff,
+      expectedEflags: subBorrowEflags
+    }
+  ] as const;
+
+  for (const testCase of cases) {
+    const result = await runJitIrBlock(testCase.bytes, createCpuState({
+      eax: testCase.eax,
+      eflags: preservedEflags,
+      eip: startAddress
+    }));
+
+    strictEqual(result.state.eax, testCase.expectedEax, testCase.name);
+    strictEqual(result.state.eflags, (preservedEflags | testCase.expectedEflags) >>> 0, testCase.name);
+    strictEqual(result.state.eip, startAddress + testCase.bytes.length, testCase.name);
+    strictEqual(result.state.instructionCount, 1, testCase.name);
+  }
+});
+
+test("jit IR block omits redundant masks after byte and word memory loads", () => {
+  const movAxOpcodes = singleInstructionBodyOpcodes([0x66, 0x8b, 0x03]);
+  const movAlOpcodes = singleInstructionBodyOpcodes([0x8a, 0x03]);
+
+  assertNoMaskImmediatelyAfter(movAxOpcodes, wasmOpcode.i32Load16U);
+  assertNoMaskImmediatelyAfter(movAlOpcodes, wasmOpcode.i32Load8U);
+});
+
+test("jit IR block omits narrow bitwise operand masks", () => {
+  assertNoOperandMaskBefore(singleInstructionBodyOpcodes([0x66, 0x35, 0x32, 0x04]), wasmOpcode.i32Xor);
+  assertNoOperandMaskBefore(singleInstructionBodyOpcodes([0x34, 0x12]), wasmOpcode.i32Xor);
+  assertNoOperandMaskBefore(singleInstructionBodyOpcodes([0x66, 0x0d, 0x32, 0x04]), wasmOpcode.i32Or);
+});
+
+test("jit IR block keeps narrow add and sub operand masking", () => {
+  assertSomeOperandMaskBefore(singleInstructionBodyOpcodes([0x66, 0x05, 0x01, 0x00]), wasmOpcode.i32Add);
+  assertSomeOperandMaskBefore(singleInstructionBodyOpcodes([0x66, 0x2d, 0x01, 0x00]), wasmOpcode.i32Sub);
+});
+
+test("jit IR block keeps mixed partial-register bitwise mask count bounded", () => {
+  const movAh = ok(decodeBytes([0xb4, 0x07], startAddress));
+  const movEbxEax = ok(decodeBytes([0x89, 0xc3], movAh.nextEip));
+  const xorAx = ok(decodeBytes([0x66, 0x35, 0x32, 0x04], movEbxEax.nextEip));
+  const opcodes = jitBlockBodyOpcodes(buildJitIrBlock([movAh, movEbxEax, xorAx]));
+
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32And) <= 9, true);
 });
 
 test("jit IR block emits cmovcc as a conditional register write", async () => {
@@ -882,6 +965,60 @@ function codegenIr(block: ReturnType<typeof buildJitIrBlock>): readonly JitIrOp[
   return buildJitCodegenIr(planJitCodegen(optimizeJitIrBlock(block))).instructions.flatMap(
     (instruction) => instruction.ir
   );
+}
+
+function singleInstructionBodyOpcodes(bytes: readonly number[]): readonly number[] {
+  return jitBlockBodyOpcodes(buildJitIrBlock([ok(decodeBytes(bytes, startAddress))]));
+}
+
+function jitBlockBodyOpcodes(block: ReturnType<typeof buildJitIrBlock>): readonly number[] {
+  return wasmBodyOpcodes(extractOnlyFunctionBody(encodeJitIrBlock([block])));
+}
+
+function assertNoMaskImmediatelyAfter(opcodes: readonly number[], opcode: number): void {
+  const index = requiredOpcodeIndex(opcodes, opcode);
+
+  strictEqual(opcodes[index + 1] === wasmOpcode.i32Const && opcodes[index + 2] === wasmOpcode.i32And, false);
+}
+
+function assertNoOperandMaskBefore(opcodes: readonly number[], opcode: number): void {
+  const index = requiredOpcodeIndex(opcodes, opcode);
+
+  strictEqual(opcodes.slice(Math.max(0, index - 3), index).includes(wasmOpcode.i32And), false);
+}
+
+function assertSomeOperandMaskBefore(opcodes: readonly number[], opcode: number): void {
+  const matchingOpcodeHasMask = opcodeIndexes(opcodes, opcode).some((index) =>
+    opcodes.slice(Math.max(0, index - 12), index).includes(wasmOpcode.i32And)
+  );
+
+  strictEqual(matchingOpcodeHasMask, true);
+}
+
+function requiredOpcodeIndex(opcodes: readonly number[], opcode: number): number {
+  const index = opcodes.indexOf(opcode);
+
+  if (index === -1) {
+    throw new Error(`missing Wasm opcode in JIT body: 0x${opcode.toString(16)}`);
+  }
+
+  return index;
+}
+
+function opcodeIndexes(opcodes: readonly number[], opcode: number): readonly number[] {
+  const indexes: number[] = [];
+
+  for (let index = 0; index < opcodes.length; index += 1) {
+    if (opcodes[index] === opcode) {
+      indexes.push(index);
+    }
+  }
+
+  return indexes;
+}
+
+function countOpcode(opcodes: readonly number[], opcode: number): number {
+  return opcodeIndexes(opcodes, opcode).length;
 }
 
 function irOpDstId(op: JitIrOp): readonly number[] {

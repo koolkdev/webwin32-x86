@@ -9,11 +9,20 @@ import type {
   ValueExpr
 } from "#x86/ir/model/flags.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
-import type { IrFlagSetOp } from "#x86/ir/model/types.js";
+import type { IrFlagSetOp, ValueRef } from "#x86/ir/model/types.js";
+import type { OperandWidth } from "#x86/isa/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import type { WasmIrAluFlagsStorage } from "./alu-flags.js";
 import type { WasmIrEmitHelpers } from "./emit.js";
+import {
+  bitwiseResultValueWidth,
+  cleanValueWidth,
+  emitMaskValueToWidth,
+  maskWidthFromConstValue,
+  type ValueWidth
+} from "./value-width.js";
 
 const flagOrder = x86ArithmeticFlags satisfies readonly FlagName[];
 
@@ -38,10 +47,12 @@ export function emitSetFlags(
     return;
   }
 
+  const flagHelpers = helpersForFlagInputs(body, descriptor, helpers);
+
   aluFlags.emitStore(() => {
     aluFlags.emitLoad();
     body.i32Const(i32(x86ArithmeticFlagsMask & ~writeMask)).i32And();
-    emitWrittenFlags(body, defs, helpers, writeMask);
+    emitWrittenFlags(body, defs, flagHelpers, writeMask);
     body.i32Or();
   });
 }
@@ -115,8 +126,8 @@ function emitFlagExpr(body: WasmFunctionBodyEncoder, expr: FlagExpr, helpers: Wa
       body.i32Const(expr.bit).i32ShrU().i32Const(1).i32And();
       return;
     case "parity8":
-      emitValueExpr(body, expr.value, helpers);
-      body.i32Const(0xff).i32And().i32Popcnt().i32Const(1).i32And().i32Eqz();
+      emitMaskedValueExpr(body, expr.value, helpers, 8);
+      body.i32Popcnt().i32Const(1).i32And().i32Eqz();
       return;
     case "signBit":
       emitValueExpr(body, expr.value, helpers);
@@ -125,23 +136,138 @@ function emitFlagExpr(body: WasmFunctionBodyEncoder, expr: FlagExpr, helpers: Wa
   }
 }
 
-function emitValueExpr(body: WasmFunctionBodyEncoder, expr: ValueExpr, helpers: WasmIrEmitHelpers): void {
+function emitValueExpr(body: WasmFunctionBodyEncoder, expr: ValueExpr, helpers: WasmIrEmitHelpers): ValueWidth {
   switch (expr.kind) {
     case "var":
     case "const32":
     case "nextEip":
-      helpers.emitValue(expr);
-      return;
-    case "and":
-      emitValueExpr(body, expr.a, helpers);
-      emitValueExpr(body, expr.b, helpers);
+      return helpers.emitValue(expr);
+    case "and": {
+      const masked = maskedValueExpr(expr);
+
+      if (masked !== undefined) {
+        return emitMaskedValueExpr(body, masked.value, helpers, masked.width);
+      }
+
+      const left = emitValueExpr(body, expr.a, helpers);
+      const right = emitValueExpr(body, expr.b, helpers);
+
       body.i32And();
-      return;
-    case "xor":
-      emitValueExpr(body, expr.a, helpers);
-      emitValueExpr(body, expr.b, helpers);
+      return bitwiseResultValueWidth("i32.and", left, right);
+    }
+    case "xor": {
+      const left = emitValueExpr(body, expr.a, helpers);
+      const right = emitValueExpr(body, expr.b, helpers);
+
       body.i32Xor();
-      return;
+      return bitwiseResultValueWidth("i32.xor", left, right);
+    }
+  }
+}
+
+function emitMaskedValueExpr(
+  body: WasmFunctionBodyEncoder,
+  expr: ValueExpr,
+  helpers: WasmIrEmitHelpers,
+  width: OperandWidth
+): ValueWidth {
+  if (isIrValueExpr(expr)) {
+    return helpers.emitMaskedValue(expr, width);
+  }
+
+  return emitMaskValueToWidth(body, width, emitValueExpr(body, expr, helpers));
+}
+
+function helpersForFlagInputs(
+  body: WasmFunctionBodyEncoder,
+  descriptor: IrFlagSetOp,
+  helpers: WasmIrEmitHelpers
+): WasmIrEmitHelpers {
+  const width = descriptor.width ?? 32;
+  const result = descriptor.inputs.result;
+
+  if (width === 32 || result === undefined) {
+    return helpers;
+  }
+
+  const local = body.addLocal(wasmValueType.i32);
+
+  helpers.emitMaskedValue(result, width);
+  body.localSet(local);
+
+  const valueWidth = cleanValueWidth(width);
+
+  return {
+    emitValue: (value, options) => {
+      if (!isValueRef(value) || !sameValueRef(value, result)) {
+        return helpers.emitValue(value, options);
+      }
+
+      body.localGet(local);
+
+      if (options?.requestedWidth === undefined) {
+        return valueWidth;
+      }
+
+      return options.requestedWidth === 32 ? valueWidth : emitMaskValueToWidth(body, options.requestedWidth, valueWidth);
+    },
+    emitMaskedValue: (value, requestedWidth) => {
+      if (!isValueRef(value) || !sameValueRef(value, result)) {
+        return helpers.emitMaskedValue(value, requestedWidth);
+      }
+
+      body.localGet(local);
+      return emitMaskValueToWidth(body, requestedWidth, valueWidth);
+    }
+  };
+}
+
+function maskedValueExpr(
+  expr: Extract<ValueExpr, { kind: "and" }>
+): Readonly<{ value: ValueExpr; width: OperandWidth }> | undefined {
+  const rightWidth = constMaskWidth(expr.b);
+
+  if (rightWidth !== undefined) {
+    return { value: expr.a, width: rightWidth };
+  }
+
+  const leftWidth = constMaskWidth(expr.a);
+
+  return leftWidth === undefined ? undefined : { value: expr.b, width: leftWidth };
+}
+
+function constMaskWidth(expr: ValueExpr): OperandWidth | undefined {
+  return expr.kind === "const32" ? maskWidthFromConstValue(expr.value) : undefined;
+}
+
+function isIrValueExpr(expr: ValueExpr): expr is ValueRef {
+  switch (expr.kind) {
+    case "var":
+    case "const32":
+    case "nextEip":
+      return true;
+    case "and":
+    case "xor":
+      return false;
+  }
+}
+
+function isValueRef(value: { kind: string }): value is ValueRef {
+  return value.kind === "var" || value.kind === "const32" || value.kind === "nextEip";
+}
+
+function sameValueRef(left: ValueRef, right: ValueRef): boolean {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+
+  switch (left.kind) {
+    case "var":
+      return left.id === (right as Extract<ValueRef, { kind: "var" }>).id;
+    case "const32":
+      return left.value === (right as Extract<ValueRef, { kind: "const32" }>).value;
+    case "nextEip":
+      return true;
   }
 }
 
