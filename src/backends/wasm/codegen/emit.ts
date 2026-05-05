@@ -23,22 +23,22 @@ export type WasmIrEmitContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
   expression?: IrExpressionOptions;
-  emitGet32(source: IrStorageExpr, accessWidth: OperandWidth, helpers: WasmIrEmitHelpers): void;
-  emitSet32(
+  emitGet(source: IrStorageExpr, accessWidth: OperandWidth, helpers: WasmIrEmitHelpers): void;
+  emitSet(
     target: IrStorageExpr,
     value: IrValueExpr,
     accessWidth: OperandWidth,
     helpers: WasmIrEmitHelpers,
     op: IrSetExprOp
   ): void;
-  emitSet32If(
+  emitSetIf(
     condition: IrValueExpr,
     target: IrStorageExpr,
     value: IrValueExpr,
     accessWidth: OperandWidth,
     helpers: WasmIrEmitHelpers
   ): void;
-  emitAddress32(source: IrStorageExpr, helpers: WasmIrEmitHelpers): void;
+  emitAddress(source: IrStorageExpr, helpers: WasmIrEmitHelpers): void;
   emitSetFlags(descriptor: IrFlagSetOp, helpers: WasmIrEmitHelpers): void;
   emitMaterializeFlags(mask: number, helpers: WasmIrEmitHelpers): void;
   emitBoundaryFlags(mask: number, helpers: WasmIrEmitHelpers): void;
@@ -106,10 +106,10 @@ class IrExprWasmEmitter {
         this.#context.body.localSet(this.#wasmLocalForVar(op.dst.id));
         return;
       case "set":
-        this.#context.emitSet32(op.target, op.value, op.accessWidth, this.#helpers, op);
+        this.#context.emitSet(op.target, op.value, op.accessWidth, this.#helpers, op);
         return;
       case "set.if":
-        this.#context.emitSet32If(op.condition, op.target, op.value, op.accessWidth, this.#helpers);
+        this.#context.emitSetIf(op.condition, op.target, op.value, op.accessWidth, this.#helpers);
         return;
       case "flags.set":
         this.#context.emitSetFlags(op, this.#helpers);
@@ -146,11 +146,11 @@ class IrExprWasmEmitter {
       case "nextEip":
         this.#context.emitNextEip(this.#helpers);
         return;
-      case "src32":
-        this.#context.emitGet32(value.source, value.accessWidth, this.#helpers);
+      case "source":
+        this.#context.emitGet(value.source, value.accessWidth, this.#helpers);
         return;
       case "address":
-        this.#context.emitAddress32(value.operand, this.#helpers);
+        this.#context.emitAddress(value.operand, this.#helpers);
         return;
       case "aluFlags.condition":
         this.#context.emitAluFlagsCondition(value.cc);

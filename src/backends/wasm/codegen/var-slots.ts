@@ -149,7 +149,7 @@ function collectValueVarUses(value: IrValueExpr, visit: (id: number) => void): v
         collectValueVarUses(requiredFlagProducerConditionInput(value, name), visit);
       }
       return;
-    case "src32":
+    case "source":
       collectStorageVarUses(value.source, visit);
       return;
     case "i32.add":

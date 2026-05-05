@@ -14,19 +14,19 @@ export type JitFlagProducerConditionOp = IrFlagProducerConditionDescriptor & Rea
   dst: VarRef;
 }>;
 
-export type JitSet32Role = "registerMaterialization";
+export type JitSetRole = "registerMaterialization";
 
-export type JitSet32Op = Extract<IrOp, { op: "set" }> & Readonly<{
-  role?: JitSet32Role;
+export type JitSetOp = Extract<IrOp, { op: "set" }> & Readonly<{
+  role?: JitSetRole;
 }>;
 
-export type JitRegisterMaterializationOp = JitSet32Op & Readonly<{
+export type JitRegisterMaterializationOp = JitSetOp & Readonly<{
   role: "registerMaterialization";
 }>;
 
 export type JitIrOp =
   | Exclude<IrOp, Extract<IrOp, { op: "set" }>>
-  | JitSet32Op
+  | JitSetOp
   | JitRegisterMaterializationOp
   | JitFlagProducerConditionOp;
 export type JitIrBody = readonly JitIrOp[];

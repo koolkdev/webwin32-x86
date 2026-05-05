@@ -140,11 +140,11 @@ function emitTestProgram(program: IrBlock): WasmFunctionBodyEncoder {
     body,
     scratch,
     expression: { canInlineGet: () => true },
-    emitGet32: (source) => emitGet32(body, regLocals, source),
-    emitSet32: (target, value, _accessWidth, helpers) => emitSet32(body, regLocals, target, value, helpers),
-    emitSet32If: (condition, target, value, _accessWidth, helpers) =>
-      emitSet32If(body, regLocals, condition, target, value, helpers),
-    emitAddress32: (source) => {
+    emitGet: (source) => emitGet(body, regLocals, source),
+    emitSet: (target, value, _accessWidth, helpers) => emitSet(body, regLocals, target, value, helpers),
+    emitSetIf: (condition, target, value, _accessWidth, helpers) =>
+      emitSetIf(body, regLocals, condition, target, value, helpers),
+    emitAddress: (source) => {
       if (source.kind !== "operand") {
         unsupported(`${source.kind} address`);
       }
@@ -196,11 +196,11 @@ function emitWithTrackingScratch(
     body,
     scratch,
     expression,
-    emitGet32: (source) => emitGet32(body, regLocals, source),
-    emitSet32: (target, value, _accessWidth, helpers) => emitSet32(body, regLocals, target, value, helpers),
-    emitSet32If: (condition, target, value, _accessWidth, helpers) =>
-      emitSet32If(body, regLocals, condition, target, value, helpers),
-    emitAddress32: () => unsupported("address"),
+    emitGet: (source) => emitGet(body, regLocals, source),
+    emitSet: (target, value, _accessWidth, helpers) => emitSet(body, regLocals, target, value, helpers),
+    emitSetIf: (condition, target, value, _accessWidth, helpers) =>
+      emitSetIf(body, regLocals, condition, target, value, helpers),
+    emitAddress: () => unsupported("address"),
     emitSetFlags: () => unsupported("flags.set"),
     emitMaterializeFlags: () => unsupported("flags.materialize"),
     emitBoundaryFlags: () => unsupported("flags.boundary"),
@@ -227,7 +227,7 @@ function emitWithTrackingScratch(
   return scratch;
 }
 
-function emitGet32(
+function emitGet(
   body: WasmFunctionBodyEncoder,
   regLocals: Partial<Record<Reg32, number>>,
   source: IrStorageExpr
@@ -247,7 +247,7 @@ function emitGet32(
   }
 }
 
-function emitSet32(
+function emitSet(
   body: WasmFunctionBodyEncoder,
   regLocals: Partial<Record<Reg32, number>>,
   target: IrStorageExpr,
@@ -262,7 +262,7 @@ function emitSet32(
   body.localSet(requireRegLocal(regLocals, target.reg));
 }
 
-function emitSet32If(
+function emitSetIf(
   body: WasmFunctionBodyEncoder,
   regLocals: Partial<Record<Reg32, number>>,
   condition: IrValueExpr,
@@ -272,7 +272,7 @@ function emitSet32If(
 ): void {
   helpers.emitValue(condition);
   body.ifBlock();
-  emitSet32(body, regLocals, target, value, helpers);
+  emitSet(body, regLocals, target, value, helpers);
   body.endBlock();
 }
 

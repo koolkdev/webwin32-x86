@@ -22,7 +22,7 @@ export type IrStorageExpr =
 
 export type IrValueExpr =
   | ValueRef
-  | Readonly<{ kind: "src32"; source: IrStorageExpr; accessWidth: OperandWidth }>
+  | Readonly<{ kind: "source"; source: IrStorageExpr; accessWidth: OperandWidth }>
   | Readonly<{ kind: "address"; operand: OperandRef }>
   | Readonly<{ kind: "aluFlags.condition"; cc: ConditionCode }>
   | Readonly<{
@@ -118,7 +118,7 @@ class ExpressionBuilder {
         case "get":
           this.#defineValue(
             op.dst,
-            { kind: "src32", source: this.#storageExpr(op.source), accessWidth: op.accessWidth ?? 32 },
+            { kind: "source", source: this.#storageExpr(op.source), accessWidth: op.accessWidth ?? 32 },
             this.options.canInlineGet?.(op.source) === true
           );
           break;

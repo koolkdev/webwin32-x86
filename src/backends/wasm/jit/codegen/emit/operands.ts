@@ -13,7 +13,7 @@ import type { JitExitPoint } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
 import type { JitIrContext } from "./ir-context.js";
 
-export function canInlineJitGet32(context: JitIrContext, source: StorageRef): boolean {
+export function canInlineJitGet(context: JitIrContext, source: StorageRef): boolean {
   switch (source.kind) {
     case "reg":
       return true;
@@ -27,7 +27,7 @@ export function canInlineJitGet32(context: JitIrContext, source: StorageRef): bo
   }
 }
 
-export function emitJitGet32(
+export function emitJitGet(
   context: JitIrContext,
   source: IrStorageExpr,
   accessWidth: OperandWidth,
@@ -37,7 +37,7 @@ export function emitJitGet32(
 
   switch (source.kind) {
     case "operand":
-      emitGetBinding32(context, operandBinding(context, source.index), accessWidth);
+      emitGetBinding(context, operandBinding(context, source.index), accessWidth);
       return;
     case "reg":
       regs.emitGetAlias(regAccess(source.reg, accessWidth));
@@ -49,7 +49,7 @@ export function emitJitGet32(
   }
 }
 
-export function emitJitSet32(
+export function emitJitSet(
   context: JitIrContext,
   target: IrStorageExpr,
   value: IrValueExpr,
@@ -60,7 +60,7 @@ export function emitJitSet32(
 
   switch (target.kind) {
     case "operand":
-      emitSetBinding32(context, operandBinding(context, target.index), value, helpers);
+      emitSetBinding(context, operandBinding(context, target.index), value, helpers);
       return;
     case "reg":
       regs.emitSetAlias(regAccess(target.reg, accessWidth), () => helpers.emitValue(value));
@@ -71,7 +71,7 @@ export function emitJitSet32(
   }
 }
 
-export function emitJitSet32If(
+export function emitJitSetIf(
   context: JitIrContext,
   condition: IrValueExpr,
   target: IrStorageExpr,
@@ -83,7 +83,7 @@ export function emitJitSet32If(
 
   switch (target.kind) {
     case "operand":
-      emitSetBinding32If(context, operandBinding(context, target.index), condition, value, accessWidth, helpers);
+      emitSetBindingIf(context, operandBinding(context, target.index), condition, value, accessWidth, helpers);
       return;
     case "reg":
       regs.emitSetAliasIf(
@@ -97,7 +97,7 @@ export function emitJitSet32If(
   }
 }
 
-export function emitJitAddress32(context: JitIrContext, source: IrStorageExpr): void {
+export function emitJitAddress(context: JitIrContext, source: IrStorageExpr): void {
   if (source.kind !== "operand") {
     throw new Error(`unsupported address source for JIT IR: ${source.kind}`);
   }
@@ -108,10 +108,10 @@ export function emitJitAddress32(context: JitIrContext, source: IrStorageExpr): 
     throw new Error(`address operand is not memory: ${binding.kind}`);
   }
 
-  emitEffectiveAddress32(context.body, context.state.regs, binding.ea);
+  emitEffectiveAddress(context.body, context.state.regs, binding.ea);
 }
 
-function emitGetBinding32(context: JitIrContext, binding: JitOperandBinding, accessWidth: OperandWidth): void {
+function emitGetBinding(context: JitIrContext, binding: JitOperandBinding, accessWidth: OperandWidth): void {
   const regs = context.state.regs;
 
   switch (binding.kind) {
@@ -120,7 +120,7 @@ function emitGetBinding32(context: JitIrContext, binding: JitOperandBinding, acc
       regs.emitGetAlias(binding.alias);
       return;
     case "static.mem":
-      emitEffectiveAddress32(context.body, regs, binding.ea);
+      emitEffectiveAddress(context.body, regs, binding.ea);
       emitLoadGuestFromStack(context, accessWidth);
       return;
     case "static.imm32":
@@ -133,7 +133,7 @@ function emitGetBinding32(context: JitIrContext, binding: JitOperandBinding, acc
   }
 }
 
-function emitSetBinding32(
+function emitSetBinding(
   context: JitIrContext,
   binding: JitOperandBinding,
   value: IrValueExpr,
@@ -148,7 +148,7 @@ function emitSetBinding32(
     case "static.mem":
       emitStoreMem(
         context,
-        () => emitEffectiveAddress32(context.body, regs, binding.ea),
+        () => emitEffectiveAddress(context.body, regs, binding.ea),
         () => helpers.emitValue(value),
         binding.ea.accessWidth
       );
@@ -159,7 +159,7 @@ function emitSetBinding32(
   }
 }
 
-function emitSetBinding32If(
+function emitSetBindingIf(
   context: JitIrContext,
   binding: JitOperandBinding,
   condition: IrValueExpr,
@@ -182,7 +182,7 @@ function emitSetBinding32If(
   }
 }
 
-function emitEffectiveAddress32(body: JitIrContext["body"], regs: WasmIrReg32Storage, ea: MemOperand): void {
+function emitEffectiveAddress(body: JitIrContext["body"], regs: WasmIrReg32Storage, ea: MemOperand): void {
   let hasTerm = false;
 
   if (ea.base !== undefined) {

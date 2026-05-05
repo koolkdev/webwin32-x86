@@ -18,11 +18,11 @@ import {
   emitJitNextEip
 } from "./control.js";
 import {
-  canInlineJitGet32,
-  emitJitAddress32,
-  emitJitGet32,
-  emitJitSet32,
-  emitJitSet32If
+  canInlineJitGet,
+  emitJitAddress,
+  emitJitGet,
+  emitJitSet,
+  emitJitSetIf
 } from "./operands.js";
 import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
@@ -151,13 +151,13 @@ function emitJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["i
   emitIrToWasm(ir, {
     body: jitContext.body,
     scratch: jitContext.scratch,
-    expression: { canInlineGet: (source) => canInlineJitGet32(jitContext, source) },
-    emitGet32: (source, accessWidth, helpers) => emitJitGet32(jitContext, source, accessWidth, helpers),
-    emitSet32: (target, value, accessWidth, helpers, op) =>
-      emitJitSet32WithRole(jitContext, target, value, accessWidth, helpers, op),
-    emitSet32If: (condition, target, value, accessWidth, helpers) =>
-      emitJitSet32If(jitContext, condition, target, value, accessWidth, helpers),
-    emitAddress32: (source) => emitJitAddress32(jitContext, source),
+    expression: { canInlineGet: (source) => canInlineJitGet(jitContext, source) },
+    emitGet: (source, accessWidth, helpers) => emitJitGet(jitContext, source, accessWidth, helpers),
+    emitSet: (target, value, accessWidth, helpers, op) =>
+      emitJitSetWithRole(jitContext, target, value, accessWidth, helpers, op),
+    emitSetIf: (condition, target, value, accessWidth, helpers) =>
+      emitJitSetIf(jitContext, condition, target, value, accessWidth, helpers),
+    emitAddress: (source) => emitJitAddress(jitContext, source),
     emitSetFlags: (descriptor, helpers) =>
       jitContext.state.flags.emitSet(descriptor, helpers),
     emitMaterializeFlags: (mask) => jitContext.state.flags.emitMaterialize(mask),
@@ -173,7 +173,7 @@ function emitJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["i
   });
 }
 
-function emitJitSet32WithRole(
+function emitJitSetWithRole(
   jitContext: JitIrContext,
   target: IrStorageExpr,
   value: IrValueExpr,
@@ -181,7 +181,7 @@ function emitJitSet32WithRole(
   helpers: WasmIrEmitHelpers,
   op: IrSetExprOp
 ): void {
-  emitJitSet32(jitContext, target, value, accessWidth, helpers);
+  emitJitSet(jitContext, target, value, accessWidth, helpers);
 
   if (op.role !== "registerMaterialization") {
     return;

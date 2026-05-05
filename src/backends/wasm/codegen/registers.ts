@@ -56,7 +56,7 @@ export function emitStoreRegAlias(
   body.i32Or().localSet(locals[alias.base]);
 }
 
-export function emitLoadReg32Access(
+export function emitLoadRegAccess(
   body: WasmFunctionBodyEncoder,
   locals: Readonly<Record<Reg32, number>>,
   reg: Reg32,
@@ -66,7 +66,7 @@ export function emitLoadReg32Access(
   emitMaskValueToWidth(body, width);
 }
 
-export function emitStoreReg32Access(
+export function emitStoreRegAccess(
   body: WasmFunctionBodyEncoder,
   locals: Readonly<Record<Reg32, number>>,
   reg: Reg32,

@@ -15,10 +15,10 @@ import {
   emitWasmIrStoreGuest
 } from "#backends/wasm/codegen/memory.js";
 import {
-  emitLoadReg32Access as emitLoadRegAccess,
+  emitLoadRegAccess,
   emitLoadRegAlias,
   emitMaskValueToWidth,
-  emitStoreReg32Access as emitStoreRegAccess,
+  emitStoreRegAccess,
   emitStoreRegAlias
 } from "#backends/wasm/codegen/registers.js";
 import {
@@ -71,12 +71,12 @@ export function emitInterpreterIrWithContext(block: IrBlock, context: Interprete
     body: context.body,
     scratch: context.scratch,
     expression: { canInlineGet: (source) => canInlineGet(context, source) },
-    emitGet32: (source, accessWidth, helpers) => emitGetStorage(context, source, accessWidth, helpers),
-    emitSet32: (target, value, accessWidth, helpers) =>
+    emitGet: (source, accessWidth, helpers) => emitGetStorage(context, source, accessWidth, helpers),
+    emitSet: (target, value, accessWidth, helpers) =>
       emitSetStorage(context, target, value, accessWidth, helpers),
-    emitSet32If: (condition, target, value, accessWidth, helpers) =>
+    emitSetIf: (condition, target, value, accessWidth, helpers) =>
       emitSetStorageIf(context, condition, target, value, accessWidth, helpers),
-    emitAddress32: (source) => emitAddress(context, source),
+    emitAddress: (source) => emitAddress(context, source),
     emitSetFlags: (descriptor, helpers) =>
       emitSetFlags(context.body, aluFlags, descriptor, helpers),
     emitMaterializeFlags: () => {},

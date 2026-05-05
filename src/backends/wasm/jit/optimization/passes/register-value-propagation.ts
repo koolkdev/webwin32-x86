@@ -117,13 +117,13 @@ function propagateOp(
 ): void {
   switch (op.op) {
     case "get":
-      propagateGet32(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
+      propagateGet(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
       break;
     case "address":
-      propagateAddress32(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
+      propagateAddress(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
       break;
     case "set":
-      propagateSet32(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
+      propagateSet(instruction, instructionIndex, op, opIndex, indexes, rewrite, stats);
       break;
     case "set.if":
       copyOp(instruction, op, rewrite);
@@ -134,7 +134,7 @@ function propagateOp(
   }
 }
 
-function propagateGet32(
+function propagateGet(
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
   op: Extract<JitIrOp, { op: "get" }>,
@@ -154,7 +154,7 @@ function propagateGet32(
   stats.foldedReadCount += 1;
 }
 
-function propagateAddress32(
+function propagateAddress(
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
   op: Extract<JitIrOp, { op: "address" }>,
@@ -174,7 +174,7 @@ function propagateAddress32(
   stats.foldedAddressCount += 1;
 }
 
-function propagateSet32(
+function propagateSet(
   instruction: JitIrBlockInstruction,
   instructionIndex: number,
   op: Extract<JitIrOp, { op: "set" }>,

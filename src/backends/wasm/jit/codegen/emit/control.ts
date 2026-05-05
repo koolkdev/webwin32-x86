@@ -180,7 +180,7 @@ function staticControlTarget(context: JitIrContext, target: IrValueExpr): number
       return u32(target.value);
     case "nextEip":
       return u32(instruction.nextEip);
-    case "src32": {
+    case "source": {
       if (target.source.kind !== "operand") {
         return undefined;
       }
