@@ -7,12 +7,15 @@ import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js
 import { wasmOpcode } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { createJitReg32State } from "#backends/wasm/jit/state/register-state.js";
+import { emptyRegValueState, recordPartialValue } from "#backends/wasm/jit/state/register-lanes.js";
+import { planRegisterExitStore } from "#backends/wasm/jit/state/register-store-plan.js";
 import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
 import { runJitIrBlock } from "./helpers.js";
 
 const startAddress = 0x1000;
 const al: RegisterAlias = { name: "al", base: "eax", bitOffset: 0, width: 8 };
 const ah: RegisterAlias = { name: "ah", base: "eax", bitOffset: 8, width: 8 };
+const bl: RegisterAlias = { name: "bl", base: "ebx", bitOffset: 0, width: 8 };
 const ax: RegisterAlias = { name: "ax", base: "eax", bitOffset: 0, width: 16 };
 
 test("jit register state writes register-only instructions to committed locals", () => {
@@ -188,6 +191,71 @@ test("jit register exit stores coalesce al and ah partial writes into a word sto
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Store), 0);
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Store8), 0);
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Store16), 1);
+});
+
+test("jit register exit store planner keeps isolated byte writes narrow", () => {
+  const state = emptyRegValueState();
+
+  recordPartialValue(state, ah, 7);
+
+  deepStrictEqual(planRegisterExitStore(state), {
+    kind: "partial",
+    stores: [
+      {
+        kind: "store8",
+        byteIndex: 1,
+        source: { local: 7, bitOffset: 0 }
+      }
+    ]
+  });
+});
+
+test("jit register exit store planner coalesces adjacent byte writes into word stores", () => {
+  const state = emptyRegValueState();
+
+  recordPartialValue(state, al, 7);
+  recordPartialValue(state, ah, 8);
+
+  deepStrictEqual(planRegisterExitStore(state), {
+    kind: "partial",
+    stores: [
+      {
+        kind: "store16",
+        byteIndex: 0,
+        sources: [
+          { local: 7, bitOffset: 0 },
+          { local: 8, bitOffset: 0 }
+        ]
+      }
+    ]
+  });
+});
+
+test("jit register state keeps byte-only alu updates narrow", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitSetAlias(ah, () => {
+    body.i32Const(0x05);
+  });
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitSetAlias(ah, () => {
+    regs.emitGetAlias(ah);
+    regs.emitGetAlias(bl);
+    body.i32Xor();
+  });
+  regs.commitPending();
+  regs.emitCommittedStore("eax");
+  body.end();
+
+  const opcodes = wasmBodyOpcodes(body.encode());
+
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Load), 1);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store8), 1);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store16), 0);
 });
 
 test("jit register state stores full registers after a partial write is materialized by a full read", () => {

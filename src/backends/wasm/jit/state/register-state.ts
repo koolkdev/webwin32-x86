@@ -1,11 +1,32 @@
 import type { OperandWidth, RegisterAlias, Reg32 } from "#x86/isa/types.js";
-import { i32, widthMask } from "#x86/state/cpu-state.js";
-import { stateOffset, wasmMemoryIndex } from "#backends/wasm/abi.js";
+import { stateOffset } from "#backends/wasm/abi.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import type { WasmIrReg32Storage } from "#backends/wasm/codegen/registers.js";
 import { emitMaskValueToWidth } from "#backends/wasm/codegen/registers.js";
 import { emitLoadStateU32, emitStoreStateU32 } from "#backends/wasm/codegen/state.js";
+import {
+  byteCount,
+  byteSourcesForAlias,
+  clearPartialBytes,
+  directFullLocalForRead,
+  emptyRegValueState,
+  fullRegAccess,
+  fullWidth,
+  recordPartialValue,
+  type RegValueState
+} from "./register-lanes.js";
+import {
+  emitByteSource,
+  emitComposedByteSources,
+  emitExtractAliasFromLocal,
+  emitMergedBytes,
+  emitStoreAliasValueIntoFullLocal,
+  emitStoreByteSourceIntoFullLocal,
+  emitStoreStateU16,
+  emitStoreStateU8
+} from "./register-emit.js";
+import { planRegisterExitStore, type RegisterStoreOp } from "./register-store-plan.js";
 
 export type JitReg32InstructionOptions = Readonly<{
   preserveCommittedRegs: boolean;
@@ -21,21 +42,6 @@ export type JitReg32State = WasmIrReg32Storage & Readonly<{
   emitSetIf(reg: Reg32, emitCondition: () => void, emitValue: () => void): void;
   emitCommittedStore(reg: Reg32): void;
 }>;
-
-type ByteSource = Readonly<{
-  local: number;
-  bitOffset: number;
-}>;
-
-type RegValueState = {
-  fullLocal?: number;
-  bytes: (ByteSource | undefined)[];
-};
-
-const fullWidth = 32;
-const byteWidth = 8;
-const byteMask = 0xff;
-const byteCount = 4;
 
 export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32State {
   const committedStates = new Map<Reg32, RegValueState>();
@@ -76,8 +82,10 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
         throw new Error(`dirty JIT register has no committed state: ${reg}`);
       }
 
-      if (state.fullLocal === undefined && hasPartialBytes(state)) {
-        emitPartialStateStores(reg, state);
+      const storePlan = planRegisterExitStore(state);
+
+      if (storePlan.kind === "partial") {
+        emitPartialStateStores(reg, storePlan.stores);
         return;
       }
 
@@ -93,21 +101,21 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     const directFullLocal = directFullLocalForRead(alias, pending, committed);
 
     if (directFullLocal !== undefined) {
-      emitExtractAliasFromLocal(directFullLocal, alias);
+      emitExtractAliasFromLocal(body, directFullLocal, alias);
       return;
     }
 
     const byteSources = byteSourcesForAlias(alias, pending, committed);
 
     if (byteSources !== undefined) {
-      emitComposedByteSources(byteSources);
+      emitComposedByteSources(body, byteSources);
       return;
     }
 
     const target = pending ?? committedStateForReg(alias.base);
     const fullLocal = materializeFull(alias.base, target, pending === undefined ? undefined : committed);
 
-    emitExtractAliasFromLocal(fullLocal, alias);
+    emitExtractAliasFromLocal(body, fullLocal, alias);
   }
 
   function emitSetAlias(alias: RegisterAlias, emitValue: () => void): void {
@@ -126,7 +134,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     const valueLocal = localForMaskedValue(alias.width, emitValue);
 
     if (state.fullLocal !== undefined) {
-      emitStoreAliasValueIntoFullLocal(state.fullLocal, alias, valueLocal);
+      emitStoreAliasValueIntoFullLocal(body, state.fullLocal, alias, valueLocal);
       return;
     }
 
@@ -147,7 +155,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     } else {
       const valueLocal = localForMaskedValue(alias.width, emitValue);
 
-      emitStoreAliasValueIntoFullLocal(fullLocal, alias, valueLocal);
+      emitStoreAliasValueIntoFullLocal(body, fullLocal, alias, valueLocal);
     }
 
     body.endBlock();
@@ -199,110 +207,27 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     } else {
       emitLoadStateU32(body, stateOffset[reg]);
       if (base !== undefined) {
-        emitMergedBytes(base);
+        emitMergedBytes(body, base);
       }
     }
 
-    emitMergedBytes(state);
+    emitMergedBytes(body, state);
   }
 
-  function emitMergedBytes(state: RegValueState): void {
-    if (state.fullLocal !== undefined) {
-      return;
-    }
-
-    for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
-      const source = state.bytes[byteIndex];
-
-      if (source === undefined) {
-        continue;
-      }
-
-      const shift = byteIndex * byteWidth;
-      const shiftedMask = byteMask << shift;
-
-      body.i32Const(i32(~shiftedMask)).i32And();
-      emitByteSource(source);
-
-      if (shift !== 0) {
-        body.i32Const(shift).i32Shl();
-      }
-
-      body.i32Or();
-    }
-  }
-
-  function emitPartialStateStores(reg: Reg32, state: RegValueState): void {
+  function emitPartialStateStores(reg: Reg32, stores: readonly RegisterStoreOp[]): void {
     const baseOffset = stateOffset[reg];
-    let byteIndex = 0;
 
-    while (byteIndex < byteCount) {
-      const source = state.bytes[byteIndex];
-
-      if (source === undefined) {
-        byteIndex += 1;
-        continue;
-      }
-
-      const nextSource = state.bytes[byteIndex + 1];
-
-      if (nextSource !== undefined) {
-        emitStoreStateU16(baseOffset + byteIndex, () => {
-          emitComposedByteSources([source, nextSource]);
+    for (const store of stores) {
+      if (store.kind === "store16") {
+        emitStoreStateU16(body, baseOffset + store.byteIndex, () => {
+          emitComposedByteSources(body, store.sources);
         });
-        byteIndex += 2;
         continue;
       }
 
-      emitStoreStateU8(baseOffset + byteIndex, () => {
-        emitByteSource(source);
+      emitStoreStateU8(body, baseOffset + store.byteIndex, () => {
+        emitByteSource(body, store.source);
       });
-      byteIndex += 1;
-    }
-  }
-
-  function emitStoreStateU8(offset: number, emitValue: () => void): void {
-    body.i32Const(0);
-    emitValue();
-    body.i32Store8({
-      align: 0,
-      memoryIndex: wasmMemoryIndex.state,
-      offset
-    });
-  }
-
-  function emitStoreStateU16(offset: number, emitValue: () => void): void {
-    body.i32Const(0);
-    emitValue();
-    body.i32Store16({
-      align: offset % 2 === 0 ? 1 : 0,
-      memoryIndex: wasmMemoryIndex.state,
-      offset
-    });
-  }
-
-  function emitStoreAliasValueIntoFullLocal(fullLocal: number, alias: RegisterAlias, valueLocal: number): void {
-    const shiftedMask = aliasMask(alias);
-
-    body.localGet(fullLocal).i32Const(i32(~shiftedMask)).i32And();
-    body.localGet(valueLocal);
-
-    if (alias.bitOffset !== 0) {
-      body.i32Const(alias.bitOffset).i32Shl();
-    }
-
-    body.i32Or().localSet(fullLocal);
-  }
-
-  function recordPartialValue(state: RegValueState, alias: RegisterAlias, valueLocal: number): void {
-    const startByte = alias.bitOffset / byteWidth;
-    const bytes = alias.width / byteWidth;
-
-    for (let index = 0; index < bytes; index += 1) {
-      state.bytes[startByte + index] = {
-        local: valueLocal,
-        bitOffset: index * byteWidth
-      };
     }
   }
 
@@ -339,7 +264,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
         const byte = source.bytes[byteIndex];
 
         if (byte !== undefined) {
-          emitStoreByteSourceIntoFullLocal(target.fullLocal, byteIndex, byte);
+          emitStoreByteSourceIntoFullLocal(body, target.fullLocal, byteIndex, byte);
         }
       }
       return;
@@ -352,116 +277,6 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
         target.bytes[byteIndex] = byte;
       }
     }
-  }
-
-  function emitStoreByteSourceIntoFullLocal(fullLocal: number, byteIndex: number, source: ByteSource): void {
-    const shift = byteIndex * byteWidth;
-    const shiftedMask = byteMask << shift;
-
-    body.localGet(fullLocal).i32Const(i32(~shiftedMask)).i32And();
-    emitByteSource(source);
-
-    if (shift !== 0) {
-      body.i32Const(shift).i32Shl();
-    }
-
-    body.i32Or().localSet(fullLocal);
-  }
-
-  function emitExtractAliasFromLocal(local: number, alias: RegisterAlias): void {
-    body.localGet(local);
-
-    if (alias.bitOffset !== 0) {
-      body.i32Const(alias.bitOffset).i32ShrU();
-    }
-
-    emitMaskValueToWidth(body, alias.width);
-  }
-
-  function emitComposedByteSources(sources: readonly ByteSource[]): void {
-    for (let index = 0; index < sources.length; index += 1) {
-      emitByteSource(sources[index]!);
-
-      const shift = index * byteWidth;
-
-      if (shift !== 0) {
-        body.i32Const(shift).i32Shl();
-      }
-
-      if (index !== 0) {
-        body.i32Or();
-      }
-    }
-  }
-
-  function emitByteSource(source: ByteSource): void {
-    body.localGet(source.local);
-
-    if (source.bitOffset !== 0) {
-      body.i32Const(source.bitOffset).i32ShrU();
-    }
-
-    body.i32Const(byteMask).i32And();
-  }
-
-  function directFullLocalForRead(
-    alias: RegisterAlias,
-    pending: RegValueState | undefined,
-    committed: RegValueState | undefined
-  ): number | undefined {
-    if (pending?.fullLocal !== undefined) {
-      return pending.fullLocal;
-    }
-
-    if (pending !== undefined && hasPartialBytes(pending)) {
-      return undefined;
-    }
-
-    return committed?.fullLocal;
-  }
-
-  function byteSourcesForAlias(
-    alias: RegisterAlias,
-    pending: RegValueState | undefined,
-    committed: RegValueState | undefined
-  ): readonly ByteSource[] | undefined {
-    const startByte = alias.bitOffset / byteWidth;
-    const bytes = alias.width / byteWidth;
-    const sources: ByteSource[] = [];
-
-    for (let index = 0; index < bytes; index += 1) {
-      const source = byteSourceAt(startByte + index, pending, committed);
-
-      if (source === undefined) {
-        return undefined;
-      }
-
-      sources.push(source);
-    }
-
-    return sources;
-  }
-
-  function byteSourceAt(
-    byteIndex: number,
-    pending: RegValueState | undefined,
-    committed: RegValueState | undefined
-  ): ByteSource | undefined {
-    if (pending?.fullLocal !== undefined) {
-      return { local: pending.fullLocal, bitOffset: byteIndex * byteWidth };
-    }
-
-    const pendingByte = pending?.bytes[byteIndex];
-
-    if (pendingByte !== undefined) {
-      return pendingByte;
-    }
-
-    if (committed?.fullLocal !== undefined) {
-      return { local: committed.fullLocal, bitOffset: byteIndex * byteWidth };
-    }
-
-    return committed?.bytes[byteIndex];
   }
 
   function assertNoPending(): void {
@@ -480,26 +295,4 @@ function stateForReg(states: Map<Reg32, RegValueState>, reg: Reg32): RegValueSta
   }
 
   return state;
-}
-
-function emptyRegValueState(): RegValueState {
-  return {
-    bytes: new Array<ByteSource | undefined>(byteCount).fill(undefined)
-  };
-}
-
-function clearPartialBytes(state: RegValueState): void {
-  state.bytes.fill(undefined);
-}
-
-function hasPartialBytes(state: RegValueState): boolean {
-  return state.bytes.some((source) => source !== undefined);
-}
-
-function fullRegAccess(reg: Reg32): RegisterAlias {
-  return { name: reg, base: reg, bitOffset: 0, width: fullWidth };
-}
-
-function aliasMask(alias: RegisterAlias): number {
-  return (widthMask(alias.width) << alias.bitOffset) >>> 0;
 }
