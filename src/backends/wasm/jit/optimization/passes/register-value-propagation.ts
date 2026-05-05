@@ -3,7 +3,7 @@ import type { JitOptimizationPass } from "#backends/wasm/jit/optimization/pass.j
 import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir/semantics.js";
 import {
   assignJitValue,
-  materializeJitRegisterValue,
+  materializeJitRegisterValues,
   createJitInstructionRewrite,
   rewriteJitIrInstructionInto,
   type JitInstructionRewrite
@@ -219,10 +219,7 @@ function emitMaterializations(
   let materializedSetCount = 0;
 
   for (const materialization of materializations) {
-    for (const { reg, value } of materialization.values) {
-      materializeJitRegisterValue(rewrite, reg, value);
-      materializedSetCount += 1;
-    }
+    materializedSetCount += materializeJitRegisterValues(rewrite, materialization.values);
   }
 
   return materializedSetCount;

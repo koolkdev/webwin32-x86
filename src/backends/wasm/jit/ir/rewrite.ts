@@ -3,7 +3,7 @@ import type { ValueRef, VarRef } from "#x86/ir/model/types.js";
 import { jitIrOpDst } from "#backends/wasm/jit/ir/semantics.js";
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import type { JitBinaryValue, JitUnaryValue, JitValue } from "#backends/wasm/jit/ir/values.js";
-import { jitValueIsBinary, jitValueIsUnary } from "#backends/wasm/jit/ir/values.js";
+import { jitValueIsBinary, jitValueIsSymbolicReg, jitValueIsUnary } from "#backends/wasm/jit/ir/values.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 
 export type JitInstructionRewrite = {
@@ -68,13 +68,46 @@ export function materializeJitRegisterValue(
   rewrite: JitInstructionRewrite,
   reg: Reg32,
   value: JitValue
-): void {
+): boolean {
+  return materializeJitRegisterValues(rewrite, [{ reg, value }]) !== 0;
+}
+
+export function materializeJitRegisterValues(
+  rewrite: JitInstructionRewrite,
+  values: readonly Readonly<{ reg: Reg32; value: JitValue }>[]
+): number {
+  const refs = values.flatMap(({ reg, value }) =>
+    jitValueIsSymbolicReg(value, reg)
+      ? []
+      : [{ reg, value: emitJitValueRef(rewrite, value) }]
+  );
+
+  for (const { reg, value } of refs) {
+    rewrite.ops.push({
+      op: "set",
+      role: "registerMaterialization",
+      target: { kind: "reg", reg },
+      value
+    });
+  }
+
+  return refs.length;
+}
+
+function emitJitValueGet(
+  rewrite: JitInstructionRewrite,
+  value: Extract<JitValue, { kind: "reg" }>
+): ValueRef {
+  const dst = allocVar(rewrite);
+
   rewrite.ops.push({
-    op: "set",
-    role: "registerMaterialization",
-    target: { kind: "reg", reg },
-    value: emitJitValueRef(rewrite, value)
+    op: "get",
+    dst,
+    source: { kind: "reg", reg: value.reg },
+    role: "symbolicRead"
   });
+  rewrite.values.record(dst.id, value);
+  return dst;
 }
 
 export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitValue): ValueRef {
@@ -103,13 +136,8 @@ export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitValue)
   switch (value.kind) {
     case "const32":
       return { kind: "const32", value: value.value };
-    case "reg": {
-      const dst = allocVar(rewrite);
-
-      rewrite.ops.push({ op: "get", dst, source: { kind: "reg", reg: value.reg } });
-      rewrite.values.record(dst.id, value);
-      return dst;
-    }
+    case "reg":
+      return emitJitValueGet(rewrite, value);
   }
 }
 
@@ -133,7 +161,12 @@ export function assignJitValue(
       rewrite.ops.push({ op: "const32", dst, value: value.value });
       return;
     case "reg":
-      rewrite.ops.push({ op: "get", dst, source: { kind: "reg", reg: value.reg } });
+      rewrite.ops.push({
+        op: "get",
+        dst,
+        source: { kind: "reg", reg: value.reg },
+        role: "symbolicRead"
+      });
       return;
   }
 }

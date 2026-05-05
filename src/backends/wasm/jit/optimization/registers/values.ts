@@ -6,6 +6,7 @@ import {
   jitStorageHasRegisterValue,
   jitRegisterValuesReadByEffectiveAddress,
   jitValueReadsReg,
+  jitValueUsesSymbolicReg,
   jitValueForEffectiveAddress,
   jitValueForStorage
 } from "#backends/wasm/jit/ir/values.js";
@@ -94,7 +95,10 @@ export class JitRegisterValues {
     this.readCounts.delete(reg);
   }
 
-  deletePartialDependencies(clobberedReg: Reg32): void {
+  deletePartialDependencies(
+    clobberedReg: Reg32,
+    options: Readonly<{ includeSymbolicRegs?: boolean }> = {}
+  ): void {
     for (const [reg, state] of this.values) {
       if (state.full !== undefined) {
         continue;
@@ -105,7 +109,10 @@ export class JitRegisterValues {
         ...state.lanes.values()
       ];
 
-      if (values.some((value) => jitValueReadsReg(value, clobberedReg))) {
+      if (values.some((value) =>
+        jitValueReadsReg(value, clobberedReg) ||
+        (options.includeSymbolicRegs === true && jitValueUsesSymbolicReg(value, clobberedReg))
+      )) {
         this.delete(reg);
       }
     }

@@ -15,6 +15,11 @@ export type JitFlagProducerConditionOp = IrFlagProducerConditionDescriptor & Rea
 }>;
 
 export type JitSetRole = "registerMaterialization";
+export type JitGetRole = "symbolicRead";
+
+export type JitGetOp = Extract<IrOp, { op: "get" }> & Readonly<{
+  role?: JitGetRole;
+}>;
 
 export type JitSetOp = Extract<IrOp, { op: "set" }> & Readonly<{
   role?: JitSetRole;
@@ -25,7 +30,8 @@ export type JitRegisterMaterializationOp = JitSetOp & Readonly<{
 }>;
 
 export type JitIrOp =
-  | Exclude<IrOp, Extract<IrOp, { op: "set" }>>
+  | Exclude<IrOp, Extract<IrOp, { op: "get" | "set" }>>
+  | JitGetOp
   | JitSetOp
   | JitRegisterMaterializationOp
   | JitFlagProducerConditionOp;

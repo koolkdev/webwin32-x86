@@ -1,10 +1,12 @@
 import { flagProducerConditionInputNames } from "#x86/ir/model/flag-conditions.js";
 import type { ValueRef } from "#x86/ir/model/types.js";
+import type { Reg32 } from "#x86/isa/types.js";
 import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import { indexJitEffects } from "#backends/wasm/jit/ir/effects.js";
 import type { JitOptimizationPass } from "#backends/wasm/jit/optimization/pass.js";
 import { analyzeJitBarriers } from "#backends/wasm/jit/ir/barriers.js";
 import { analyzeJitReachingFlags } from "#backends/wasm/jit/optimization/analyses/reaching-flags.js";
+import type { JitFlagInput } from "#backends/wasm/jit/optimization/analyses/flag-sources.js";
 import {
   indexDirectFlagConditions,
   type JitDirectFlagCondition
@@ -119,11 +121,11 @@ function emitDirectFlagCondition(
   for (const inputName of inputNames) {
     const input = condition.inputs[inputName];
 
-    if (input?.kind !== "value") {
+    if (input === undefined || input.kind === "unmodeled") {
       throw new Error(`missing modeled flag condition input '${inputName}' for ${condition.source.producer}/${op.cc}`);
     }
 
-    inputs[inputName] = emitJitValueRef(rewrite, input.value);
+    inputs[inputName] = emitFlagInputRef(rewrite, input);
   }
 
   rewrite.ops.push({
@@ -136,6 +138,33 @@ function emitDirectFlagCondition(
     undefMask: condition.source.undefMask,
     inputs
   });
+}
+
+function emitFlagInputRef(
+  rewrite: ReturnType<typeof createJitInstructionRewrite>,
+  input: Exclude<JitFlagInput, { kind: "unmodeled" }>
+): ValueRef {
+  switch (input.kind) {
+    case "value":
+      return emitJitValueRef(rewrite, input.value);
+    case "reg":
+      return emitFlagRegInputRef(rewrite, input.reg);
+  }
+}
+
+function emitFlagRegInputRef(
+  rewrite: ReturnType<typeof createJitInstructionRewrite>,
+  reg: Reg32
+): ValueRef {
+  const dst = { kind: "var" as const, id: rewrite.nextVarId };
+
+  rewrite.nextVarId += 1;
+  rewrite.ops.push({
+    op: "get",
+    dst,
+    source: { kind: "reg", reg }
+  });
+  return dst;
 }
 
 function flagConditionInputShape(condition: JitDirectFlagCondition): Readonly<Record<string, ValueRef>> {

@@ -249,8 +249,7 @@ test("register value analysis materializes dependencies before clobbers", () => 
     reason: entry.reason,
     regs: entry.regs
   })), [
-    { opIndex: 3, reason: "clobber", regs: ["ebx"] },
-    { opIndex: 4, reason: "blockEnd", regs: ["eax"] }
+    { opIndex: 4, reason: "blockEnd", regs: ["eax", "ebx"] }
   ]);
 });
 

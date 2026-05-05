@@ -160,14 +160,36 @@ export function jitValueReadsReg(value: JitValue, reg: Reg32): boolean {
 
   switch (value.kind) {
     case "const32":
-      return false;
     case "reg":
-      return value.reg === reg;
+      return false;
   }
 }
 
 export function jitValueReadRegs(value: JitValue): readonly Reg32[] {
   return reg32.filter((reg) => jitValueReadsReg(value, reg));
+}
+
+export function jitValueMaterializationRegs(value: JitValue): readonly Reg32[] {
+  return reg32.filter((reg) =>
+    jitValueReadsReg(value, reg) || jitValueUsesSymbolicReg(value, reg)
+  );
+}
+
+export function jitValueUsesSymbolicReg(value: JitValue, reg: Reg32): boolean {
+  if (jitValueIsBinary(value)) {
+    return jitValueUsesSymbolicReg(value.a, reg) || jitValueUsesSymbolicReg(value.b, reg);
+  }
+
+  if (jitValueIsUnary(value)) {
+    return jitValueUsesSymbolicReg(value.value, reg);
+  }
+
+  switch (value.kind) {
+    case "const32":
+      return false;
+    case "reg":
+      return value.reg === reg;
+  }
 }
 
 export function jitValuesEqual(a: JitValue, b: JitValue): boolean {
@@ -207,6 +229,10 @@ export function jitValueCost(value: JitValue): number {
     case "reg":
       return 1;
   }
+}
+
+export function jitValueIsSymbolicReg(value: JitValue, reg?: Reg32): value is Extract<JitValue, { kind: "reg" }> {
+  return value.kind === "reg" && (reg === undefined || value.reg === reg);
 }
 
 export function jitValueIsBinary(value: JitValue): value is JitBinaryValue {

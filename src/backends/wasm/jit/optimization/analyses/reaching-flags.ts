@@ -12,7 +12,9 @@ import {
   type JitBarrierAnalysis
 } from "#backends/wasm/jit/ir/barriers.js";
 import { jitConditionUseAt } from "#backends/wasm/jit/ir/effects.js";
+import { jitStorageRegisterAccess } from "#backends/wasm/jit/ir/register-lane-values.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
+import { JitRegisterValues } from "#backends/wasm/jit/optimization/registers/values.js";
 import {
   JitFlagOwners,
   type JitFlagOwner,
@@ -56,6 +58,7 @@ export function analyzeJitReachingFlags(
   barriers: JitBarrierAnalysis = analyzeJitBarriers(block)
 ): JitReachingFlags {
   const owners = JitFlagOwners.incoming();
+  const registers = new JitRegisterValues();
   const sources: JitFlagSource[] = [];
   const reads: JitReachingFlagRead[] = [];
   let nextSourceId = 0;
@@ -111,11 +114,17 @@ export function analyzeJitReachingFlags(
       }
     }
 
-    if (values.recordOp(op, instruction)) {
+    if (values.recordOp(op, instruction, registers.trackedRegisterValues)) {
       return;
     }
 
     switch (op.op) {
+      case "set":
+        recordRegisterSet(op, instruction, values);
+        break;
+      case "set.if":
+        deleteRegisterSet(op, instruction);
+        break;
       case "flags.set": {
         const source = buildJitFlagSource(nextSourceId, instructionIndex, opIndex, op, values);
 
@@ -183,6 +192,37 @@ export function analyzeJitReachingFlags(
       ...read,
       owners: readOwners.forMask(read.requiredMask)
     });
+  }
+
+  function recordRegisterSet(
+    op: Extract<JitIrOp, { op: "set" }>,
+    instruction: JitIrBlockInstruction,
+    values: JitValueTracker
+  ): void {
+    const access = jitStorageRegisterAccess(op.target, instruction.operands, op.accessWidth ?? 32);
+
+    if (access === undefined) {
+      return;
+    }
+
+    const value = values.valueFor(op.value);
+
+    if (value === undefined) {
+      registers.delete(access.reg);
+    } else {
+      registers.write(access.reg, access.width, access.bitOffset, value);
+    }
+  }
+
+  function deleteRegisterSet(
+    op: Extract<JitIrOp, { op: "set.if" }>,
+    instruction: JitIrBlockInstruction
+  ): void {
+    const access = jitStorageRegisterAccess(op.target, instruction.operands, op.accessWidth ?? 32);
+
+    if (access !== undefined) {
+      registers.delete(access.reg);
+    }
   }
 }
 

@@ -2,11 +2,12 @@ import { reg32, type Reg32 } from "#x86/isa/types.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
 import type { IrFlagSetOp, ValueRef } from "#x86/ir/model/types.js";
 import type { JitValue } from "#backends/wasm/jit/ir/values.js";
-import { jitValueReadRegs } from "#backends/wasm/jit/ir/values.js";
+import { jitValueMaterializationRegs } from "#backends/wasm/jit/ir/values.js";
 import type { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 
 export type JitFlagInput =
   | Readonly<{ kind: "value"; value: JitValue }>
+  | Readonly<{ kind: "reg"; reg: Reg32 }>
   | Readonly<{ kind: "unmodeled" }>;
 
 export type JitFlagSource = Readonly<{
@@ -75,9 +76,11 @@ function flagInputReadRegs(inputs: Readonly<Record<string, JitFlagInput>>): read
 
   for (const input of Object.values(inputs)) {
     if (input.kind === "value") {
-      for (const reg of jitValueReadRegs(input.value)) {
+      for (const reg of jitValueMaterializationRegs(input.value)) {
         regs.add(reg);
       }
+    } else if (input.kind === "reg") {
+      regs.add(input.reg);
     }
   }
 

@@ -8,7 +8,7 @@ import type {
   JitFlagSource
 } from "#backends/wasm/jit/optimization/analyses/flag-sources.js";
 import type { JitFlagOwnerMask } from "#backends/wasm/jit/optimization/analyses/flag-owners.js";
-import { jitValueReadRegs } from "#backends/wasm/jit/ir/values.js";
+import { jitValueMaterializationRegs } from "#backends/wasm/jit/ir/values.js";
 import {
   jitIrLocation,
   requiredJitIrInstruction,
@@ -207,7 +207,7 @@ function resultWritebackInput(
   }
 
   return {
-    input: { kind: "value", value: { kind: "reg", reg: writeback.reg } },
+    input: { kind: "reg", reg: writeback.reg },
     validAfter: writeback.location
   };
 }
@@ -218,14 +218,21 @@ function candidateInputsSafe(
   read: JitReachingFlagRead
 ): boolean {
   for (const { input, validAfter } of Object.values(inputs)) {
-    if (input.kind !== "value") {
-      return false;
-    }
-
-    for (const reg of jitValueReadRegs(input.value)) {
-      if (jitRegClobberedBetween(block, reg, validAfter, readLocation(read))) {
+    switch (input.kind) {
+      case "value":
+        for (const reg of jitValueMaterializationRegs(input.value)) {
+          if (jitRegClobberedBetween(block, reg, validAfter, readLocation(read))) {
+            return false;
+          }
+        }
+        break;
+      case "reg":
+        if (jitRegClobberedBetween(block, input.reg, validAfter, readLocation(read))) {
+          return false;
+        }
+        break;
+      case "unmodeled":
         return false;
-      }
     }
   }
 

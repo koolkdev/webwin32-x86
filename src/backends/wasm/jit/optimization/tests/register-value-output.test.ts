@@ -61,7 +61,7 @@ test("runRegisterValuePass materializes repeated expensive register-value reads"
 
   strictEqual(folded.registerValuePropagation.removedSetCount, 4);
   strictEqual(folded.registerValuePropagation.materializedSetCount, 3);
-  deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax", "ebx", "edx"]);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax", "edx", "ebx"]);
 });
 
 test("runRegisterValuePass keeps oversized expressions concrete", () => {
@@ -101,7 +101,7 @@ test("runRegisterValuePass folds register values into indirect jump targets", ()
   strictEqual(folded.registerValuePropagation.materializedSetCount, 1);
   deepStrictEqual(
     opNames(jumpInstruction.ir.slice(0, jumpIndex)),
-    ["get", "i32.xor", "set:registerMaterialization"]
+    ["get:symbolicRead", "i32.xor", "set:registerMaterialization"]
   );
   deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax"]);
 });
@@ -158,7 +158,7 @@ test("runRegisterValuePass materializes address registers before faultable memor
   strictEqual(hasSet32Reg(folded.block.instructions[0]!, "eax"), false);
   strictEqual(hasSet32Reg(loadInstruction, "eax"), true);
   deepStrictEqual(opNames(loadInstruction.ir), [
-    "get",
+    "get:symbolicRead",
     "set:registerMaterialization",
     "get",
     "set",
@@ -186,6 +186,50 @@ test("runRegisterValuePass materializes address registers before faultable memor
   deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax"]);
 });
 
+test("runRegisterValuePass removes identity writes from a two-XCHG register swap", () => {
+  const folded = runRegisterValuePass(buildDecodedJitIrBlock([
+    0x87, 0xd8, // xchg eax, ebx
+    0x87, 0xc3 // xchg ebx, eax
+  ]));
+
+  strictEqual(folded.registerValuePropagation.removedSetCount, 4);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 0);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), []);
+});
+
+test("runRegisterValuePass removes identity writes from chained XCHG register cycles", () => {
+  const folded = runRegisterValuePass(buildDecodedJitIrBlock([
+    0x87, 0xd8, // xchg eax, ebx
+    0x87, 0xcb, // xchg ebx, ecx
+    0x87, 0xc1, // xchg ecx, eax
+    0x87, 0xd9 // xchg ecx, ebx
+  ]));
+
+  strictEqual(folded.registerValuePropagation.removedSetCount, 8);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 0);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), []);
+});
+
+test("runRegisterValuePass materializes non-identity XCHG cycles as a register batch", () => {
+  const folded = runRegisterValuePass(buildDecodedJitIrBlock([
+    0x87, 0xd8, // xchg eax, ebx
+    0x87, 0xcb // xchg ebx, ecx
+  ]));
+
+  strictEqual(folded.registerValuePropagation.removedSetCount, 3);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 2);
+  deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax", "ebx", "ecx"]);
+  deepStrictEqual(opNames(folded.block.instructions[1]!.ir), [
+    "get:symbolicRead",
+    "get",
+    "get:symbolicRead",
+    "set:registerMaterialization",
+    "set:registerMaterialization",
+    "set",
+    "next"
+  ]);
+});
+
 test("runRegisterValuePass resumes after the last pre-instruction exit in an instruction", () => {
   const pushEax = ok(decodeBytes([0x50], startAddress));
   const trap = ok(decodeBytes([0xcd, 0x2e], pushEax.nextEip));
@@ -199,6 +243,22 @@ test("runRegisterValuePass resumes after the last pre-instruction exit in an ins
   );
   deepStrictEqual(setTargetRegs(folded.block.instructions), ["esp"]);
 });
+
+function buildDecodedJitIrBlock(bytes: readonly number[]): JitIrBlock {
+  const instructions: Parameters<typeof buildJitIrBlock>[0][number][] = [];
+  let offset = 0;
+  let eip = startAddress;
+
+  while (offset < bytes.length) {
+    const decoded = ok(decodeBytes(bytes.slice(offset), eip));
+
+    instructions.push(decoded);
+    offset += decoded.nextEip - eip;
+    eip = decoded.nextEip;
+  }
+
+  return buildJitIrBlock(instructions);
+}
 
 function hasSet32Reg(
   instruction: JitIrBlockInstruction,

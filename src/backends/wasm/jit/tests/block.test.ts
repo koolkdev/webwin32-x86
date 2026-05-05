@@ -443,6 +443,68 @@ test("jit register value propagation preserves chained XCHG register cycles", as
   deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + bytes.length });
 });
 
+test("jit register value propagation preserves non-identity XCHG register cycles", async () => {
+  const bytes = [
+    0x87, 0xd8, // xchg eax, ebx
+    0x87, 0xcb // xchg ebx, ecx
+  ];
+  const initial = createCpuState({
+    eax: 0x1111_1111,
+    ebx: 0x2222_2222,
+    ecx: 0x3333_3333,
+    eip: startAddress
+  });
+  const result = await runJitIrBlock(bytes, initial);
+
+  strictEqual(result.state.eax, initial.ebx);
+  strictEqual(result.state.ebx, initial.ecx);
+  strictEqual(result.state.ecx, initial.eax);
+  strictEqual(result.state.eip, startAddress + bytes.length);
+  strictEqual(result.state.instructionCount, 2);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + bytes.length });
+});
+
+test("jit register value propagation materializes XCHG state before later memory faults", async () => {
+  const bytes = [
+    0x87, 0xd8, // xchg eax, ebx
+    0x8b, 0x15, 0x00, 0x00, 0x01, 0x00, // mov edx, [0x10000]
+    0x87, 0xd8 // xchg eax, ebx
+  ];
+  const initial = createCpuState({
+    eax: 0x1111_1111,
+    ebx: 0x2222_2222,
+    edx: 0x3333_3333,
+    eip: startAddress
+  });
+  const result = await runJitIrBlock(bytes, initial);
+
+  strictEqual(result.state.eax, initial.ebx);
+  strictEqual(result.state.ebx, initial.eax);
+  strictEqual(result.state.edx, initial.edx);
+  strictEqual(result.state.eip, startAddress + 2);
+  strictEqual(result.state.instructionCount, 1);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x1_0000, detail: 4 });
+});
+
+test("jit register value propagation keeps partial XCHG before full XCHG conservative", async () => {
+  const bytes = [
+    0x86, 0xd8, // xchg al, bl
+    0x87, 0xd8 // xchg eax, ebx
+  ];
+  const initial = createCpuState({
+    eax: 0x1111_11aa,
+    ebx: 0x2222_22bb,
+    eip: startAddress
+  });
+  const result = await runJitIrBlock(bytes, initial);
+
+  strictEqual(result.state.eax, 0x2222_22aa);
+  strictEqual(result.state.ebx, 0x1111_11bb);
+  strictEqual(result.state.eip, startAddress + bytes.length);
+  strictEqual(result.state.instructionCount, 2);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + bytes.length });
+});
+
 test("jit IR block emits movzx and movsx without modifying flags", async () => {
   const movzxByte = await runJitIrBlock([0x0f, 0xb6, 0xc7], createCpuState({
     eax: 0xaaaa_aaaa,

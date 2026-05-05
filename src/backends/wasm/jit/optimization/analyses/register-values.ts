@@ -1,10 +1,12 @@
-import type { Reg32 } from "#x86/isa/types.js";
+import { reg32, type Reg32 } from "#x86/isa/types.js";
 import type { JitIrBlock, JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import { jitIrOpIsTerminator } from "#backends/wasm/jit/ir/semantics.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 import {
   jitStorageReg,
+  jitValueIsSymbolicReg,
   jitValueReadsReg,
+  jitValueUsesSymbolicReg,
   type JitValue
 } from "#backends/wasm/jit/ir/values.js";
 import { jitStorageRegisterAccess } from "#backends/wasm/jit/ir/register-lane-values.js";
@@ -161,6 +163,11 @@ function analyzeInstruction(
 
     switch (op.op) {
       case "get": {
+        if (op.role === "symbolicRead") {
+          values.recordOp(op, instruction);
+          break;
+        }
+
         const reg = jitStorageReg(op.source, instruction.operands);
         const accessWidth = op.accessWidth ?? 32;
         const value = registers.valueForStorage(op.source, instruction.operands, accessWidth, op.signed === true);
@@ -243,7 +250,7 @@ function analyzeInstruction(
               opIndex,
               phase: "beforeOp",
               reason: "clobber"
-            });
+            }, { includeSymbolicRegs: true });
             registers.delete(reg);
             values.deleteValuesReadingReg(reg);
           }
@@ -258,7 +265,10 @@ function analyzeInstruction(
           access.width === 32 &&
           value !== undefined &&
           shouldRetainRegisterValue(value) &&
-          !isImmediatelyMaterializedAtExit(instruction, instructionIndex, opIndex, barriers);
+          (
+            !isImmediatelyMaterializedAtExit(instruction, instructionIndex, opIndex, barriers) ||
+            jitValueIsSymbolicReg(value, access.reg)
+          );
 
         if (reg !== undefined && access !== undefined) {
           if (access.width !== 32) {
@@ -275,7 +285,7 @@ function analyzeInstruction(
             opIndex,
             phase: "beforeOp",
             reason: "clobber"
-          });
+          }, { includeSymbolicRegs: !retained });
 
           if (retained && value !== undefined) {
             registers.set(reg, value);
@@ -307,7 +317,7 @@ function analyzeInstruction(
             opIndex,
             phase: "beforeOp",
             reason: "clobber"
-          });
+          }, { includeSymbolicRegs: true });
           registers.delete(reg);
           values.deleteValuesReadingReg(reg);
         }
@@ -341,14 +351,26 @@ function materializeDependencies(
   registers: JitRegisterValues,
   materializations: JitRegisterMaterialization[],
   clobberedReg: Reg32,
-  point: Omit<JitRegisterMaterialization, "regs" | "values">
+  point: Omit<JitRegisterMaterialization, "regs" | "values">,
+  options: Readonly<{ includeSymbolicRegs?: boolean }> = {}
 ): void {
   const regs = [...registers.trackedValues].flatMap(([reg, value]) =>
-    reg !== clobberedReg && jitValueReadsReg(value, clobberedReg) ? [reg] : []
+    reg !== clobberedReg && jitValueDependsOnClobberedReg(value, clobberedReg, options.includeSymbolicRegs === true)
+      ? [reg]
+      : []
   );
 
   materializeRegs(registers, materializations, regs, point);
-  registers.deletePartialDependencies(clobberedReg);
+  registers.deletePartialDependencies(clobberedReg, { includeSymbolicRegs: options.includeSymbolicRegs === true });
+}
+
+function jitValueDependsOnClobberedReg(
+  value: JitValue,
+  clobberedReg: Reg32,
+  includeSymbolicRegs: boolean
+): boolean {
+  return jitValueReadsReg(value, clobberedReg) ||
+    (includeSymbolicRegs && jitValueUsesSymbolicReg(value, clobberedReg));
 }
 
 function materializeRegs(
@@ -357,7 +379,8 @@ function materializeRegs(
   regs: readonly Reg32[],
   point: Omit<JitRegisterMaterialization, "regs" | "values">
 ): void {
-  const values = regs.flatMap((reg) => {
+  const materializedRegs = materializationClosure(registers, regs);
+  const values = materializedRegs.flatMap((reg) => {
     const value = registers.get(reg);
 
     return value === undefined ? [] : [{ reg, value }];
@@ -376,6 +399,37 @@ function materializeRegs(
   for (const { reg } of values) {
     registers.delete(reg);
   }
+}
+
+function materializationClosure(registers: JitRegisterValues, regs: readonly Reg32[]): readonly Reg32[] {
+  const materializedRegs = new Set(regs);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+
+    const writeRegs = new Set([...materializedRegs].filter((reg) => {
+      const value = registers.get(reg);
+
+      return value !== undefined && !jitValueIsSymbolicReg(value, reg);
+    }));
+
+    for (const [reg, value] of registers.trackedValues) {
+      if (materializedRegs.has(reg)) {
+        continue;
+      }
+
+      for (const writeReg of writeRegs) {
+        if (jitValueDependsOnClobberedReg(value, writeReg, true)) {
+          materializedRegs.add(reg);
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+
+  return reg32.filter((reg) => materializedRegs.has(reg));
 }
 
 function registerBarrierReg(

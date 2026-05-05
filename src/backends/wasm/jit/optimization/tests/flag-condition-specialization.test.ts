@@ -149,6 +149,34 @@ test("flag-condition-specialization emits result conditions from writeback regis
   ), true);
 });
 
+test("flag-condition-specialization falls back when writeback registers are clobbered", () => {
+  const result = specializeJitFlagConditions({
+    instructions: [
+      syntheticInstruction([
+        { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
+        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        createIrFlagSetOp("inc", { left: v(0), result: v(1) }),
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(1) },
+        { op: "next" }
+      ]),
+      syntheticInstruction([
+        { op: "const32", dst: v(0), value: 0 },
+        { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
+        { op: "next" }
+      ], 1),
+      syntheticInstruction([
+        { op: "aluFlags.condition", dst: v(0), cc: "E" },
+        { op: "set.if", condition: v(0), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
+        { op: "next" }
+      ], 2)
+    ]
+  });
+
+  strictEqual(result.flagConditionSpecialization.directConditionCount, 0);
+  strictEqual(opNames(result.block).includes("aluFlags.condition"), true);
+  strictEqual(opNames(result.block).includes("flagProducer.condition"), false);
+});
+
 test("flag-condition-specialization emits sub equality from writeback registers", () => {
   const result = specializeJitFlagConditions({
     instructions: [

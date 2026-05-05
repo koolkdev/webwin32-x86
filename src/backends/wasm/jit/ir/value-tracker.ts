@@ -9,7 +9,10 @@ import {
   jitValuesEqual,
   type JitValue
 } from "#backends/wasm/jit/ir/values.js";
-import type { JitRegisterValueMap } from "#backends/wasm/jit/ir/register-lane-values.js";
+import {
+  jitStorageRegisterAccess,
+  type JitRegisterValueMap
+} from "#backends/wasm/jit/ir/register-lane-values.js";
 import type { Reg32 } from "#x86/isa/types.js";
 
 export class JitValueTracker {
@@ -46,13 +49,15 @@ export class JitValueTracker {
   ): boolean {
     switch (op.op) {
       case "get":
-        this.record(op.dst.id, jitValueForStorage(
-          op.source,
-          instruction.operands,
-          registerValues,
-          op.accessWidth ?? 32,
-          op.signed === true
-        ));
+        this.record(op.dst.id, op.role === "symbolicRead"
+          ? symbolicRegisterReadValue(op, instruction)
+          : jitValueForStorage(
+            op.source,
+            instruction.operands,
+            registerValues,
+            op.accessWidth ?? 32,
+            op.signed === true
+          ));
         return true;
       case "address":
         this.record(
@@ -106,4 +111,15 @@ export class JitValueTracker {
 
     return value === undefined ? undefined : { kind: op.op, value };
   }
+}
+
+function symbolicRegisterReadValue(
+  op: Extract<JitIrOp, { op: "get" }>,
+  instruction: JitIrBlockInstruction
+): JitValue | undefined {
+  const access = jitStorageRegisterAccess(op.source, instruction.operands, op.accessWidth ?? 32);
+
+  return access?.width === 32 && access.bitOffset === 0
+    ? { kind: "reg", reg: access.reg }
+    : undefined;
 }
