@@ -7,6 +7,12 @@ import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js
 import { wasmOpcode } from "#backends/wasm/encoder/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { createJitReg32State } from "#backends/wasm/jit/state/register-state.js";
+import {
+  emitByteSourceForStore8,
+  emitStoreStateU16,
+  emitStoreStateU8,
+  emitWordSourceForStore16
+} from "#backends/wasm/jit/state/register-emit.js";
 import { emptyRegValueState, recordPartialValue } from "#backends/wasm/jit/state/register-lanes.js";
 import { planRegisterExitStore } from "#backends/wasm/jit/state/register-store-plan.js";
 import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
@@ -166,6 +172,42 @@ test("jit register exit stores use byte stores for isolated partial writes", () 
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Store), 0);
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Store8), 1);
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Store16), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32And), 1);
+});
+
+test("jit register store8 byte source shifts without a redundant byte mask", () => {
+  const body = new WasmFunctionBodyEncoder();
+
+  emitStoreStateU8(body, 0, () => {
+    emitByteSourceForStore8(body, { local: 0, bitOffset: 8 });
+  });
+  body.end();
+
+  const opcodes = wasmBodyOpcodes(body.encode());
+
+  strictEqual(countOpcode(opcodes, wasmOpcode.localGet), 1);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32ShrU), 1);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32And), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store8), 1);
+});
+
+test("jit register store16 word source shifts without a redundant word mask", () => {
+  const body = new WasmFunctionBodyEncoder();
+
+  emitStoreStateU16(body, 0, () => {
+    emitWordSourceForStore16(body, [
+      { local: 0, bitOffset: 8 },
+      { local: 0, bitOffset: 16 }
+    ]);
+  });
+  body.end();
+
+  const opcodes = wasmBodyOpcodes(body.encode());
+
+  strictEqual(countOpcode(opcodes, wasmOpcode.localGet), 1);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32ShrU), 1);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32And), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store16), 1);
 });
 
 test("jit register exit stores coalesce al and ah partial writes into a word store", () => {
@@ -191,6 +233,28 @@ test("jit register exit stores coalesce al and ah partial writes into a word sto
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Store), 0);
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Store8), 0);
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Store16), 1);
+});
+
+test("jit register exit stores direct word partial writes without byte recomposition", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitSetAlias(ax, () => {
+    body.i32Const(0x12345);
+  });
+  regs.commitPending();
+  regs.emitCommittedStore("eax");
+  body.end();
+
+  const opcodes = wasmBodyOpcodes(body.encode());
+
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Load), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store8), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store16), 1);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32And), 1);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Or), 0);
 });
 
 test("jit register exit store planner keeps isolated byte writes narrow", () => {

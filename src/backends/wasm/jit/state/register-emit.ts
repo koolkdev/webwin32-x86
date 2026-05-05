@@ -135,6 +135,25 @@ export function emitComposedByteSources(
   }
 }
 
+export function emitWordSourceForStore16(
+  body: WasmFunctionBodyEncoder,
+  sources: readonly [ByteSource, ByteSource]
+): void {
+  const [lowByte, highByte] = sources;
+
+  if (highByte.local === lowByte.local && highByte.bitOffset === lowByte.bitOffset + byteWidth) {
+    body.localGet(lowByte.local);
+
+    if (lowByte.bitOffset !== 0) {
+      body.i32Const(lowByte.bitOffset).i32ShrU();
+    }
+
+    return;
+  }
+
+  emitComposedByteSources(body, sources);
+}
+
 export function emitByteSource(body: WasmFunctionBodyEncoder, source: ByteSource): void {
   body.localGet(source.local);
 
@@ -143,4 +162,12 @@ export function emitByteSource(body: WasmFunctionBodyEncoder, source: ByteSource
   }
 
   body.i32Const(byteMask).i32And();
+}
+
+export function emitByteSourceForStore8(body: WasmFunctionBodyEncoder, source: ByteSource): void {
+  body.localGet(source.local);
+
+  if (source.bitOffset !== 0) {
+    body.i32Const(source.bitOffset).i32ShrU();
+  }
 }

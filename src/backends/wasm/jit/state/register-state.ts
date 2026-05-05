@@ -17,14 +17,15 @@ import {
   type RegValueState
 } from "./register-lanes.js";
 import {
-  emitByteSource,
+  emitByteSourceForStore8,
   emitComposedByteSources,
   emitExtractAliasFromLocal,
   emitMergedBytes,
   emitStoreAliasValueIntoFullLocal,
   emitStoreByteSourceIntoFullLocal,
   emitStoreStateU16,
-  emitStoreStateU8
+  emitStoreStateU8,
+  emitWordSourceForStore16
 } from "./register-emit.js";
 import { planRegisterExitStore, type RegisterStoreOp } from "./register-store-plan.js";
 
@@ -220,13 +221,13 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     for (const store of stores) {
       if (store.kind === "store16") {
         emitStoreStateU16(body, baseOffset + store.byteIndex, () => {
-          emitComposedByteSources(body, store.sources);
+          emitWordSourceForStore16(body, store.sources);
         });
         continue;
       }
 
       emitStoreStateU8(body, baseOffset + store.byteIndex, () => {
-        emitByteSource(body, store.source);
+        emitByteSourceForStore8(body, store.source);
       });
     }
   }
