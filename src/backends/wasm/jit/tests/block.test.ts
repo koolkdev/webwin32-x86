@@ -237,6 +237,137 @@ test("jit IR block handles partial register MOV writes", async () => {
   strictEqual(movAx.state.eax, 0x1234_5678);
 });
 
+test("jit IR block emits movzx and movsx without modifying flags", async () => {
+  const movzxByte = await runJitIrBlock([0x0f, 0xb6, 0xc7], createCpuState({
+    eax: 0xaaaa_aaaa,
+    ebx: 0x1234_807f,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+  const movsxByte = await runJitIrBlock([0x0f, 0xbe, 0xcf], createCpuState({
+    ebx: 0x1234_807f,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+  const movzxWordDestination = await runJitIrBlock([0x66, 0x0f, 0xb6, 0xc3], createCpuState({
+    eax: 0x1234_0000,
+    ebx: 0x80,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+  const movsxWordDestination = await runJitIrBlock([0x66, 0x0f, 0xbe, 0xc3], createCpuState({
+    eax: 0x1234_0000,
+    ebx: 0x80,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(movzxByte.state.eax, 0x80);
+  strictEqual(movzxByte.state.eflags, preservedEflags);
+  strictEqual(movzxByte.state.eip, startAddress + 3);
+  strictEqual(movzxByte.state.instructionCount, 1);
+
+  strictEqual(movsxByte.state.ecx, 0xffff_ff80);
+  strictEqual(movsxByte.state.eflags, preservedEflags);
+  strictEqual(movsxByte.state.eip, startAddress + 3);
+  strictEqual(movsxByte.state.instructionCount, 1);
+
+  strictEqual(movzxWordDestination.state.eax, 0x1234_0080);
+  strictEqual(movzxWordDestination.state.eflags, preservedEflags);
+  strictEqual(movzxWordDestination.state.eip, startAddress + 4);
+  strictEqual(movzxWordDestination.state.instructionCount, 1);
+
+  strictEqual(movsxWordDestination.state.eax, 0x1234_ff80);
+  strictEqual(movsxWordDestination.state.eflags, preservedEflags);
+  strictEqual(movsxWordDestination.state.eip, startAddress + 4);
+  strictEqual(movsxWordDestination.state.instructionCount, 1);
+});
+
+test("jit IR block preserves MOVSX r16 result across BL/BX/EBX alias operations", async () => {
+  const bytes = [
+    0x66, 0x0f, 0xbe, 0xd8, // movsx bx, al
+    0x80, 0xc3, 0x01, // add bl, 1
+    0x66, 0x83, 0xc3, 0x01, // add bx, 1
+    0x83, 0xc3, 0x01 // add ebx, 1
+  ];
+  const result = await runJitIrBlock(bytes, createCpuState({
+    eax: 0x80,
+    ebx: 0x1122_3344,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0x80);
+  strictEqual(result.state.ebx, 0x1122_ff83);
+  strictEqual(result.state.eip, startAddress + bytes.length);
+  strictEqual(result.state.instructionCount, 4);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + bytes.length });
+});
+
+test("jit IR block sign-extends a tracked partial MOV value", async () => {
+  const bytes = [
+    0x66, 0x89, 0xd8, // mov ax, bx
+    0x0f, 0xbf, 0xc8 // movsx ecx, ax
+  ];
+  const result = await runJitIrBlock(bytes, createCpuState({
+    eax: 0x1234_0000,
+    ebx: 0x0000_8001,
+    ecx: 0xcccc_cccc,
+    eflags: preservedEflags,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0x1234_8001);
+  strictEqual(result.state.ebx, 0x0000_8001);
+  strictEqual(result.state.ecx, 0xffff_8001);
+  strictEqual(result.state.eflags, preservedEflags);
+  strictEqual(result.state.eip, startAddress + bytes.length);
+  strictEqual(result.state.instructionCount, 2);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + bytes.length });
+});
+
+test("jit IR block emits movzx and movsx memory forms", async () => {
+  const movzxByte = await runJitIrBlock(
+    [0x0f, 0xb6, 0x03],
+    createCpuState({ eax: 0xffff_ffff, ebx: 0x20, eflags: preservedEflags, eip: startAddress }),
+    [{ address: 0x20, bytes: [0xfe] }]
+  );
+  const movzxWord = await runJitIrBlock(
+    [0x0f, 0xb7, 0x03],
+    createCpuState({ eax: 0xffff_ffff, ebx: 0x20, eflags: preservedEflags, eip: startAddress }),
+    [{ address: 0x20, bytes: [0xff, 0x80] }]
+  );
+  const movsxByte = await runJitIrBlock(
+    [0x0f, 0xbe, 0x03],
+    createCpuState({ ebx: 0x20, eflags: preservedEflags, eip: startAddress }),
+    [{ address: 0x20, bytes: [0x80] }]
+  );
+  const movsxWord = await runJitIrBlock(
+    [0x0f, 0xbf, 0x03],
+    createCpuState({ ebx: 0x20, eflags: preservedEflags, eip: startAddress }),
+    [{ address: 0x20, bytes: [0x01, 0x80] }]
+  );
+
+  strictEqual(movzxByte.state.eax, 0xfe);
+  strictEqual(movzxByte.state.eflags, preservedEflags);
+  strictEqual(movzxByte.state.eip, startAddress + 3);
+  strictEqual(movzxByte.state.instructionCount, 1);
+
+  strictEqual(movzxWord.state.eax, 0x80ff);
+  strictEqual(movzxWord.state.eflags, preservedEflags);
+  strictEqual(movzxWord.state.eip, startAddress + 3);
+  strictEqual(movzxWord.state.instructionCount, 1);
+
+  strictEqual(movsxByte.state.eax, 0xffff_ff80);
+  strictEqual(movsxByte.state.eflags, preservedEflags);
+  strictEqual(movsxByte.state.eip, startAddress + 3);
+  strictEqual(movsxByte.state.instructionCount, 1);
+
+  strictEqual(movsxWord.state.eax, 0xffff_8001);
+  strictEqual(movsxWord.state.eflags, preservedEflags);
+  strictEqual(movsxWord.state.eip, startAddress + 3);
+  strictEqual(movsxWord.state.instructionCount, 1);
+});
+
 test("jit IR block coalesces independent low-byte register writes correctly", async () => {
   const result = await runJitIrBlock([
     0xb0, 0x05, // mov al, 5
@@ -493,6 +624,54 @@ test("jit IR block omits redundant masks after byte and word memory loads", () =
 
   assertNoMaskImmediatelyAfter(movAxOpcodes, wasmOpcode.i32Load16U);
   assertNoMaskImmediatelyAfter(movAlOpcodes, wasmOpcode.i32Load8U);
+});
+
+test("jit IR block emits MOVSX with signed loads or sign-extension opcodes", () => {
+  const movsxByteMem = singleInstructionBodyOpcodes([0x0f, 0xbe, 0x03]);
+  const movsxWordMem = singleInstructionBodyOpcodes([0x0f, 0xbf, 0x03]);
+  const movsxEbxAlBlock = buildJitIrBlock([ok(decodeBytes([0x0f, 0xbe, 0xd8], startAddress))]);
+  const movsxEbxAl = jitBlockBodyOpcodes(movsxEbxAlBlock);
+  const movsxAfterTrackedRegBlock = buildJitIrBlock([
+    ok(decodeBytes([0x66, 0x89, 0xd8], startAddress)), // mov ax, bx
+    ok(decodeBytes([0x0f, 0xbf, 0xc8], startAddress + 3)) // movsx ecx, ax
+  ]);
+  const movsxAfterTrackedReg = jitBlockBodyOpcodes(movsxAfterTrackedRegBlock);
+
+  strictEqual(movsxByteMem.includes(wasmOpcode.i32Load8S), true);
+  strictEqual(movsxByteMem.includes(wasmOpcode.i32Extend8S), false);
+  strictEqual(movsxByteMem.includes(wasmOpcode.i32Xor), false);
+
+  strictEqual(movsxWordMem.includes(wasmOpcode.i32Load16S), true);
+  strictEqual(movsxWordMem.includes(wasmOpcode.i32Extend16S), false);
+  strictEqual(movsxWordMem.includes(wasmOpcode.i32Xor), false);
+
+  deepStrictEqual(registerStateMemoryAccesses(movsxEbxAlBlock, stateOffset.eax), [
+    { opcode: wasmOpcode.i32Load8S, offset: stateOffset.eax }
+  ]);
+  strictEqual(movsxEbxAl.includes(wasmOpcode.i32Extend8S), false);
+  strictEqual(movsxEbxAl.includes(wasmOpcode.i32Xor), false);
+
+  strictEqual(movsxAfterTrackedReg.includes(wasmOpcode.i32Extend16S), true);
+  strictEqual(
+    registerStateMemoryAccesses(movsxAfterTrackedRegBlock, stateOffset.eax).some(
+      (access) => access.opcode === wasmOpcode.i32Load16S
+    ),
+    false
+  );
+  strictEqual(movsxAfterTrackedReg.includes(wasmOpcode.i32Xor), false);
+});
+
+test("jit IR block keeps MOVZX on unsigned loads without redundant masks", () => {
+  const movzxBl = singleInstructionBodyOpcodes([0x0f, 0xb6, 0xc3]);
+  const movzxWordMem = singleInstructionBodyOpcodes([0x0f, 0xb7, 0x03]);
+
+  strictEqual(movzxBl.includes(wasmOpcode.i32Load8U), true);
+  strictEqual(movzxBl.includes(wasmOpcode.i32Load8S), false);
+  assertNoMaskImmediatelyAfter(movzxBl, wasmOpcode.i32Load8U);
+
+  strictEqual(movzxWordMem.includes(wasmOpcode.i32Load16U), true);
+  strictEqual(movzxWordMem.includes(wasmOpcode.i32Load16S), false);
+  assertNoMaskImmediatelyAfter(movzxWordMem, wasmOpcode.i32Load16U);
 });
 
 test("jit IR block omits narrow bitwise operand masks", () => {
@@ -1187,7 +1366,9 @@ function memoryAccesses(functionBody: Uint8Array<ArrayBuffer>): readonly WasmMem
         offset = skipLeb128(functionBody, offset);
         break;
       case wasmOpcode.i32Load:
+      case wasmOpcode.i32Load8S:
       case wasmOpcode.i32Load8U:
+      case wasmOpcode.i32Load16S:
       case wasmOpcode.i32Load16U:
       case wasmOpcode.i32Store:
       case wasmOpcode.i32Store8:
@@ -1217,6 +1398,8 @@ function memoryAccesses(functionBody: Uint8Array<ArrayBuffer>): readonly WasmMem
       case wasmOpcode.i32ShrU:
       case wasmOpcode.i64Or:
       case wasmOpcode.i64ExtendI32U:
+      case wasmOpcode.i32Extend8S:
+      case wasmOpcode.i32Extend16S:
       case wasmOpcode.end:
         break;
       default:

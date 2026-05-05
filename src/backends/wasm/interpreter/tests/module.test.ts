@@ -8,7 +8,12 @@ import {
   writeInterpreterState
 } from "./interpreter-helpers.js";
 import { assertMemoryImports, startAddress } from "#backends/wasm/tests/helpers.js";
-import { wasmImport } from "#backends/wasm/abi.js";
+import { wasmImport, wasmMemoryIndex } from "#backends/wasm/abi.js";
+import { wasmOpcode } from "#backends/wasm/encoder/types.js";
+import {
+  extractOnlyWasmFunctionBody,
+  wasmBodyMemoryAccesses
+} from "#backends/wasm/tests/body-opcodes.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { readInterpreterWasmArtifact } from "#backends/wasm/interpreter/artifact.js";
 import { encodeInterpreterModule } from "#backends/wasm/interpreter/module.js";
@@ -26,6 +31,20 @@ test("imports state and guest memories in ABI order", () => {
   const module = new WebAssembly.Module(readInterpreterWasmArtifact());
 
   assertMemoryImports(module);
+});
+
+test("generated interpreter uses signed guest loads for MOVSX memory forms", () => {
+  const accesses = wasmBodyMemoryAccesses(extractOnlyWasmFunctionBody(readInterpreterWasmArtifact()));
+  const signedGuestLoads = accesses.filter((access) =>
+    access.memoryIndex === wasmMemoryIndex.guest &&
+    access.offset === 0 &&
+    (access.opcode === wasmOpcode.i32Load8S || access.opcode === wasmOpcode.i32Load16S)
+  );
+
+  deepStrictEqual(
+    new Set(signedGuestLoads.map((access) => access.opcode)),
+    new Set([wasmOpcode.i32Load8S, wasmOpcode.i32Load16S])
+  );
 });
 
 test("exports run(fuel) -> i64", async () => {

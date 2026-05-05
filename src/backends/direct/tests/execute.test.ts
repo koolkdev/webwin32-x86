@@ -81,6 +81,89 @@ test("executes byte and word mov through register aliases", () => {
   strictEqual(state.instructionCount, 3);
 });
 
+test("executes movzx and movsx without modifying flags", () => {
+  const flags = 0x8d5;
+  const registerState = createCpuState({ eax: 0xaaaa_aaaa, ebx: 0x1234_807f, eflags: flags, eip: startAddress });
+
+  execute(registerState, [0x0f, 0xb6, 0xc7]);
+  strictEqual(registerState.eax, 0x80);
+  strictEqual(registerState.eflags, flags);
+
+  executeAtStateEip(registerState, [0x0f, 0xbe, 0xcf]);
+  strictEqual(registerState.ecx, 0xffff_ff80);
+  strictEqual(registerState.eflags, flags);
+
+  const zeroExtendWordDestination = createCpuState({ eax: 0x1234_0000, ebx: 0x80, eflags: flags, eip: startAddress });
+  execute(zeroExtendWordDestination, [0x66, 0x0f, 0xb6, 0xc3]);
+  strictEqual(zeroExtendWordDestination.eax, 0x1234_0080);
+  strictEqual(zeroExtendWordDestination.eflags, flags);
+
+  const wordDestinationState = createCpuState({ eax: 0x1234_0000, ebx: 0x80, eflags: flags, eip: startAddress });
+  execute(wordDestinationState, [0x66, 0x0f, 0xbe, 0xc3]);
+  strictEqual(wordDestinationState.eax, 0x1234_ff80);
+  strictEqual(wordDestinationState.eflags, flags);
+
+  const memory = new ArrayBufferGuestMemory(0x40);
+  memory.writeU16(0x20, 0x80ff);
+
+  const zeroExtendState = createCpuState({ eax: 0xffff_ffff, ebx: 0x20, eflags: flags, eip: startAddress });
+  execute(zeroExtendState, [0x0f, 0xb7, 0x03], memory);
+  strictEqual(zeroExtendState.eax, 0x80ff);
+  strictEqual(zeroExtendState.eflags, flags);
+
+  memory.writeU8(0x20, 0xfe);
+  const zeroExtendByteState = createCpuState({ eax: 0xffff_ffff, ebx: 0x20, eflags: flags, eip: startAddress });
+  execute(zeroExtendByteState, [0x0f, 0xb6, 0x03], memory);
+  strictEqual(zeroExtendByteState.eax, 0xfe);
+  strictEqual(zeroExtendByteState.eflags, flags);
+
+  memory.writeU8(0x20, 0x80);
+  const signExtendByteState = createCpuState({ eax: 0, ebx: 0x20, eflags: flags, eip: startAddress });
+  execute(signExtendByteState, [0x0f, 0xbe, 0x03], memory);
+  strictEqual(signExtendByteState.eax, 0xffff_ff80);
+  strictEqual(signExtendByteState.eflags, flags);
+
+  memory.writeU16(0x20, 0x8001);
+  const signExtendState = createCpuState({ eax: 0, ebx: 0x20, eflags: flags, eip: startAddress });
+  execute(signExtendState, [0x0f, 0xbf, 0x03], memory);
+  strictEqual(signExtendState.eax, 0xffff_8001);
+  strictEqual(signExtendState.eflags, flags);
+});
+
+test("executes movsx r16 from byte register before bl/bx/ebx alias operations", () => {
+  const state = createCpuState({ eax: 0x80, ebx: 0x1122_3344, eip: startAddress });
+
+  execute(state, [0x66, 0x0f, 0xbe, 0xd8]);
+  executeAtStateEip(state, [0x80, 0xc3, 0x01]);
+  executeAtStateEip(state, [0x66, 0x83, 0xc3, 0x01]);
+  executeAtStateEip(state, [0x83, 0xc3, 0x01]);
+
+  strictEqual(state.eax, 0x80);
+  strictEqual(state.ebx, 0x1122_ff83);
+  strictEqual(state.eip, startAddress + 14);
+  strictEqual(state.instructionCount, 4);
+});
+
+test("executes movsx from a word register copy", () => {
+  const state = createCpuState({
+    eax: 0x1234_0000,
+    ebx: 0x0000_8001,
+    ecx: 0xcccc_cccc,
+    eflags: 0x8d5,
+    eip: startAddress
+  });
+
+  execute(state, [0x66, 0x89, 0xd8]);
+  executeAtStateEip(state, [0x0f, 0xbf, 0xc8]);
+
+  strictEqual(state.eax, 0x1234_8001);
+  strictEqual(state.ebx, 0x0000_8001);
+  strictEqual(state.ecx, 0xffff_8001);
+  strictEqual(state.eflags, 0x8d5);
+  strictEqual(state.eip, startAddress + 6);
+  strictEqual(state.instructionCount, 2);
+});
+
 test("executes add r/m32, r32 and materializes add flags", () => {
   const state = createCpuState({ eax: 0xffff_ffff, ebx: 1, eip: startAddress });
 

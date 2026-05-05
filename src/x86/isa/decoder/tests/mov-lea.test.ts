@@ -142,6 +142,48 @@ const fixtures: readonly DecoderFixture[] = [
     id: "mov.r32_rm32"
   },
   {
+    name: "movzx eax, bl",
+    bytes: [0x0f, 0xb6, 0xc3],
+    mnemonic: "movzx",
+    operands: [reg32("eax"), reg("bl")],
+    id: "movzx.r32_rm8"
+  },
+  {
+    name: "movzx ax, ah with operand-size override",
+    bytes: [0x66, 0x0f, 0xb6, 0xc4],
+    mnemonic: "movzx",
+    operands: [reg("ax"), reg("ah")],
+    id: "movzx.r16_rm8"
+  },
+  {
+    name: "movzx eax, word [ebx]",
+    bytes: [0x0f, 0xb7, 0x03],
+    mnemonic: "movzx",
+    operands: [reg32("eax"), mem(16, { base: "ebx", scale: 1, disp: 0 })],
+    id: "movzx.r32_rm16"
+  },
+  {
+    name: "movsx eax, ah",
+    bytes: [0x0f, 0xbe, 0xc4],
+    mnemonic: "movsx",
+    operands: [reg32("eax"), reg("ah")],
+    id: "movsx.r32_rm8"
+  },
+  {
+    name: "movsx ax, bl with operand-size override",
+    bytes: [0x66, 0x0f, 0xbe, 0xc3],
+    mnemonic: "movsx",
+    operands: [reg("ax"), reg("bl")],
+    id: "movsx.r16_rm8"
+  },
+  {
+    name: "movsx eax, word [ebx]",
+    bytes: [0x0f, 0xbf, 0x03],
+    mnemonic: "movsx",
+    operands: [reg32("eax"), mem(16, { base: "ebx", scale: 1, disp: 0 })],
+    id: "movsx.r32_rm16"
+  },
+  {
     name: "mov [esp - 4], ecx",
     bytes: [0x89, 0x4c, 0x24, 0xfc],
     mnemonic: "mov",

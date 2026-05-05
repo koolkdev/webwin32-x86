@@ -2,7 +2,7 @@ import { CONDITION_CODE_DESCRIPTORS } from "#x86/isa/defs/condition-codes.js";
 import { form, mnemonic } from "#x86/isa/schema/builders.js";
 import { imm, modrmReg, modrmRm, opReg } from "#x86/isa/schema/operands.js";
 import { opcodePlusReg } from "#x86/isa/schema/opcodes.js";
-import { cmovSemantic, movSemantic } from "#x86/isa/semantics/mov.js";
+import { cmovSemantic, movSemantic, movsxSemantic, movzxSemantic } from "#x86/isa/semantics/mov.js";
 
 export const MOV = mnemonic("mov", [
   // 8A /r: MOV r8, r/m8
@@ -109,3 +109,53 @@ export const CMOVCC = CONDITION_CODE_DESCRIPTORS.map((descriptor) =>
     })
   ])
 );
+
+export const MOVZX = mnemonic("movzx", [
+  // 66 0F B6 /r: MOVZX r16, r/m8
+  form("r16_rm8", {
+    prefixes: { operandSize: "override" },
+    opcode: [0x0f, 0xb6],
+    operands: [modrmReg("r16"), modrmRm("rm8")],
+    format: { syntax: "movzx {0}, {1}" },
+    semantics: movzxSemantic(8, 16)
+  }),
+  // 0F B6 /r: MOVZX r32, r/m8
+  form("r32_rm8", {
+    opcode: [0x0f, 0xb6],
+    operands: [modrmReg("r32"), modrmRm("rm8")],
+    format: { syntax: "movzx {0}, {1}" },
+    semantics: movzxSemantic(8, 32)
+  }),
+  // 0F B7 /r: MOVZX r32, r/m16
+  form("r32_rm16", {
+    opcode: [0x0f, 0xb7],
+    operands: [modrmReg("r32"), modrmRm("rm16")],
+    format: { syntax: "movzx {0}, {1}" },
+    semantics: movzxSemantic(16, 32)
+  })
+]);
+
+export const MOVSX = mnemonic("movsx", [
+  // 66 0F BE /r: MOVSX r16, r/m8
+  form("r16_rm8", {
+    prefixes: { operandSize: "override" },
+    opcode: [0x0f, 0xbe],
+    operands: [modrmReg("r16"), modrmRm("rm8")],
+    format: { syntax: "movsx {0}, {1}" },
+    semantics: movsxSemantic(8, 16)
+  }),
+  // 0F BE /r: MOVSX r32, r/m8
+  form("r32_rm8", {
+    opcode: [0x0f, 0xbe],
+    operands: [modrmReg("r32"), modrmRm("rm8")],
+    format: { syntax: "movsx {0}, {1}" },
+    semantics: movsxSemantic(8, 32)
+  }),
+  // 0F BF /r: MOVSX r32, r/m16
+  form("r32_rm16", {
+    opcode: [0x0f, 0xbf],
+    operands: [modrmReg("r32"), modrmRm("rm16")],
+    format: { syntax: "movsx {0}, {1}" },
+    semantics: movsxSemantic(16, 32)
+  })
+]);

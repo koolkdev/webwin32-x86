@@ -4,7 +4,7 @@ import { CALL, JCC, JMP, RET } from "./defs/control.js";
 import { CMP, TEST } from "./defs/cmp-test.js";
 import { LEA } from "./defs/lea.js";
 import { INT, NOP } from "./defs/misc.js";
-import { CMOVCC, MOV } from "./defs/mov.js";
+import { CMOVCC, MOV, MOVSX, MOVZX } from "./defs/mov.js";
 import { LEAVE, POP, PUSH } from "./defs/stack.js";
 
 export const X86_32_CORE = defineIsa({
@@ -12,6 +12,8 @@ export const X86_32_CORE = defineIsa({
   mnemonics: [
     NOP,
     MOV,
+    MOVZX,
+    MOVSX,
     ...CMOVCC,
     LEA,
     ADD,
