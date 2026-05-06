@@ -26,6 +26,10 @@ import {
   type WasmIrEmitValueOptions,
   type ValueWidth
 } from "#backends/wasm/codegen/value-width.js";
+import {
+  fullRegisterLaneSourcesFrom,
+  type FullRegisterLaneSources
+} from "#backends/wasm/jit/state/register-lanes.js";
 
 export { canInlineJitInstructionGet, jitInstructionStorageRefsMayAlias } from "#backends/wasm/jit/codegen/plan/operand-analysis.js";
 
@@ -198,13 +202,13 @@ function emitSetRegisterAlias(
   value: IrValueExpr,
   helpers: WasmIrEmitHelpers
 ): void {
-  const sourceLocal = sourceLocalForSetValue(context, target, value);
+  const laneSources = laneSourcesForSetValue(context, target, value);
 
-  context.state.regs.emitWriteAlias(target, sourceLocal === undefined
+  context.state.regs.emitWriteAlias(target, laneSources === undefined
     ? () => helpers.emitValue(value)
     : {
         emitValue: () => helpers.emitValue(value),
-        sourceLocal
+        laneSources
       });
 }
 
@@ -350,14 +354,14 @@ function operandBinding(context: JitIrContext, index: number): JitOperandBinding
   return binding;
 }
 
-function sourceLocalForSetValue(
+function laneSourcesForSetValue(
   context: JitIrContext,
   target: RegisterAlias,
   value: IrValueExpr
-): number | undefined {
-  // Only exact full-width register sources can copy an existing local-backed
-  // value. Expressions, constants, memory loads, signed/narrow reads, and
-  // conditionals all continue through the normal value-emission path.
+): FullRegisterLaneSources | undefined {
+  // Only exact full-width register sources can copy known lane values.
+  // Expressions, constants, memory loads, signed/narrow reads, and conditionals
+  // all continue through the normal value-emission path.
   if (target.width !== 32 || value.kind !== "source" || value.accessWidth !== 32 || value.signed === true) {
     return undefined;
   }
@@ -368,5 +372,9 @@ function sourceLocalForSetValue(
     return undefined;
   }
 
-  return context.state.regs.localValueForAlias(sourceAlias);
+  if (sourceAlias.width !== 32 || sourceAlias.bitOffset !== 0) {
+    return undefined;
+  }
+
+  return fullRegisterLaneSourcesFrom(context.state.regs.localLaneSourcesForAlias(sourceAlias));
 }

@@ -30,11 +30,12 @@ import {
   localMergeBaseForKnownBytes,
   localSourceAt,
   localSourcesForAlias,
-  localValueForAlias,
+  recordFullLocalLaneSources,
   mergePartialLocalValues,
   recordFullLocalValue,
   recordPartialLocalValue,
   stateUsesLocal,
+  type FullRegisterLaneSources,
   type LocalLaneSource,
   type RegValueState
 } from "./register-lanes.js";
@@ -56,8 +57,12 @@ export type JitReg32InstructionOptions = Readonly<{
 
 export type JitReg32WriteSource = (() => ValueWidth | void) | Readonly<{
   emitValue: () => ValueWidth | void;
-  sourceLocal?: number;
+  laneSources?: FullRegisterLaneSources;
 }>;
+
+type JitReg32ExitSnapshotRegState = Omit<RegValueState, "mutableFullLocal">;
+
+export type JitReg32ExitStoreSnapshot = ReadonlyMap<Reg32, JitReg32ExitSnapshotRegState>;
 
 export type JitReg32State = Readonly<{
   beginInstruction(options: JitReg32InstructionOptions): void;
@@ -65,21 +70,22 @@ export type JitReg32State = Readonly<{
   commitPendingReg(reg: Reg32): void;
   emitReadReg32(reg: Reg32): ValueWidth;
   emitReadAlias(alias: RegisterAlias, options?: WasmIrEmitValueOptions): ValueWidth;
-  localValueForAlias(alias: RegisterAlias): number | undefined;
+  localLaneSourcesForAlias(alias: RegisterAlias): readonly LocalLaneSource[] | undefined;
   emitWriteAlias(alias: RegisterAlias, source: JitReg32WriteSource): void;
   emitWriteAliasIf(
     alias: RegisterAlias,
     emitCondition: () => ValueWidth | void,
     emitValue: () => ValueWidth | void
   ): void;
+  captureCommittedExitStores(regs: readonly Reg32[]): JitReg32ExitStoreSnapshot;
   emitCommittedStore(reg: Reg32): void;
+  emitExitSnapshotStore(reg: Reg32, snapshot: JitReg32ExitStoreSnapshot): void;
 }>;
 
 export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32State {
   const committedStates = new Map<Reg32, RegValueState>();
   const pendingStates = new Map<Reg32, RegValueState>();
   let preserveCommittedRegs = false;
-  let committedLocalIdentitiesPinned = false;
 
   return {
     beginInstruction: (options) => {
@@ -88,17 +94,29 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     },
     emitReadReg32: (reg) => emitReadAlias(fullRegAccess(reg)),
     emitReadAlias,
-    localValueForAlias: localValueForAliasInState,
+    localLaneSourcesForAlias: localLaneSourcesForAliasInState,
     emitWriteAlias,
     emitWriteAliasIf,
+    captureCommittedExitStores: (regs) => {
+      const snapshot = new Map<Reg32, RegValueState>();
+
+      for (const reg of regs) {
+        const state = committedStates.get(reg);
+
+        if (state === undefined) {
+          throw new Error(`dirty JIT register has no committed state: ${reg}`);
+        }
+
+        snapshot.set(reg, cloneExitSnapshotRegState(state));
+      }
+
+      return snapshot;
+    },
     commitPending: () => {
       for (const reg of [...pendingStates.keys()]) {
         commitPendingReg(reg);
       }
 
-      if (preserveCommittedRegs) {
-        committedLocalIdentitiesPinned = true;
-      }
       preserveCommittedRegs = false;
     },
     commitPendingReg: (reg) => {
@@ -111,16 +129,16 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
         throw new Error(`dirty JIT register has no committed state: ${reg}`);
       }
 
-      const storePlan = planRegisterExitStore(state);
+      emitStoreRegState(reg, state);
+    },
+    emitExitSnapshotStore: (reg, snapshot) => {
+      const state = snapshot.get(reg);
 
-      if (storePlan.kind === "partial") {
-        emitPartialStateStores(reg, storePlan.stores);
-        return;
+      if (state === undefined) {
+        throw new Error(`JIT register snapshot has no state for ${reg}`);
       }
 
-      emitStoreStateU32(body, stateOffset[reg], () => {
-        emitFullValue(reg, state);
-      });
+      emitStoreRegState(reg, state);
     }
   };
 
@@ -152,8 +170,8 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     return emitExtractAliasFromLocal(body, fullLocal, alias, options);
   }
 
-  function localValueForAliasInState(alias: RegisterAlias): number | undefined {
-    return localValueForAlias(
+  function localLaneSourcesForAliasInState(alias: RegisterAlias): readonly LocalLaneSource[] | undefined {
+    return localSourcesForAlias(
       alias,
       pendingStates.get(alias.base),
       committedStates.get(alias.base)
@@ -165,18 +183,16 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     const state = writableStateForReg(alias.base);
 
     if (alias.width === fullWidth) {
-      // Copying an existing local-backed value updates architectural lane state
-      // without claiming the source local as this register's mutable cell.
-      if (writeSource.sourceLocal !== undefined && canCopyLocalValue(state)) {
-        recordFullLocalValue(state, writeSource.sourceLocal);
+      if (writeSource.laneSources !== undefined) {
+        recordFullLocalLaneSources(state, writeSource.laneSources);
         return;
       }
 
       emitCleanValueForFullUse(body, writeSource.emitValue() ?? undefined);
-      const local = localForRegisterOverwrite(state);
+      const local = body.addLocal(wasmValueType.i32);
 
       body.localSet(local);
-      recordFullLocalValue(state, local, { mutable: true });
+      recordFullLocalValue(state, local);
       return;
     }
 
@@ -242,7 +258,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
 
     emitFullValue(reg, target, base);
     body.localSet(local);
-    recordFullLocalValue(target, local, { mutable: true });
+    recordFullLocalValue(target, local);
     return local;
   }
 
@@ -376,22 +392,25 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     }
   }
 
+  function emitStoreRegState(reg: Reg32, state: RegValueState): void {
+    const storePlan = planRegisterExitStore(state);
+
+    if (storePlan.kind === "partial") {
+      emitPartialStateStores(reg, storePlan.stores);
+      return;
+    }
+
+    emitStoreStateU32(body, stateOffset[reg], () => {
+      emitFullValue(reg, state);
+    });
+  }
+
   function localForMaskedValue(width: OperandWidth, emitValue: () => ValueWidth | void): number {
     const local = body.addLocal(wasmValueType.i32);
 
     emitMaskValueToWidth(body, width, emitValue() ?? undefined);
     body.localSet(local);
     return local;
-  }
-
-  function localForRegisterOverwrite(state: RegValueState): number {
-    const local = state.mutableFullLocal;
-
-    if (local !== undefined && !localIsShared(state, local)) {
-      return local;
-    }
-
-    return body.addLocal(wasmValueType.i32);
   }
 
   function ensureWritableRegisterLocal(reg: Reg32, state: RegValueState, base?: RegValueState): number {
@@ -409,8 +428,8 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
       return local;
     }
 
-    // Local-backed lane values may share the same Wasm local. Before mutating a
-    // full-register cell in place, detach so other lanes keep seeing the old
+    // Only conditional writes mutate a full-register local in place. Detach
+    // shared lane values first so ordinary lane copies keep seeing the old
     // logical value.
     const detachedLocal = body.addLocal(wasmValueType.i32);
 
@@ -418,13 +437,6 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     body.localSet(detachedLocal);
     recordFullLocalValue(state, detachedLocal, { mutable: true });
     return detachedLocal;
-  }
-
-  function canCopyLocalValue(state: RegValueState): boolean {
-    // After pre-instruction exits are emitted, earlier exit blocks may still
-    // store committed locals. Keep committed full-value locals stable from then
-    // on; pending states remain safe to replace with copied local-backed values.
-    return preserveCommittedRegs || exactFullLocalSource(state) === undefined || !committedLocalIdentitiesPinned;
   }
 
   function mergeStateInto(target: RegValueState, source: RegValueState): void {
@@ -459,7 +471,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
 
 function normalizeWriteSource(source: JitReg32WriteSource): Readonly<{
   emitValue: () => ValueWidth | void;
-  sourceLocal?: number;
+  laneSources?: FullRegisterLaneSources;
 }> {
   return typeof source === "function" ? { emitValue: source } : source;
 }
@@ -473,4 +485,12 @@ function stateForReg(states: Map<Reg32, RegValueState>, reg: Reg32): RegValueSta
   }
 
   return state;
+}
+
+function cloneExitSnapshotRegState(state: RegValueState): JitReg32ExitSnapshotRegState {
+  return {
+    full: state.full,
+    bytes: [...state.bytes],
+    partials: new Map(state.partials)
+  };
 }

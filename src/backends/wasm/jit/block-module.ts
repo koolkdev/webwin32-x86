@@ -113,12 +113,12 @@ function encodeJitIrBlockFunctionBody(
   const scratch = new WasmLocalScratchAllocator(body);
   const exitLocal = body.addLocal(wasmValueType.i64);
   const valueCache = createJitValueCacheRuntime(body, emissionPlan.valueCachePlan);
-  const state = createJitIrState(body, emissionPlan.exitStates, { valueCache });
-  const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitStateIndex };
+  const state = createJitIrState(body, emissionPlan.exitStoreSnapshots, { valueCache });
+  const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitStoreSnapshotIndex };
 
   state.emitLoadInstructionCount();
 
-  emitExitStateBlocks(body, state.maxExitStateIndex);
+  emitExitStoreSnapshotBlocks(body, state.maxExitStoreSnapshotIndex);
   emitJitIrWithContext({
     body,
     scratch,
@@ -129,7 +129,7 @@ function encodeJitIrBlockFunctionBody(
     valueCache,
     linking
   });
-  emitExitStateStores(body, state, exitLocal);
+  emitExitStoreSnapshotStores(body, state, exitLocal);
   scratch.assertClear();
   body.end();
 
@@ -195,8 +195,8 @@ function blockFunctionIndicesForEntries(
   return indices;
 }
 
-function emitExitStateBlocks(body: WasmFunctionBodyEncoder, maxExitStateIndex: number): void {
-  for (let index = 0; index <= maxExitStateIndex; index += 1) {
+function emitExitStoreSnapshotBlocks(body: WasmFunctionBodyEncoder, maxExitStoreSnapshotIndex: number): void {
+  for (let index = 0; index <= maxExitStoreSnapshotIndex; index += 1) {
     void index;
     body.block();
   }
@@ -219,14 +219,14 @@ function emitLinkFallbackExports(
   }
 }
 
-function emitExitStateStores(
+function emitExitStoreSnapshotStores(
   body: WasmFunctionBodyEncoder,
   state: JitIrState,
   exitLocal: number
 ): void {
-  for (let index = state.maxExitStateIndex; index >= 0; index -= 1) {
+  for (let index = state.maxExitStoreSnapshotIndex; index >= 0; index -= 1) {
     body.endBlock();
-    state.emitExitStateStores(index);
+    state.emitExitStoreSnapshotStores(index);
     body.localGet(exitLocal).returnFromFunction();
   }
 }

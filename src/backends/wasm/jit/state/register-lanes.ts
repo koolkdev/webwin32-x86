@@ -11,6 +11,13 @@ export type LocalLaneSource = Readonly<{
   valueWidth: OperandWidth;
 }>;
 
+export type FullRegisterLaneSources = readonly [
+  LocalLaneSource,
+  LocalLaneSource,
+  LocalLaneSource,
+  LocalLaneSource
+];
+
 export type LocalBackedLaneValue = Readonly<{
   kind: "value";
   source: LocalLaneSource;
@@ -110,6 +117,79 @@ export function recordFullLocalValue(
   }
 }
 
+export function fullLocalLaneSources(valueLocal: number): FullRegisterLaneSources {
+  return [
+    { kind: "local", local: valueLocal, bitOffset: 0, valueWidth: fullWidth },
+    { kind: "local", local: valueLocal, bitOffset: byteWidth, valueWidth: fullWidth },
+    { kind: "local", local: valueLocal, bitOffset: 2 * byteWidth, valueWidth: fullWidth },
+    { kind: "local", local: valueLocal, bitOffset: 3 * byteWidth, valueWidth: fullWidth }
+  ];
+}
+
+export function fullRegisterLaneSourcesFrom(
+  sources: readonly LocalLaneSource[] | undefined
+): FullRegisterLaneSources | undefined {
+  if (sources === undefined) {
+    return undefined;
+  }
+
+  assertFullRegisterLaneSources(sources);
+  return sources;
+}
+
+export function recordFullLocalLaneSources(
+  state: RegValueState,
+  sources: FullRegisterLaneSources
+): void {
+  assertFullRegisterLaneSources(sources);
+
+  const fullSource = exactFullSourceForLaneSources(sources);
+
+  if (fullSource !== undefined) {
+    recordFullLocalValue(state, fullSource.local);
+    return;
+  }
+
+  state.full = unknownLaneSource;
+  state.partials.clear();
+
+  for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
+    const source = sources[byteIndex];
+
+    if (source === undefined) {
+      throw new Error(`missing full register lane source: ${byteIndex}`);
+    }
+
+    state.bytes[byteIndex] = { kind: "value", source };
+  }
+
+  delete state.mutableFullLocal;
+}
+
+export function assertFullRegisterLaneSources(
+  sources: readonly LocalLaneSource[]
+): asserts sources is FullRegisterLaneSources {
+  if (sources.length !== byteCount) {
+    throw new Error(`full register lane copy needs ${byteCount} byte sources, got ${sources.length}`);
+  }
+
+  for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
+    const source = sources[byteIndex];
+
+    if (source === undefined) {
+      throw new Error(`missing full register lane source: ${byteIndex}`);
+    }
+
+    if (source.bitOffset % byteWidth !== 0 || source.bitOffset < 0) {
+      throw new Error(`invalid full register lane bit offset at byte ${byteIndex}: ${source.bitOffset}`);
+    }
+
+    if (source.bitOffset + byteWidth > source.valueWidth) {
+      throw new Error(`full register lane source cannot supply byte ${byteIndex}`);
+    }
+  }
+}
+
 export function recordPartialLocalValue(state: RegValueState, alias: RegisterAlias, valueLocal: number): void {
   const { startByte, byteLength } = aliasByteRange(alias);
 
@@ -163,20 +243,6 @@ export function exactLocalSourceForAlias(
   }
 
   return exactLocalSourceForAliasInState(alias, committed);
-}
-
-export function localValueForAlias(
-  alias: RegisterAlias,
-  pending: RegValueState | undefined,
-  committed: RegValueState | undefined
-): number | undefined {
-  // Copying an existing local-backed value is only valid for exact full-register
-  // writes. Narrow writes still need extraction, masking, or byte merging.
-  if (alias.width !== fullWidth || alias.bitOffset !== 0) {
-    return undefined;
-  }
-
-  return exactLocalSourceForAlias(alias, pending, committed)?.local;
 }
 
 export function localSourcesForAlias(
@@ -273,6 +339,29 @@ function localBackedLaneValue(local: number, bitOffset: number, valueWidth: Oper
     kind: "value",
     source: { kind: "local", local, bitOffset, valueWidth }
   };
+}
+
+function exactFullSourceForLaneSources(sources: readonly LocalLaneSource[]): LocalLaneSource | undefined {
+  const first = sources[0];
+
+  if (first === undefined) {
+    return undefined;
+  }
+
+  for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
+    const source = sources[byteIndex];
+
+    if (
+      source === undefined ||
+      source.local !== first.local ||
+      source.valueWidth !== fullWidth ||
+      source.bitOffset !== byteIndex * byteWidth
+    ) {
+      return undefined;
+    }
+  }
+
+  return { kind: "local", local: first.local, bitOffset: 0, valueWidth: fullWidth };
 }
 
 function localSourceForLaneValue(value: RegisterLaneValue | undefined): LocalLaneSource | undefined {

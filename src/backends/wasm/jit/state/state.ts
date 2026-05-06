@@ -3,12 +3,13 @@ import { stateOffset } from "#backends/wasm/abi.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { emitLoadStateU32, emitStoreStateU32 } from "#backends/wasm/codegen/state.js";
-import type { JitExitPoint, JitExitState, JitStateSnapshot } from "#backends/wasm/jit/codegen/plan/types.js";
+import type { JitExitPoint, JitExitStoreSnapshotPlan, JitStateSnapshot } from "#backends/wasm/jit/codegen/plan/types.js";
 import { createJitFlagState, type JitFlagState } from "./flag-state.js";
 import {
   createJitReg32State,
   type JitReg32InstructionOptions,
-  type JitReg32State
+  type JitReg32State,
+  type JitReg32ExitStoreSnapshot
 } from "./register-state.js";
 import type { JitValueCacheRuntime } from "#backends/wasm/jit/codegen/emit/value-local-store.js";
 
@@ -18,7 +19,7 @@ export type JitExitTarget = {
   emitBeforeExit?: () => void;
 };
 
-type ExitStateStoreOptions = Readonly<{
+type ExitMetadataStoreOptions = Readonly<{
   allowPendingFlags?: boolean;
 }>;
 
@@ -32,23 +33,23 @@ export type JitIrState = Readonly<{
   eipLocal: number;
   aluFlagsLocal: number;
   instructionCountLocal: number;
-  maxExitStateIndex: number;
+  maxExitStoreSnapshotIndex: number;
   emitLoadInstructionCount(): void;
   beginInstruction(exit: JitExitTarget, snapshot: JitStateSnapshot, options: JitReg32InstructionOptions): void;
   prepareExitPoint(exitPoint: JitExitPoint, emitEip: () => void): void;
   finishPreInstructionExitPoints(): void;
   commitInstruction(): void;
   commitInstructionExit(exitPoint: JitExitPoint, emitEip: () => void): void;
-  emitExitStateStores(index: number): void;
+  emitExitStoreSnapshotStores(index: number): void;
 }>;
 
 export function createJitIrState(
   body: WasmFunctionBodyEncoder,
-  exitStates: readonly JitExitState[],
+  exitStoreSnapshots: readonly JitExitStoreSnapshotPlan[],
   options: JitIrStateOptions = {}
 ): JitIrState {
   const regs = createJitReg32State(body);
-  const maxExitStateIndex = exitStates.length - 1;
+  const maxExitStoreSnapshotIndex = exitStoreSnapshots.length - 1;
   const eipLocal = body.addLocal(wasmValueType.i32);
   const aluFlagsLocal = body.addLocal(wasmValueType.i32);
   const flags = createJitFlagState(body, aluFlagsLocal, {
@@ -58,6 +59,7 @@ export function createJitIrState(
     valueCache: options.valueCache
   });
   const instructionCountLocal = body.addLocal(wasmValueType.i32);
+  const exitRegisterStoreSnapshots = new Map<number, JitReg32ExitStoreSnapshot>();
   let activeExit: JitExitTarget | undefined;
 
   return {
@@ -66,7 +68,7 @@ export function createJitIrState(
     eipLocal,
     aluFlagsLocal,
     instructionCountLocal,
-    maxExitStateIndex,
+    maxExitStoreSnapshotIndex,
     emitLoadInstructionCount: () => {
       emitLoadStateU32(body, stateOffset.instructionCount);
       body.localSet(instructionCountLocal);
@@ -74,16 +76,17 @@ export function createJitIrState(
     beginInstruction: (exit, snapshot, options) => {
       activeExit = exit;
       regs.beginInstruction(options);
-      useExitState(exit, 0);
-      useExitStateStores(exit, () => {
+      useExitStoreSnapshot(exit, 0);
+      installExitMetadataStores(exit, () => {
         body.i32Const(i32(snapshot.eip));
       }, snapshot.instructionCountDelta);
     },
     prepareExitPoint: (exitPoint, emitEip) => {
       const exit = requiredActiveExit();
 
-      useExitState(exit, exitPoint.exitStateIndex);
-      useExitStateStores(exit, emitEip, exitPoint.snapshot.instructionCountDelta, {
+      useExitStoreSnapshot(exit, exitPoint.exitStoreSnapshotIndex);
+      captureExitRegisterStoreSnapshot(exitPoint.exitStoreSnapshotIndex);
+      installExitMetadataStores(exit, emitEip, exitPoint.snapshot.instructionCountDelta, {
         allowPendingFlags: exitPoint.snapshot.kind === "preInstruction"
       });
     },
@@ -97,20 +100,31 @@ export function createJitIrState(
       emitEip();
       body.localSet(eipLocal);
       regs.commitPending();
-      useExitState(exit, exitPoint.exitStateIndex);
-      useExitStateStores(exit, () => {
+      captureExitRegisterStoreSnapshot(exitPoint.exitStoreSnapshotIndex);
+      useExitStoreSnapshot(exit, exitPoint.exitStoreSnapshotIndex);
+      installExitMetadataStores(exit, () => {
         body.localGet(eipLocal);
       }, exitPoint.snapshot.instructionCountDelta);
     },
-    emitExitStateStores: (index) => {
-      const snapshot = exitStates[index];
+    emitExitStoreSnapshotStores: (index) => {
+      const snapshot = exitStoreSnapshots[index];
 
       if (snapshot === undefined) {
+        throw new Error(`missing JIT exit store snapshot: ${index}`);
+      }
+
+      if (snapshot.regs.length === 0) {
         return;
       }
 
+      const registerSnapshot = exitRegisterStoreSnapshots.get(index);
+
+      if (registerSnapshot === undefined) {
+        throw new Error(`JIT exit store snapshot was not captured: ${index}`);
+      }
+
       for (const reg of snapshot.regs) {
-        regs.emitCommittedStore(reg);
+        regs.emitExitSnapshotStore(reg, registerSnapshot);
       }
     }
   };
@@ -132,11 +146,11 @@ export function createJitIrState(
     emitStoreStateU32(body, stateOffset.aluFlags, emitValue);
   }
 
-  function useExitStateStores(
+  function installExitMetadataStores(
     exit: JitExitTarget,
     emitEip: () => void,
     instructionDelta: number,
-    options: ExitStateStoreOptions = {}
+    options: ExitMetadataStoreOptions = {}
   ): void {
     exit.emitBeforeExit = () => {
       emitStoreStateU32(body, stateOffset.eip, emitEip);
@@ -154,8 +168,20 @@ export function createJitIrState(
     };
   }
 
-  function useExitState(exit: JitExitTarget, index: number): void {
-    exit.exitLabelDepth = maxExitStateIndex - index;
+  function useExitStoreSnapshot(exit: JitExitTarget, index: number): void {
+    exit.exitLabelDepth = maxExitStoreSnapshotIndex - index;
+  }
+
+  function captureExitRegisterStoreSnapshot(index: number): void {
+    const snapshot = exitStoreSnapshots[index];
+
+    if (snapshot === undefined || snapshot.regs.length === 0) {
+      return;
+    }
+
+    // Deferred exit blocks store this snapshot after later code may have run.
+    // Capture lane/local sources at the exit point.
+    exitRegisterStoreSnapshots.set(index, regs.captureCommittedExitStores(snapshot.regs));
   }
 
   function requiredActiveExit(): JitExitTarget {

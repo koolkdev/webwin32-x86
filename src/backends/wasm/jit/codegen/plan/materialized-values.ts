@@ -14,7 +14,7 @@ export type JitMaterializedValueUsePlan = Readonly<{
 
 export function planJitMaterializedValueUses(
   instructions: readonly JitMaterializedValueUsePlanInput[],
-  codegenPlan: Pick<JitCodegenPlan, "block" | "instructionStates" | "exitPoints" | "exitStates">
+  codegenPlan: Pick<JitCodegenPlan, "block" | "instructionStates" | "exitPoints" | "exitStoreSnapshots">
 ): JitMaterializedValueUsePlan {
   if (instructions.length !== codegenPlan.block.instructions.length) {
     throw new Error(
@@ -22,7 +22,7 @@ export function planJitMaterializedValueUses(
     );
   }
 
-  const exitStateRegsByInstructionOp = exitStateRegsByInstructionOpIndex(codegenPlan);
+  const exitStoreSnapshotRegsByInstructionOp = exitStoreSnapshotRegsByInstructionOpIndex(codegenPlan);
   const expressionUseIndexesByInstruction = new Array<Set<number>>(instructions.length);
   let neededAfterInstruction = new Set<Reg32>();
 
@@ -34,7 +34,7 @@ export function planJitMaterializedValueUses(
       throw new Error(`missing JIT instruction while planning materialized value uses: ${instructionIndex}`);
     }
 
-    const exitStateRegsByOp = exitStateRegsByInstructionOp[instructionIndex] ?? new Map();
+    const exitStoreSnapshotRegsByOp = exitStoreSnapshotRegsByInstructionOp[instructionIndex] ?? new Map();
     const needed = new Set(neededAfterInstruction);
     const sourceUseIndexes = new Set<number>();
 
@@ -60,7 +60,7 @@ export function planJitMaterializedValueUses(
         }
       }
 
-      for (const reg of exitStateRegsByOp.get(opIndex) ?? []) {
+      for (const reg of exitStoreSnapshotRegsByOp.get(opIndex) ?? []) {
         needed.add(reg);
       }
     }
@@ -130,16 +130,16 @@ function expressionMaterializedValueUseIndexes(
   return expressionIndexes;
 }
 
-function exitStateRegsByInstructionOpIndex(
-  codegenPlan: Pick<JitCodegenPlan, "instructionStates" | "exitPoints" | "exitStates">
+function exitStoreSnapshotRegsByInstructionOpIndex(
+  codegenPlan: Pick<JitCodegenPlan, "instructionStates" | "exitPoints" | "exitStoreSnapshots">
 ): readonly ReadonlyMap<number, readonly Reg32[]>[] {
   const regs = new Array<Map<number, Reg32[]>>(codegenPlan.instructionStates.length);
 
   for (const exitPoint of codegenPlan.exitPoints) {
-    const exitState = codegenPlan.exitStates[exitPoint.exitStateIndex];
+    const exitStoreSnapshot = codegenPlan.exitStoreSnapshots[exitPoint.exitStoreSnapshotIndex];
 
-    if (exitState === undefined) {
-      throw new Error(`missing JIT exit state while planning materialized value uses: ${exitPoint.exitStateIndex}`);
+    if (exitStoreSnapshot === undefined) {
+      throw new Error(`missing JIT exit store snapshot while planning materialized value uses: ${exitPoint.exitStoreSnapshotIndex}`);
     }
 
     let instructionRegs = regs[exitPoint.instructionIndex];
@@ -151,7 +151,7 @@ function exitStateRegsByInstructionOpIndex(
 
     const opRegs = instructionRegs.get(exitPoint.opIndex) ?? [];
 
-    for (const reg of exitState.regs) {
+    for (const reg of exitStoreSnapshot.regs) {
       if (!opRegs.includes(reg)) {
         opRegs.push(reg);
       }

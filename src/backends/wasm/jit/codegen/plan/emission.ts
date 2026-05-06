@@ -16,7 +16,7 @@ import {
 import type {
   JitCodegenPlan,
   JitExitPoint,
-  JitExitState,
+  JitExitStoreSnapshotPlan,
   JitFlagMaterializationRequirement,
   JitInstructionState
 } from "./types.js";
@@ -33,8 +33,8 @@ export type JitCodegenEmissionPlan = Readonly<{
   instructions: readonly JitCodegenInstructionPlan[];
   exitPoints: readonly JitExitPoint[];
   flagMaterializationRequirements: readonly JitFlagMaterializationRequirement[];
-  exitStates: readonly JitExitState[];
-  maxExitStateIndex: number;
+  exitStoreSnapshots: readonly JitExitStoreSnapshotPlan[];
+  maxExitStoreSnapshotIndex: number;
   valueCachePlan?: JitExpressionValueCachePlan;
 }>;
 
@@ -82,8 +82,8 @@ export function buildJitCodegenEmissionPlan(
       : instructions.map((instruction) => ({ ...instruction, valueCachePlan })),
     exitPoints: codegenPlan.exitPoints,
     flagMaterializationRequirements: codegenPlan.flagMaterializationRequirements,
-    exitStates: codegenPlan.exitStates,
-    maxExitStateIndex: codegenPlan.maxExitStateIndex,
+    exitStoreSnapshots: codegenPlan.exitStoreSnapshots,
+    maxExitStoreSnapshotIndex: codegenPlan.maxExitStoreSnapshotIndex,
     ...(valueCachePlan === undefined ? {} : { valueCachePlan })
   };
 }

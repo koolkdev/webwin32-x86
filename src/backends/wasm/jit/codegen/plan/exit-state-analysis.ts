@@ -13,7 +13,7 @@ import {
 import type {
   JitCodegenPlan,
   JitExitPoint,
-  JitExitState,
+  JitExitStoreSnapshotPlan,
   JitFlagMaterializationRequirement,
   JitInstructionState,
   JitStateSnapshot
@@ -27,8 +27,9 @@ export function analyzeJitCodegenState(
   const instructionStates: JitInstructionState[] = [];
   const exitPoints: JitExitPoint[] = [];
   const flagMaterializationRequirements: JitFlagMaterializationRequirement[] = [];
-  const exitStates: JitExitState[] = [{ regs: [] }];
-  const exitStateIndexByKey = new Map<string, number>([[exitStateKey([]), 0]]);
+  // Non-empty exit store snapshots stay per-exit because register locals can
+  // change before deferred exit blocks are emitted. Empty exits share index 0.
+  const exitStoreSnapshots: JitExitStoreSnapshotPlan[] = [{ regs: [] }];
   let currentPostState: JitStateSnapshot | undefined;
 
   for (let instructionIndex = 0; instructionIndex < block.instructions.length; instructionIndex += 1) {
@@ -83,8 +84,8 @@ export function analyzeJitCodegenState(
     instructionStates,
     exitPoints,
     flagMaterializationRequirements,
-    exitStates,
-    maxExitStateIndex: exitStates.length - 1
+    exitStoreSnapshots,
+    maxExitStoreSnapshotIndex: exitStoreSnapshots.length - 1
   };
 
   function instructionPostState(instruction: JitIrBlockInstruction): JitStateSnapshot {
@@ -168,14 +169,14 @@ export function analyzeJitCodegenState(
     snapshot: JitStateSnapshot
   ): void {
     const requiredFlagCommitMask = snapshot.speculativeFlags.mask;
-    const exitStateIndex = internExitState(snapshot.committedRegs);
+    const exitStoreSnapshotIndex = appendExitStoreSnapshot(snapshot.committedRegs);
 
     exitPoints.push({
       instructionIndex,
       opIndex,
       exitReason,
       snapshot,
-      exitStateIndex,
+      exitStoreSnapshotIndex,
       requiredFlagCommitMask
     });
 
@@ -190,18 +191,14 @@ export function analyzeJitCodegenState(
     }
   }
 
-  function internExitState(regs: readonly Reg32[]): number {
-    const key = exitStateKey(regs);
-    const existingIndex = exitStateIndexByKey.get(key);
-
-    if (existingIndex !== undefined) {
-      return existingIndex;
+  function appendExitStoreSnapshot(regs: readonly Reg32[]): number {
+    if (regs.length === 0) {
+      return 0;
     }
 
-    const index = exitStates.length;
+    const index = exitStoreSnapshots.length;
 
-    exitStates.push({ regs });
-    exitStateIndexByKey.set(key, index);
+    exitStoreSnapshots.push({ regs });
     return index;
   }
 }
@@ -229,8 +226,4 @@ function preInstructionExitPointCount(exitPoints: readonly JitExitPoint[], exitS
   }
 
   return count;
-}
-
-function exitStateKey(regs: readonly Reg32[]): string {
-  return regs.join(",");
 }

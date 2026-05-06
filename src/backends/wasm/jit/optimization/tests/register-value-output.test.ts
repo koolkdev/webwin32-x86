@@ -186,7 +186,7 @@ test("runRegisterValuePass materializes address registers before faultable memor
   deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax"]);
 });
 
-test("runRegisterValuePass removes identity writes from a two-XCHG register swap", () => {
+test("runRegisterValuePass removes writes from a two-XCHG register round trip", () => {
   const folded = runRegisterValuePass(buildDecodedJitIrBlock([
     0x87, 0xd8, // xchg eax, ebx
     0x87, 0xc3 // xchg ebx, eax
@@ -197,7 +197,7 @@ test("runRegisterValuePass removes identity writes from a two-XCHG register swap
   deepStrictEqual(setTargetRegs(folded.block.instructions), []);
 });
 
-test("runRegisterValuePass removes identity writes from chained XCHG register cycles", () => {
+test("runRegisterValuePass removes writes from chained XCHG register round trips", () => {
   const folded = runRegisterValuePass(buildDecodedJitIrBlock([
     0x87, 0xd8, // xchg eax, ebx
     0x87, 0xcb, // xchg ebx, ecx
@@ -210,7 +210,7 @@ test("runRegisterValuePass removes identity writes from chained XCHG register cy
   deepStrictEqual(setTargetRegs(folded.block.instructions), []);
 });
 
-test("runRegisterValuePass materializes non-identity XCHG cycles as a register batch", () => {
+test("runRegisterValuePass materializes value-changing XCHG cycles as a register batch", () => {
   const folded = runRegisterValuePass(buildDecodedJitIrBlock([
     0x87, 0xd8, // xchg eax, ebx
     0x87, 0xcb // xchg ebx, ecx

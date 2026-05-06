@@ -5,7 +5,7 @@ import type { JitCodegenPlan } from "./types.js";
 export type {
   JitExitPoint,
   JitExitSnapshotKind,
-  JitExitState,
+  JitExitStoreSnapshotPlan,
   JitFlagMaterializationRequirement,
   JitFlagSnapshot,
   JitInstructionState,

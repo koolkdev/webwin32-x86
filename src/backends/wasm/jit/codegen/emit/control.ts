@@ -165,7 +165,7 @@ function emitJitLinkedControlTransferStateStores(
   exitPoint: JitExitPoint
 ): void {
   context.exit.emitBeforeExit?.();
-  context.state.emitExitStateStores(exitPoint.exitStateIndex);
+  context.state.emitExitStoreSnapshotStores(exitPoint.exitStoreSnapshotIndex);
 }
 
 function staticControlTarget(context: JitIrContext, target: IrValueExpr): number | undefined {
