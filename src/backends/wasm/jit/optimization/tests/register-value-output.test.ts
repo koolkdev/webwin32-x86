@@ -101,7 +101,7 @@ test("runRegisterValuePass folds register values into indirect jump targets", ()
   strictEqual(folded.registerValuePropagation.materializedSetCount, 1);
   deepStrictEqual(
     opNames(jumpInstruction.ir.slice(0, jumpIndex)),
-    ["get:symbolicRead", "i32.xor", "set:registerMaterialization"]
+    ["get:symbolicRead", "value.binary:xor", "set:registerMaterialization"]
   );
   deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax"]);
 });
@@ -271,6 +271,12 @@ function hasSet32Reg(
   );
 }
 
-function opNames(ops: readonly { op: string; role?: string }[]): readonly string[] {
-  return ops.map((op) => op.role === undefined ? op.op : `${op.op}:${op.role}`);
+function opNames(ops: readonly { op: string; operator?: string; role?: string }[]): readonly string[] {
+  return ops.map((op) => {
+    if (op.role !== undefined) {
+      return `${op.op}:${op.role}`;
+    }
+
+    return op.operator === undefined ? op.op : `${op.op}:${op.operator}`;
+  });
 }

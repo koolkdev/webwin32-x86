@@ -1,4 +1,3 @@
-import { irOpIsBinaryValue, irOpIsUnaryValue } from "#x86/ir/model/op-semantics.js";
 import type { IrBinaryValueOp, IrUnaryValueOp, ValueRef } from "#x86/ir/model/types.js";
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
 import {
@@ -68,17 +67,13 @@ export class JitValueTracker {
       case "const32":
         this.record(op.dst.id, { kind: "const32", value: op.value });
         return true;
+      case "value.binary":
+        this.record(op.dst.id, this.binaryValue(op));
+        return true;
+      case "value.unary":
+        this.record(op.dst.id, this.unaryValue(op));
+        return true;
       default:
-        if (irOpIsBinaryValue(op)) {
-          this.record(op.dst.id, this.binaryValue(op));
-          return true;
-        }
-
-        if (irOpIsUnaryValue(op)) {
-          this.record(op.dst.id, this.unaryValue(op));
-          return true;
-        }
-
         return false;
     }
   }
@@ -102,14 +97,14 @@ export class JitValueTracker {
     const b = this.valueFor(op.b);
 
     return a !== undefined && b !== undefined
-      ? { kind: op.op, a, b }
+      ? { kind: op.op, type: op.type, operator: op.operator, a, b }
       : undefined;
   }
 
   private unaryValue(op: Extract<JitIrOp, IrUnaryValueOp>): JitValue | undefined {
     const value = this.valueFor(op.value);
 
-    return value === undefined ? undefined : { kind: op.op, value };
+    return value === undefined ? undefined : { kind: op.op, type: op.type, operator: op.operator, value };
   }
 }
 

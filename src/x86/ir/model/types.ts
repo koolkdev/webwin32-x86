@@ -50,27 +50,33 @@ export type IrAluFlagsConditionOp = Readonly<{
   cc: ConditionCode;
 }>;
 
-export type IrBinaryValueOpName =
-  | "i32.add"
-  | "i32.sub"
-  | "i32.xor"
-  | "i32.or"
-  | "i32.and"
-  | "i32.shr_u";
+export type IrValueType = "i32";
 
-export type IrUnaryValueOpName =
-  | "i32.extend8_s"
-  | "i32.extend16_s";
+export type IrBinaryOperator =
+  | "add"
+  | "sub"
+  | "xor"
+  | "or"
+  | "and"
+  | "shr_u";
+
+export type IrUnaryOperator =
+  | "extend8_s"
+  | "extend16_s";
 
 export type IrBinaryValueOp = Readonly<{
-  op: IrBinaryValueOpName;
+  op: "value.binary";
+  type: IrValueType;
+  operator: IrBinaryOperator;
   dst: VarRef;
   a: ValueRef;
   b: ValueRef;
 }>;
 
 export type IrUnaryValueOp = Readonly<{
-  op: IrUnaryValueOpName;
+  op: "value.unary";
+  type: IrValueType;
+  operator: IrUnaryOperator;
   dst: VarRef;
   value: ValueRef;
 }>;

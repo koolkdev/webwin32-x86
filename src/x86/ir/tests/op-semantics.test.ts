@@ -13,7 +13,7 @@ import type { IrOp } from "#x86/ir/model/types.js";
 import { const32, irVar } from "#x86/ir/build/builder.js";
 
 test("IR op semantics exposes results, dsts, and terminators", () => {
-  const localDef: IrOp = { op: "i32.add", dst: irVar(1), a: irVar(0), b: const32(1) };
+  const localDef: IrOp = { op: "value.binary", type: "i32", operator: "add", dst: irVar(1), a: irVar(0), b: const32(1) };
   const storageRead: IrOp = { op: "get", dst: irVar(2), source: { kind: "reg", reg: "eax" } };
   const store: IrOp = { op: "set", target: { kind: "reg", reg: "eax" }, value: irVar(1) };
 

@@ -32,7 +32,7 @@ test("IrBlockBuilder appends instructions with one var namespace", () => {
     { op: "next" },
     { op: "get", dst: { kind: "var", id: 1 }, source: { kind: "operand", index: 8 }, accessWidth: 32 },
     {
-      op: "i32.add",
+      op: "value.binary", type: "i32", operator: "add",
       dst: { kind: "var", id: 2 },
       a: { kind: "var", id: 1 },
       b: { kind: "const32", value: 1 }

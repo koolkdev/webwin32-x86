@@ -26,7 +26,7 @@ export function logic32LocalConditionBlock(cc: ConditionCode): JitIrBlock {
     instructions: [
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "i32.and", dst: v(1), a: v(0), b: c32(0xff) },
+        { op: "value.binary", type: "i32", operator: "and", dst: v(1), a: v(0), b: c32(0xff) },
         createIrFlagSetOp("logic", { result: v(1) }),
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(1) },
         { op: "next" }

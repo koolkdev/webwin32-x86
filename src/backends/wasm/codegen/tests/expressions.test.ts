@@ -22,7 +22,9 @@ const sourceValue = (
 const set = (
   target: ReturnType<typeof op> | ReturnType<typeof reg>,
   value: ReturnType<typeof v> | ReturnType<typeof c32> | ReturnType<typeof sourceValue> | Readonly<{
-    kind: "i32.add" | "i32.sub";
+    kind: "value.binary";
+    type: "i32";
+    operator: "add" | "sub";
     a: ReturnType<typeof v> | ReturnType<typeof c32> | ReturnType<typeof sourceValue>;
     b: ReturnType<typeof v> | ReturnType<typeof c32> | ReturnType<typeof sourceValue>;
   }>
@@ -115,7 +117,7 @@ test("expression selector folds simple register arithmetic into destination valu
     buildIrExpressionBlock(
       [
         { op: "get", dst: v(0), source: reg("eax") },
-        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: c32(1) },
         { op: "set", target: reg("ebx"), value: v(1) },
         { op: "next" }
       ],
@@ -124,7 +126,7 @@ test("expression selector folds simple register arithmetic into destination valu
     [
       {
         ...set(reg("ebx"), {
-          kind: "i32.add",
+          kind: "value.binary", type: "i32", operator: "add",
           a: sourceValue(reg("eax")),
           b: c32(1)
         })
@@ -138,14 +140,14 @@ test("expression selector can reuse const32 bindings without a temporary", () =>
   deepStrictEqual(
     buildIrExpressionBlock([
       { op: "const32", dst: v(0), value: 7 },
-      { op: "i32.add", dst: v(1), a: v(0), b: v(0) },
+      { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: v(0) },
       { op: "set", target: reg("ebx"), value: v(1) },
       { op: "next" }
     ]),
     [
       {
         ...set(reg("ebx"), {
-          kind: "i32.add",
+          kind: "value.binary", type: "i32", operator: "add",
           a: c32(7),
           b: c32(7)
         })
@@ -161,7 +163,7 @@ test("expression selector materializes flag inputs that still need value refs", 
       [
         { op: "get", dst: v(0), source: op(0) },
         { op: "get", dst: v(1), source: op(1) },
-        { op: "i32.sub", dst: v(2), a: v(0), b: v(1) },
+        { op: "value.binary", type: "i32", operator: "sub", dst: v(2), a: v(0), b: v(1) },
         createIrFlagSetOp("sub", { left: v(0), right: v(1), result: v(2) }),
         { op: "next" }
       ],
@@ -170,7 +172,7 @@ test("expression selector materializes flag inputs that still need value refs", 
     [
       { op: "let32", dst: v(0), value: sourceValue(op(0)) },
       { op: "let32", dst: v(1), value: sourceValue(op(1)) },
-      { op: "let32", dst: v(2), value: { kind: "i32.sub", a: v(0), b: v(1) } },
+      { op: "let32", dst: v(2), value: { kind: "value.binary", type: "i32", operator: "sub", a: v(0), b: v(1) } },
       createIrFlagSetOp("sub", { left: v(0), right: v(1), result: v(2) }),
       { op: "next" }
     ]

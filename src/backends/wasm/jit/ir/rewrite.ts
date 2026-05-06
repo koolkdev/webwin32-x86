@@ -2,8 +2,8 @@ import type { Reg32 } from "#x86/isa/types.js";
 import type { ValueRef, VarRef } from "#x86/ir/model/types.js";
 import { jitIrOpDst } from "#backends/wasm/jit/ir/semantics.js";
 import type { JitIrBlockInstruction, JitIrOp } from "#backends/wasm/jit/ir/types.js";
-import type { JitBinaryValue, JitUnaryValue, JitValue } from "#backends/wasm/jit/ir/values.js";
-import { jitValueIsBinary, jitValueIsSymbolicReg, jitValueIsUnary } from "#backends/wasm/jit/ir/values.js";
+import type { JitValue } from "#backends/wasm/jit/ir/values.js";
+import { jitValueIsSymbolicReg } from "#backends/wasm/jit/ir/values.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 
 export type JitInstructionRewrite = {
@@ -117,23 +117,34 @@ export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitValue)
     return existingValue;
   }
 
-  if (jitValueIsBinary(value)) {
-    const dst = allocVar(rewrite);
-
-    emitJitBinaryValueOp(rewrite, dst, value);
-    rewrite.values.record(dst.id, value);
-    return dst;
-  }
-
-  if (jitValueIsUnary(value)) {
-    const dst = allocVar(rewrite);
-
-    emitJitUnaryValueOp(rewrite, dst, value);
-    rewrite.values.record(dst.id, value);
-    return dst;
-  }
-
   switch (value.kind) {
+    case "value.binary": {
+      const dst = allocVar(rewrite);
+
+      rewrite.ops.push({
+        op: "value.binary",
+        type: value.type,
+        operator: value.operator,
+        dst,
+        a: emitJitValueRef(rewrite, value.a),
+        b: emitJitValueRef(rewrite, value.b)
+      });
+      rewrite.values.record(dst.id, value);
+      return dst;
+    }
+    case "value.unary": {
+      const dst = allocVar(rewrite);
+
+      rewrite.ops.push({
+        op: "value.unary",
+        type: value.type,
+        operator: value.operator,
+        dst,
+        value: emitJitValueRef(rewrite, value.value)
+      });
+      rewrite.values.record(dst.id, value);
+      return dst;
+    }
     case "const32":
       return { kind: "const32", value: value.value };
     case "reg":
@@ -146,17 +157,26 @@ export function assignJitValue(
   dst: VarRef,
   value: JitValue
 ): void {
-  if (jitValueIsBinary(value)) {
-    emitJitBinaryValueOp(rewrite, dst, value);
-    return;
-  }
-
-  if (jitValueIsUnary(value)) {
-    emitJitUnaryValueOp(rewrite, dst, value);
-    return;
-  }
-
   switch (value.kind) {
+    case "value.binary":
+      rewrite.ops.push({
+        op: "value.binary",
+        type: value.type,
+        operator: value.operator,
+        dst,
+        a: emitJitValueRef(rewrite, value.a),
+        b: emitJitValueRef(rewrite, value.b)
+      });
+      return;
+    case "value.unary":
+      rewrite.ops.push({
+        op: "value.unary",
+        type: value.type,
+        operator: value.operator,
+        dst,
+        value: emitJitValueRef(rewrite, value.value)
+      });
+      return;
     case "const32":
       rewrite.ops.push({ op: "const32", dst, value: value.value });
       return;
@@ -169,31 +189,6 @@ export function assignJitValue(
       });
       return;
   }
-}
-
-function emitJitBinaryValueOp(
-  rewrite: JitInstructionRewrite,
-  dst: VarRef,
-  value: JitBinaryValue
-): void {
-  rewrite.ops.push({
-    op: value.kind,
-    dst,
-    a: emitJitValueRef(rewrite, value.a),
-    b: emitJitValueRef(rewrite, value.b)
-  });
-}
-
-function emitJitUnaryValueOp(
-  rewrite: JitInstructionRewrite,
-  dst: VarRef,
-  value: JitUnaryValue
-): void {
-  rewrite.ops.push({
-    op: value.kind,
-    dst,
-    value: emitJitValueRef(rewrite, value.value)
-  });
 }
 
 function allocVar(rewrite: JitInstructionRewrite): VarRef {

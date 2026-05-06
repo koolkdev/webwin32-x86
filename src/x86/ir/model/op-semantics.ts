@@ -1,6 +1,4 @@
 import type {
-  IrBinaryValueOp,
-  IrUnaryValueOp,
   IrOp,
   StorageRef,
   ValueRef,
@@ -27,44 +25,14 @@ export type IrOpResult =
 
 export type IrTerminatorOp = Extract<IrOp, { op: "next" | "jump" | "conditionalJump" | "hostTrap" }>;
 
-export function irOpIsBinaryValue<T extends { op: string }>(op: T): op is Extract<T, IrBinaryValueOp> {
-  switch (op.op) {
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-    case "i32.shr_u":
-      return true;
-    default:
-      return false;
-  }
-}
-
-export function irOpIsUnaryValue<T extends { op: string }>(op: T): op is Extract<T, IrUnaryValueOp> {
-  switch (op.op) {
-    case "i32.extend8_s":
-    case "i32.extend16_s":
-      return true;
-    default:
-      return false;
-  }
-}
-
 export function irOpResult(op: IrOp): IrOpResult {
   switch (op.op) {
     case "get":
       return { kind: "value", dst: op.dst, sideEffect: "storageRead" };
     case "address":
     case "const32":
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-    case "i32.shr_u":
-    case "i32.extend8_s":
-    case "i32.extend16_s":
+    case "value.binary":
+    case "value.unary":
     case "aluFlags.condition":
       return { kind: "value", dst: op.dst, sideEffect: "none" };
     case "set":
@@ -100,14 +68,8 @@ export function irOpIsTerminator(op: IrOp): op is IrTerminatorOp {
     case "set.if":
     case "address":
     case "const32":
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-    case "i32.shr_u":
-    case "i32.extend8_s":
-    case "i32.extend16_s":
+    case "value.binary":
+    case "value.unary":
     case "flags.set":
     case "flags.materialize":
     case "flags.boundary":
@@ -147,17 +109,11 @@ export function visitIrOpValueRefs(
     case "address":
     case "const32":
       return;
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-    case "i32.shr_u":
+    case "value.binary":
       visit(op.a, "value");
       visit(op.b, "value");
       return;
-    case "i32.extend8_s":
-    case "i32.extend16_s":
+    case "value.unary":
       visit(op.value, "value");
       return;
     case "flags.set":
@@ -221,14 +177,8 @@ export function visitIrOpStorageRefs(
       return;
     case "address":
     case "const32":
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-    case "i32.shr_u":
-    case "i32.extend8_s":
-    case "i32.extend16_s":
+    case "value.binary":
+    case "value.unary":
     case "flags.set":
     case "flags.materialize":
     case "flags.boundary":

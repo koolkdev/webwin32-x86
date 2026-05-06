@@ -131,7 +131,7 @@ test("register value analysis folds low-byte reads from tracked full registers",
 
 test("register value analysis keeps signed and unsigned low-byte reads distinct", () => {
   const lowByteOfEcx = {
-    kind: "i32.and" as const,
+    kind: "value.binary", type: "i32", operator: "and" as const,
     a: { kind: "reg" as const, reg: "ecx" as const },
     b: { kind: "const32" as const, value: 0xff }
   };
@@ -153,7 +153,7 @@ test("register value analysis keeps signed and unsigned low-byte reads distinct"
   }).folds[0]?.value;
 
   deepStrictEqual(foldedLowByteValue(false), lowByteOfEcx);
-  deepStrictEqual(foldedLowByteValue(true), { kind: "i32.extend8_s", value: lowByteOfEcx });
+  deepStrictEqual(foldedLowByteValue(true), { kind: "value.unary", type: "i32", operator: "extend8_s", value: lowByteOfEcx });
 });
 
 test("register value analysis folds low-word reads from tracked full registers", () => {

@@ -13,9 +13,9 @@ test("flag-dce removes overwritten flag producers", () => {
     instructions: [
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: c32(1) },
         createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
-        { op: "i32.sub", dst: v(2), a: v(1), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "sub", dst: v(2), a: v(1), b: c32(1) },
         createIrFlagSetOp("sub", { left: v(1), right: c32(1), result: v(2) }),
         { op: "aluFlags.condition", dst: v(3), cc: "E" },
         { op: "set.if", condition: v(3), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
@@ -34,9 +34,9 @@ test("flag-dce keeps partial flag producers needed by later CF reads", () => {
     instructions: [
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: c32(1) },
         createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
-        { op: "i32.add", dst: v(2), a: v(1), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(2), a: v(1), b: c32(1) },
         createIrFlagSetOp("inc", { left: v(1), result: v(2) }),
         { op: "aluFlags.condition", dst: v(3), cc: "B" },
         { op: "conditionalJump", condition: v(3), taken: c32(0x2000), notTaken: c32(0x1001) }
@@ -54,7 +54,7 @@ test("flag-dce keeps producers needed by memory fault and control exits", () => 
     instructions: [
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: c32(1) },
         createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "next" }
       ]),
@@ -75,7 +75,7 @@ test("flag liveness applies pre-instruction fault reads at instruction entry", (
     instructions: [
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: c32(1) },
         createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "get", dst: v(2), source: { kind: "mem", address: c32(0x2000) } },
         { op: "next" }
@@ -92,7 +92,7 @@ test("flag-dce keeps undefined bits needed by explicit boundaries", () => {
     instructions: [
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "i32.and", dst: v(1), a: v(0), b: c32(0xff) },
+        { op: "value.binary", type: "i32", operator: "and", dst: v(1), a: v(0), b: c32(0xff) },
         createIrFlagSetOp("logic", { result: v(1) }),
         { op: "flags.boundary", mask: IR_ALU_FLAG_MASKS.AF },
         { op: "next" }
@@ -109,7 +109,7 @@ test("flag-dce keeps producers needed by explicit flag materialization", () => {
     instructions: [
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: c32(1) },
         createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "flags.materialize", mask: IR_ALU_FLAG_MASKS.ZF },
         { op: "next" }
@@ -127,7 +127,7 @@ test("flag-dce is a validating repeatable optimization pass", () => {
     instructions: [
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: c32(1) },
         createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "next" }
       ])

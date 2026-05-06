@@ -10,7 +10,9 @@ import {
 } from "#backends/wasm/codegen/expressions.js";
 import type {
   ConditionCode,
+  IrBinaryOperator,
   IrFlagSetOp,
+  IrUnaryOperator,
 } from "#x86/ir/model/types.js";
 import type { OperandWidth } from "#x86/isa/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
@@ -19,13 +21,12 @@ import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-bo
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { assignIrExprVarSlots, type IrExprVarSlotAssignment } from "./var-slots.js";
 import {
-  arithmeticResultValueWidth,
-  bitwiseResultValueWidth,
   cleanValueWidth,
   constValueWidth,
   emitCleanValueForFullUse,
   emitMaskValueToWidth,
   emitSignExtendValueToWidth,
+  i32BinaryResultValueWidth,
   maskedConstValue,
   untrackedValueWidth,
   type WasmIrEmitValueOptions,
@@ -204,55 +205,51 @@ class IrExprWasmEmitter {
       case "flagProducer.condition":
         this.#context.emitFlagProducerCondition(value, this.#helpers);
         return cleanValueWidth(8);
-      case "i32.add":
-        {
-          const left = this.#emitValue(value.a, { requestedWidth: 32 });
-          const right = this.#emitValue(value.b, { requestedWidth: 32 });
+      case "value.binary":
+        return this.#emitI32Binary(value.operator, value.a, value.b);
+      case "value.unary":
+        return this.#emitI32Unary(value.operator, value.value, options);
+    }
+  }
 
-          this.#context.body.i32Add();
-          return arithmeticResultValueWidth("i32.add", left, right);
-        }
-      case "i32.sub":
-        {
-          const left = this.#emitValue(value.a, { requestedWidth: 32 });
-          const right = this.#emitValue(value.b, { requestedWidth: 32 });
+  #emitI32Binary(operator: IrBinaryOperator, a: IrValueExpr, b: IrValueExpr): ValueWidth {
+    const operandOptions = i32BinaryOperandEmitOptions(operator);
+    const left = this.#emitValue(a, operandOptions);
+    const right = this.#emitValue(b, operandOptions);
 
-          this.#context.body.i32Sub();
-          return arithmeticResultValueWidth("i32.sub", left, right);
-        }
-      case "i32.xor":
-        {
-          const left = this.#emitValue(value.a, { widthInsensitive: true });
-          const right = this.#emitValue(value.b, { widthInsensitive: true });
+    this.#emitI32BinaryInstruction(operator);
+    return i32BinaryResultValueWidth(operator, left, right);
+  }
 
-          this.#context.body.i32Xor();
-          return bitwiseResultValueWidth("i32.xor", left, right);
-        }
-      case "i32.or":
-        {
-          const left = this.#emitValue(value.a, { widthInsensitive: true });
-          const right = this.#emitValue(value.b, { widthInsensitive: true });
-
-          this.#context.body.i32Or();
-          return bitwiseResultValueWidth("i32.or", left, right);
-        }
-      case "i32.and":
-        {
-          const left = this.#emitValue(value.a, { widthInsensitive: true });
-          const right = this.#emitValue(value.b, { widthInsensitive: true });
-
-          this.#context.body.i32And();
-          return bitwiseResultValueWidth("i32.and", left, right);
-        }
-      case "i32.shr_u":
-        this.#emitValue(value.a, { requestedWidth: 32 });
-        this.#emitValue(value.b, { requestedWidth: 32 });
+  #emitI32BinaryInstruction(operator: IrBinaryOperator): void {
+    switch (operator) {
+      case "add":
+        this.#context.body.i32Add();
+        return;
+      case "sub":
+        this.#context.body.i32Sub();
+        return;
+      case "xor":
+        this.#context.body.i32Xor();
+        return;
+      case "or":
+        this.#context.body.i32Or();
+        return;
+      case "and":
+        this.#context.body.i32And();
+        return;
+      case "shr_u":
         this.#context.body.i32ShrU();
-        return untrackedValueWidth();
-      case "i32.extend8_s":
-        return this.#emitSignExtend(value.value, 8, options);
-      case "i32.extend16_s":
-        return this.#emitSignExtend(value.value, 16, options);
+        return;
+    }
+  }
+
+  #emitI32Unary(operator: IrUnaryOperator, value: IrValueExpr, options: WasmIrEmitValueOptions): ValueWidth {
+    switch (operator) {
+      case "extend8_s":
+        return this.#emitSignExtend(value, 8, options);
+      case "extend16_s":
+        return this.#emitSignExtend(value, 16, options);
     }
   }
 
@@ -285,5 +282,18 @@ class IrExprWasmEmitter {
     }
 
     return local;
+  }
+}
+
+function i32BinaryOperandEmitOptions(operator: IrBinaryOperator): WasmIrEmitValueOptions {
+  switch (operator) {
+    case "add":
+    case "sub":
+    case "shr_u":
+      return { requestedWidth: 32 };
+    case "xor":
+    case "or":
+    case "and":
+      return { widthInsensitive: true };
   }
 }

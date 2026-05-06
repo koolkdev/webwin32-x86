@@ -304,7 +304,7 @@ test("unary ALU semantics lower to flagless not and sub-flags neg IR", () => {
   deepStrictEqual(not, [
     { op: "get", dst: { kind: "var", id: 0 }, source: { kind: "operand", index: 0 }, accessWidth: 16 },
     {
-      op: "i32.xor",
+      op: "value.binary", type: "i32", operator: "xor",
       dst: { kind: "var", id: 1 },
       a: { kind: "var", id: 0 },
       b: { kind: "const32", value: 0xffff }
@@ -326,7 +326,7 @@ test("unary ALU semantics lower to flagless not and sub-flags neg IR", () => {
     accessWidth: 8
   });
   deepStrictEqual(neg[1], {
-    op: "i32.sub",
+    op: "value.binary", type: "i32", operator: "sub",
     dst: { kind: "var", id: 1 },
     a: { kind: "const32", value: 0 },
     b: { kind: "var", id: 0 }

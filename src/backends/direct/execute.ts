@@ -15,7 +15,16 @@ import {
 import { buildIr } from "#x86/ir/build/builder.js";
 import { CONDITIONS, type FlagBoolExpr } from "#x86/ir/model/conditions.js";
 import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "#x86/ir/model/flags.js";
-import type { MemRef, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
+import type {
+  IrBinaryOperator,
+  IrFlagSetOp,
+  IrOp,
+  IrUnaryOperator,
+  MemRef,
+  StorageRef,
+  ValueRef,
+  VarRef
+} from "#x86/ir/model/types.js";
 import type { IsaDecodedInstruction, IsaOperandBinding } from "#x86/isa/decoder/types.js";
 import { widthMask, type MemOperand, type OperandWidth, type Reg32 } from "#x86/isa/types.js";
 
@@ -103,29 +112,11 @@ function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
     case "const32":
       setVar(context, op.dst, op.value);
       return undefined;
-    case "i32.add":
-      setVar(context, op.dst, u32(evalValueRef(context, op.a) + evalValueRef(context, op.b)));
+    case "value.binary":
+      setVar(context, op.dst, evalI32Binary(op.operator, evalValueRef(context, op.a), evalValueRef(context, op.b)));
       return undefined;
-    case "i32.sub":
-      setVar(context, op.dst, u32(evalValueRef(context, op.a) - evalValueRef(context, op.b)));
-      return undefined;
-    case "i32.xor":
-      setVar(context, op.dst, u32(evalValueRef(context, op.a) ^ evalValueRef(context, op.b)));
-      return undefined;
-    case "i32.or":
-      setVar(context, op.dst, u32(evalValueRef(context, op.a) | evalValueRef(context, op.b)));
-      return undefined;
-    case "i32.and":
-      setVar(context, op.dst, u32(evalValueRef(context, op.a) & evalValueRef(context, op.b)));
-      return undefined;
-    case "i32.shr_u":
-      setVar(context, op.dst, u32(evalValueRef(context, op.a) >>> (evalValueRef(context, op.b) & 31)));
-      return undefined;
-    case "i32.extend8_s":
-      setVar(context, op.dst, signExtendValue(evalValueRef(context, op.value), 8));
-      return undefined;
-    case "i32.extend16_s":
-      setVar(context, op.dst, signExtendValue(evalValueRef(context, op.value), 16));
+    case "value.unary":
+      setVar(context, op.dst, evalI32Unary(op.operator, evalValueRef(context, op.value)));
       return undefined;
     case "flags.set":
       setFlags(context, op);
@@ -147,6 +138,32 @@ function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
       );
     case "hostTrap":
       return completeHostTrap(context, evalValueRef(context, op.vector));
+  }
+}
+
+function evalI32Binary(operator: IrBinaryOperator, a: number, b: number): number {
+  switch (operator) {
+    case "add":
+      return u32(a + b);
+    case "sub":
+      return u32(a - b);
+    case "xor":
+      return u32(a ^ b);
+    case "or":
+      return u32(a | b);
+    case "and":
+      return u32(a & b);
+    case "shr_u":
+      return u32(a >>> (b & 31));
+  }
+}
+
+function evalI32Unary(operator: IrUnaryOperator, value: number): number {
+  switch (operator) {
+    case "extend8_s":
+      return signExtendValue(value, 8);
+    case "extend16_s":
+      return signExtendValue(value, 16);
   }
 }
 

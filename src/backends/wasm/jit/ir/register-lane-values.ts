@@ -108,7 +108,9 @@ export function extractJitRegisterAccessValue(
   const shifted = bitOffset === 0
     ? value
     : {
-      kind: "i32.shr_u" as const,
+      kind: "value.binary" as const,
+      type: "i32" as const,
+      operator: "shr_u" as const,
       a: value,
       b: { kind: "const32" as const, value: bitOffset }
     };
@@ -116,7 +118,9 @@ export function extractJitRegisterAccessValue(
   return width === fullWidth
     ? shifted
     : {
-      kind: "i32.and",
+      kind: "value.binary",
+      type: "i32",
+      operator: "and",
       a: shifted,
       b: { kind: "const32", value: widthMask(width) }
     };

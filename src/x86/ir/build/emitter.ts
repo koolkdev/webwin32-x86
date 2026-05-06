@@ -17,6 +17,7 @@ import type {
   Const32Ref,
   FlagMask,
   FlagProducerName,
+  IrBinaryOperator,
   MemRef,
   NextEipRef,
   OperandInput,
@@ -28,6 +29,7 @@ import type {
   IrBlock,
   StorageInput,
   TargetInput,
+  IrUnaryOperator,
   VarRef,
   ValueInput
 } from "#x86/ir/model/types.js";
@@ -137,60 +139,50 @@ export class IrEmitter implements IrBuilder {
     return dst;
   }
 
-  i32Add(a: ValueInput, b: ValueInput): VarRef {
+  #binaryValue(operator: IrBinaryOperator, a: ValueInput, b: ValueInput): VarRef {
     const dst = this.#allocVar();
 
-    this.#push({ op: "i32.add", dst, a: toValueRef(a), b: toValueRef(b) });
+    this.#push({ op: "value.binary", type: "i32", operator, dst, a: toValueRef(a), b: toValueRef(b) });
     return dst;
+  }
+
+  #unaryValue(operator: IrUnaryOperator, value: ValueInput): VarRef {
+    const dst = this.#allocVar();
+
+    this.#push({ op: "value.unary", type: "i32", operator, dst, value: toValueRef(value) });
+    return dst;
+  }
+
+  i32Add(a: ValueInput, b: ValueInput): VarRef {
+    return this.#binaryValue("add", a, b);
   }
 
   i32Sub(a: ValueInput, b: ValueInput): VarRef {
-    const dst = this.#allocVar();
-
-    this.#push({ op: "i32.sub", dst, a: toValueRef(a), b: toValueRef(b) });
-    return dst;
+    return this.#binaryValue("sub", a, b);
   }
 
   i32Xor(a: ValueInput, b: ValueInput): VarRef {
-    const dst = this.#allocVar();
-
-    this.#push({ op: "i32.xor", dst, a: toValueRef(a), b: toValueRef(b) });
-    return dst;
+    return this.#binaryValue("xor", a, b);
   }
 
   i32Or(a: ValueInput, b: ValueInput): VarRef {
-    const dst = this.#allocVar();
-
-    this.#push({ op: "i32.or", dst, a: toValueRef(a), b: toValueRef(b) });
-    return dst;
+    return this.#binaryValue("or", a, b);
   }
 
   i32And(a: ValueInput, b: ValueInput): VarRef {
-    const dst = this.#allocVar();
-
-    this.#push({ op: "i32.and", dst, a: toValueRef(a), b: toValueRef(b) });
-    return dst;
+    return this.#binaryValue("and", a, b);
   }
 
   i32ShrU(a: ValueInput, b: ValueInput): VarRef {
-    const dst = this.#allocVar();
-
-    this.#push({ op: "i32.shr_u", dst, a: toValueRef(a), b: toValueRef(b) });
-    return dst;
+    return this.#binaryValue("shr_u", a, b);
   }
 
   i32Extend8S(value: ValueInput): VarRef {
-    const dst = this.#allocVar();
-
-    this.#push({ op: "i32.extend8_s", dst, value: toValueRef(value) });
-    return dst;
+    return this.#unaryValue("extend8_s", value);
   }
 
   i32Extend16S(value: ValueInput): VarRef {
-    const dst = this.#allocVar();
-
-    this.#push({ op: "i32.extend16_s", dst, value: toValueRef(value) });
-    return dst;
+    return this.#unaryValue("extend16_s", value);
   }
 
   setFlags(producer: FlagProducerName, inputs: Readonly<Record<string, ValueInput>>, width?: OperandWidth): void {

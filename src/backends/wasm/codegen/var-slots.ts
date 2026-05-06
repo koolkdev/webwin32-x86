@@ -152,17 +152,11 @@ function collectValueVarUses(value: IrValueExpr, visit: (id: number) => void): v
     case "source":
       collectStorageVarUses(value.source, visit);
       return;
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-    case "i32.shr_u":
+    case "value.binary":
       collectValueVarUses(value.a, visit);
       collectValueVarUses(value.b, visit);
       return;
-    case "i32.extend8_s":
-    case "i32.extend16_s":
+    case "value.unary":
       collectValueVarUses(value.value, visit);
       return;
   }

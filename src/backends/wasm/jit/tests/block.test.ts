@@ -74,11 +74,11 @@ test("buildJitIrBlock lowers unary ALU forms with preserved widths", () => {
   const notSet = notIr.find((op) => op.op === "set");
   const negFlags = negIr.find((op) => op.op === "flags.set");
 
-  strictEqual(notIr.some((op) => op.op === "i32.xor"), true);
+  strictEqual(notIr.some((op) => op.op === "value.binary" && op.operator === "xor"), true);
   strictEqual(notIr.some((op) => op.op === "flags.set"), false);
   strictEqual(notSet?.op === "set" ? notSet.accessWidth : undefined, 16);
 
-  strictEqual(negIr.some((op) => op.op === "i32.sub"), true);
+  strictEqual(negIr.some((op) => op.op === "value.binary" && op.operator === "sub"), true);
   strictEqual(negFlags?.op === "flags.set" ? negFlags.producer : undefined, "sub");
   strictEqual(negFlags?.op === "flags.set" ? negFlags.width : undefined, 8);
 });

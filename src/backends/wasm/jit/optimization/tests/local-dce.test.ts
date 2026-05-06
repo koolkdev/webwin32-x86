@@ -11,7 +11,7 @@ test("local-dce removes unused pure local values", () => {
       syntheticInstruction([
         { op: "const32", dst: v(0), value: 1 },
         { op: "const32", dst: v(1), value: 2 },
-        { op: "i32.add", dst: v(2), a: v(0), b: v(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(2), a: v(0), b: v(1) },
         { op: "next" }
       ])
     ]

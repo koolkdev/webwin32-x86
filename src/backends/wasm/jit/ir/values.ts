@@ -1,5 +1,5 @@
 import { reg32, widthMask, type OperandWidth, type Reg32 } from "#x86/isa/types.js";
-import type { IrBinaryValueOpName, IrUnaryValueOpName } from "#x86/ir/model/types.js";
+import type { IrBinaryOperator, IrUnaryOperator, IrValueType } from "#x86/ir/model/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { OperandRef, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
@@ -14,13 +14,17 @@ import {
 } from "#backends/wasm/jit/ir/register-lane-values.js";
 
 export type JitBinaryValue = Readonly<{
-  kind: IrBinaryValueOpName;
+  kind: "value.binary";
+  type: IrValueType;
+  operator: IrBinaryOperator;
   a: JitValue;
   b: JitValue;
 }>;
 
 export type JitUnaryValue = Readonly<{
-  kind: IrUnaryValueOpName;
+  kind: "value.unary";
+  type: IrValueType;
+  operator: IrUnaryOperator;
   value: JitValue;
 }>;
 
@@ -106,7 +110,7 @@ export function jitValueForEffectiveAddress(
     terms.push({ kind: "const32", value: i32(binding.ea.disp) });
   }
 
-  return terms.reduce((a, b) => ({ kind: "i32.add", a, b }));
+  return terms.reduce((a, b) => ({ kind: "value.binary", type: "i32", operator: "add", a, b }));
 }
 
 export function jitRegisterValuesReadByEffectiveAddress(
@@ -150,15 +154,11 @@ export function jitStorageHasRegisterValue(
 }
 
 export function jitValueReadsReg(value: JitValue, reg: Reg32): boolean {
-  if (jitValueIsBinary(value)) {
-    return jitValueReadsReg(value.a, reg) || jitValueReadsReg(value.b, reg);
-  }
-
-  if (jitValueIsUnary(value)) {
-    return jitValueReadsReg(value.value, reg);
-  }
-
   switch (value.kind) {
+    case "value.binary":
+      return jitValueReadsReg(value.a, reg) || jitValueReadsReg(value.b, reg);
+    case "value.unary":
+      return jitValueReadsReg(value.value, reg);
     case "const32":
     case "reg":
       return false;
@@ -176,15 +176,11 @@ export function jitValueMaterializationRegs(value: JitValue): readonly Reg32[] {
 }
 
 export function jitValueUsesSymbolicReg(value: JitValue, reg: Reg32): boolean {
-  if (jitValueIsBinary(value)) {
-    return jitValueUsesSymbolicReg(value.a, reg) || jitValueUsesSymbolicReg(value.b, reg);
-  }
-
-  if (jitValueIsUnary(value)) {
-    return jitValueUsesSymbolicReg(value.value, reg);
-  }
-
   switch (value.kind) {
+    case "value.binary":
+      return jitValueUsesSymbolicReg(value.a, reg) || jitValueUsesSymbolicReg(value.b, reg);
+    case "value.unary":
+      return jitValueUsesSymbolicReg(value.value, reg);
     case "const32":
       return false;
     case "reg":
@@ -197,17 +193,22 @@ export function jitValuesEqual(a: JitValue, b: JitValue): boolean {
     return false;
   }
 
-  if (jitValueIsBinary(a)) {
-    const binary = b as JitBinaryValue;
-
-    return jitValuesEqual(a.a, binary.a) && jitValuesEqual(a.b, binary.b);
-  }
-
-  if (jitValueIsUnary(a)) {
-    return jitValuesEqual(a.value, (b as JitUnaryValue).value);
-  }
-
   switch (a.kind) {
+    case "value.binary": {
+      const binary = b as JitBinaryValue;
+
+      return a.type === binary.type &&
+        a.operator === binary.operator &&
+        jitValuesEqual(a.a, binary.a) &&
+        jitValuesEqual(a.b, binary.b);
+    }
+    case "value.unary": {
+      const unary = b as JitUnaryValue;
+
+      return a.type === unary.type &&
+        a.operator === unary.operator &&
+        jitValuesEqual(a.value, unary.value);
+    }
     case "const32":
       return a.value === (b as Extract<JitValue, { kind: "const32" }>).value;
     case "reg":
@@ -216,15 +217,11 @@ export function jitValuesEqual(a: JitValue, b: JitValue): boolean {
 }
 
 export function jitValueCost(value: JitValue): number {
-  if (jitValueIsBinary(value)) {
-    return 1 + jitValueCost(value.a) + jitValueCost(value.b);
-  }
-
-  if (jitValueIsUnary(value)) {
-    return 1 + jitValueCost(value.value);
-  }
-
   switch (value.kind) {
+    case "value.binary":
+      return 1 + jitValueCost(value.a) + jitValueCost(value.b);
+    case "value.unary":
+      return 1 + jitValueCost(value.value);
     case "const32":
     case "reg":
       return 1;
@@ -233,14 +230,6 @@ export function jitValueCost(value: JitValue): number {
 
 export function jitValueIsSymbolicReg(value: JitValue, reg?: Reg32): value is Extract<JitValue, { kind: "reg" }> {
   return value.kind === "reg" && (reg === undefined || value.reg === reg);
-}
-
-export function jitValueIsBinary(value: JitValue): value is JitBinaryValue {
-  return "a" in value && "b" in value;
-}
-
-export function jitValueIsUnary(value: JitValue): value is JitUnaryValue {
-  return value.kind === "i32.extend8_s" || value.kind === "i32.extend16_s";
 }
 
 function jitValueForReg(
@@ -277,7 +266,9 @@ function signExtendJitValue(value: JitValue, width: 8 | 16): JitValue {
   }
 
   return {
-    kind: width === 8 ? "i32.extend8_s" : "i32.extend16_s",
+    kind: "value.unary",
+    type: "i32",
+    operator: width === 8 ? "extend8_s" : "extend16_s",
     value
   };
 }

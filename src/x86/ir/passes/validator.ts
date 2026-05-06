@@ -1,7 +1,7 @@
 import { assertIrAluFlagMask, IR_FLAG_MASK_NONE } from "#x86/ir/model/flag-effects.js";
 import type { IrFlagProducerDescriptor } from "#x86/ir/model/flag-conditions.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
-import { irOpDst, irOpIsBinaryValue, irOpIsTerminator, irOpIsUnaryValue } from "#x86/ir/model/op-semantics.js";
+import { irOpDst, irOpIsTerminator } from "#x86/ir/model/op-semantics.js";
 import type { OperandWidth } from "#x86/isa/types.js";
 import type { FlagMask, IrOp, IrBlock, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 
@@ -55,17 +55,6 @@ function validateOpUses(
   definedVars: ReadonlySet<number>,
   options: ValidateIrBlockOptions
 ): void {
-  if (irOpIsBinaryValue(op)) {
-    validateValueRef(op.a, definedVars);
-    validateValueRef(op.b, definedVars);
-    return;
-  }
-
-  if (irOpIsUnaryValue(op)) {
-    validateValueRef(op.value, definedVars);
-    return;
-  }
-
   switch (op.op) {
     case "get":
       validateAccessWidth(op.accessWidth);
@@ -85,6 +74,13 @@ function validateOpUses(
       break;
     case "address":
       validateOperandIndex(op.operand.index, options);
+      break;
+    case "value.binary":
+      validateValueRef(op.a, definedVars);
+      validateValueRef(op.b, definedVars);
+      break;
+    case "value.unary":
+      validateValueRef(op.value, definedVars);
       break;
     case "flags.set":
       validateFlagSetDescriptor(op, definedVars);

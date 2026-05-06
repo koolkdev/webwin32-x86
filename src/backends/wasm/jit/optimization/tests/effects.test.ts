@@ -81,7 +81,7 @@ test("JIT effect helpers find the end of pre-instruction exits", () => {
     instructions: [
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "mem", address: c32(0x2000) } },
-        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: c32(1) },
         { op: "set", target: { kind: "mem", address: c32(0x2004) }, value: v(1) },
         { op: "next" }
       ])

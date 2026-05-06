@@ -1,3 +1,4 @@
+import type { IrBinaryOperator } from "#x86/ir/model/types.js";
 import { widthMask, type OperandWidth } from "#x86/isa/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
@@ -85,23 +86,41 @@ export function valueWidthIsCleanForWidth(valueWidth: ValueWidth, width: Operand
   return valueWidth.cleanWidth !== undefined && valueWidth.cleanWidth <= width;
 }
 
-export function bitwiseResultValueWidth(
-  op: "i32.and" | "i32.or" | "i32.xor",
+export function i32BinaryResultValueWidth(
+  operator: IrBinaryOperator,
+  left: ValueWidth,
+  right: ValueWidth
+): ValueWidth {
+  switch (operator) {
+    case "add":
+    case "sub":
+      return arithmeticResultValueWidth(operator, left, right);
+    case "and":
+    case "or":
+    case "xor":
+      return bitwiseResultValueWidth(operator, left, right);
+    case "shr_u":
+      return untrackedValueWidth();
+  }
+}
+
+function bitwiseResultValueWidth(
+  operator: Extract<IrBinaryOperator, "and" | "or" | "xor">,
   left: ValueWidth,
   right: ValueWidth
 ): ValueWidth {
   if (left.constValue !== undefined && right.constValue !== undefined) {
-    switch (op) {
-      case "i32.and":
+    switch (operator) {
+      case "and":
         return constValueWidth(left.constValue & right.constValue);
-      case "i32.or":
+      case "or":
         return constValueWidth(left.constValue | right.constValue);
-      case "i32.xor":
+      case "xor":
         return constValueWidth(left.constValue ^ right.constValue);
     }
   }
 
-  if (op === "i32.and") {
+  if (operator === "and") {
     const maskWidth = maskValueWidth(left) ?? maskValueWidth(right);
 
     if (maskWidth !== undefined) {
@@ -124,12 +143,16 @@ export function bitwiseResultValueWidth(
   return logicalWidth === 32 ? untrackedValueWidth() : dirtyValueWidth(logicalWidth);
 }
 
-export function arithmeticResultValueWidth(op: "i32.add" | "i32.sub", left: ValueWidth, right: ValueWidth): ValueWidth {
+function arithmeticResultValueWidth(
+  operator: Extract<IrBinaryOperator, "add" | "sub">,
+  left: ValueWidth,
+  right: ValueWidth
+): ValueWidth {
   if (left.constValue !== undefined && right.constValue !== undefined) {
-    switch (op) {
-      case "i32.add":
+    switch (operator) {
+      case "add":
         return constValueWidth(left.constValue + right.constValue);
-      case "i32.sub":
+      case "sub":
         return constValueWidth(left.constValue - right.constValue);
     }
   }

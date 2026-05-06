@@ -17,9 +17,9 @@ test("reaching flags tracks partial flag producer ownership", () => {
     instructions: [
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: c32(1) },
         createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
-        { op: "i32.add", dst: v(2), a: v(1), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(2), a: v(1), b: c32(1) },
         createIrFlagSetOp("inc", { left: v(1), result: v(2) }),
         { op: "aluFlags.condition", dst: v(3), cc: "B" },
         { op: "conditionalJump", condition: v(3), taken: c32(0x2000), notTaken: c32(0x1001) }
@@ -44,9 +44,9 @@ test("reaching flags represents mixed-owner reads explicitly", () => {
     instructions: [
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: c32(1) },
         createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
-        { op: "i32.add", dst: v(2), a: v(1), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(2), a: v(1), b: c32(1) },
         createIrFlagSetOp("inc", { left: v(1), result: v(2) }),
         { op: "aluFlags.condition", dst: v(3), cc: "A" },
         { op: "set.if", condition: v(3), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
@@ -68,7 +68,7 @@ test("reaching flags records materialized owners and pre-instruction exit entry 
     instructions: [
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
-        { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: c32(1) },
         createIrFlagSetOp("add", { left: v(0), right: c32(1), result: v(1) }),
         { op: "flags.materialize", mask: IR_ALU_FLAG_MASKS.ZF },
         { op: "get", dst: v(2), source: { kind: "mem", address: c32(0x2000) } },
@@ -160,7 +160,7 @@ test("reaching flags records producer input values", () => {
     result: {
       kind: "value",
       value: {
-        kind: "i32.add",
+        kind: "value.binary", type: "i32", operator: "add",
         a: { kind: "reg", reg: "eax" },
         b: { kind: "const32", value: 1 }
       }

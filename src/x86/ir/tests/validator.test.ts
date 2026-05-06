@@ -39,7 +39,7 @@ test("validator rejects duplicate vars, use before definition, and missing opera
     () =>
       validateIrBlock([
         { op: "get", dst: irVar(0), source: operand(0) },
-        { op: "i32.add", dst: irVar(0), a: irVar(0), b: const32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: irVar(0), a: irVar(0), b: const32(1) },
         { op: "next" }
       ]),
     /assigned more than once/
@@ -48,7 +48,7 @@ test("validator rejects duplicate vars, use before definition, and missing opera
   throws(
     () =>
       validateIrBlock([
-        { op: "i32.add", dst: irVar(0), a: irVar(1), b: const32(1) },
+        { op: "value.binary", type: "i32", operator: "add", dst: irVar(0), a: irVar(1), b: const32(1) },
         { op: "next" }
       ]),
     /used before definition/

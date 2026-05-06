@@ -63,7 +63,7 @@ test("add semantic sets add flags before destination writeback", () => {
   deepStrictEqual(buildIr(aluSemantic("add", 32)), [
     { op: "get", dst: v(0), source: op(0), accessWidth: 32 },
     { op: "get", dst: v(1), source: op(1), accessWidth: 32 },
-    { op: "i32.add", dst: v(2), a: v(0), b: v(1) },
+    { op: "value.binary", type: "i32", operator: "add", dst: v(2), a: v(0), b: v(1) },
     createIrFlagSetOp("add", { left: v(0), right: v(1), result: v(2) }),
     { op: "set", target: op(0), value: v(2), accessWidth: 32 },
     { op: "next" }
@@ -73,7 +73,7 @@ test("add semantic sets add flags before destination writeback", () => {
 test("inc semantic sets partial inc flags before destination writeback", () => {
   deepStrictEqual(buildIr(unaryAluSemantic("inc", 32)), [
     { op: "get", dst: v(0), source: op(0), accessWidth: 32 },
-    { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
+    { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: c32(1) },
     createIrFlagSetOp("inc", { left: v(0), result: v(1) }),
     { op: "set", target: op(0), value: v(1), accessWidth: 32 },
     { op: "next" }
@@ -84,7 +84,7 @@ test("logical alu semantics set logic flags before destination writeback", () =>
   deepStrictEqual(buildIr(aluSemantic("and", 32)), [
     { op: "get", dst: v(0), source: op(0), accessWidth: 32 },
     { op: "get", dst: v(1), source: op(1), accessWidth: 32 },
-    { op: "i32.and", dst: v(2), a: v(0), b: v(1) },
+    { op: "value.binary", type: "i32", operator: "and", dst: v(2), a: v(0), b: v(1) },
     createIrFlagSetOp("logic", { result: v(2) }),
     { op: "set", target: op(0), value: v(2), accessWidth: 32 },
     { op: "next" }
@@ -92,7 +92,7 @@ test("logical alu semantics set logic flags before destination writeback", () =>
   deepStrictEqual(buildIr(aluSemantic("or", 32)), [
     { op: "get", dst: v(0), source: op(0), accessWidth: 32 },
     { op: "get", dst: v(1), source: op(1), accessWidth: 32 },
-    { op: "i32.or", dst: v(2), a: v(0), b: v(1) },
+    { op: "value.binary", type: "i32", operator: "or", dst: v(2), a: v(0), b: v(1) },
     createIrFlagSetOp("logic", { result: v(2) }),
     { op: "set", target: op(0), value: v(2), accessWidth: 32 },
     { op: "next" }
@@ -105,18 +105,18 @@ test("cmp semantic subtracts for flags only", () => {
   deepStrictEqual(program, [
     { op: "get", dst: v(0), source: op(0), accessWidth: 32 },
     { op: "get", dst: v(1), source: op(1), accessWidth: 32 },
-    { op: "i32.sub", dst: v(2), a: v(0), b: v(1) },
+    { op: "value.binary", type: "i32", operator: "sub", dst: v(2), a: v(0), b: v(1) },
     createIrFlagSetOp("sub", { left: v(0), right: v(1), result: v(2) }),
     { op: "next" }
   ]);
   strictEqual(program.some((op) => op.op === "set"), false);
 });
 
-test("test semantic uses i32.and and logic flags", () => {
+test("test semantic uses value.binary and logic flags", () => {
   deepStrictEqual(buildIr(testSemantic()), [
     { op: "get", dst: v(0), source: op(0), accessWidth: 32 },
     { op: "get", dst: v(1), source: op(1), accessWidth: 32 },
-    { op: "i32.and", dst: v(2), a: v(0), b: v(1) },
+    { op: "value.binary", type: "i32", operator: "and", dst: v(2), a: v(0), b: v(1) },
     createIrFlagSetOp("logic", { result: v(2) }),
     { op: "next" }
   ]);
@@ -126,7 +126,7 @@ test("pop semantic expands to generic stack get/set operations", () => {
   deepStrictEqual(buildIr(popSemantic()), [
     { op: "get", dst: v(0), source: reg("esp"), accessWidth: 32 },
     { op: "get", dst: v(1), source: mem(v(0)), accessWidth: 32 },
-    { op: "i32.add", dst: v(2), a: v(0), b: c32(4) },
+    { op: "value.binary", type: "i32", operator: "add", dst: v(2), a: v(0), b: c32(4) },
     { op: "set", target: reg("esp"), value: v(2), accessWidth: 32 },
     { op: "set", target: op(0), value: v(1), accessWidth: 32 },
     { op: "next" }
@@ -137,7 +137,7 @@ test("leave semantic reads saved frame before updating esp and ebp", () => {
   deepStrictEqual(buildIr(leaveSemantic()), [
     { op: "get", dst: v(0), source: { kind: "reg", reg: "ebp" }, accessWidth: 32 },
     { op: "get", dst: v(1), source: mem(v(0)), accessWidth: 32 },
-    { op: "i32.add", dst: v(2), a: v(0), b: c32(4) },
+    { op: "value.binary", type: "i32", operator: "add", dst: v(2), a: v(0), b: c32(4) },
     { op: "set", target: reg("esp"), value: v(2), accessWidth: 32 },
     { op: "set", target: { kind: "reg", reg: "ebp" }, value: v(1), accessWidth: 32 },
     { op: "next" }
@@ -155,7 +155,7 @@ test("call semantic resolves target before pushing return address", () => {
   deepStrictEqual(buildIr(callSemantic()), [
     { op: "get", dst: v(0), source: op(0), accessWidth: 32 },
     { op: "get", dst: v(1), source: reg("esp"), accessWidth: 32 },
-    { op: "i32.sub", dst: v(2), a: v(1), b: c32(4) },
+    { op: "value.binary", type: "i32", operator: "sub", dst: v(2), a: v(1), b: c32(4) },
     { op: "set", target: mem(v(2)), value: { kind: "nextEip" }, accessWidth: 32 },
     { op: "set", target: reg("esp"), value: v(2), accessWidth: 32 },
     { op: "jump", target: v(0) }
@@ -166,11 +166,11 @@ test("ret imm semantic adjusts esp explicitly after popping target", () => {
   deepStrictEqual(buildIr(retImmSemantic()), [
     { op: "get", dst: v(0), source: reg("esp"), accessWidth: 32 },
     { op: "get", dst: v(1), source: mem(v(0)), accessWidth: 32 },
-    { op: "i32.add", dst: v(2), a: v(0), b: c32(4) },
+    { op: "value.binary", type: "i32", operator: "add", dst: v(2), a: v(0), b: c32(4) },
     { op: "set", target: reg("esp"), value: v(2), accessWidth: 32 },
     { op: "get", dst: v(3), source: op(0), accessWidth: 32 },
     { op: "get", dst: v(4), source: reg("esp"), accessWidth: 32 },
-    { op: "i32.add", dst: v(5), a: v(4), b: v(3) },
+    { op: "value.binary", type: "i32", operator: "add", dst: v(5), a: v(4), b: v(3) },
     { op: "set", target: reg("esp"), value: v(5), accessWidth: 32 },
     { op: "jump", target: v(1) }
   ]);

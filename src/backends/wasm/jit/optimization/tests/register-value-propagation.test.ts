@@ -150,10 +150,10 @@ test("register-value-propagation keeps signed and unsigned low-byte reads distin
   strictEqual(signedResult.registerValuePropagation.foldedReadCount, 1);
   strictEqual(countOps(unsignedResult.block, "get"), 1);
   strictEqual(countOps(signedResult.block, "get"), 1);
-  strictEqual(countOps(unsignedResult.block, "i32.and"), 1);
-  strictEqual(countOps(signedResult.block, "i32.and"), 1);
-  strictEqual(countOps(unsignedResult.block, "i32.extend8_s"), 0);
-  strictEqual(countOps(signedResult.block, "i32.extend8_s"), 1);
+  strictEqual(countOps(unsignedResult.block, "value.binary:and"), 1);
+  strictEqual(countOps(signedResult.block, "value.binary:and"), 1);
+  strictEqual(countOps(unsignedResult.block, "value.unary:extend8_s"), 0);
+  strictEqual(countOps(signedResult.block, "value.unary:extend8_s"), 1);
   deepStrictEqual(setRegs(unsignedResult.block), ["ebx", "eax"]);
   deepStrictEqual(setRegs(signedResult.block), ["ebx", "eax"]);
 });
@@ -182,8 +182,8 @@ test("register-value-propagation folds high-byte aliases through an unsigned shi
   });
   deepStrictEqual(opNames(result.block), [
     "get",
-    "i32.shr_u",
-    "i32.and",
+    "value.binary:shr_u",
+    "value.binary:and",
     "set",
     "set:registerMaterialization",
     "next"
@@ -417,9 +417,15 @@ test("register-value-propagation is a validating repeatable optimization pass", 
   });
 });
 
-function opNames(block: { instructions: readonly { ir: readonly { op: string; role?: string }[] }[] }): readonly string[] {
+function opNames(block: { instructions: readonly { ir: readonly { op: string; operator?: string; role?: string }[] }[] }): readonly string[] {
   return block.instructions.flatMap((instruction) =>
-    instruction.ir.map((op) => op.role === undefined ? op.op : `${op.op}:${op.role}`)
+    instruction.ir.map((op) => {
+      if (op.role !== undefined) {
+        return `${op.op}:${op.role}`;
+      }
+
+      return op.operator === undefined ? op.op : `${op.op}:${op.operator}`;
+    })
   );
 }
 

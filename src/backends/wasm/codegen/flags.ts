@@ -9,7 +9,7 @@ import type {
   ValueExpr
 } from "#x86/ir/model/flags.js";
 import { FLAG_PRODUCERS } from "#x86/ir/model/flags.js";
-import type { IrFlagSetOp, ValueRef } from "#x86/ir/model/types.js";
+import type { IrBinaryOperator, IrFlagSetOp, ValueRef } from "#x86/ir/model/types.js";
 import type { OperandWidth } from "#x86/isa/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
@@ -17,9 +17,9 @@ import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import type { WasmIrAluFlagsStorage } from "./alu-flags.js";
 import type { WasmIrEmitHelpers } from "./emit.js";
 import {
-  bitwiseResultValueWidth,
   cleanValueWidth,
   emitMaskValueToWidth,
+  i32BinaryResultValueWidth,
   maskWidthFromConstValue,
   type ValueWidth
 } from "./value-width.js";
@@ -149,19 +149,38 @@ function emitValueExpr(body: WasmFunctionBodyEncoder, expr: ValueExpr, helpers: 
         return emitMaskedValueExpr(body, masked.value, helpers, masked.width);
       }
 
-      const left = emitValueExpr(body, expr.a, helpers);
-      const right = emitValueExpr(body, expr.b, helpers);
+      return emitI32BinaryValueExpr(body, "and", expr.a, expr.b, helpers);
+    }
+    case "xor":
+      return emitI32BinaryValueExpr(body, "xor", expr.a, expr.b, helpers);
+  }
+}
 
+function emitI32BinaryValueExpr(
+  body: WasmFunctionBodyEncoder,
+  operator: Extract<IrBinaryOperator, "and" | "xor">,
+  a: ValueExpr,
+  b: ValueExpr,
+  helpers: WasmIrEmitHelpers
+): ValueWidth {
+  const left = emitValueExpr(body, a, helpers);
+  const right = emitValueExpr(body, b, helpers);
+
+  emitI32BinaryInstruction(body, operator);
+  return i32BinaryResultValueWidth(operator, left, right);
+}
+
+function emitI32BinaryInstruction(
+  body: WasmFunctionBodyEncoder,
+  operator: Extract<IrBinaryOperator, "and" | "xor">
+): void {
+  switch (operator) {
+    case "and":
       body.i32And();
-      return bitwiseResultValueWidth("i32.and", left, right);
-    }
-    case "xor": {
-      const left = emitValueExpr(body, expr.a, helpers);
-      const right = emitValueExpr(body, expr.b, helpers);
-
+      return;
+    case "xor":
       body.i32Xor();
-      return bitwiseResultValueWidth("i32.xor", left, right);
-    }
+      return;
   }
 }
 

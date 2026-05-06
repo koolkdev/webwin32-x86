@@ -5,10 +5,13 @@ import {
 } from "#x86/ir/model/flag-conditions.js";
 import type {
   ConditionCode,
+  IrBinaryOperator,
   IrFlagSetOp,
   OperandRef,
   RegRef,
   IrOp,
+  IrUnaryOperator,
+  IrValueType,
   StorageRef,
   ValueRef,
   VarRef
@@ -34,14 +37,19 @@ export type IrValueExpr =
       undefMask: IrFlagProducerConditionDescriptor["undefMask"];
       inputs: Readonly<Record<string, ValueRef>>;
     }>
-  | Readonly<{ kind: "i32.add"; a: IrValueExpr; b: IrValueExpr }>
-  | Readonly<{ kind: "i32.sub"; a: IrValueExpr; b: IrValueExpr }>
-  | Readonly<{ kind: "i32.xor"; a: IrValueExpr; b: IrValueExpr }>
-  | Readonly<{ kind: "i32.or"; a: IrValueExpr; b: IrValueExpr }>
-  | Readonly<{ kind: "i32.and"; a: IrValueExpr; b: IrValueExpr }>
-  | Readonly<{ kind: "i32.shr_u"; a: IrValueExpr; b: IrValueExpr }>
-  | Readonly<{ kind: "i32.extend8_s"; value: IrValueExpr }>
-  | Readonly<{ kind: "i32.extend16_s"; value: IrValueExpr }>;
+  | Readonly<{
+      kind: "value.binary";
+      type: IrValueType;
+      operator: IrBinaryOperator;
+      a: IrValueExpr;
+      b: IrValueExpr;
+    }>
+  | Readonly<{
+      kind: "value.unary";
+      type: IrValueType;
+      operator: IrUnaryOperator;
+      value: IrValueExpr;
+    }>;
 
 export type IrSetExprOp = Readonly<{
   op: "set";
@@ -160,17 +168,22 @@ class ExpressionBuilder {
         case "const32":
           this.#bindings.set(op.dst.id, { kind: "const32", value: op.value });
           break;
-        case "i32.add":
-        case "i32.sub":
-        case "i32.xor":
-        case "i32.or":
-        case "i32.and":
-        case "i32.shr_u":
-          this.#defineValue(op.dst, { kind: op.op, a: this.#valueExpr(op.a), b: this.#valueExpr(op.b) }, true);
+        case "value.binary":
+          this.#defineValue(op.dst, {
+            kind: "value.binary",
+            type: op.type,
+            operator: op.operator,
+            a: this.#valueExpr(op.a),
+            b: this.#valueExpr(op.b)
+          }, true);
           break;
-        case "i32.extend8_s":
-        case "i32.extend16_s":
-          this.#defineValue(op.dst, { kind: op.op, value: this.#valueExpr(op.value) }, true);
+        case "value.unary":
+          this.#defineValue(op.dst, {
+            kind: "value.unary",
+            type: op.type,
+            operator: op.operator,
+            value: this.#valueExpr(op.value)
+          }, true);
           break;
         case "aluFlags.condition":
           this.#defineValue(op.dst, { kind: "aluFlags.condition", cc: op.cc }, false);
@@ -352,17 +365,11 @@ function countVarUses(block: IrExpressionInputBlock): Map<number, number> {
           countValueUse(counts, requiredFlagProducerConditionInput(op, name));
         }
         break;
-      case "i32.add":
-      case "i32.sub":
-      case "i32.xor":
-      case "i32.or":
-      case "i32.and":
-      case "i32.shr_u":
+      case "value.binary":
         countValueUse(counts, op.a);
         countValueUse(counts, op.b);
         break;
-      case "i32.extend8_s":
-      case "i32.extend16_s":
+      case "value.unary":
         countValueUse(counts, op.value);
         break;
       case "flags.set":
@@ -422,15 +429,9 @@ function opUsesVar(op: IrExpressionInputOp, id: number): boolean {
       return flagProducerConditionInputNames(op).some((name) =>
         valueUsesVar(requiredFlagProducerConditionInput(op, name), id)
       );
-    case "i32.add":
-    case "i32.sub":
-    case "i32.xor":
-    case "i32.or":
-    case "i32.and":
-    case "i32.shr_u":
+    case "value.binary":
       return valueUsesVar(op.a, id) || valueUsesVar(op.b, id);
-    case "i32.extend8_s":
-    case "i32.extend16_s":
+    case "value.unary":
       return valueUsesVar(op.value, id);
     case "flags.set":
       return Object.values(op.inputs).some((value) => valueUsesVar(value, id));
