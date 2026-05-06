@@ -128,6 +128,48 @@ const fixtures: readonly DecoderFixture[] = [
     id: "dec.rm32"
   },
   {
+    name: "not byte [eax]",
+    bytes: [0xf6, 0x10],
+    mnemonic: "not",
+    operands: [mem(8, { base: "eax", scale: 1, disp: 0 })],
+    id: "not.rm8"
+  },
+  {
+    name: "neg bl",
+    bytes: [0xf6, 0xdb],
+    mnemonic: "neg",
+    operands: [reg("bl")],
+    id: "neg.rm8"
+  },
+  {
+    name: "not ax with operand-size override",
+    bytes: [0x66, 0xf7, 0xd0],
+    mnemonic: "not",
+    operands: [reg("ax")],
+    id: "not.rm16"
+  },
+  {
+    name: "neg word [ebp-2] with operand-size override",
+    bytes: [0x66, 0xf7, 0x5d, 0xfe],
+    mnemonic: "neg",
+    operands: [mem(16, { base: "ebp", scale: 1, disp: -2 })],
+    id: "neg.rm16"
+  },
+  {
+    name: "not eax",
+    bytes: [0xf7, 0xd0],
+    mnemonic: "not",
+    operands: [reg32("eax")],
+    id: "not.rm32"
+  },
+  {
+    name: "neg [eax]",
+    bytes: [0xf7, 0x18],
+    mnemonic: "neg",
+    operands: [mem32({ base: "eax", scale: 1, disp: 0 })],
+    id: "neg.rm32"
+  },
+  {
     name: "group 81 add eax, imm32",
     bytes: [0x81, 0xc0, 0x78, 0x56, 0x34, 0x12],
     mnemonic: "add",

@@ -1,8 +1,8 @@
 import type { SemanticTemplate } from "#x86/ir/model/types.js";
-import type { OperandWidth } from "#x86/isa/types.js";
+import { widthMask, type OperandWidth } from "#x86/isa/types.js";
 
 export type AluOp = "add" | "sub" | "xor" | "and" | "or";
-export type IncDecOp = "inc" | "dec";
+export type UnaryAluOp = "inc" | "dec" | "not" | "neg";
 
 export function aluSemantic(op: AluOp, width: OperandWidth): SemanticTemplate {
   return (s) => {
@@ -39,16 +39,33 @@ export function aluSemantic(op: AluOp, width: OperandWidth): SemanticTemplate {
   };
 }
 
-export function incDecSemantic(op: IncDecOp, width: OperandWidth): SemanticTemplate {
+export function unaryAluSemantic(op: UnaryAluOp, width: OperandWidth): SemanticTemplate {
   return (s) => {
     const dst = s.operand(0);
-    const left = s.get(dst, width);
-    const one = s.const32(1);
-    const result = op === "inc"
-      ? s.i32Add(left, one)
-      : s.i32Sub(left, one);
+    const value = s.get(dst, width);
+    let result;
 
-    s.setFlags(op === "inc" ? "inc" : "dec", { left, result }, width);
+    switch (op) {
+      case "inc":
+        result = s.i32Add(value, s.const32(1));
+        s.setFlags("inc", { left: value, result }, width);
+        break;
+      case "dec":
+        result = s.i32Sub(value, s.const32(1));
+        s.setFlags("dec", { left: value, result }, width);
+        break;
+      case "not":
+        result = s.i32Xor(value, s.const32(widthMask(width)));
+        break;
+      case "neg": {
+        const zero = s.const32(0);
+
+        result = s.i32Sub(zero, value);
+        s.setFlags("sub", { left: zero, right: value, result }, width);
+        break;
+      }
+    }
+
     s.set(dst, result, width);
   };
 }

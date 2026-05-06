@@ -1,7 +1,7 @@
 import { form, mnemonic } from "#x86/isa/schema/builders.js";
 import { opcodePlusReg } from "#x86/isa/schema/opcodes.js";
 import { imm, implicitReg, modrmReg, modrmRm, opReg } from "#x86/isa/schema/operands.js";
-import { aluSemantic, incDecSemantic } from "#x86/isa/semantics/alu.js";
+import { aluSemantic, unaryAluSemantic } from "#x86/isa/semantics/alu.js";
 
 export const ADD = mnemonic("add", [
   // 00 /r: ADD r/m8, r8
@@ -565,7 +565,7 @@ export const INC = mnemonic("inc", [
     modrm: { match: { reg: 0 } },
     operands: [modrmRm("rm8")],
     format: { syntax: "inc {0}" },
-    semantics: incDecSemantic("inc", 8)
+    semantics: unaryAluSemantic("inc", 8)
   }),
   // 66 40+rw: INC r16
   form("r16", {
@@ -573,14 +573,14 @@ export const INC = mnemonic("inc", [
     opcode: [opcodePlusReg(0x40)],
     operands: [opReg("r16")],
     format: { syntax: "inc {0}" },
-    semantics: incDecSemantic("inc", 16)
+    semantics: unaryAluSemantic("inc", 16)
   }),
   // 40+rd: INC r32
   form("r32", {
     opcode: [opcodePlusReg(0x40)],
     operands: [opReg()],
     format: { syntax: "inc {0}" },
-    semantics: incDecSemantic("inc", 32)
+    semantics: unaryAluSemantic("inc", 32)
   }),
   // 66 FF /0: INC r/m16
   form("rm16", {
@@ -589,7 +589,7 @@ export const INC = mnemonic("inc", [
     modrm: { match: { reg: 0 } },
     operands: [modrmRm("rm16")],
     format: { syntax: "inc {0}" },
-    semantics: incDecSemantic("inc", 16)
+    semantics: unaryAluSemantic("inc", 16)
   }),
   // FF /0: INC r/m32
   form("rm32", {
@@ -597,7 +597,7 @@ export const INC = mnemonic("inc", [
     modrm: { match: { reg: 0 } },
     operands: [modrmRm("rm32")],
     format: { syntax: "inc {0}" },
-    semantics: incDecSemantic("inc", 32)
+    semantics: unaryAluSemantic("inc", 32)
   })
 ]);
 
@@ -608,7 +608,7 @@ export const DEC = mnemonic("dec", [
     modrm: { match: { reg: 1 } },
     operands: [modrmRm("rm8")],
     format: { syntax: "dec {0}" },
-    semantics: incDecSemantic("dec", 8)
+    semantics: unaryAluSemantic("dec", 8)
   }),
   // 66 48+rw: DEC r16
   form("r16", {
@@ -616,14 +616,14 @@ export const DEC = mnemonic("dec", [
     opcode: [opcodePlusReg(0x48)],
     operands: [opReg("r16")],
     format: { syntax: "dec {0}" },
-    semantics: incDecSemantic("dec", 16)
+    semantics: unaryAluSemantic("dec", 16)
   }),
   // 48+rd: DEC r32
   form("r32", {
     opcode: [opcodePlusReg(0x48)],
     operands: [opReg()],
     format: { syntax: "dec {0}" },
-    semantics: incDecSemantic("dec", 32)
+    semantics: unaryAluSemantic("dec", 32)
   }),
   // 66 FF /1: DEC r/m16
   form("rm16", {
@@ -632,7 +632,7 @@ export const DEC = mnemonic("dec", [
     modrm: { match: { reg: 1 } },
     operands: [modrmRm("rm16")],
     format: { syntax: "dec {0}" },
-    semantics: incDecSemantic("dec", 16)
+    semantics: unaryAluSemantic("dec", 16)
   }),
   // FF /1: DEC r/m32
   form("rm32", {
@@ -640,6 +640,62 @@ export const DEC = mnemonic("dec", [
     modrm: { match: { reg: 1 } },
     operands: [modrmRm("rm32")],
     format: { syntax: "dec {0}" },
-    semantics: incDecSemantic("dec", 32)
+    semantics: unaryAluSemantic("dec", 32)
+  })
+]);
+
+export const NOT = mnemonic("not", [
+  // F6 /2: NOT r/m8
+  form("rm8", {
+    opcode: [0xf6],
+    modrm: { match: { reg: 2 } },
+    operands: [modrmRm("rm8")],
+    format: { syntax: "not {0}" },
+    semantics: unaryAluSemantic("not", 8)
+  }),
+  // 66 F7 /2: NOT r/m16
+  form("rm16", {
+    prefixes: { operandSize: "override" },
+    opcode: [0xf7],
+    modrm: { match: { reg: 2 } },
+    operands: [modrmRm("rm16")],
+    format: { syntax: "not {0}" },
+    semantics: unaryAluSemantic("not", 16)
+  }),
+  // F7 /2: NOT r/m32
+  form("rm32", {
+    opcode: [0xf7],
+    modrm: { match: { reg: 2 } },
+    operands: [modrmRm("rm32")],
+    format: { syntax: "not {0}" },
+    semantics: unaryAluSemantic("not", 32)
+  })
+]);
+
+export const NEG = mnemonic("neg", [
+  // F6 /3: NEG r/m8
+  form("rm8", {
+    opcode: [0xf6],
+    modrm: { match: { reg: 3 } },
+    operands: [modrmRm("rm8")],
+    format: { syntax: "neg {0}" },
+    semantics: unaryAluSemantic("neg", 8)
+  }),
+  // 66 F7 /3: NEG r/m16
+  form("rm16", {
+    prefixes: { operandSize: "override" },
+    opcode: [0xf7],
+    modrm: { match: { reg: 3 } },
+    operands: [modrmRm("rm16")],
+    format: { syntax: "neg {0}" },
+    semantics: unaryAluSemantic("neg", 16)
+  }),
+  // F7 /3: NEG r/m32
+  form("rm32", {
+    opcode: [0xf7],
+    modrm: { match: { reg: 3 } },
+    operands: [modrmRm("rm32")],
+    format: { syntax: "neg {0}" },
+    semantics: unaryAluSemantic("neg", 32)
   })
 ]);

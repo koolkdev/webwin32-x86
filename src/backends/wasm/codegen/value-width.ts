@@ -1,5 +1,5 @@
-import type { OperandWidth } from "#x86/isa/types.js";
-import { i32, widthMask } from "#x86/state/cpu-state.js";
+import { widthMask, type OperandWidth } from "#x86/isa/types.js";
+import { i32 } from "#x86/state/cpu-state.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 
 export type ValueWidth = Readonly<{
@@ -124,7 +124,16 @@ export function bitwiseResultValueWidth(
   return logicalWidth === 32 ? untrackedValueWidth() : dirtyValueWidth(logicalWidth);
 }
 
-export function arithmeticResultValueWidth(left: ValueWidth, right: ValueWidth): ValueWidth {
+export function arithmeticResultValueWidth(op: "i32.add" | "i32.sub", left: ValueWidth, right: ValueWidth): ValueWidth {
+  if (left.constValue !== undefined && right.constValue !== undefined) {
+    switch (op) {
+      case "i32.add":
+        return constValueWidth(left.constValue + right.constValue);
+      case "i32.sub":
+        return constValueWidth(left.constValue - right.constValue);
+    }
+  }
+
   const logicalWidth = maxWidth(left.logicalWidth, right.logicalWidth);
 
   return logicalWidth === 32 ? untrackedValueWidth() : dirtyValueWidth(logicalWidth);

@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { buildIr } from "#x86/ir/build/builder.js";
 import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
-import { aluSemantic, incDecSemantic } from "#x86/isa/semantics/alu.js";
+import { aluSemantic, unaryAluSemantic } from "#x86/isa/semantics/alu.js";
 import { callSemantic, jccSemantic, jmpSemantic, retImmSemantic } from "#x86/isa/semantics/control.js";
 import { cmpSemantic } from "#x86/isa/semantics/cmp.js";
 import { leaSemantic } from "#x86/isa/semantics/lea.js";
@@ -71,7 +71,7 @@ test("add semantic sets add flags before destination writeback", () => {
 });
 
 test("inc semantic sets partial inc flags before destination writeback", () => {
-  deepStrictEqual(buildIr(incDecSemantic("inc", 32)), [
+  deepStrictEqual(buildIr(unaryAluSemantic("inc", 32)), [
     { op: "get", dst: v(0), source: op(0), accessWidth: 32 },
     { op: "i32.add", dst: v(1), a: v(0), b: c32(1) },
     createIrFlagSetOp("inc", { left: v(0), result: v(1) }),

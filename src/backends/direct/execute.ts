@@ -10,7 +10,6 @@ import {
   setRegisterAlias,
   setReg32,
   u32,
-  widthMask,
   type CpuState
 } from "#x86/state/cpu-state.js";
 import { buildIr } from "#x86/ir/build/builder.js";
@@ -18,7 +17,7 @@ import { CONDITIONS, type FlagBoolExpr } from "#x86/ir/model/conditions.js";
 import { FLAG_PRODUCERS, type FlagDefs, type FlagExpr, type FlagName, type ValueExpr } from "#x86/ir/model/flags.js";
 import type { MemRef, IrFlagSetOp, IrOp, StorageRef, ValueRef, VarRef } from "#x86/ir/model/types.js";
 import type { IsaDecodedInstruction, IsaOperandBinding } from "#x86/isa/decoder/types.js";
-import type { MemOperand, OperandWidth, Reg32 } from "#x86/isa/types.js";
+import { widthMask, type MemOperand, type OperandWidth, type Reg32 } from "#x86/isa/types.js";
 
 export type DirectExecutionOptions = Readonly<{
   memory?: GuestMemory;

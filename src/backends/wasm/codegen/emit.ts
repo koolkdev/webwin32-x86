@@ -210,7 +210,7 @@ class IrExprWasmEmitter {
           const right = this.#emitValue(value.b, { requestedWidth: 32 });
 
           this.#context.body.i32Add();
-          return arithmeticResultValueWidth(left, right);
+          return arithmeticResultValueWidth("i32.add", left, right);
         }
       case "i32.sub":
         {
@@ -218,7 +218,7 @@ class IrExprWasmEmitter {
           const right = this.#emitValue(value.b, { requestedWidth: 32 });
 
           this.#context.body.i32Sub();
-          return arithmeticResultValueWidth(left, right);
+          return arithmeticResultValueWidth("i32.sub", left, right);
         }
       case "i32.xor":
         {

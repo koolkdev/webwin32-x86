@@ -1,5 +1,4 @@
-import type { RegisterAlias, Reg32 } from "#x86/isa/types.js";
-import { widthMask } from "#x86/state/cpu-state.js";
+import { widthMask, type RegisterAlias, type Reg32 } from "#x86/isa/types.js";
 
 export type ByteSource = Readonly<{
   local: number;

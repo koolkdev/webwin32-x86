@@ -9,7 +9,7 @@ import type { InstructionSpec } from "#x86/isa/schema/types.js";
 
 test("x86-32 core registers the initial instruction surface", () => {
   strictEqual(X86_32_CORE.name, "x86-32-core");
-  strictEqual(X86_32_CORE.instructions.length, 192);
+  strictEqual(X86_32_CORE.instructions.length, 198);
 
   const ids = X86_32_CORE.instructions.map((spec) => spec.id);
 
@@ -54,6 +54,12 @@ test("x86-32 core registers the initial instruction surface", () => {
     "dec.rm8",
     "dec.rm16",
     "dec.rm32",
+    "not.rm8",
+    "not.rm16",
+    "not.rm32",
+    "neg.rm8",
+    "neg.rm16",
+    "neg.rm32",
     "cmp.rm32_imm8",
     "cmp.rm16_imm16",
     "test.al_imm8",
@@ -195,6 +201,8 @@ test("group opcode forms use modrm.match.reg for Intel slash-digit notation", ()
   const or = instruction("or.rm32_imm8");
   const and = instruction("and.rm32_imm32");
   const sub = instruction("sub.rm32_imm8");
+  const not = instruction("not.rm32");
+  const neg = instruction("neg.rm8");
   const call = instruction("call.rm32");
 
   deepStrictEqual(or.opcode, [0x83]);
@@ -218,6 +226,14 @@ test("group opcode forms use modrm.match.reg for Intel slash-digit notation", ()
     { kind: "imm", width: 8, semanticWidth: 32, extension: "sign" }
   ]);
 
+  deepStrictEqual(not.opcode, [0xf7]);
+  deepStrictEqual(not.modrm, { match: { reg: 2 } });
+  deepStrictEqual(not.operands, [{ kind: "modrm.rm", type: "rm32" }]);
+
+  deepStrictEqual(neg.opcode, [0xf6]);
+  deepStrictEqual(neg.modrm, { match: { reg: 3 } });
+  deepStrictEqual(neg.operands, [{ kind: "modrm.rm", type: "rm8" }]);
+
   deepStrictEqual(call.opcode, [0xff]);
   deepStrictEqual(call.modrm, { match: { reg: 2 } });
   deepStrictEqual(call.operands, [{ kind: "modrm.rm", type: "rm32" }]);
@@ -231,6 +247,8 @@ test("width-specific decode forms record operand-size metadata", () => {
   const lea16 = instruction("lea.r16_m16");
   const add8 = instruction("add.rm8_r8");
   const cmp16 = instruction("cmp.rm16_imm16");
+  const not16 = instruction("not.rm16");
+  const neg16 = instruction("neg.rm16");
 
   deepStrictEqual(mov8.operands, [
     { kind: "modrm.reg", type: "r8" },
@@ -271,6 +289,65 @@ test("width-specific decode forms record operand-size metadata", () => {
     { kind: "modrm.rm", type: "rm16" },
     { kind: "imm", width: 16 }
   ]);
+
+  deepStrictEqual(not16.prefixes, { operandSize: "override" });
+  deepStrictEqual(not16.operands, [{ kind: "modrm.rm", type: "rm16" }]);
+
+  deepStrictEqual(neg16.prefixes, { operandSize: "override" });
+  deepStrictEqual(neg16.operands, [{ kind: "modrm.rm", type: "rm16" }]);
+});
+
+test("unary ALU semantics lower to flagless not and sub-flags neg IR", () => {
+  const not = buildIr(instruction("not.rm16").semantics as SemanticTemplate);
+  const neg = buildIr(instruction("neg.rm8").semantics as SemanticTemplate);
+
+  deepStrictEqual(not, [
+    { op: "get", dst: { kind: "var", id: 0 }, source: { kind: "operand", index: 0 }, accessWidth: 16 },
+    {
+      op: "i32.xor",
+      dst: { kind: "var", id: 1 },
+      a: { kind: "var", id: 0 },
+      b: { kind: "const32", value: 0xffff }
+    },
+    {
+      op: "set",
+      target: { kind: "operand", index: 0 },
+      value: { kind: "var", id: 1 },
+      accessWidth: 16
+    },
+    { op: "next" }
+  ]);
+  strictEqual(not.some((op) => op.op.startsWith("flags.")), false);
+
+  deepStrictEqual(neg[0], {
+    op: "get",
+    dst: { kind: "var", id: 0 },
+    source: { kind: "operand", index: 0 },
+    accessWidth: 8
+  });
+  deepStrictEqual(neg[1], {
+    op: "i32.sub",
+    dst: { kind: "var", id: 1 },
+    a: { kind: "const32", value: 0 },
+    b: { kind: "var", id: 0 }
+  });
+  strictEqual(neg[2]?.op, "flags.set");
+  if (neg[2]?.op === "flags.set") {
+    strictEqual(neg[2].producer, "sub");
+    strictEqual(neg[2].width, 8);
+    deepStrictEqual(neg[2].inputs, {
+      left: { kind: "const32", value: 0 },
+      right: { kind: "var", id: 0 },
+      result: { kind: "var", id: 1 }
+    });
+  }
+  deepStrictEqual(neg[3], {
+    op: "set",
+    target: { kind: "operand", index: 0 },
+    value: { kind: "var", id: 1 },
+    accessWidth: 8
+  });
+  strictEqual(neg.at(-1)?.op, "next");
 });
 
 test("mov r/m32, imm32 uses C7 slash-zero form", () => {

@@ -10,7 +10,7 @@ import {
   type X86ControlFlag,
   type X86EflagsFlag
 } from "#x86/isa/flags.js";
-import { reg32, type OperandWidth, type RegisterAlias, type Reg32 } from "#x86/isa/types.js";
+import { reg32, widthMask, type RegisterAlias, type Reg32 } from "#x86/isa/types.js";
 
 export type CpuArithmeticFlag = X86ArithmeticFlag;
 export type CpuControlFlag = X86ControlFlag;
@@ -112,10 +112,6 @@ export function hasEvenParityLowByte(value: number): boolean {
   }
 
   return isEven;
-}
-
-export function widthMask(width: OperandWidth): number {
-  return width === 32 ? 0xffff_ffff : width === 16 ? 0xffff : 0xff;
 }
 
 export function cloneCpuState(state: CpuState): CpuState {

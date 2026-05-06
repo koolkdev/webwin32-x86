@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK } from "#x86/ir/model/flag-effects.js";
 import type { StorageRef } from "#x86/ir/model/types.js";
-import { createCpuState } from "#x86/state/cpu-state.js";
+import { createCpuState, getFlag } from "#x86/state/cpu-state.js";
 import { stateOffset, wasmMemoryIndex } from "#backends/wasm/abi.js";
 import { wasmOpcode, wasmSectionId } from "#backends/wasm/encoder/types.js";
 import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
@@ -19,6 +19,7 @@ import { runJitIrBlock } from "./helpers.js";
 
 const startAddress = 0x1000;
 const preservedEflags = 0xffff_0000;
+const allArithmeticEflags = 0x8d5;
 const zeroFlag = 1 << 6;
 const addWraparoundEflags = 0x55;
 const subBorrowEflags = 0x95;
@@ -63,6 +64,23 @@ test("JIT codegen plan keeps instruction-local operand namespaces", () => {
   strictEqual(secondIr.filter(jitIrOpIsTerminator).length, 1);
   deepStrictEqual([...new Set(firstIr.flatMap(irOpOperandIndexes))].sort((a, b) => a - b), [0, 1]);
   deepStrictEqual([...new Set(secondIr.flatMap(irOpOperandIndexes))].sort((a, b) => a - b), [0, 1]);
+});
+
+test("buildJitIrBlock lowers unary ALU forms with preserved widths", () => {
+  const notIr = buildJitIrBlock([ok(decodeBytes([0x66, 0xf7, 0xd0], startAddress))])
+    .instructions[0]!.ir;
+  const negIr = buildJitIrBlock([ok(decodeBytes([0xf6, 0xd8], startAddress))])
+    .instructions[0]!.ir;
+  const notSet = notIr.find((op) => op.op === "set");
+  const negFlags = negIr.find((op) => op.op === "flags.set");
+
+  strictEqual(notIr.some((op) => op.op === "i32.xor"), true);
+  strictEqual(notIr.some((op) => op.op === "flags.set"), false);
+  strictEqual(notSet?.op === "set" ? notSet.accessWidth : undefined, 16);
+
+  strictEqual(negIr.some((op) => op.op === "i32.sub"), true);
+  strictEqual(negFlags?.op === "flags.set" ? negFlags.producer : undefined, "sub");
+  strictEqual(negFlags?.op === "flags.set" ? negFlags.width : undefined, 8);
 });
 
 test("buildJitIrBlock prunes flag producers overwritten inside the block", () => {
@@ -907,6 +925,200 @@ test("jit IR block keeps partial-width immediate ALU inside the destination lane
   }
 });
 
+test("jit IR block emits NOT register and memory forms without changing flags", async () => {
+  const initialEflags = (preservedEflags | allArithmeticEflags) >>> 0;
+  const cases: readonly Readonly<{
+    name: string;
+    bytes: readonly number[];
+    width: 8 | 16 | 32;
+    eax: number;
+    expectedEax: number;
+    memoryValue?: number;
+    expectedMemoryValue?: number;
+  }>[] = [
+    {
+      name: "NOT AL",
+      bytes: [0xf6, 0xd0],
+      width: 8,
+      eax: 0x1234_560f,
+      expectedEax: 0x1234_56f0
+    },
+    {
+      name: "NOT AX",
+      bytes: [0x66, 0xf7, 0xd0],
+      width: 16,
+      eax: 0x1234_560f,
+      expectedEax: 0x1234_a9f0
+    },
+    {
+      name: "NOT EAX",
+      bytes: [0xf7, 0xd0],
+      width: 32,
+      eax: 0x1234_560f,
+      expectedEax: 0xedcb_a9f0
+    },
+    {
+      name: "NOT byte [EAX]",
+      bytes: [0xf6, 0x10],
+      width: 8,
+      eax: 0x40,
+      expectedEax: 0x40,
+      memoryValue: 0x0f,
+      expectedMemoryValue: 0xf0
+    },
+    {
+      name: "NOT word [EAX]",
+      bytes: [0x66, 0xf7, 0x10],
+      width: 16,
+      eax: 0x44,
+      expectedEax: 0x44,
+      memoryValue: 0x560f,
+      expectedMemoryValue: 0xa9f0
+    },
+    {
+      name: "NOT dword [EAX]",
+      bytes: [0xf7, 0x10],
+      width: 32,
+      eax: 0x48,
+      expectedEax: 0x48,
+      memoryValue: 0x1234_560f,
+      expectedMemoryValue: 0xedcb_a9f0
+    }
+  ];
+
+  for (const entry of cases) {
+    const result = await runJitIrBlock(
+      entry.bytes,
+      createCpuState({ eax: entry.eax, eflags: initialEflags, eip: startAddress }),
+      entry.memoryValue === undefined
+        ? []
+        : [{ address: entry.eax, bytes: littleEndianBytes(entry.memoryValue, entry.width) }]
+    );
+
+    strictEqual(result.state.eax, entry.expectedEax, entry.name);
+    strictEqual(result.state.eflags, initialEflags, entry.name);
+    if (entry.expectedMemoryValue !== undefined) {
+      strictEqual(readGuestValue(result.guestView, entry.eax, entry.width), entry.expectedMemoryValue, entry.name);
+    }
+    strictEqual(result.state.eip, startAddress + entry.bytes.length, entry.name);
+    strictEqual(result.state.instructionCount, 1, entry.name);
+    deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + entry.bytes.length });
+  }
+});
+
+test("jit IR block emits NEG register flags for zero, one, min-signed, and wraparound cases", async () => {
+  const zeroFlags = { CF: false, OF: false, SF: false, ZF: true, PF: true, AF: false };
+  const oneFlags = { CF: true, OF: false, SF: true, ZF: false, PF: true, AF: true };
+  const min8Flags = { CF: true, OF: true, SF: true, ZF: false, PF: false, AF: false };
+  const minWideFlags = { CF: true, OF: true, SF: true, ZF: false, PF: true, AF: false };
+  const wrapFlags = { CF: true, OF: false, SF: false, ZF: false, PF: false, AF: true };
+  const cases: readonly Readonly<{
+    name: string;
+    bytes: readonly number[];
+    initialEax: number;
+    expectedEax: number;
+    flags: ArithmeticFlagExpectations;
+  }>[] = [
+    { name: "NEG AL zero", bytes: [0xf6, 0xd8], initialEax: 0xaaaa_aa00, expectedEax: 0xaaaa_aa00, flags: zeroFlags },
+    { name: "NEG AL one", bytes: [0xf6, 0xd8], initialEax: 0xaaaa_aa01, expectedEax: 0xaaaa_aaff, flags: oneFlags },
+    { name: "NEG AL min-signed", bytes: [0xf6, 0xd8], initialEax: 0xaaaa_aa80, expectedEax: 0xaaaa_aa80, flags: min8Flags },
+    { name: "NEG AL wraparound", bytes: [0xf6, 0xd8], initialEax: 0xaaaa_aaff, expectedEax: 0xaaaa_aa01, flags: wrapFlags },
+    { name: "NEG AX zero", bytes: [0x66, 0xf7, 0xd8], initialEax: 0xaaaa_0000, expectedEax: 0xaaaa_0000, flags: zeroFlags },
+    { name: "NEG AX one", bytes: [0x66, 0xf7, 0xd8], initialEax: 0xaaaa_0001, expectedEax: 0xaaaa_ffff, flags: oneFlags },
+    { name: "NEG AX min-signed", bytes: [0x66, 0xf7, 0xd8], initialEax: 0xaaaa_8000, expectedEax: 0xaaaa_8000, flags: minWideFlags },
+    { name: "NEG AX wraparound", bytes: [0x66, 0xf7, 0xd8], initialEax: 0xaaaa_ffff, expectedEax: 0xaaaa_0001, flags: wrapFlags },
+    { name: "NEG EAX zero", bytes: [0xf7, 0xd8], initialEax: 0, expectedEax: 0, flags: zeroFlags },
+    { name: "NEG EAX one", bytes: [0xf7, 0xd8], initialEax: 1, expectedEax: 0xffff_ffff, flags: oneFlags },
+    { name: "NEG EAX min-signed", bytes: [0xf7, 0xd8], initialEax: 0x8000_0000, expectedEax: 0x8000_0000, flags: minWideFlags },
+    { name: "NEG EAX wraparound", bytes: [0xf7, 0xd8], initialEax: 0xffff_ffff, expectedEax: 1, flags: wrapFlags }
+  ];
+
+  for (const entry of cases) {
+    const result = await runJitIrBlock(entry.bytes, createCpuState({
+      eax: entry.initialEax,
+      eflags: (preservedEflags | allArithmeticEflags) >>> 0,
+      eip: startAddress
+    }));
+    const expectedEflags = (preservedEflags | arithmeticEflags(entry.flags)) >>> 0;
+
+    strictEqual(result.state.eax, entry.expectedEax, entry.name);
+    strictEqual(result.state.eflags, expectedEflags, entry.name);
+    assertArithmeticFlags(result.state, entry.flags, entry.name);
+    strictEqual(result.state.eip, startAddress + entry.bytes.length, entry.name);
+    strictEqual(result.state.instructionCount, 1, entry.name);
+  }
+});
+
+test("jit IR block emits NEG memory forms for byte, word, and dword operands", async () => {
+  const oneFlags = { CF: true, OF: false, SF: true, ZF: false, PF: true, AF: true };
+  const cases: readonly Readonly<{
+    name: string;
+    bytes: readonly number[];
+    width: 8 | 16 | 32;
+    address: number;
+    expectedMemoryValue: number;
+  }>[] = [
+    { name: "NEG byte [EAX]", bytes: [0xf6, 0x18], width: 8, address: 0x50, expectedMemoryValue: 0xff },
+    { name: "NEG word [EAX]", bytes: [0x66, 0xf7, 0x18], width: 16, address: 0x54, expectedMemoryValue: 0xffff },
+    { name: "NEG dword [EAX]", bytes: [0xf7, 0x18], width: 32, address: 0x58, expectedMemoryValue: 0xffff_ffff }
+  ];
+
+  for (const entry of cases) {
+    const result = await runJitIrBlock(
+      entry.bytes,
+      createCpuState({
+        eax: entry.address,
+        eflags: (preservedEflags | allArithmeticEflags) >>> 0,
+        eip: startAddress
+      }),
+      [{ address: entry.address, bytes: littleEndianBytes(1, entry.width) }]
+    );
+
+    strictEqual(result.state.eax, entry.address, entry.name);
+    strictEqual(readGuestValue(result.guestView, entry.address, entry.width), entry.expectedMemoryValue, entry.name);
+    strictEqual(result.state.eflags, (preservedEflags | arithmeticEflags(oneFlags)) >>> 0, entry.name);
+    assertArithmeticFlags(result.state, oneFlags, entry.name);
+    strictEqual(result.state.eip, startAddress + entry.bytes.length, entry.name);
+    strictEqual(result.state.instructionCount, 1, entry.name);
+    deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + entry.bytes.length });
+  }
+});
+
+test("jit IR block preserves unary ALU flags and memory effects after value propagation", async () => {
+  const oneFlags = { CF: true, OF: false, SF: true, ZF: false, PF: true, AF: true };
+  const initialEflags = (preservedEflags | allArithmeticEflags) >>> 0;
+  const foldedNeg = await runJitIrBlock([
+    0xb8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1
+    0xf7, 0xd8, // neg eax
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eflags: initialEflags,
+    eip: startAddress
+  }));
+  const memoryNot = await runJitIrBlock([
+    0xb8, 0x60, 0x00, 0x00, 0x00, // mov eax, 0x60
+    0xf7, 0x10, // not dword [eax]
+    0x8b, 0x18, // mov ebx, [eax]
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eflags: initialEflags,
+    eip: startAddress
+  }), [{ address: 0x60, bytes: littleEndianBytes(0x1234_560f, 32) }]);
+
+  strictEqual(foldedNeg.state.eax, 0xffff_ffff);
+  strictEqual(foldedNeg.state.eflags, (preservedEflags | arithmeticEflags(oneFlags)) >>> 0);
+  assertArithmeticFlags(foldedNeg.state, oneFlags, "folded NEG EAX");
+  strictEqual(foldedNeg.state.instructionCount, 3);
+  deepStrictEqual(foldedNeg.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+
+  strictEqual(memoryNot.state.eax, 0x60);
+  strictEqual(memoryNot.state.ebx, 0xedcb_a9f0);
+  strictEqual(readGuestValue(memoryNot.guestView, 0x60, 32), 0xedcb_a9f0);
+  strictEqual(memoryNot.state.eflags, initialEflags);
+  strictEqual(memoryNot.state.instructionCount, 4);
+  deepStrictEqual(memoryNot.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
 test("jit IR block omits redundant masks after byte and word memory loads", () => {
   const movAxOpcodes = singleInstructionBodyOpcodes([0x66, 0x8b, 0x03]);
   const movAlOpcodes = singleInstructionBodyOpcodes([0x8a, 0x03]);
@@ -1523,6 +1735,39 @@ test("jit IR block keeps flags live across memory fault exits before later overw
   strictEqual(result.state.instructionCount, 1);
   deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000, detail: 4 });
 });
+
+type ArithmeticFlagExpectations = Readonly<{
+  CF: boolean;
+  OF: boolean;
+  SF: boolean;
+  ZF: boolean;
+  PF: boolean;
+  AF: boolean;
+}>;
+
+function assertArithmeticFlags(
+  state: ReturnType<typeof createCpuState>,
+  expected: ArithmeticFlagExpectations,
+  label: string
+): void {
+  strictEqual(getFlag(state, "CF"), expected.CF, `${label} CF`);
+  strictEqual(getFlag(state, "OF"), expected.OF, `${label} OF`);
+  strictEqual(getFlag(state, "SF"), expected.SF, `${label} SF`);
+  strictEqual(getFlag(state, "ZF"), expected.ZF, `${label} ZF`);
+  strictEqual(getFlag(state, "PF"), expected.PF, `${label} PF`);
+  strictEqual(getFlag(state, "AF"), expected.AF, `${label} AF`);
+}
+
+function arithmeticEflags(flags: ArithmeticFlagExpectations): number {
+  return (
+    (flags.CF ? 0x001 : 0) |
+    (flags.PF ? 0x004 : 0) |
+    (flags.AF ? 0x010 : 0) |
+    (flags.ZF ? 0x040 : 0) |
+    (flags.SF ? 0x080 : 0) |
+    (flags.OF ? 0x800 : 0)
+  ) >>> 0;
+}
 
 function codegenIr(block: ReturnType<typeof buildJitIrBlock>): readonly JitIrOp[] {
   return buildJitCodegenIr(planJitCodegen(optimizeJitIrBlock(block))).instructions.flatMap(

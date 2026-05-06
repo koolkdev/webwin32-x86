@@ -1,6 +1,6 @@
-import { reg32, type OperandWidth, type Reg32 } from "#x86/isa/types.js";
+import { reg32, widthMask, type OperandWidth, type Reg32 } from "#x86/isa/types.js";
 import type { IrBinaryValueOpName, IrUnaryValueOpName } from "#x86/ir/model/types.js";
-import { i32, widthMask } from "#x86/state/cpu-state.js";
+import { i32 } from "#x86/state/cpu-state.js";
 import type { OperandRef, StorageRef, ValueRef } from "#x86/ir/model/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
 import {

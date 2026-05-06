@@ -28,3 +28,7 @@ export type MemOperand = EffectiveAddress & Readonly<{
 }>;
 
 export type Mem32Operand = MemOperand & Readonly<{ accessWidth: 32 }>;
+
+export function widthMask(width: OperandWidth): number {
+  return width === 32 ? 0xffff_ffff : width === 16 ? 0xffff : 0xff;
+}
