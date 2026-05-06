@@ -8,7 +8,7 @@ import { createIrFlagSetOp } from "#x86/ir/model/flags.js";
 const v = (id: number) => ({ kind: "var" as const, id });
 const op = (index: number) => ({ kind: "operand" as const, index });
 const reg = (reg: "eax" | "ebx") => ({ kind: "reg" as const, reg });
-const c32 = (value: number) => ({ kind: "const32" as const, value });
+const c32 = (value: number) => ({ kind: "const" as const, type: "i32" as const, value });
 const sourceValue = (
   source: ReturnType<typeof op> | ReturnType<typeof reg>,
   accessWidth: 8 | 16 | 32 = 32,
@@ -136,10 +136,10 @@ test("expression selector folds simple register arithmetic into destination valu
   );
 });
 
-test("expression selector can reuse const32 bindings without a temporary", () => {
+test("expression selector can reuse const bindings without a temporary", () => {
   deepStrictEqual(
     buildIrExpressionBlock([
-      { op: "const32", dst: v(0), value: 7 },
+      { op: "value.const", type: "i32", dst: v(0), value: 7 },
       { op: "value.binary", type: "i32", operator: "add", dst: v(1), a: v(0), b: v(0) },
       { op: "set", target: reg("ebx"), value: v(1) },
       { op: "next" }

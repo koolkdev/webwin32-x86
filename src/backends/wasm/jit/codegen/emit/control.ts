@@ -176,7 +176,7 @@ function staticControlTarget(context: JitIrContext, target: IrValueExpr): number
   }
 
   switch (target.kind) {
-    case "const32":
+    case "const":
       return u32(target.value);
     case "nextEip":
       return u32(instruction.nextEip);

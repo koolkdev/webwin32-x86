@@ -5,7 +5,7 @@ import { assignIrExprVarSlots } from "#backends/wasm/codegen/var-slots.js";
 
 const v = (id: number) => ({ kind: "var" as const, id });
 const reg = (reg: "eax" | "ebx") => ({ kind: "reg" as const, reg });
-const c32 = (value: number) => ({ kind: "const32" as const, value });
+const c32 = (value: number) => ({ kind: "const" as const, type: "i32" as const, value });
 const setReg = (target: ReturnType<typeof reg>, value: ReturnType<typeof v> | ReturnType<typeof c32> | Readonly<{
   kind: "value.binary";
   type: "i32";

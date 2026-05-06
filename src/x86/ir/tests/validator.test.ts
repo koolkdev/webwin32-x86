@@ -91,7 +91,7 @@ test("validator rejects malformed flag producer inputs", () => {
   throws(
     () =>
       validateIrBlock([
-        { op: "const32", dst: irVar(0), value: 1 },
+        { op: "value.const", type: "i32", dst: irVar(0), value: 1 },
         createIrFlagSetOp("logic", {}),
         { op: "next" }
       ]),
@@ -101,7 +101,7 @@ test("validator rejects malformed flag producer inputs", () => {
   throws(
     () =>
       validateIrBlock([
-        { op: "const32", dst: irVar(0), value: 1 },
+        { op: "value.const", type: "i32", dst: irVar(0), value: 1 },
         createIrFlagSetOp("logic", { result: irVar(0), extra: irVar(0) }),
         { op: "next" }
       ]),
@@ -113,7 +113,7 @@ test("validator rejects flag descriptors that disagree with producer metadata", 
   throws(
     () =>
       validateIrBlock([
-        { op: "const32", dst: irVar(0), value: 1 },
+        { op: "value.const", type: "i32", dst: irVar(0), value: 1 },
         { ...createIrFlagSetOp("logic", { result: irVar(0) }), writtenMask: 1 },
         { op: "next" }
       ]),
@@ -123,7 +123,7 @@ test("validator rejects flag descriptors that disagree with producer metadata", 
   throws(
     () =>
       validateIrBlock([
-        { op: "const32", dst: irVar(0), value: 1 },
+        { op: "value.const", type: "i32", dst: irVar(0), value: 1 },
         { ...createIrFlagSetOp("add", { left: irVar(0), right: const32(1), result: irVar(0) }), undefMask: 1 },
         { op: "next" }
       ]),

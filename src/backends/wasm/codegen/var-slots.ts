@@ -139,7 +139,7 @@ function collectValueVarUses(value: IrValueExpr, visit: (id: number) => void): v
     case "var":
       visit(value.id);
       return;
-    case "const32":
+    case "const":
     case "nextEip":
     case "address":
     case "aluFlags.condition":

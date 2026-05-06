@@ -14,10 +14,10 @@ import {
 } from "#x86/ir/model/refs.js";
 import type {
   ConditionCode,
-  Const32Ref,
   FlagMask,
   FlagProducerName,
   IrBinaryOperator,
+  IrConstValueRef,
   MemRef,
   NextEipRef,
   OperandInput,
@@ -82,7 +82,7 @@ export class IrEmitter implements IrBuilder {
     return this.#resolveOperand(index);
   }
 
-  const32(value: number): Const32Ref {
+  const32(value: number): IrConstValueRef {
     return const32(value);
   }
 
@@ -129,13 +129,6 @@ export class IrEmitter implements IrBuilder {
     const dst = this.#allocVar();
 
     this.#push({ op: "address", dst, operand: operandInput });
-    return dst;
-  }
-
-  setConst32(value: number): VarRef {
-    const dst = this.#allocVar();
-
-    this.#push({ op: "const32", dst, value: value >>> 0 });
     return dst;
   }
 

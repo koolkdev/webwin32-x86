@@ -9,8 +9,8 @@ test("local-dce removes unused pure local values", () => {
   const result = pruneDeadJitLocalValues({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 1 },
-        { op: "const32", dst: v(1), value: 2 },
+        { op: "value.const", type: "i32", dst: v(0), value: 1 },
+        { op: "value.const", type: "i32", dst: v(1), value: 2 },
         { op: "value.binary", type: "i32", operator: "add", dst: v(2), a: v(0), b: v(1) },
         { op: "next" }
       ])
@@ -53,7 +53,7 @@ test("local-dce is a validating repeatable optimization pass", () => {
   const first = runJitOptimizationPasses({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 1 },
+        { op: "value.const", type: "i32", dst: v(0), value: 1 },
         { op: "next" }
       ])
     ]

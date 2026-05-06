@@ -310,7 +310,7 @@ function emitValueExpr(body: WasmFunctionBodyEncoder, value: IrValueExpr): Value
     case "var":
       body.localGet(value.id);
       return untrackedValueWidth();
-    case "const32":
+    case "const":
       body.i32Const(i32(value.value));
       return constValueWidth(value.value);
     case "nextEip":

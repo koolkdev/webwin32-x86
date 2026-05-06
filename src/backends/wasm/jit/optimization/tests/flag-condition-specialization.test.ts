@@ -60,7 +60,7 @@ test("flag-condition-specialization falls back when producer inputs are clobbere
         { op: "next" }
       ]),
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 0 },
+        { op: "value.const", type: "i32", dst: v(0), value: 0 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "aluFlags.condition", dst: v(1), cc: "E" },
         { op: "set.if", condition: v(1), target: { kind: "reg", reg: "ecx" }, value: c32(1) },
@@ -160,7 +160,7 @@ test("flag-condition-specialization falls back when writeback registers are clob
         { op: "next" }
       ]),
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 0 },
+        { op: "value.const", type: "i32", dst: v(0), value: 0 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "next" }
       ], 1),

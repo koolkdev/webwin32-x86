@@ -71,7 +71,7 @@ test("register value analysis tracks foldable register reads", () => {
   const analysis = analyzeJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 7 },
+        { op: "value.const", type: "i32", dst: v(0), value: 7 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" } },
         { op: "next" }
@@ -102,7 +102,7 @@ test("register value analysis folds low-byte reads from tracked full registers",
   const analysis = analyzeJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 0x1234_5678 },
+        { op: "value.const", type: "i32", dst: v(0), value: 0x1234_5678 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" }, accessWidth: 8 },
         { op: "next" }
@@ -118,7 +118,7 @@ test("register value analysis folds low-byte reads from tracked full registers",
   })), [{
     opIndex: 2,
     kind: "get",
-    value: { kind: "const32", value: 0x78 },
+    value: { kind: "const", type: "i32", value: 0x78 },
     regs: ["eax"]
   }]);
   deepStrictEqual(analysis.materializations.map((entry) => ({
@@ -133,7 +133,7 @@ test("register value analysis keeps signed and unsigned low-byte reads distinct"
   const lowByteOfEcx = {
     kind: "value.binary", type: "i32", operator: "and" as const,
     a: { kind: "reg" as const, reg: "ecx" as const },
-    b: { kind: "const32" as const, value: 0xff }
+    b: { kind: "const" as const, type: "i32" as const, value: 0xff }
   };
   const foldedLowByteValue = (signed: boolean) => analyzeJitRegisterValues({
     instructions: [
@@ -160,7 +160,7 @@ test("register value analysis folds low-word reads from tracked full registers",
   const analysis = analyzeJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 0x1234_5678 },
+        { op: "value.const", type: "i32", dst: v(0), value: 0x1234_5678 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" }, accessWidth: 16 },
         { op: "next" }
@@ -176,7 +176,7 @@ test("register value analysis folds low-word reads from tracked full registers",
   })), [{
     opIndex: 2,
     kind: "get",
-    value: { kind: "const32", value: 0x5678 },
+    value: { kind: "const", type: "i32", value: 0x5678 },
     regs: ["eax"]
   }]);
   deepStrictEqual(analysis.materializations.map((entry) => ({
@@ -190,7 +190,7 @@ test("register value analysis folds same-lane reads after partial writes", () =>
   const analysis = analyzeJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 0x44 },
+        { op: "value.const", type: "i32", dst: v(0), value: 0x44 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0), accessWidth: 8 },
         { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" }, accessWidth: 8 },
         { op: "next" }
@@ -207,7 +207,7 @@ test("register value analysis folds same-lane reads after partial writes", () =>
   })), [{
     opIndex: 2,
     kind: "get",
-    value: { kind: "const32", value: 0x44 },
+    value: { kind: "const", type: "i32", value: 0x44 },
     regs: ["eax"]
   }]);
   deepStrictEqual(analysis.materializations, []);
@@ -218,7 +218,7 @@ test("register value analysis keeps wider reads after partial-only writes conser
   const analysis = analyzeJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 0x44 },
+        { op: "value.const", type: "i32", dst: v(0), value: 0x44 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0), accessWidth: 8 },
         { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" }, accessWidth: 16 },
         { op: "next" }
@@ -237,7 +237,7 @@ test("register value analysis materializes dependencies before clobbers", () => 
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(0) },
-        { op: "const32", dst: v(1), value: 0 },
+        { op: "value.const", type: "i32", dst: v(1), value: 0 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(1) },
         { op: "next" }
       ])
@@ -257,7 +257,7 @@ test("register value analysis keeps immediately exiting writes concrete", () => 
   const analysis = analyzeJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 7 },
+        { op: "value.const", type: "i32", dst: v(0), value: 7 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "next" }
       ], 0, "exit")
@@ -286,7 +286,7 @@ test("register value analysis validation rejects mismatched materialization valu
     phase: "beforeOp",
     reason: "clobber",
     regs: ["eax"],
-    values: [{ reg: "ebx", value: { kind: "const32", value: 1 } }]
+    values: [{ reg: "ebx", value: { kind: "const", type: "i32", value: 1 } }]
   })), /unexpected value for ebx/);
 });
 

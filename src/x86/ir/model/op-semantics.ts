@@ -30,7 +30,7 @@ export function irOpResult(op: IrOp): IrOpResult {
     case "get":
       return { kind: "value", dst: op.dst, sideEffect: "storageRead" };
     case "address":
-    case "const32":
+    case "value.const":
     case "value.binary":
     case "value.unary":
     case "aluFlags.condition":
@@ -67,7 +67,7 @@ export function irOpIsTerminator(op: IrOp): op is IrTerminatorOp {
     case "set":
     case "set.if":
     case "address":
-    case "const32":
+    case "value.const":
     case "value.binary":
     case "value.unary":
     case "flags.set":
@@ -107,7 +107,7 @@ export function visitIrOpValueRefs(
       visit(op.value, "value");
       return;
     case "address":
-    case "const32":
+    case "value.const":
       return;
     case "value.binary":
       visit(op.a, "value");
@@ -176,7 +176,7 @@ export function visitIrOpStorageRefs(
       visit(op.target, "write");
       return;
     case "address":
-    case "const32":
+    case "value.const":
     case "value.binary":
     case "value.unary":
     case "flags.set":

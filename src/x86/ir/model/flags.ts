@@ -54,12 +54,14 @@ export const xor = (a: ValueExpr, b: ValueExpr): ValueExpr => ({ kind: "xor", a,
 export const xor3 = (a: ValueExpr, b: ValueExpr, c: ValueExpr): ValueExpr => xor(xor(a, b), c);
 
 export const signMask = (width: 8 | 16 | 32): ValueExpr => ({
-  kind: "const32",
+  kind: "const",
+  type: "i32",
   value: width === 32 ? 0x8000_0000 : width === 16 ? 0x8000 : 0x80
 });
 
 export const widthMask = (width: 8 | 16 | 32): ValueExpr => ({
-  kind: "const32",
+  kind: "const",
+  type: "i32",
   value: width === 32 ? 0xffff_ffff : width === 16 ? 0xffff : 0xff
 });
 
@@ -154,7 +156,7 @@ export const FLAG_PRODUCERS = {
   // must keep using the previous CF source.
   inc: flagProducer(["left", "result"], incDecWrittenFlagNames, [], ({ left, result }, width) => {
     const truncatedResult = truncateToWidth(width, result);
-    const carry = addCarryFlags(width, left, const32(1), truncatedResult);
+    const carry = addCarryFlags(width, left, i32Const(1), truncatedResult);
 
     return {
       ...zspFlags(width, truncatedResult),
@@ -165,7 +167,7 @@ export const FLAG_PRODUCERS = {
 
   dec: flagProducer(["left", "result"], incDecWrittenFlagNames, [], ({ left, result }, width) => {
     const truncatedResult = truncateToWidth(width, result);
-    const carry = subCarryFlags(width, left, const32(1), truncatedResult);
+    const carry = subCarryFlags(width, left, i32Const(1), truncatedResult);
 
     return {
       ...zspFlags(width, truncatedResult),
@@ -192,8 +194,8 @@ export function createIrFlagSetOp(
   return width === undefined || width === 32 ? op : { ...op, width };
 }
 
-function const32(value: number): ValueExpr {
-  return { kind: "const32", value };
+function i32Const(value: number): ValueExpr {
+  return { kind: "const", type: "i32", value };
 }
 
 function maskFlags(flags: readonly FlagName[]): number {

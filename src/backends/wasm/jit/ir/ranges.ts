@@ -56,8 +56,8 @@ function sameValueRef(a: ValueRef, b: ValueRef): boolean {
   switch (a.kind) {
     case "var":
       return b.kind === "var" && a.id === b.id;
-    case "const32":
-      return b.kind === "const32" && a.value === b.value;
+    case "const":
+      return b.kind === "const" && a.type === b.type && a.value === b.value;
     case "nextEip":
       return b.kind === "nextEip";
   }

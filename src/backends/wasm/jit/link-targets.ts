@@ -35,7 +35,7 @@ function staticTargetForValue(
   value: ValueRef
 ): number | undefined {
   switch (value.kind) {
-    case "const32":
+    case "const":
       return u32(value.value);
     case "nextEip":
       return u32(instruction.nextEip);
@@ -49,10 +49,10 @@ function staticTargetForVar(
   value: Extract<ValueRef, { kind: "var" }>
 ): number | undefined {
   const producer = instruction.ir.find((op) =>
-    (op.op === "get" || op.op === "const32") && op.dst.id === value.id
+    (op.op === "get" || op.op === "value.const") && op.dst.id === value.id
   );
 
-  if (producer?.op === "const32") {
+  if (producer?.op === "value.const") {
     return u32(producer.value);
   }
 

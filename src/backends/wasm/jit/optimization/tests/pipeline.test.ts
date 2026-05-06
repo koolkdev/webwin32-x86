@@ -86,7 +86,7 @@ test("runJitOptimizationPasses runs named IR-to-IR passes and validates pass out
           instructions: block.instructions.map((instruction) => ({
             ...instruction,
             ir: [
-              { op: "const32", dst: v(0), value: 7 },
+              { op: "value.const", type: "i32", dst: v(0), value: 7 },
               ...instruction.ir
             ]
           }))
@@ -107,7 +107,7 @@ test("runJitOptimizationPasses runs named IR-to-IR passes and validates pass out
     changed: true,
     stats: { insertedOpCount: 1 }
   }]);
-  deepStrictEqual(result.block.instructions[0]?.ir.map((op) => op.op), ["const32", "next"]);
+  deepStrictEqual(result.block.instructions[0]?.ir.map((op) => op.op), ["value.const", "next"]);
 });
 
 test("runJitIrOptimizationPipeline exposes the new pass pipeline as plain JIT IR", () => {

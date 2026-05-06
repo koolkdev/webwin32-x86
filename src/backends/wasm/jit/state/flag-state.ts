@@ -296,7 +296,7 @@ export function createJitFlagState(
             return emitDirectPendingInput(input.value, context);
         }
       }
-      case "const32":
+      case "const":
         body.i32Const(i32(value.value));
         return constValueWidth(value.value);
       case "nextEip":
@@ -308,7 +308,7 @@ export function createJitFlagState(
 
   function emitDirectPendingInput(value: ValueRef, context: string): ValueWidth {
     switch (value.kind) {
-      case "const32":
+      case "const":
         body.i32Const(i32(value.value));
         return constValueWidth(value.value);
       case "nextEip":
@@ -401,7 +401,7 @@ export function createJitFlagState(
 }
 
 function canKeepPendingInputDirect(input: ValueRef): boolean {
-  return input.kind === "const32";
+  return input.kind === "const";
 }
 
 function requiredPendingInput(inputsByVarId: ReadonlyMap<number, PendingInput>, id: number): PendingInput {

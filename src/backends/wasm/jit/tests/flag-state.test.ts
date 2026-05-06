@@ -74,7 +74,7 @@ test("JIT flag state emits supported pending flag conditions directly", () => {
   strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.localSet), 4);
 });
 
-test("JIT flag state keeps const32 pending flag inputs direct", () => {
+test("JIT flag state keeps const pending flag inputs direct", () => {
   const body = new WasmFunctionBodyEncoder(3);
   const aluFlagsLocal = body.addLocal(wasmValueType.i32);
   const conditionLocal = body.addLocal(wasmValueType.i32);
@@ -105,7 +105,7 @@ function emitValueExpr(body: WasmFunctionBodyEncoder, value: IrValueExpr): Value
     case "var":
       body.localGet(value.id);
       return untrackedValueWidth();
-    case "const32":
+    case "const":
       body.i32Const(i32(value.value));
       return constValueWidth(value.value);
     case "nextEip":
@@ -120,7 +120,7 @@ function v(id: number): ValueRef {
 }
 
 function c32(value: number): ValueRef {
-  return { kind: "const32", value };
+  return { kind: "const", type: "i32", value };
 }
 
 function countOpcode(opcodes: readonly number[], opcode: number): number {

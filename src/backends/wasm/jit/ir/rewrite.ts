@@ -145,8 +145,8 @@ export function emitJitValueRef(rewrite: JitInstructionRewrite, value: JitValue)
       rewrite.values.record(dst.id, value);
       return dst;
     }
-    case "const32":
-      return { kind: "const32", value: value.value };
+    case "const":
+      return { kind: "const", type: value.type, value: value.value };
     case "reg":
       return emitJitValueGet(rewrite, value);
   }
@@ -177,8 +177,8 @@ export function assignJitValue(
         value: emitJitValueRef(rewrite, value.value)
       });
       return;
-    case "const32":
-      rewrite.ops.push({ op: "const32", dst, value: value.value });
+    case "const":
+      rewrite.ops.push({ op: "value.const", type: value.type, dst, value: value.value });
       return;
     case "reg":
       rewrite.ops.push({

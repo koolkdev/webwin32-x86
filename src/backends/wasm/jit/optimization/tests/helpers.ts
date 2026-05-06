@@ -100,5 +100,5 @@ export function v(id: number): VarRef {
 }
 
 export function c32(value: number): ValueRef {
-  return { kind: "const32", value };
+  return { kind: "const", type: "i32", value };
 }

@@ -16,7 +16,7 @@ const v = (id: number) => ({ kind: "var" as const, id });
 const op = (index: number) => ({ kind: "operand" as const, index });
 const reg = (reg: "esp") => ({ kind: "reg" as const, reg });
 const mem = (address: ReturnType<typeof v>) => ({ kind: "mem" as const, address });
-const c32 = (value: number) => ({ kind: "const32" as const, value });
+const c32 = (value: number) => ({ kind: "const" as const, type: "i32" as const, value });
 
 test("mov semantic gets source, sets destination, and falls through", () => {
   deepStrictEqual(buildIr(movSemantic()), [

@@ -165,8 +165,8 @@ class ExpressionBuilder {
         case "address":
           this.#defineValue(op.dst, { kind: "address", operand: op.operand }, true);
           break;
-        case "const32":
-          this.#bindings.set(op.dst.id, { kind: "const32", value: op.value });
+        case "value.const":
+          this.#bindings.set(op.dst.id, { kind: "const", type: op.type, value: op.value });
           break;
         case "value.binary":
           this.#defineValue(op.dst, {
@@ -285,7 +285,7 @@ class ExpressionBuilder {
   #materializedValue(value: ValueRef): ValueRef {
     const expr = this.#valueExpr(value);
 
-    if (expr.kind === "var" || expr.kind === "const32" || expr.kind === "nextEip") {
+    if (expr.kind === "var" || expr.kind === "const" || expr.kind === "nextEip") {
       return expr;
     }
 
@@ -330,7 +330,7 @@ class ExpressionBuilder {
       return value;
     }
 
-    if (binding.kind !== "const32") {
+    if (binding.kind !== "const") {
       this.#bindings.delete(value.id);
     }
 
@@ -356,7 +356,7 @@ function countVarUses(block: IrExpressionInputBlock): Map<number, number> {
         countValueUse(counts, op.value);
         break;
       case "address":
-      case "const32":
+      case "value.const":
       case "aluFlags.condition":
       case "next":
         break;
@@ -421,7 +421,7 @@ function opUsesVar(op: IrExpressionInputOp, id: number): boolean {
         valueUsesVar(op.value, id);
     case "address":
       return false;
-    case "const32":
+    case "value.const":
       return false;
     case "aluFlags.condition":
       return false;

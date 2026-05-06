@@ -109,7 +109,7 @@ function executeOp(context: ExecutionContext, op: IrOp): RunResult | undefined {
       setVar(context, op.dst, effectiveAddress(context.state, binding));
       return undefined;
     }
-    case "const32":
+    case "value.const":
       setVar(context, op.dst, op.value);
       return undefined;
     case "value.binary":
@@ -386,7 +386,7 @@ function evalValueExpr(context: ExecutionContext, expr: ValueExpr): number {
     case "xor":
       return u32(evalValueExpr(context, expr.a) ^ evalValueExpr(context, expr.b));
     case "var":
-    case "const32":
+    case "const":
     case "nextEip":
       return evalValueRef(context, expr);
   }
@@ -403,7 +403,7 @@ function evalValueRef(context: ExecutionContext, value: ValueRef): number {
 
       return varValue;
     }
-    case "const32":
+    case "const":
       return value.value;
     case "nextEip":
       return context.instruction.nextEip;

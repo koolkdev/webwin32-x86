@@ -170,7 +170,7 @@ class IrExprWasmEmitter {
   }
 
   #emitMaskedValue(value: IrValueExpr, width: OperandWidth): ValueWidth {
-    if (value.kind === "const32") {
+    if (value.kind === "const") {
       const masked = maskedConstValue(value.value, width);
 
       this.#context.body.i32Const(masked);
@@ -185,7 +185,7 @@ class IrExprWasmEmitter {
       case "var":
         this.#context.body.localGet(this.#wasmLocalForVar(value.id));
         return this.#localValueWidths.get(value.id) ?? untrackedValueWidth();
-      case "const32":
+      case "const":
         this.#context.body.i32Const(i32(value.value));
         return constValueWidth(value.value);
       case "nextEip":

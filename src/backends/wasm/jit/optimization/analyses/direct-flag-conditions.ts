@@ -142,7 +142,7 @@ function directConditionInputs(
       producer: source.producer,
       width: source.width,
       cc,
-      inputs: { result: { kind: "const32", value: 0 } }
+      inputs: { result: { kind: "const", type: "i32", value: 0 } }
     }),
     inputs: { result: resultInput }
   };
@@ -292,7 +292,7 @@ function canUseResultInputForCondition(
     producer: source.producer,
     width: source.width,
     cc: read.cc,
-    inputs: { result: { kind: "const32", value: 0 } }
+    inputs: { result: { kind: "const", type: "i32", value: 0 } }
   }) !== undefined;
 }
 

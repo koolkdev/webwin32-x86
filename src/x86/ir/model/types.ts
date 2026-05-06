@@ -2,10 +2,12 @@ import type { OperandWidth, Reg32 } from "#x86/isa/types.js";
 
 export type VarId = number;
 
+export type IrValueType = "i32";
+
 export type VarRef = Readonly<{ kind: "var"; id: VarId }>;
-export type Const32Ref = Readonly<{ kind: "const32"; value: number }>;
+export type IrConstValueRef = Readonly<{ kind: "const"; type: IrValueType; value: number }>;
 export type NextEipRef = Readonly<{ kind: "nextEip" }>;
-export type ValueRef = VarRef | Const32Ref | NextEipRef;
+export type ValueRef = VarRef | IrConstValueRef | NextEipRef;
 
 export type OperandRef = Readonly<{ kind: "operand"; index: number }>;
 export type RegRef = Readonly<{ kind: "reg"; reg: Reg32 }>;
@@ -50,8 +52,6 @@ export type IrAluFlagsConditionOp = Readonly<{
   cc: ConditionCode;
 }>;
 
-export type IrValueType = "i32";
-
 export type IrBinaryOperator =
   | "add"
   | "sub"
@@ -90,7 +90,7 @@ export type IrOp =
   | Readonly<{ op: "set"; target: StorageRef; value: ValueRef; accessWidth?: OperandWidth }>
   | Readonly<{ op: "set.if"; condition: ValueRef; target: StorageRef; value: ValueRef; accessWidth?: OperandWidth }>
   | Readonly<{ op: "address"; dst: VarRef; operand: OperandRef }>
-  | Readonly<{ op: "const32"; dst: VarRef; value: number }>
+  | Readonly<{ op: "value.const"; type: IrValueType; dst: VarRef; value: number }>
   | IrBinaryValueOp
   | IrUnaryValueOp
   | IrFlagSetOp
@@ -107,7 +107,7 @@ export type SemanticTemplate = (builder: IrBuilder) => void;
 
 export interface IrBuilder {
   operand(index: number): OperandRef;
-  const32(value: number): Const32Ref;
+  const32(value: number): IrConstValueRef;
   nextEip(): NextEipRef;
   reg(reg: Reg32): RegRef;
   mem(address: ValueInput): MemRef;
@@ -117,7 +117,6 @@ export interface IrBuilder {
   setIf(condition: ValueInput, target: StorageInput, value: ValueInput, accessWidth?: OperandWidth): void;
   address(operand: OperandInput): VarRef;
 
-  setConst32(value: number): VarRef;
   i32Add(a: ValueInput, b: ValueInput): VarRef;
   i32Sub(a: ValueInput, b: ValueInput): VarRef;
   i32Xor(a: ValueInput, b: ValueInput): VarRef;

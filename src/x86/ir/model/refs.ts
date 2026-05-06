@@ -1,6 +1,6 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import type {
-  Const32Ref,
+  IrConstValueRef,
   MemRef,
   NextEipRef,
   OperandRef,
@@ -32,8 +32,8 @@ export function irVar(id: number): VarRef {
   return { kind: "var", id };
 }
 
-export function const32(value: number): Const32Ref {
-  return { kind: "const32", value: value >>> 0 };
+export function const32(value: number): IrConstValueRef {
+  return { kind: "const", type: "i32", value: value >>> 0 };
 }
 
 export function nextEip(): NextEipRef {

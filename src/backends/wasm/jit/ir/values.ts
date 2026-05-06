@@ -29,7 +29,7 @@ export type JitUnaryValue = Readonly<{
 }>;
 
 export type JitValue =
-  | Readonly<{ kind: "const32"; value: number }>
+  | Readonly<{ kind: "const"; type: IrValueType; value: number }>
   | Readonly<{ kind: "reg"; reg: Reg32 }>
   | JitUnaryValue
   | JitBinaryValue;
@@ -74,8 +74,8 @@ export function jitValueForValue(
   switch (value.kind) {
     case "var":
       return localValues.get(value.id);
-    case "const32":
-      return { kind: "const32", value: i32(value.value) };
+    case "const":
+      return { kind: "const", type: value.type, value: i32(value.value) };
     case "nextEip":
       return undefined;
   }
@@ -107,7 +107,7 @@ export function jitValueForEffectiveAddress(
   }
 
   if (binding.ea.disp !== 0 || terms.length === 0) {
-    terms.push({ kind: "const32", value: i32(binding.ea.disp) });
+    terms.push({ kind: "const", type: "i32", value: i32(binding.ea.disp) });
   }
 
   return terms.reduce((a, b) => ({ kind: "value.binary", type: "i32", operator: "add", a, b }));
@@ -159,7 +159,7 @@ export function jitValueReadsReg(value: JitValue, reg: Reg32): boolean {
       return jitValueReadsReg(value.a, reg) || jitValueReadsReg(value.b, reg);
     case "value.unary":
       return jitValueReadsReg(value.value, reg);
-    case "const32":
+    case "const":
     case "reg":
       return false;
   }
@@ -181,7 +181,7 @@ export function jitValueUsesSymbolicReg(value: JitValue, reg: Reg32): boolean {
       return jitValueUsesSymbolicReg(value.a, reg) || jitValueUsesSymbolicReg(value.b, reg);
     case "value.unary":
       return jitValueUsesSymbolicReg(value.value, reg);
-    case "const32":
+    case "const":
       return false;
     case "reg":
       return value.reg === reg;
@@ -209,8 +209,11 @@ export function jitValuesEqual(a: JitValue, b: JitValue): boolean {
         a.operator === unary.operator &&
         jitValuesEqual(a.value, unary.value);
     }
-    case "const32":
-      return a.value === (b as Extract<JitValue, { kind: "const32" }>).value;
+    case "const": {
+      const constant = b as Extract<JitValue, { kind: "const" }>;
+
+      return a.type === constant.type && a.value === constant.value;
+    }
     case "reg":
       return a.reg === (b as Extract<JitValue, { kind: "reg" }>).reg;
   }
@@ -222,7 +225,7 @@ export function jitValueCost(value: JitValue): number {
       return 1 + jitValueCost(value.a) + jitValueCost(value.b);
     case "value.unary":
       return 1 + jitValueCost(value.value);
-    case "const32":
+    case "const":
     case "reg":
       return 1;
   }
@@ -252,17 +255,17 @@ function jitValueForOperandBinding(
         bitOffset: binding.alias.bitOffset
       }, registerValues);
     case "static.imm32":
-      return extractJitRegisterAccessValue({ kind: "const32", value: i32(binding.value) }, accessWidth, 0);
+      return extractJitRegisterAccessValue({ kind: "const", type: "i32", value: i32(binding.value) }, accessWidth, 0);
     case "static.relTarget":
-      return extractJitRegisterAccessValue({ kind: "const32", value: i32(binding.target) }, accessWidth, 0);
+      return extractJitRegisterAccessValue({ kind: "const", type: "i32", value: i32(binding.target) }, accessWidth, 0);
     case "static.mem":
       return undefined;
   }
 }
 
 function signExtendJitValue(value: JitValue, width: 8 | 16): JitValue {
-  if (value.kind === "const32") {
-    return { kind: "const32", value: signExtendConst(value.value, width) };
+  if (value.kind === "const") {
+    return { kind: "const", type: value.type, value: signExtendConst(value.value, width) };
   }
 
   return {

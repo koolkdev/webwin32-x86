@@ -64,8 +64,8 @@ export class JitValueTracker {
           jitValueForEffectiveAddress(op.operand, instruction.operands, registerValues)
         );
         return true;
-      case "const32":
-        this.record(op.dst.id, { kind: "const32", value: op.value });
+      case "value.const":
+        this.record(op.dst.id, { kind: "const", type: op.type, value: op.value });
         return true;
       case "value.binary":
         this.record(op.dst.id, this.binaryValue(op));
@@ -79,8 +79,8 @@ export class JitValueTracker {
   }
 
   refFor(value: JitValue): ValueRef | undefined {
-    if (value.kind === "const32") {
-      return { kind: "const32", value: value.value };
+    if (value.kind === "const") {
+      return { kind: "const", type: value.type, value: value.value };
     }
 
     for (const [id, localValue] of this.locals) {

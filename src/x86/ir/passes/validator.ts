@@ -75,6 +75,8 @@ function validateOpUses(
     case "address":
       validateOperandIndex(op.operand.index, options);
       break;
+    case "value.const":
+      break;
     case "value.binary":
       validateValueRef(op.a, definedVars);
       validateValueRef(op.b, definedVars);

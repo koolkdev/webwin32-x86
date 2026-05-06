@@ -49,7 +49,7 @@ test("add producer defines aluFlags symbolically", () => {
           a: { kind: "xor", a: left, b: result },
           b: { kind: "xor", a: right, b: result }
         },
-        b: { kind: "const32", value: 0x8000_0000 }
+        b: { kind: "const", type: "i32", value: 0x8000_0000 }
       }
     }
   });
@@ -71,7 +71,7 @@ test("sub producer defines borrow and overflow symbolically", () => {
         a: { kind: "xor", a: left, b: right },
         b: { kind: "xor", a: left, b: result }
       },
-      b: { kind: "const32", value: 0x8000_0000 }
+      b: { kind: "const", type: "i32", value: 0x8000_0000 }
     }
   });
 });
@@ -104,9 +104,9 @@ test("inc and dec producers write all arithmetic flags except CF", () => {
       a: {
         kind: "and",
         a: { kind: "xor", a: left, b: result },
-        b: { kind: "xor", a: { kind: "const32", value: 1 }, b: result }
+        b: { kind: "xor", a: { kind: "const", type: "i32", value: 1 }, b: result }
       },
-      b: { kind: "const32", value: 0x8000_0000 }
+      b: { kind: "const", type: "i32", value: 0x8000_0000 }
     }
   });
 
@@ -120,10 +120,10 @@ test("inc and dec producers write all arithmetic flags except CF", () => {
       kind: "and",
       a: {
         kind: "and",
-        a: { kind: "xor", a: left, b: { kind: "const32", value: 1 } },
+        a: { kind: "xor", a: left, b: { kind: "const", type: "i32", value: 1 } },
         b: { kind: "xor", a: left, b: result }
       },
-      b: { kind: "const32", value: 0x8000_0000 }
+      b: { kind: "const", type: "i32", value: 0x8000_0000 }
     }
   });
 });

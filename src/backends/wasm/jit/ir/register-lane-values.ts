@@ -96,9 +96,10 @@ export function extractJitRegisterAccessValue(
     return value;
   }
 
-  if (value.kind === "const32") {
+  if (value.kind === "const") {
     return {
-      kind: "const32",
+      kind: "const",
+      type: value.type,
       value: i32(width === fullWidth
         ? value.value >>> bitOffset
         : (value.value >>> bitOffset) & widthMask(width))
@@ -112,7 +113,7 @@ export function extractJitRegisterAccessValue(
       type: "i32" as const,
       operator: "shr_u" as const,
       a: value,
-      b: { kind: "const32" as const, value: bitOffset }
+      b: { kind: "const" as const, type: "i32" as const, value: bitOffset }
     };
 
   return width === fullWidth
@@ -122,7 +123,7 @@ export function extractJitRegisterAccessValue(
       type: "i32",
       operator: "and",
       a: shifted,
-      b: { kind: "const32", value: widthMask(width) }
+      b: { kind: "const", type: "i32", value: widthMask(width) }
     };
 }
 

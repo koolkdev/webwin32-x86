@@ -13,7 +13,7 @@ test("register-value-propagation folds register reads and materializes before ex
   const result = propagateJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 7 },
+        { op: "value.const", type: "i32", dst: v(0), value: 7 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" } },
         { op: "next" }
@@ -27,14 +27,14 @@ test("register-value-propagation folds register reads and materializes before ex
     foldedAddressCount: 0,
     materializedSetCount: 1
   });
-  deepStrictEqual(opNames(result.block), ["const32", "const32", "set:registerMaterialization", "next"]);
+  deepStrictEqual(opNames(result.block), ["value.const", "value.const", "set:registerMaterialization", "next"]);
 });
 
 test("register-value-propagation inserts materialization before pre-instruction fault points", () => {
   const result = propagateJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 7 },
+        { op: "value.const", type: "i32", dst: v(0), value: 7 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "next" }
       ]),
@@ -59,14 +59,14 @@ test("register-value-propagation materializes dependencies before clobbers", () 
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "eax" } },
         { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(0) },
-        { op: "const32", dst: v(1), value: 0 },
+        { op: "value.const", type: "i32", dst: v(1), value: 0 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(1) },
         { op: "next" }
       ], 0, "exit")
     ]
   });
 
-  deepStrictEqual(opNames(result.block), ["get", "const32", "set:registerMaterialization", "set", "next"]);
+  deepStrictEqual(opNames(result.block), ["get", "value.const", "set:registerMaterialization", "set", "next"]);
   deepStrictEqual(setRegs(result.block), ["ebx", "eax"]);
   strictEqual(result.registerValuePropagation.removedSetCount, 1);
   strictEqual(result.registerValuePropagation.materializedSetCount, 1);
@@ -107,7 +107,7 @@ test("register-value-propagation folds low-byte reads from tracked full register
   const result = propagateJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 0x1234_5678 },
+        { op: "value.const", type: "i32", dst: v(0), value: 0x1234_5678 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" }, accessWidth: 8 },
         { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(1), accessWidth: 8 },
@@ -122,7 +122,7 @@ test("register-value-propagation folds low-byte reads from tracked full register
     foldedAddressCount: 0,
     materializedSetCount: 1
   });
-  deepStrictEqual(opNames(result.block), ["const32", "const32", "set", "set:registerMaterialization", "next"]);
+  deepStrictEqual(opNames(result.block), ["value.const", "value.const", "set", "set:registerMaterialization", "next"]);
 });
 
 test("register-value-propagation keeps signed and unsigned low-byte reads distinct", () => {
@@ -195,7 +195,7 @@ test("register-value-propagation does not fold unrelated partial lanes", () => {
     instructions: [
       withRegisterAliases(
         syntheticInstruction([
-          { op: "const32", dst: v(0), value: 0x12 },
+          { op: "value.const", type: "i32", dst: v(0), value: 0x12 },
           { op: "set", target: { kind: "operand", index: 0 }, value: v(0), accessWidth: 8 },
           { op: "get", dst: v(1), source: { kind: "operand", index: 1 }, accessWidth: 8 },
           { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(1), accessWidth: 8 },
@@ -212,7 +212,7 @@ test("register-value-propagation does not fold unrelated partial lanes", () => {
     foldedAddressCount: 0,
     materializedSetCount: 0
   });
-  deepStrictEqual(opNames(result.block), ["const32", "set", "get", "set", "next"]);
+  deepStrictEqual(opNames(result.block), ["value.const", "set", "get", "set", "next"]);
 });
 
 test("register-value-propagation folds byte reads from tracked word aliases", () => {
@@ -220,7 +220,7 @@ test("register-value-propagation folds byte reads from tracked word aliases", ()
     instructions: [
       withRegisterAliases(
         syntheticInstruction([
-          { op: "const32", dst: v(0), value: 0x1234 },
+          { op: "value.const", type: "i32", dst: v(0), value: 0x1234 },
           { op: "set", target: { kind: "operand", index: 0 }, value: v(0), accessWidth: 16 },
           { op: "get", dst: v(1), source: { kind: "operand", index: 1 }, accessWidth: 8 },
           { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(1), accessWidth: 8 },
@@ -234,7 +234,7 @@ test("register-value-propagation folds byte reads from tracked word aliases", ()
     instructions: [
       withRegisterAliases(
         syntheticInstruction([
-          { op: "const32", dst: v(0), value: 0x1234 },
+          { op: "value.const", type: "i32", dst: v(0), value: 0x1234 },
           { op: "set", target: { kind: "operand", index: 0 }, value: v(0), accessWidth: 16 },
           { op: "get", dst: v(1), source: { kind: "operand", index: 1 }, accessWidth: 8 },
           { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(1), accessWidth: 8 },
@@ -247,10 +247,10 @@ test("register-value-propagation folds byte reads from tracked word aliases", ()
 
   strictEqual(low.registerValuePropagation.foldedReadCount, 1);
   strictEqual(high.registerValuePropagation.foldedReadCount, 1);
-  deepStrictEqual(opNames(low.block), ["const32", "set", "const32", "set", "next"]);
-  deepStrictEqual(opNames(high.block), ["const32", "set", "const32", "set", "next"]);
-  deepStrictEqual(const32Values(low.block), [0x1234, 0x34]);
-  deepStrictEqual(const32Values(high.block), [0x1234, 0x12]);
+  deepStrictEqual(opNames(low.block), ["value.const", "set", "value.const", "set", "next"]);
+  deepStrictEqual(opNames(high.block), ["value.const", "set", "value.const", "set", "next"]);
+  deepStrictEqual(constValues(low.block), [0x1234, 0x34]);
+  deepStrictEqual(constValues(high.block), [0x1234, 0x12]);
 });
 
 test("register-value-propagation does not compose independent byte writes into word reads", () => {
@@ -258,9 +258,9 @@ test("register-value-propagation does not compose independent byte writes into w
     instructions: [
       withRegisterAliases(
         syntheticInstruction([
-          { op: "const32", dst: v(0), value: 0x34 },
+          { op: "value.const", type: "i32", dst: v(0), value: 0x34 },
           { op: "set", target: { kind: "operand", index: 0 }, value: v(0), accessWidth: 8 },
-          { op: "const32", dst: v(1), value: 0x12 },
+          { op: "value.const", type: "i32", dst: v(1), value: 0x12 },
           { op: "set", target: { kind: "operand", index: 1 }, value: v(1), accessWidth: 8 },
           { op: "get", dst: v(2), source: { kind: "operand", index: 2 }, accessWidth: 16 },
           { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(2), accessWidth: 16 },
@@ -272,7 +272,7 @@ test("register-value-propagation does not compose independent byte writes into w
   });
 
   strictEqual(result.registerValuePropagation.foldedReadCount, 0);
-  deepStrictEqual(opNames(result.block), ["const32", "set", "const32", "set", "get", "set", "next"]);
+  deepStrictEqual(opNames(result.block), ["value.const", "set", "value.const", "set", "get", "set", "next"]);
 });
 
 test("register-value-propagation does not fold full reads from stale full values after partial writes", () => {
@@ -281,7 +281,7 @@ test("register-value-propagation does not fold full reads from stale full values
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "ecx" } },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
-        { op: "const32", dst: v(1), value: 0x34 },
+        { op: "value.const", type: "i32", dst: v(1), value: 0x34 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(1), accessWidth: 8 },
         { op: "get", dst: v(2), source: { kind: "reg", reg: "eax" } },
         { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(2) },
@@ -300,7 +300,7 @@ test("register-value-propagation drops partial lane values that depend on materi
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "ecx" } },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0), accessWidth: 8 },
-        { op: "const32", dst: v(1), value: 0 },
+        { op: "value.const", type: "i32", dst: v(1), value: 0 },
         { op: "set.if", condition: c32(1), target: { kind: "reg", reg: "ecx" }, value: v(1) },
         { op: "get", dst: v(2), source: { kind: "reg", reg: "eax" }, accessWidth: 8 },
         { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(2), accessWidth: 8 },
@@ -319,7 +319,7 @@ test("register-value-propagation folds partial lane values before delayed symbol
       syntheticInstruction([
         { op: "get", dst: v(0), source: { kind: "reg", reg: "ecx" } },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0), accessWidth: 8 },
-        { op: "const32", dst: v(1), value: 0 },
+        { op: "value.const", type: "i32", dst: v(1), value: 0 },
         { op: "set", target: { kind: "reg", reg: "ecx" }, value: v(1) },
         { op: "get", dst: v(2), source: { kind: "reg", reg: "eax" }, accessWidth: 8 },
         { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(2), accessWidth: 8 },
@@ -334,7 +334,7 @@ test("register-value-propagation folds partial lane values before delayed symbol
   deepStrictEqual(opNames(result.block), [
     "get",
     "set",
-    "const32",
+    "value.const",
     "get:symbolicRead",
     "set",
     "set:registerMaterialization",
@@ -347,7 +347,7 @@ test("register-value-propagation folds same-lane partial reads without removing 
   const result = propagateJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 0x44 },
+        { op: "value.const", type: "i32", dst: v(0), value: 0x44 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0), accessWidth: 8 },
         { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" }, accessWidth: 8 },
         { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(1), accessWidth: 8 },
@@ -362,7 +362,7 @@ test("register-value-propagation folds same-lane partial reads without removing 
     foldedAddressCount: 0,
     materializedSetCount: 0
   });
-  deepStrictEqual(opNames(result.block), ["const32", "set", "const32", "set", "next"]);
+  deepStrictEqual(opNames(result.block), ["value.const", "set", "value.const", "set", "next"]);
   deepStrictEqual(setRegs(result.block), ["eax", "ebx"]);
 });
 
@@ -370,7 +370,7 @@ test("register-value-propagation keeps wider reads after partial-only writes con
   const result = propagateJitRegisterValues({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 0x44 },
+        { op: "value.const", type: "i32", dst: v(0), value: 0x44 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0), accessWidth: 8 },
         { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" }, accessWidth: 16 },
         { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(1), accessWidth: 16 },
@@ -385,14 +385,14 @@ test("register-value-propagation keeps wider reads after partial-only writes con
     foldedAddressCount: 0,
     materializedSetCount: 0
   });
-  deepStrictEqual(opNames(result.block), ["const32", "set", "get", "set", "next"]);
+  deepStrictEqual(opNames(result.block), ["value.const", "set", "get", "set", "next"]);
 });
 
 test("register-value-propagation is a validating repeatable optimization pass", () => {
   const first = runJitOptimizationPasses({
     instructions: [
       syntheticInstruction([
-        { op: "const32", dst: v(0), value: 7 },
+        { op: "value.const", type: "i32", dst: v(0), value: 7 },
         { op: "set", target: { kind: "reg", reg: "eax" }, value: v(0) },
         { op: "get", dst: v(1), source: { kind: "reg", reg: "eax" } },
         { op: "next" }
@@ -439,9 +439,9 @@ function setRegs(block: { instructions: readonly { ir: readonly { op: string; ta
   );
 }
 
-function const32Values(block: { instructions: readonly { ir: readonly { op: string }[] }[] }): readonly number[] {
+function constValues(block: { instructions: readonly { ir: readonly { op: string }[] }[] }): readonly number[] {
   return block.instructions.flatMap((instruction) =>
-    instruction.ir.flatMap((op) => op.op === "const32" && "value" in op && typeof op.value === "number"
+    instruction.ir.flatMap((op) => op.op === "value.const" && "value" in op && typeof op.value === "number"
       ? [op.value]
       : [])
   );

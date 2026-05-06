@@ -171,7 +171,7 @@ function flagConditionInputShape(condition: JitDirectFlagCondition): Readonly<Re
   const inputs: Record<string, ValueRef> = {};
 
   for (const inputName of condition.inputNames) {
-    inputs[inputName] = { kind: "const32", value: 0 };
+    inputs[inputName] = { kind: "const", type: "i32", value: 0 };
   }
 
   return inputs;

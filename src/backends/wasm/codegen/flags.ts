@@ -139,7 +139,7 @@ function emitFlagExpr(body: WasmFunctionBodyEncoder, expr: FlagExpr, helpers: Wa
 function emitValueExpr(body: WasmFunctionBodyEncoder, expr: ValueExpr, helpers: WasmIrEmitHelpers): ValueWidth {
   switch (expr.kind) {
     case "var":
-    case "const32":
+    case "const":
     case "nextEip":
       return helpers.emitValue(expr);
     case "and": {
@@ -256,13 +256,13 @@ function maskedValueExpr(
 }
 
 function constMaskWidth(expr: ValueExpr): OperandWidth | undefined {
-  return expr.kind === "const32" ? maskWidthFromConstValue(expr.value) : undefined;
+  return expr.kind === "const" ? maskWidthFromConstValue(expr.value) : undefined;
 }
 
 function isIrValueExpr(expr: ValueExpr): expr is ValueRef {
   switch (expr.kind) {
     case "var":
-    case "const32":
+    case "const":
     case "nextEip":
       return true;
     case "and":
@@ -272,7 +272,7 @@ function isIrValueExpr(expr: ValueExpr): expr is ValueRef {
 }
 
 function isValueRef(value: { kind: string }): value is ValueRef {
-  return value.kind === "var" || value.kind === "const32" || value.kind === "nextEip";
+  return value.kind === "var" || value.kind === "const" || value.kind === "nextEip";
 }
 
 function sameValueRef(left: ValueRef, right: ValueRef): boolean {
@@ -283,8 +283,9 @@ function sameValueRef(left: ValueRef, right: ValueRef): boolean {
   switch (left.kind) {
     case "var":
       return left.id === (right as Extract<ValueRef, { kind: "var" }>).id;
-    case "const32":
-      return left.value === (right as Extract<ValueRef, { kind: "const32" }>).value;
+    case "const":
+      return left.type === (right as Extract<ValueRef, { kind: "const" }>).type &&
+        left.value === (right as Extract<ValueRef, { kind: "const" }>).value;
     case "nextEip":
       return true;
   }

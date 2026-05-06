@@ -156,13 +156,13 @@ test("reaching flags records producer input values", () => {
   strictEqual(source.undefMask, 0);
   deepStrictEqual(source.inputs, {
     left: { kind: "value", value: { kind: "reg", reg: "eax" } },
-    right: { kind: "value", value: { kind: "const32", value: 1 } },
+    right: { kind: "value", value: { kind: "const", type: "i32", value: 1 } },
     result: {
       kind: "value",
       value: {
         kind: "value.binary", type: "i32", operator: "add",
         a: { kind: "reg", reg: "eax" },
-        b: { kind: "const32", value: 1 }
+        b: { kind: "const", type: "i32", value: 1 }
       }
     }
   });
