@@ -210,13 +210,13 @@ function emitSetRegisterAlias(
   value: IrValueExpr,
   helpers: WasmIrEmitHelpers
 ): void {
-  const rebindLocal = rebindLocalForSetValue(context, target, value);
+  const sourceLocal = sourceLocalForSetValue(context, target, value);
 
-  context.state.regs.emitWriteAlias(target, rebindLocal === undefined
+  context.state.regs.emitWriteAlias(target, sourceLocal === undefined
     ? () => helpers.emitValue(value)
     : {
         emitValue: () => helpers.emitValue(value),
-        rebindLocal
+        sourceLocal
       });
 }
 
@@ -382,14 +382,14 @@ function registerAliasesMayOverlap(left: RegisterAlias, right: RegisterAlias): b
     right.bitOffset < left.bitOffset + left.width;
 }
 
-function rebindLocalForSetValue(
+function sourceLocalForSetValue(
   context: JitIrContext,
   target: RegisterAlias,
   value: IrValueExpr
 ): number | undefined {
-  // Only exact full-width register sources can be rebound. Expressions,
-  // constants, memory loads, signed/narrow reads, and conditionals all continue
-  // through the normal value-emission path.
+  // Only exact full-width register sources can copy an existing local-backed
+  // value. Expressions, constants, memory loads, signed/narrow reads, and
+  // conditionals all continue through the normal value-emission path.
   if (target.width !== 32 || value.kind !== "source" || value.accessWidth !== 32 || value.signed === true) {
     return undefined;
   }
@@ -400,5 +400,5 @@ function rebindLocalForSetValue(
     return undefined;
   }
 
-  return context.state.regs.rebindableLocalForAlias(sourceAlias);
+  return context.state.regs.localValueForAlias(sourceAlias);
 }

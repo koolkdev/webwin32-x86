@@ -1,16 +1,22 @@
-import type { ByteSource, RegValueState } from "./register-lanes.js";
-import { byteCount, hasPartialBytes } from "./register-lanes.js";
+import type { LocalLaneSource, RegValueState } from "./register-lanes.js";
+import {
+  allBytesHaveLocalValues,
+  byteCount,
+  exactFullLocalSource,
+  hasPartialLocalValues,
+  isLocalBackedLaneValue
+} from "./register-lanes.js";
 
 export type RegisterStoreOp =
-  | Readonly<{ kind: "store8"; byteIndex: number; source: ByteSource }>
-  | Readonly<{ kind: "store16"; byteIndex: number; sources: readonly [ByteSource, ByteSource] }>;
+  | Readonly<{ kind: "store8"; byteIndex: number; source: LocalLaneSource }>
+  | Readonly<{ kind: "store16"; byteIndex: number; sources: readonly [LocalLaneSource, LocalLaneSource] }>;
 
 export type RegisterStorePlan =
   | Readonly<{ kind: "store32" }>
   | Readonly<{ kind: "partial"; stores: readonly RegisterStoreOp[] }>;
 
 export function planRegisterExitStore(state: RegValueState): RegisterStorePlan {
-  if (state.fullLocal !== undefined || !hasPartialBytes(state)) {
+  if (exactFullLocalSource(state) !== undefined || allBytesHaveLocalValues(state) || !hasPartialLocalValues(state)) {
     return { kind: "store32" };
   }
 
@@ -20,18 +26,18 @@ export function planRegisterExitStore(state: RegValueState): RegisterStorePlan {
   while (byteIndex < byteCount) {
     const source = state.bytes[byteIndex];
 
-    if (source === undefined) {
+    if (!isLocalBackedLaneValue(source)) {
       byteIndex += 1;
       continue;
     }
 
     const nextSource = state.bytes[byteIndex + 1];
 
-    if (nextSource !== undefined) {
+    if (isLocalBackedLaneValue(nextSource)) {
       stores.push({
         kind: "store16",
         byteIndex,
-        sources: [source, nextSource]
+        sources: [source.source, nextSource.source]
       });
       byteIndex += 2;
       continue;
@@ -40,7 +46,7 @@ export function planRegisterExitStore(state: RegValueState): RegisterStorePlan {
     stores.push({
       kind: "store8",
       byteIndex,
-      source
+      source: source.source
     });
     byteIndex += 1;
   }

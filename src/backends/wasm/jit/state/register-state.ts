@@ -4,6 +4,7 @@ import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-bo
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import {
   cleanValueWidth,
+  dirtyValueWidth,
   emitCleanValueForFullUse,
   emitMaskValueToWidth,
   emitSignExtendValueToWidth,
@@ -20,29 +21,32 @@ import {
 } from "#backends/wasm/codegen/state.js";
 import {
   aliasByteRange,
-  byteCount,
-  byteSourceAt,
-  byteSourcesForAlias,
   byteWidth,
-  clearPartialBytes,
   emptyRegValueState,
-  existingLocalForRegisterValue,
+  exactFullLocalSource,
+  exactLocalSourceForAlias,
   fullRegAccess,
   fullWidth,
-  rebindableLocalForAlias,
-  recordPartialValue,
+  localMergeBaseForKnownBytes,
+  localSourceAt,
+  localSourcesForAlias,
+  localValueForAlias,
+  mergePartialLocalValues,
+  recordFullLocalValue,
+  recordPartialLocalValue,
+  stateUsesLocal,
+  type LocalLaneSource,
   type RegValueState
 } from "./register-lanes.js";
 import {
-  emitByteSourceForStore8,
-  emitComposedByteSources,
+  emitComposedLocalLaneSources,
   emitExtractAliasFromLocal,
+  emitLocalLaneSourceForStore8,
   emitMergedBytes,
   emitStoreAliasValueIntoFullLocal,
-  emitStoreByteSourceIntoFullLocal,
   emitStoreStateU16,
   emitStoreStateU8,
-  emitWordSourceForStore16
+  emitWordLocalLaneSourceForStore16
 } from "./register-emit.js";
 import { planRegisterExitStore, type RegisterStoreOp } from "./register-store-plan.js";
 
@@ -52,7 +56,7 @@ export type JitReg32InstructionOptions = Readonly<{
 
 export type JitReg32WriteSource = (() => ValueWidth | void) | Readonly<{
   emitValue: () => ValueWidth | void;
-  rebindLocal?: number;
+  sourceLocal?: number;
 }>;
 
 export type JitReg32State = Readonly<{
@@ -61,7 +65,7 @@ export type JitReg32State = Readonly<{
   commitPendingReg(reg: Reg32): void;
   emitReadReg32(reg: Reg32): ValueWidth;
   emitReadAlias(alias: RegisterAlias, options?: WasmIrEmitValueOptions): ValueWidth;
-  rebindableLocalForAlias(alias: RegisterAlias): number | undefined;
+  localValueForAlias(alias: RegisterAlias): number | undefined;
   emitWriteAlias(alias: RegisterAlias, source: JitReg32WriteSource): void;
   emitWriteAliasIf(
     alias: RegisterAlias,
@@ -84,7 +88,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     },
     emitReadReg32: (reg) => emitReadAlias(fullRegAccess(reg)),
     emitReadAlias,
-    rebindableLocalForAlias: rebindableLocalForAliasInState,
+    localValueForAlias: localValueForAliasInState,
     emitWriteAlias,
     emitWriteAliasIf,
     commitPending: () => {
@@ -123,16 +127,16 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
   function emitReadAlias(alias: RegisterAlias, options: WasmIrEmitValueOptions = {}): ValueWidth {
     const pending = pendingStates.get(alias.base);
     const committed = committedStates.get(alias.base);
-    const existingLocal = existingLocalForRegisterValue(pending, committed);
+    const exactSource = exactLocalSourceForAlias(alias, pending, committed);
 
-    if (existingLocal !== undefined) {
-      return emitExtractAliasFromLocal(body, existingLocal, alias, options);
+    if (exactSource !== undefined) {
+      return emitExactSourceForAlias(exactSource, alias, options);
     }
 
-    const byteSources = byteSourcesForAlias(alias, pending, committed);
+    const localSources = localSourcesForAlias(alias, pending, committed);
 
-    if (byteSources !== undefined) {
-      emitComposedByteSources(body, byteSources);
+    if (localSources !== undefined) {
+      emitComposedLocalLaneSources(body, localSources);
       return options.signed === true && alias.width < fullWidth
         ? emitSignExtendValueToWidth(body, alias.width as 8 | 16)
         : cleanValueWidth(alias.width);
@@ -148,8 +152,8 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     return emitExtractAliasFromLocal(body, fullLocal, alias, options);
   }
 
-  function rebindableLocalForAliasInState(alias: RegisterAlias): number | undefined {
-    return rebindableLocalForAlias(
+  function localValueForAliasInState(alias: RegisterAlias): number | undefined {
+    return localValueForAlias(
       alias,
       pendingStates.get(alias.base),
       committedStates.get(alias.base)
@@ -161,10 +165,10 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     const state = writableStateForReg(alias.base);
 
     if (alias.width === fullWidth) {
-      // A rebind changes only register-state ownership. It intentionally emits
-      // no local.get/local.set pair when the source value already has a local.
-      if (writeSource.rebindLocal !== undefined && canRebindLocal(state)) {
-        rebindToLocal(state, writeSource.rebindLocal);
+      // Copying an existing local-backed value updates architectural lane state
+      // without claiming the source local as this register's mutable cell.
+      if (writeSource.sourceLocal !== undefined && canCopyLocalValue(state)) {
+        recordFullLocalValue(state, writeSource.sourceLocal);
         return;
       }
 
@@ -172,19 +176,13 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
       const local = localForRegisterOverwrite(state);
 
       body.localSet(local);
-      state.fullLocal = local;
-      clearPartialBytes(state);
+      recordFullLocalValue(state, local, { mutable: true });
       return;
     }
 
     const valueLocal = localForMaskedValue(alias.width, writeSource.emitValue);
 
-    if (state.fullLocal !== undefined) {
-      emitStoreAliasValueIntoFullLocal(body, ensureWritableRegisterLocal(alias.base, state), alias, valueLocal);
-      return;
-    }
-
-    recordPartialValue(state, alias, valueLocal);
+    recordPartialLocalValue(state, alias, valueLocal);
   }
 
   function emitWriteAliasIf(
@@ -209,6 +207,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     }
 
     body.endBlock();
+    recordFullLocalValue(state, local, { mutable: true });
   }
 
   function commitPendingReg(reg: Reg32): void {
@@ -218,7 +217,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
       return;
     }
 
-    mergeStateInto(reg, committedStateForReg(reg), pending);
+    mergeStateInto(committedStateForReg(reg), pending);
     pendingStates.delete(reg);
   }
 
@@ -233,34 +232,61 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
   }
 
   function materializeFull(reg: Reg32, target: RegValueState, base?: RegValueState): number {
-    if (target.fullLocal !== undefined) {
-      return target.fullLocal;
+    const fullSource = exactFullLocalSource(target);
+
+    if (fullSource !== undefined) {
+      return fullSource.local;
     }
 
     const local = body.addLocal(wasmValueType.i32);
 
     emitFullValue(reg, target, base);
     body.localSet(local);
-    target.fullLocal = local;
-    clearPartialBytes(target);
+    recordFullLocalValue(target, local, { mutable: true });
     return local;
   }
 
   function emitFullValue(reg: Reg32, state: RegValueState, base?: RegValueState): void {
-    if (state.fullLocal !== undefined) {
-      body.localGet(state.fullLocal);
+    const fullSource = exactFullLocalSource(state);
+
+    if (fullSource !== undefined) {
+      body.localGet(fullSource.local);
       return;
     }
 
-    if (base?.fullLocal !== undefined) {
-      body.localGet(base.fullLocal);
-    } else {
-      emitLoadStateU32(body, stateOffset[reg]);
-      if (base !== undefined) {
-        emitMergedBytes(body, base);
-      }
+    const baseFullSource = exactFullLocalSource(base);
+
+    if (baseFullSource !== undefined) {
+      body.localGet(baseFullSource.local);
+      emitMergedBytes(body, state);
+      return;
     }
 
+    if (state.mutableFullLocal !== undefined) {
+      body.localGet(state.mutableFullLocal);
+      emitMergedBytes(body, state, { baseLocal: state.mutableFullLocal });
+      return;
+    }
+
+    const mergeBaseLocal = localMergeBaseForKnownBytes(state);
+
+    if (mergeBaseLocal !== undefined) {
+      body.localGet(mergeBaseLocal);
+      emitMergedBytes(body, state, { baseLocal: mergeBaseLocal });
+      return;
+    }
+
+    const fullLocalSources = localSourcesForAlias(fullRegAccess(reg), state, base);
+
+    if (fullLocalSources !== undefined) {
+      emitComposedLocalLaneSources(body, fullLocalSources);
+      return;
+    }
+
+    emitLoadStateU32(body, stateOffset[reg]);
+    if (base !== undefined) {
+      emitMergedBytes(body, base);
+    }
     emitMergedBytes(body, state);
   }
 
@@ -276,7 +302,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     const { startByte, byteLength } = aliasByteRange(alias);
 
     for (let index = 0; index < byteLength; index += 1) {
-      if (byteSourceAt(startByte + index, pending, committed) !== undefined) {
+      if (localSourceAt(startByte + index, pending, committed) !== undefined) {
         return false;
       }
     }
@@ -307,19 +333,45 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     }
   }
 
+  function emitExactSourceForAlias(
+    source: LocalLaneSource,
+    alias: RegisterAlias,
+    options: WasmIrEmitValueOptions
+  ): ValueWidth {
+    body.localGet(source.local);
+
+    if (source.bitOffset !== 0) {
+      body.i32Const(source.bitOffset).i32ShrU();
+    }
+
+    if (options.signed === true && alias.width < fullWidth) {
+      return emitSignExtendValueToWidth(body, alias.width as 8 | 16);
+    }
+
+    if (source.bitOffset === 0 && source.valueWidth <= alias.width) {
+      return cleanValueWidth(alias.width);
+    }
+
+    if (options.widthInsensitive === true && alias.width < fullWidth) {
+      return dirtyValueWidth(alias.width);
+    }
+
+    return emitMaskValueToWidth(body, alias.width);
+  }
+
   function emitPartialStateStores(reg: Reg32, stores: readonly RegisterStoreOp[]): void {
     const baseOffset = stateOffset[reg];
 
     for (const store of stores) {
       if (store.kind === "store16") {
         emitStoreStateU16(body, baseOffset + store.byteIndex, () => {
-          emitWordSourceForStore16(body, store.sources);
+          emitWordLocalLaneSourceForStore16(body, store.sources);
         });
         continue;
       }
 
       emitStoreStateU8(body, baseOffset + store.byteIndex, () => {
-        emitByteSourceForStore8(body, store.source);
+        emitLocalLaneSourceForStore8(body, store.source);
       });
     }
   }
@@ -333,73 +385,59 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
   }
 
   function localForRegisterOverwrite(state: RegValueState): number {
-    if (state.fullLocal !== undefined && !fullLocalIsShared(state, state.fullLocal)) {
-      return state.fullLocal;
+    const local = state.mutableFullLocal;
+
+    if (local !== undefined && !localIsShared(state, local)) {
+      return local;
     }
 
-    const local = body.addLocal(wasmValueType.i32);
-
-    state.fullLocal = local;
-    clearPartialBytes(state);
-    return local;
+    return body.addLocal(wasmValueType.i32);
   }
 
   function ensureWritableRegisterLocal(reg: Reg32, state: RegValueState, base?: RegValueState): number {
-    if (state.fullLocal !== undefined && !fullLocalIsShared(state, state.fullLocal)) {
-      return state.fullLocal;
+    const fullSource = exactFullLocalSource(state);
+    const local = state.mutableFullLocal;
+
+    if (local !== undefined && !localIsShared(state, local)) {
+      if (fullSource?.local === local && fullSource.bitOffset === 0) {
+        return local;
+      }
+
+      emitFullValue(reg, state, base);
+      body.localSet(local);
+      recordFullLocalValue(state, local, { mutable: true });
+      return local;
     }
 
-    // Rebinding can make multiple architectural registers share one Wasm local.
-    // Any later in-place update must first detach so the other register keeps
-    // seeing the old value.
-    const local = body.addLocal(wasmValueType.i32);
+    // Local-backed lane values may share the same Wasm local. Before mutating a
+    // full-register cell in place, detach so other lanes keep seeing the old
+    // logical value.
+    const detachedLocal = body.addLocal(wasmValueType.i32);
 
     emitFullValue(reg, state, base);
-    body.localSet(local);
-    state.fullLocal = local;
-    clearPartialBytes(state);
-    return local;
+    body.localSet(detachedLocal);
+    recordFullLocalValue(state, detachedLocal, { mutable: true });
+    return detachedLocal;
   }
 
-  function rebindToLocal(state: RegValueState, local: number): void {
-    state.fullLocal = local;
-    clearPartialBytes(state);
-  }
-
-  function canRebindLocal(state: RegValueState): boolean {
+  function canCopyLocalValue(state: RegValueState): boolean {
     // After pre-instruction exits are emitted, earlier exit blocks may still
-    // store committed locals. Keep committed local identities stable from then
-    // on; pending states remain safe to rebind.
-    return preserveCommittedRegs || state.fullLocal === undefined || !committedLocalIdentitiesPinned;
+    // store committed locals. Keep committed full-value locals stable from then
+    // on; pending states remain safe to replace with copied local-backed values.
+    return preserveCommittedRegs || exactFullLocalSource(state) === undefined || !committedLocalIdentitiesPinned;
   }
 
-  function mergeStateInto(reg: Reg32, target: RegValueState, source: RegValueState): void {
-    if (source.fullLocal !== undefined) {
-      target.fullLocal = source.fullLocal;
-      clearPartialBytes(target);
+  function mergeStateInto(target: RegValueState, source: RegValueState): void {
+    const sourceFull = exactFullLocalSource(source);
+
+    if (sourceFull !== undefined) {
+      recordFullLocalValue(target, sourceFull.local, {
+        mutable: source.mutableFullLocal === sourceFull.local
+      });
       return;
     }
 
-    if (target.fullLocal !== undefined) {
-      const targetLocal = ensureWritableRegisterLocal(reg, target);
-
-      for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
-        const byte = source.bytes[byteIndex];
-
-        if (byte !== undefined) {
-          emitStoreByteSourceIntoFullLocal(body, targetLocal, byteIndex, byte);
-        }
-      }
-      return;
-    }
-
-    for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
-      const byte = source.bytes[byteIndex];
-
-      if (byte !== undefined) {
-        target.bytes[byteIndex] = byte;
-      }
-    }
+    mergePartialLocalValues(target, source);
   }
 
   function assertNoPending(): void {
@@ -408,9 +446,9 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     }
   }
 
-  function fullLocalIsShared(owner: RegValueState, local: number): boolean {
+  function localIsShared(owner: RegValueState, local: number): boolean {
     return stateMaps().some((states) =>
-      [...states.values()].some((state) => state !== owner && state.fullLocal === local)
+      [...states.values()].some((state) => state !== owner && stateUsesLocal(state, local))
     );
   }
 
@@ -421,7 +459,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
 
 function normalizeWriteSource(source: JitReg32WriteSource): Readonly<{
   emitValue: () => ValueWidth | void;
-  rebindLocal?: number;
+  sourceLocal?: number;
 }> {
   return typeof source === "function" ? { emitValue: source } : source;
 }
