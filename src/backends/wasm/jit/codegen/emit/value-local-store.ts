@@ -38,9 +38,10 @@ export type JitValueCacheRuntime = WasmIrValueCache & Readonly<{
 
 type CachedJitValue = {
   readonly value: JitValue;
-  local?: number;
+  local?: number | undefined;
   valueWidth: ValueWidth | undefined;
   available: boolean;
+  escaped: boolean;
 };
 
 export class JitValueLocalStore {
@@ -55,7 +56,8 @@ export class JitValueLocalStore {
         this.#entries.set(jitValueKey(useCount.value), {
           value: useCount.value,
           valueWidth: undefined,
-          available: false
+          available: false,
+          escaped: false
         });
       }
     }
@@ -101,6 +103,7 @@ export class JitValueLocalStore {
     }
 
     const local = this.#localForEntry(entry);
+    entry.escaped = true;
 
     if (entry.available) {
       return {
@@ -123,7 +126,11 @@ export class JitValueLocalStore {
       if (predicate(entry.value)) {
         entry.available = false;
         entry.valueWidth = undefined;
-        delete entry.local;
+
+        if (entry.escaped) {
+          entry.local = undefined;
+          entry.escaped = false;
+        }
       }
     }
   }

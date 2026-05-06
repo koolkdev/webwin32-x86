@@ -160,6 +160,63 @@ test("JitValueLocalStore retires invalidated locals before rematerializing", () 
   deepStrictEqual(localOpcodes(wasmBodyOpcodes(body.encode())), [wasmOpcode.localSet, wasmOpcode.localSet]);
 });
 
+test("JitValueLocalStore reuses non-escaped locals after invalidation", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const value = addValue("eax", 1);
+  const store = new JitValueLocalStore(body, useCounts([{ value, useCount: 4 }]));
+  const first = store.emitForUseWithLocal(value, () => emitAdd(body, () => {}));
+
+  if (first.local === undefined) {
+    throw new Error("expected first cached local");
+  }
+
+  store.forgetWhere((candidate) => candidate.kind === "value.binary");
+
+  const second = store.emitForUseWithLocal(value, () => emitAdd(body, () => {}));
+
+  if (second.local === undefined) {
+    throw new Error("expected second cached local");
+  }
+
+  body.end();
+
+  strictEqual(second.local, first.local);
+  deepStrictEqual(localOpcodes(wasmBodyOpcodes(body.encode())), [wasmOpcode.localTee, wasmOpcode.localTee]);
+});
+
+test("JitValueLocalStore retires locals that become escaped while available", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const value = addValue("eax", 1);
+  const store = new JitValueLocalStore(body, useCounts([{ value, useCount: 4 }]));
+  const first = store.emitForUseWithLocal(value, () => emitAdd(body, () => {}));
+
+  if (first.local === undefined) {
+    throw new Error("expected first cached local");
+  }
+
+  const escaped = store.captureForReuse(value, unexpectedEmitter);
+
+  if (escaped === undefined) {
+    throw new Error("expected escaped cached local");
+  }
+
+  strictEqual(escaped.local, first.local);
+  strictEqual(escaped.emitted, false);
+
+  store.forgetWhere((candidate) => candidate.kind === "value.binary");
+
+  const rematerialized = store.captureForReuse(value, () => emitAdd(body, () => {}));
+
+  if (rematerialized === undefined) {
+    throw new Error("expected rematerialized cached local");
+  }
+
+  body.end();
+
+  strictEqual(rematerialized.local === first.local, false);
+  deepStrictEqual(localOpcodes(wasmBodyOpcodes(body.encode())), [wasmOpcode.localTee, wasmOpcode.localSet]);
+});
+
 test("JIT expression emission uses local.tee for cached optimized expression vars", () => {
   const opcodes = wasmBodyOpcodes(extractOnlyWasmFunctionBody(encodeJitIrBlock([repeatedInlineExpressionBlock()])));
 
