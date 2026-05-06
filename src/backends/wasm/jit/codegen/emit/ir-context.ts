@@ -1,14 +1,8 @@
 import type { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
-import type { OperandWidth } from "#x86/isa/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitModuleLinkTable } from "#backends/wasm/jit/compiled-blocks/module-link-table.js";
-import { emitIrExpressionBlockToWasm, type WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
-import type {
-  IrSetExprOp,
-  IrStorageExpr,
-  IrValueExpr
-} from "#backends/wasm/codegen/expressions.js";
+import { emitIrExpressionBlockToWasm } from "#backends/wasm/codegen/emit.js";
 import { emitFlagProducerCondition } from "#backends/wasm/codegen/conditions.js";
 import {
   emitJitConditionalJump,
@@ -19,9 +13,7 @@ import {
 } from "./control.js";
 import {
   emitJitAddress,
-  emitJitGet,
-  emitJitSet,
-  emitJitSetIf
+  emitJitGet
 } from "./operands.js";
 import type { JitExitPoint } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
@@ -29,6 +21,8 @@ import {
   type JitValueCacheRuntime
 } from "./value-local-store.js";
 import type { JitCodegenInstructionPlan } from "#backends/wasm/jit/codegen/plan/emission.js";
+import { emitJitRegisterMaterialization } from "./register-materialization.js";
+import { emitJitStorageSet, emitJitStorageSetIf } from "./storage.js";
 
 export type JitIrInstructionContext = JitCodegenInstructionPlan;
 
@@ -152,10 +146,16 @@ function emitJitIrBlock(jitContext: JitIrContext, instruction: JitIrInstructionC
     scratch: jitContext.scratch,
     valueCache,
     emitGet: (source, accessWidth, helpers, options) => emitJitGet(jitContext, source, accessWidth, helpers, options),
-    emitSet: (target, value, accessWidth, helpers, op) =>
-      emitJitSetWithRole(jitContext, valueCache, target, value, accessWidth, helpers, op),
+    emitSet: (target, value, accessWidth, helpers, op) => {
+      if (op.role === "registerMaterialization") {
+        emitJitRegisterMaterialization(jitContext, valueCache, target, value, accessWidth, helpers);
+        return;
+      }
+
+      emitJitStorageSet(jitContext, valueCache, target, value, accessWidth, helpers);
+    },
     emitSetIf: (condition, target, value, accessWidth, helpers) =>
-      emitJitSetIfWithCacheInvalidation(jitContext, valueCache, condition, target, value, accessWidth, helpers),
+      emitJitStorageSetIf(jitContext, valueCache, condition, target, value, accessWidth, helpers),
     emitAddress: (source) => emitJitAddress(jitContext, source),
     emitSetFlags: (descriptor, helpers) =>
       jitContext.state.flags.emitSet(descriptor, helpers),
@@ -170,84 +170,6 @@ function emitJitIrBlock(jitContext: JitIrContext, instruction: JitIrInstructionC
       emitJitConditionalJump(jitContext, condition, taken, notTaken, helpers),
     emitHostTrap: (vector, helpers) => emitJitHostTrap(jitContext, vector, helpers)
   });
-}
-
-function emitJitSetWithRole(
-  jitContext: JitIrContext,
-  valueCache: JitValueCacheRuntime | undefined,
-  target: IrStorageExpr,
-  value: IrValueExpr,
-  accessWidth: OperandWidth,
-  helpers: WasmIrEmitHelpers,
-  op: IrSetExprOp
-): void {
-  if (op.role !== "registerMaterialization") {
-    emitJitSet(jitContext, target, value, accessWidth, helpers);
-    valueCache?.notifyWrite(target, accessWidth);
-    return;
-  }
-
-  if (accessWidth !== 32) {
-    throw new Error(`JIT register materialization cannot use ${accessWidth}-bit writes`);
-  }
-
-  if (target.kind !== "reg") {
-    throw new Error(`JIT register materialization cannot target ${target.kind}`);
-  }
-
-  if (!emitCachedJitRegisterMaterialization(jitContext, valueCache, target, value, helpers)) {
-    emitJitSet(jitContext, target, value, accessWidth, helpers);
-  }
-
-  jitContext.state.regs.commitPendingReg(target.reg);
-  valueCache?.notifyWrite(target, accessWidth);
-}
-
-function emitCachedJitRegisterMaterialization(
-  jitContext: JitIrContext,
-  valueCache: JitValueCacheRuntime | undefined,
-  target: Extract<IrStorageExpr, { kind: "reg" }>,
-  value: IrValueExpr,
-  helpers: WasmIrEmitHelpers
-): boolean {
-  const jitValue = valueCache?.jitValueForExpression(value);
-
-  if (jitValue === undefined) {
-    return false;
-  }
-
-  const materialized = valueCache?.captureJitValueForReuse(jitValue, () =>
-    helpers.emitValue(value)
-  );
-
-  if (materialized === undefined) {
-    return false;
-  }
-
-  jitContext.state.regs.emitWriteAlias(
-    { name: target.reg, base: target.reg, bitOffset: 0, width: 32 },
-    {
-      sourceLocal: materialized.local,
-      emitValue: () => {
-        jitContext.body.localGet(materialized.local);
-        return materialized.valueWidth;
-      }
-    }
-  );
-  return true;
-}
-
-function emitJitSetIfWithCacheInvalidation(
-  jitContext: JitIrContext,
-  valueCache: JitValueCacheRuntime | undefined,
-  condition: IrValueExpr,
-  target: IrStorageExpr,
-  value: IrValueExpr,
-  accessWidth: OperandWidth,
-  helpers: WasmIrEmitHelpers
-): void {
-  emitJitSetIf(jitContext, condition, target, value, accessWidth, helpers);
-  valueCache?.notifyWrite(target, accessWidth);
 }
 
 function beginInstruction(
