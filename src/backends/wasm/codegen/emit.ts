@@ -37,7 +37,7 @@ export type WasmIrEmitContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
   expression?: IrExpressionOptions;
-  valueCache?: WasmIrValueCache;
+  valueCache?: WasmIrValueCache | undefined;
   emitGet(
     source: IrStorageExpr,
     accessWidth: OperandWidth,
@@ -76,9 +76,15 @@ export type WasmIrEmitHelpers = Readonly<{
   emitMaskedValue(value: IrValueExpr, width: OperandWidth): ValueWidth;
 }>;
 
+export type WasmIrCachedValueLocal = Readonly<{
+  local: number;
+  valueWidth: ValueWidth;
+  emitted: boolean;
+}>;
+
 export type WasmIrValueCache = Readonly<{
   emitForUse(value: IrValueExpr, emitter: () => ValueWidth): ValueWidth;
-  maybeMaterializeForLater?(value: IrValueExpr, emitter: () => ValueWidth): boolean;
+  captureForReuse?(value: IrValueExpr, emitter: () => ValueWidth): WasmIrCachedValueLocal | undefined;
 }>;
 
 export function emitIrToWasm(block: IrExpressionInputBlock, context: WasmIrEmitContext): void {

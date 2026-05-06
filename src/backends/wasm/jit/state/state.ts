@@ -10,6 +10,7 @@ import {
   type JitReg32InstructionOptions,
   type JitReg32State
 } from "./register-state.js";
+import type { JitValueCacheRuntime } from "#backends/wasm/jit/codegen/emit/value-local-store.js";
 
 export type JitExitTarget = {
   exitLocal: number;
@@ -19,6 +20,10 @@ export type JitExitTarget = {
 
 type ExitStateStoreOptions = Readonly<{
   allowPendingFlags?: boolean;
+}>;
+
+type JitIrStateOptions = Readonly<{
+  valueCache?: JitValueCacheRuntime | undefined;
 }>;
 
 export type JitIrState = Readonly<{
@@ -39,7 +44,8 @@ export type JitIrState = Readonly<{
 
 export function createJitIrState(
   body: WasmFunctionBodyEncoder,
-  exitStates: readonly JitExitState[]
+  exitStates: readonly JitExitState[],
+  options: JitIrStateOptions = {}
 ): JitIrState {
   const regs = createJitReg32State(body);
   const maxExitStateIndex = exitStates.length - 1;
@@ -48,7 +54,8 @@ export function createJitIrState(
   const flags = createJitFlagState(body, aluFlagsLocal, {
     emitLoadAluFlags,
     emitLoadAluFlagsValue,
-    emitStoreAluFlags
+    emitStoreAluFlags,
+    valueCache: options.valueCache
   });
   const instructionCountLocal = body.addLocal(wasmValueType.i32);
   let activeExit: JitExitTarget | undefined;

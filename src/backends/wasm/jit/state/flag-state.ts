@@ -25,6 +25,7 @@ import {
   emitMaskValueToWidth,
   type ValueWidth
 } from "#backends/wasm/codegen/value-width.js";
+import type { JitValueCacheRuntime } from "#backends/wasm/jit/codegen/emit/value-local-store.js";
 
 type PendingFlags = Readonly<{
   producer: IrFlagSetOp["producer"];
@@ -54,6 +55,7 @@ type JitFlagStateOptions = Readonly<{
   emitLoadAluFlags(): void;
   emitLoadAluFlagsValue(): void;
   emitStoreAluFlags(emitValue: () => void): void;
+  valueCache?: JitValueCacheRuntime | undefined;
 }>;
 
 export type JitFlagState = Readonly<{
@@ -90,6 +92,13 @@ export function createJitFlagState(
 
         if (canKeepPendingInputDirect(input)) {
           pendingInputs.set(inputName, { kind: "value", value: input });
+          continue;
+        }
+
+        const cachedInput = cachedPendingInput(input, helpers);
+
+        if (cachedInput !== undefined) {
+          pendingInputs.set(inputName, cachedInput);
           continue;
         }
 
@@ -154,6 +163,26 @@ export function createJitFlagState(
 
   function localForInput(): number {
     return body.addLocal(wasmValueType.i32);
+  }
+
+  function cachedPendingInput(input: ValueRef, helpers: WasmIrEmitHelpers): PendingInput | undefined {
+    const jitValue = options.valueCache?.jitValueForValueRef(input);
+
+    if (jitValue === undefined) {
+      return undefined;
+    }
+
+    const materialized = options.valueCache?.captureJitValueForReuse(jitValue, () =>
+      helpers.emitValue(input)
+    );
+
+    return materialized === undefined
+      ? undefined
+      : {
+          kind: "local",
+          local: materialized.local,
+          valueWidth: materialized.valueWidth
+        };
   }
 
   function materializeFlags(mask: number): void {

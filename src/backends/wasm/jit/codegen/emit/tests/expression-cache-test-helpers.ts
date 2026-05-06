@@ -26,7 +26,7 @@ export function emitPlannedExpression(
   emitIrExpressionBlockToWasm(block, {
     body,
     scratch,
-    ...(valueCache === undefined ? {} : { valueCache }),
+    valueCache,
     emitGet: (source) => {
       if (source.kind !== "reg") {
         throw new Error(`unsupported test source: ${source.kind}`);

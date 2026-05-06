@@ -4,15 +4,23 @@ import { test } from "node:test";
 import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { WasmLocalScratchAllocator } from "#backends/wasm/encoder/local-scratch.js";
 import { wasmOpcode, wasmValueType } from "#backends/wasm/encoder/types.js";
+import { ok, decodeBytes, startAddress } from "#x86/isa/decoder/tests/helpers.js";
 import { cleanValueWidth, type ValueWidth } from "#backends/wasm/codegen/value-width.js";
 import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/codegen/expressions.js";
-import { extractOnlyWasmFunctionBody, wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
+import {
+  extractOnlyWasmFunctionBody,
+  wasmBodyInstructions,
+  wasmBodyLocalCount,
+  wasmBodyOpcodes,
+  wasmOpcodeIsLocalWrite,
+  type WasmBodyInstruction
+} from "#backends/wasm/tests/body-opcodes.js";
 import type { JitValue } from "#backends/wasm/jit/ir/values.js";
 import {
   JitValueLocalStore,
   type JitValueUseCount
 } from "#backends/wasm/jit/codegen/emit/value-local-store.js";
-import { encodeJitIrBlock } from "#backends/wasm/jit/block.js";
+import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
 import type { JitIrBlock } from "#backends/wasm/jit/ir/types.js";
 import { emitJitIrWithContext } from "#backends/wasm/jit/codegen/emit/ir-context.js";
 import type { JitStateSnapshot } from "#backends/wasm/jit/codegen/plan/types.js";
@@ -34,7 +42,7 @@ test("JitValueLocalStore reuses one local for equal non-trivial values", () => {
   const opcodes = wasmBodyOpcodes(body.encode());
 
   strictEqual(emitted, 1);
-  strictEqual(totalLocalCount(body.encode()), 1);
+  strictEqual(wasmBodyLocalCount(body.encode()), 1);
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Add), 1);
   deepStrictEqual(localOpcodes(opcodes), [wasmOpcode.localTee, wasmOpcode.localGet]);
 });
@@ -65,7 +73,7 @@ test("JitValueLocalStore reuses structurally equal binary expressions", () => {
   const opcodes = wasmBodyOpcodes(body.encode());
 
   strictEqual(emitted, 1);
-  strictEqual(totalLocalCount(body.encode()), 1);
+  strictEqual(wasmBodyLocalCount(body.encode()), 1);
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Xor), 1);
   deepStrictEqual(localOpcodes(opcodes), [wasmOpcode.localTee, wasmOpcode.localGet]);
 });
@@ -84,7 +92,7 @@ test("JitValueLocalStore does not cache constants", () => {
   const opcodes = wasmBodyOpcodes(body.encode());
 
   strictEqual(emitted, 3);
-  strictEqual(totalLocalCount(body.encode()), 0);
+  strictEqual(wasmBodyLocalCount(body.encode()), 0);
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Const), 3);
   deepStrictEqual(localOpcodes(opcodes), []);
 });
@@ -105,18 +113,22 @@ test("JitValueLocalStore does not cache when reuse only ties repeated inline cos
   body.end();
 
   strictEqual(emitted, 2);
-  strictEqual(totalLocalCount(body.encode()), 0);
+  strictEqual(wasmBodyLocalCount(body.encode()), 0);
   deepStrictEqual(localOpcodes(wasmBodyOpcodes(body.encode())), []);
 });
 
-test("JitValueLocalStore maybeMaterializeForLater reports whether it emitted local.set", () => {
+test("JitValueLocalStore captureForReuse reports whether it emitted local.set", () => {
   const body = new WasmFunctionBodyEncoder();
   const value = addValue("eax", 1);
   const store = new JitValueLocalStore(body, useCounts([{ value, useCount: 2 }]));
   let emitted = 0;
 
-  strictEqual(store.maybeMaterializeForLater(value, () => emitAdd(body, () => { emitted += 1; })), true);
-  strictEqual(store.maybeMaterializeForLater(value, unexpectedEmitter), false);
+  const first = store.captureForReuse(value, () => emitAdd(body, () => { emitted += 1; }));
+  const second = store.captureForReuse(value, unexpectedEmitter);
+
+  strictEqual(first?.emitted, true);
+  strictEqual(second?.emitted, false);
+  strictEqual(second?.local, first?.local);
   store.emitForUse(value, unexpectedEmitter);
   body.end();
 
@@ -124,10 +136,70 @@ test("JitValueLocalStore maybeMaterializeForLater reports whether it emitted loc
   deepStrictEqual(localOpcodes(wasmBodyOpcodes(body.encode())), [wasmOpcode.localSet, wasmOpcode.localGet]);
 });
 
+test("JitValueLocalStore retires invalidated locals before rematerializing", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const value = addValue("eax", 1);
+  const store = new JitValueLocalStore(body, useCounts([{ value, useCount: 4 }]));
+  const first = store.captureForReuse(value, () => emitAdd(body, () => {}));
+
+  if (first === undefined) {
+    throw new Error("expected first materialization");
+  }
+
+  store.forgetWhere((candidate) => candidate.kind === "value.binary");
+
+  const second = store.captureForReuse(value, () => emitAdd(body, () => {}));
+
+  if (second === undefined) {
+    throw new Error("expected second materialization");
+  }
+
+  body.end();
+
+  strictEqual(first.local === second.local, false);
+  deepStrictEqual(localOpcodes(wasmBodyOpcodes(body.encode())), [wasmOpcode.localSet, wasmOpcode.localSet]);
+});
+
 test("JIT expression emission uses local.tee for cached optimized expression vars", () => {
   const opcodes = wasmBodyOpcodes(extractOnlyWasmFunctionBody(encodeJitIrBlock([repeatedInlineExpressionBlock()])));
 
   strictEqual(countOpcode(opcodes, wasmOpcode.localTee), 1);
+});
+
+test("JIT value cache shares retained NEG result between deferred flags and exit materialization", () => {
+  const mov = ok(decodeBytes([0xb8, 0x01, 0x00, 0x00, 0x00], startAddress));
+  const neg = ok(decodeBytes([0xf7, 0xd8], mov.nextEip));
+  const trap = ok(decodeBytes([0xcd, 0x2e], neg.nextEip));
+  const body = extractOnlyWasmFunctionBody(encodeJitIrBlock([buildJitIrBlock([mov, neg, trap])]));
+  const opcodes = wasmBodyOpcodes(body);
+  const instructions = wasmBodyInstructions(body);
+  const sub = onlyInstruction(instructions, wasmOpcode.i32Sub);
+  const firstCacheWrite = instructions.find((instruction) =>
+    instruction.offset > sub.offset && wasmOpcodeIsLocalWrite(instruction.opcode)
+  );
+
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Sub), 1);
+
+  if (firstCacheWrite?.local === undefined) {
+    throw new Error("missing retained NEG cache local write");
+  }
+
+  const cacheLocal = firstCacheWrite.local;
+  const cacheWrites = instructions.filter((instruction) =>
+    instruction.local === cacheLocal && wasmOpcodeIsLocalWrite(instruction.opcode)
+  );
+  const laterCacheGets = instructions.filter((instruction) =>
+    instruction.offset > firstCacheWrite.offset &&
+      instruction.local === cacheLocal &&
+      instruction.opcode === wasmOpcode.localGet
+  );
+
+  strictEqual(
+    firstCacheWrite.opcode === wasmOpcode.localTee || firstCacheWrite.opcode === wasmOpcode.localSet,
+    true
+  );
+  strictEqual(cacheWrites.length, 1);
+  strictEqual(laterCacheGets.length >= 2, true);
 });
 
 test("JIT expression cache does not cache let32-backed var reads", () => {
@@ -322,46 +394,14 @@ function countOpcode(opcodes: readonly number[], opcode: number): number {
   return opcodes.filter((entry) => entry === opcode).length;
 }
 
-function totalLocalCount(bytes: Uint8Array<ArrayBuffer>): number {
-  let offset = 0;
-  const groups = readU32Leb128(bytes, offset);
-  let total = 0;
+function onlyInstruction(
+  instructions: readonly WasmBodyInstruction[],
+  opcode: number
+): WasmBodyInstruction {
+  const matches = instructions.filter((instruction) => instruction.opcode === opcode);
 
-  offset = groups.nextOffset;
-
-  for (let index = 0; index < groups.value; index += 1) {
-    const groupSize = readU32Leb128(bytes, offset);
-
-    total += groupSize.value;
-    offset = groupSize.nextOffset + 1;
-  }
-
-  return total;
-}
-
-function readU32Leb128(
-  bytes: Uint8Array<ArrayBuffer>,
-  offset: number
-): Readonly<{ value: number; nextOffset: number }> {
-  let value = 0;
-  let shift = 0;
-
-  while (true) {
-    const byte = bytes[offset];
-
-    if (byte === undefined) {
-      throw new Error(`unexpected end of LEB128 at ${offset}`);
-    }
-
-    value |= (byte & 0x7f) << shift;
-    offset += 1;
-
-    if ((byte & 0x80) === 0) {
-      return { value, nextOffset: offset };
-    }
-
-    shift += 7;
-  }
+  strictEqual(matches.length, 1);
+  return matches[0]!;
 }
 
 function stateSnapshot(

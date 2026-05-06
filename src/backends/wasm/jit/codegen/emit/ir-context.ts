@@ -26,7 +26,6 @@ import {
 import type { JitExitPoint } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
 import {
-  createJitValueCacheRuntime,
   type JitValueCacheRuntime
 } from "./value-local-store.js";
 import type { JitCodegenInstructionPlan } from "#backends/wasm/jit/codegen/plan/emission.js";
@@ -51,7 +50,8 @@ export type JitIrBlockEmitContext = Readonly<{
   exit: JitExitTarget;
   instructions: readonly JitIrInstructionContext[];
   exitPoints: readonly JitExitPoint[];
-  linking?: JitLinkEmitContext;
+  valueCache?: JitValueCacheRuntime | undefined;
+  linking?: JitLinkEmitContext | undefined;
 }>;
 
 export type JitIrContext = Readonly<{
@@ -63,13 +63,15 @@ export type JitIrContext = Readonly<{
   currentExitPoint(exitReason: ExitReasonValue): JitExitPoint;
   completeExitPoint(exitPoint: JitExitPoint): void;
   advanceInstruction(): void;
-  linking?: JitLinkEmitContext;
+  valueCache?: JitValueCacheRuntime | undefined;
+  linking?: JitLinkEmitContext | undefined;
 }>;
 
 export function emitJitIrWithContext(context: JitIrBlockEmitContext): void {
   const jitContext = createJitIrContext(context);
 
   for (let index = 0; index < context.instructions.length; index += 1) {
+    jitContext.valueCache?.beginInstruction(index);
     beginInstruction(jitContext, context.exit, jitContext.currentInstruction());
     emitCurrentInstruction(jitContext);
   }
@@ -86,7 +88,8 @@ function createJitIrContext(context: JitIrBlockEmitContext): JitIrContext {
     scratch: context.scratch,
     state: context.state,
     exit: context.exit,
-    ...(context.linking === undefined ? {} : { linking: context.linking }),
+    valueCache: context.valueCache,
+    linking: context.linking,
     currentInstruction: () => {
       const instruction = context.instructions[instructionIndex];
 
@@ -142,12 +145,12 @@ function emitCurrentInstruction(jitContext: JitIrContext): void {
 }
 
 function emitJitIrBlock(jitContext: JitIrContext, instruction: JitIrInstructionContext): void {
-  const valueCache = createJitValueCacheRuntime(jitContext.body, instruction.valueCachePlan);
+  const valueCache = jitContext.valueCache;
 
   emitIrExpressionBlockToWasm(instruction.expressionBlock, {
     body: jitContext.body,
     scratch: jitContext.scratch,
-    ...(valueCache === undefined ? {} : { valueCache }),
+    valueCache,
     emitGet: (source, accessWidth, helpers, options) => emitJitGet(jitContext, source, accessWidth, helpers, options),
     emitSet: (target, value, accessWidth, helpers, op) =>
       emitJitSetWithRole(jitContext, valueCache, target, value, accessWidth, helpers, op),
@@ -178,9 +181,8 @@ function emitJitSetWithRole(
   helpers: WasmIrEmitHelpers,
   op: IrSetExprOp
 ): void {
-  emitJitSet(jitContext, target, value, accessWidth, helpers);
-
   if (op.role !== "registerMaterialization") {
+    emitJitSet(jitContext, target, value, accessWidth, helpers);
     valueCache?.notifyWrite(target, accessWidth);
     return;
   }
@@ -193,8 +195,46 @@ function emitJitSetWithRole(
     throw new Error(`JIT register materialization cannot target ${target.kind}`);
   }
 
+  if (!emitCachedJitRegisterMaterialization(jitContext, valueCache, target, value, helpers)) {
+    emitJitSet(jitContext, target, value, accessWidth, helpers);
+  }
+
   jitContext.state.regs.commitPendingReg(target.reg);
   valueCache?.notifyWrite(target, accessWidth);
+}
+
+function emitCachedJitRegisterMaterialization(
+  jitContext: JitIrContext,
+  valueCache: JitValueCacheRuntime | undefined,
+  target: Extract<IrStorageExpr, { kind: "reg" }>,
+  value: IrValueExpr,
+  helpers: WasmIrEmitHelpers
+): boolean {
+  const jitValue = valueCache?.jitValueForExpression(value);
+
+  if (jitValue === undefined) {
+    return false;
+  }
+
+  const materialized = valueCache?.captureJitValueForReuse(jitValue, () =>
+    helpers.emitValue(value)
+  );
+
+  if (materialized === undefined) {
+    return false;
+  }
+
+  jitContext.state.regs.emitWriteAlias(
+    { name: target.reg, base: target.reg, bitOffset: 0, width: 32 },
+    {
+      sourceLocal: materialized.local,
+      emitValue: () => {
+        jitContext.body.localGet(materialized.local);
+        return materialized.valueWidth;
+      }
+    }
+  );
+  return true;
 }
 
 function emitJitSetIfWithCacheInvalidation(

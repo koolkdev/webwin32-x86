@@ -22,14 +22,23 @@ export type JitValueUseCount = Readonly<{
 }>;
 
 export type JitExpressionValueCachePlan = Readonly<{
-  operands: readonly JitOperandBinding[];
-  expressionValues: ReadonlyMap<IrValueExpr, JitValue>;
+  instructionPlans: readonly JitInstructionValueCachePlan[];
   selectedValuesByEpoch: readonly (readonly JitValueUseCount[])[];
   selectedUseCounts: readonly JitValueUseCount[];
 }>;
 
 export type JitExpressionValueCacheInstruction = Readonly<{
   operands: readonly JitOperandBinding[];
+  materializedValueExpressionUseIndexes?: ReadonlySet<number>;
+}>;
+
+export type JitInstructionValueCachePlan = JitExpressionValueCacheInstruction & Readonly<{
+  expressionValues: ReadonlyMap<IrValueExpr, JitValue>;
+  valueRefValues: ReadonlyMap<number, JitValue>;
+}>;
+
+export type JitExpressionValueCachePlanInput = JitExpressionValueCacheInstruction & Readonly<{
+  expressionBlock: IrExprBlock;
 }>;
 
 type JitValueUse = Readonly<{
@@ -50,16 +59,21 @@ export function planJitExpressionValueCache(
   instruction: JitExpressionValueCacheInstruction,
   expressionBlock: IrExprBlock
 ): JitExpressionValueCachePlan | undefined {
-  const expressionJitValues = new Map<IrValueExpr, JitValue>();
-  const epochUses = expressionValueUseEpochs(instruction, expressionBlock, expressionJitValues);
+  return planJitExpressionValueCacheForInstructions([{ ...instruction, expressionBlock }]);
+}
+
+export function planJitExpressionValueCacheForInstructions(
+  instructions: readonly JitExpressionValueCachePlanInput[]
+): JitExpressionValueCachePlan | undefined {
+  const instructionPlans: JitInstructionValueCachePlan[] = [];
+  const epochUses = expressionValueUseEpochs(instructions, instructionPlans);
   const selectedValuesByEpoch = epochUses.map(selectEpochValues);
   const selectedUseCounts = mergeSelectedUseCounts(selectedValuesByEpoch);
 
   return selectedUseCounts.length === 0
     ? undefined
     : {
-        operands: instruction.operands,
-        expressionValues: expressionJitValues,
+        instructionPlans,
         selectedValuesByEpoch,
         selectedUseCounts
       };
@@ -80,58 +94,105 @@ export function shouldCacheValue(value: JitValue, useCount: number): boolean {
 }
 
 function expressionValueUseEpochs(
-  instruction: JitExpressionValueCacheInstruction,
-  block: IrExprBlock,
-  expressionJitValues: Map<IrValueExpr, JitValue>
+  instructions: readonly JitExpressionValueCachePlanInput[],
+  instructionPlans: JitInstructionValueCachePlan[]
 ): readonly (readonly JitValueUse[])[] {
   const epochs: JitValueUse[][] = [];
   let currentEpoch: JitValueUse[] = [];
 
-  for (const op of block) {
-    currentEpoch.push(...valueUsesForOp(instruction, op, expressionJitValues));
+  for (const instruction of instructions) {
+    const state = valueUseInstructionState();
 
-    if (opWriteReg(instruction, op) !== undefined) {
-      epochs.push(currentEpoch);
-      currentEpoch = [];
+    for (let opIndex = 0; opIndex < instruction.expressionBlock.length; opIndex += 1) {
+      const op = instruction.expressionBlock[opIndex];
+
+      if (op === undefined) {
+        throw new Error(`missing JIT value-cache expression op: ${opIndex}`);
+      }
+
+      currentEpoch.push(...valueUsesForOp(instruction, op, opIndex, state));
+
+      if (opWriteReg(instruction, op) !== undefined) {
+        epochs.push(currentEpoch);
+        currentEpoch = [];
+      }
     }
+
+    instructionPlans.push({
+      operands: instruction.operands,
+      ...(instruction.materializedValueExpressionUseIndexes === undefined
+        ? {}
+        : { materializedValueExpressionUseIndexes: instruction.materializedValueExpressionUseIndexes }),
+      expressionValues: state.expressionJitValues,
+      valueRefValues: state.valueRefJitValues
+    });
   }
 
   epochs.push(currentEpoch);
   return epochs;
 }
 
+type JitValueUseInstructionState = Readonly<{
+  expressionJitValues: Map<IrValueExpr, JitValue>;
+  valueRefJitValues: Map<number, JitValue>;
+}>;
+
+function valueUseInstructionState(): JitValueUseInstructionState {
+  return {
+    expressionJitValues: new Map(),
+    valueRefJitValues: new Map()
+  };
+}
+
 function valueUsesForOp(
   instruction: JitExpressionValueCacheInstruction,
   op: IrExprOp,
-  expressionJitValues: Map<IrValueExpr, JitValue>
+  opIndex: number,
+  state: JitValueUseInstructionState
 ): readonly JitValueUse[] {
   switch (op.op) {
-    case "let32":
+    case "let32": {
+      const jitValue = jitValueForExpression(instruction, op.value, state);
+
+      if (jitValue !== undefined) {
+        state.valueRefJitValues.set(op.dst.id, jitValue);
+      }
+
       return [];
-    case "set":
-      return [
-        ...valueUsesForStorage(instruction, op.target, expressionJitValues),
-        ...valueUsesForValue(instruction, op.value, expressionJitValues)
+    }
+    case "set": {
+      const expressionUses = [
+        ...valueUsesForStorage(instruction, op.target, state),
+        ...(op.role === "registerMaterialization" ? [] : valueUsesForValue(instruction, op.value, state))
       ];
+      const retainedUses = op.role === "registerMaterialization"
+        ? [
+            ...retainedValueUsesForValue(instruction, op.value, state),
+            ...materializedValueUsesForSet(instruction, opIndex, op, state)
+          ]
+        : [];
+
+      return [...expressionUses, ...retainedUses];
+    }
     case "set.if":
       return [
-        ...valueUsesForValue(instruction, op.condition, expressionJitValues),
-        ...valueUsesForValue(instruction, op.value, expressionJitValues)
+        ...valueUsesForValue(instruction, op.condition, state),
+        ...valueUsesForValue(instruction, op.value, state)
       ];
     case "flags.set":
       return Object.values(op.inputs).flatMap((value) =>
-        valueUsesForValueRef(value, expressionJitValues)
+        retainedValueUsesForValueRef(value, state)
       );
     case "jump":
-      return valueUsesForValue(instruction, op.target, expressionJitValues);
+      return valueUsesForValue(instruction, op.target, state);
     case "conditionalJump":
       return [
-        ...valueUsesForValue(instruction, op.condition, expressionJitValues),
-        ...valueUsesForValue(instruction, op.taken, expressionJitValues),
-        ...valueUsesForValue(instruction, op.notTaken, expressionJitValues)
+        ...valueUsesForValue(instruction, op.condition, state),
+        ...valueUsesForValue(instruction, op.taken, state),
+        ...valueUsesForValue(instruction, op.notTaken, state)
       ];
     case "hostTrap":
-      return valueUsesForValue(instruction, op.vector, expressionJitValues);
+      return valueUsesForValue(instruction, op.vector, state);
     case "flags.materialize":
     case "flags.boundary":
     case "next":
@@ -142,20 +203,20 @@ function valueUsesForOp(
 function valueUsesForStorage(
   instruction: JitExpressionValueCacheInstruction,
   storage: IrStorageExpr,
-  expressionJitValues: Map<IrValueExpr, JitValue>
+  state: JitValueUseInstructionState
 ): readonly JitValueUse[] {
   return storage.kind === "mem"
-    ? valueUsesForValue(instruction, storage.address, expressionJitValues)
+    ? valueUsesForValue(instruction, storage.address, state)
     : [];
 }
 
 function valueUsesForValue(
   instruction: JitExpressionValueCacheInstruction,
   value: IrValueExpr,
-  expressionJitValues: Map<IrValueExpr, JitValue>
+  state: JitValueUseInstructionState
 ): readonly JitValueUse[] {
-  const children = childValueUsesForValue(instruction, value, expressionJitValues);
-  const jitValue = jitValueForExpression(instruction, value, expressionJitValues);
+  const children = childValueUsesForValue(instruction, value, state);
+  const jitValue = jitValueForExpression(instruction, value, state);
 
   return jitValue === undefined
     ? children
@@ -165,21 +226,21 @@ function valueUsesForValue(
 function childValueUsesForValue(
   instruction: JitExpressionValueCacheInstruction,
   value: IrValueExpr,
-  expressionJitValues: Map<IrValueExpr, JitValue>
+  state: JitValueUseInstructionState
 ): readonly JitValueUse[] {
   switch (value.kind) {
     case "source":
-      return valueUsesForStorage(instruction, value.source, expressionJitValues);
+      return valueUsesForStorage(instruction, value.source, state);
     case "value.binary":
       return [
-        ...valueUsesForValue(instruction, value.a, expressionJitValues),
-        ...valueUsesForValue(instruction, value.b, expressionJitValues)
+        ...valueUsesForValue(instruction, value.a, state),
+        ...valueUsesForValue(instruction, value.b, state)
       ];
     case "value.unary":
-      return valueUsesForValue(instruction, value.value, expressionJitValues);
+      return valueUsesForValue(instruction, value.value, state);
     case "flagProducer.condition":
       return Object.values(value.inputs).flatMap((input) =>
-        valueUsesForValueRef(input, expressionJitValues)
+        valueUsesForValueRef(input, state)
       );
     case "var":
     case "const":
@@ -192,13 +253,13 @@ function childValueUsesForValue(
 
 function valueUsesForValueRef(
   value: ValueRef,
-  expressionJitValues: Map<IrValueExpr, JitValue>
+  state: JitValueUseInstructionState
 ): readonly JitValueUse[] {
   switch (value.kind) {
     case "const": {
       const jitValue = { kind: "const", type: value.type, value: value.value } as const satisfies JitValue;
 
-      expressionJitValues.set(value, jitValue);
+      state.expressionJitValues.set(value, jitValue);
       return [{ value: jitValue, children: [] }];
     }
     case "var":
@@ -206,6 +267,78 @@ function valueUsesForValueRef(
     case "nextEip":
       return [];
   }
+}
+
+function retainedValueUsesForValue(
+  instruction: JitExpressionValueCacheInstruction,
+  value: IrValueExpr,
+  state: JitValueUseInstructionState
+): readonly JitValueUse[] {
+  const jitValue = jitValueForExpression(instruction, value, state) ??
+    retainedJitValueForValueExpr(value, state);
+
+  return jitValue === undefined
+    ? []
+    : [{ value: jitValue, children: [] }];
+}
+
+function retainedJitValueForValueExpr(
+  value: IrValueExpr,
+  state: JitValueUseInstructionState
+): JitValue | undefined {
+  switch (value.kind) {
+    case "const":
+    case "var":
+    case "nextEip":
+      return retainedJitValueForValueRef(value, state);
+    default:
+      return undefined;
+  }
+}
+
+function retainedValueUsesForValueRef(
+  value: ValueRef,
+  state: JitValueUseInstructionState
+): readonly JitValueUse[] {
+  const jitValue = retainedJitValueForValueRef(value, state);
+
+  return jitValue === undefined
+    ? []
+    : [{ value: jitValue, children: [] }];
+}
+
+function retainedJitValueForValueRef(
+  value: ValueRef,
+  state: JitValueUseInstructionState
+): JitValue | undefined {
+  switch (value.kind) {
+    case "const": {
+      const jitValue = { kind: "const", type: value.type, value: value.value } as const satisfies JitValue;
+
+      state.expressionJitValues.set(value, jitValue);
+      return jitValue;
+    }
+    case "var":
+      return state.valueRefJitValues.get(value.id);
+    case "nextEip":
+      return undefined;
+  }
+}
+
+function materializedValueUsesForSet(
+  instruction: JitExpressionValueCacheInstruction,
+  opIndex: number,
+  op: Extract<IrExprOp, { op: "set" }>,
+  state: JitValueUseInstructionState
+): readonly JitValueUse[] {
+  if (
+    op.role !== "registerMaterialization" ||
+    instruction.materializedValueExpressionUseIndexes?.has(opIndex) !== true
+  ) {
+    return [];
+  }
+
+  return retainedValueUsesForValue(instruction, op.value, state);
 }
 
 function selectEpochValues(uses: readonly JitValueUse[]): readonly JitValueUseCount[] {
@@ -292,12 +425,12 @@ function mergeSelectedUseCounts(
 function jitValueForExpression(
   instruction: JitExpressionValueCacheInstruction,
   value: IrValueExpr,
-  expressionJitValues?: Map<IrValueExpr, JitValue>
+  state?: JitValueUseInstructionState
 ): JitValue | undefined {
-  const jitValue = jitValueForExpressionUntracked(instruction, value, expressionJitValues);
+  const jitValue = jitValueForExpressionUntracked(instruction, value, state);
 
   if (jitValue !== undefined) {
-    expressionJitValues?.set(value, jitValue);
+    state?.expressionJitValues.set(value, jitValue);
   }
 
   return jitValue;
@@ -306,7 +439,7 @@ function jitValueForExpression(
 function jitValueForExpressionUntracked(
   instruction: JitExpressionValueCacheInstruction,
   value: IrValueExpr,
-  expressionJitValues?: Map<IrValueExpr, JitValue>
+  state?: JitValueUseInstructionState
 ): JitValue | undefined {
   switch (value.kind) {
     case "var":
@@ -318,15 +451,15 @@ function jitValueForExpressionUntracked(
     case "address":
       return jitValueForEffectiveAddress(value.operand, instruction.operands, new Map());
     case "value.binary": {
-      const a = jitValueForExpression(instruction, value.a, expressionJitValues);
-      const b = jitValueForExpression(instruction, value.b, expressionJitValues);
+      const a = jitValueForExpression(instruction, value.a, state);
+      const b = jitValueForExpression(instruction, value.b, state);
 
       return a === undefined || b === undefined
         ? undefined
         : { kind: value.kind, type: value.type, operator: value.operator, a, b };
     }
     case "value.unary": {
-      const inner = jitValueForExpression(instruction, value.value, expressionJitValues);
+      const inner = jitValueForExpression(instruction, value.value, state);
 
       return inner === undefined
         ? undefined

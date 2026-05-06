@@ -15,6 +15,7 @@ import {
   type JitLinkEmitContext,
   type JitLinkResolver
 } from "./codegen/emit/ir-context.js";
+import { createJitValueCacheRuntime } from "./codegen/emit/value-local-store.js";
 import { optimizeJitIrBlock } from "./optimization/optimize.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
 import type { JitIrBlock } from "./ir/types.js";
@@ -111,7 +112,8 @@ function encodeJitIrBlockFunctionBody(
   const body = new WasmFunctionBodyEncoder();
   const scratch = new WasmLocalScratchAllocator(body);
   const exitLocal = body.addLocal(wasmValueType.i64);
-  const state = createJitIrState(body, emissionPlan.exitStates);
+  const valueCache = createJitValueCacheRuntime(body, emissionPlan.valueCachePlan);
+  const state = createJitIrState(body, emissionPlan.exitStates, { valueCache });
   const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitStateIndex };
 
   state.emitLoadInstructionCount();
@@ -124,7 +126,8 @@ function encodeJitIrBlockFunctionBody(
     exit,
     instructions: emissionPlan.instructions,
     exitPoints: emissionPlan.exitPoints,
-    ...(linking === undefined ? {} : { linking })
+    valueCache,
+    linking
   });
   emitExitStateStores(body, state, exitLocal);
   scratch.assertClear();

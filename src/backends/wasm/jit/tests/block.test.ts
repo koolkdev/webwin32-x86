@@ -12,6 +12,7 @@ import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock, encodeJitIrBlock } from "#backends/wasm/jit/block.js";
 import { jitIrOpDst, jitIrOpIsTerminator } from "#backends/wasm/jit/ir/semantics.js";
 import { buildJitCodegenIr } from "#backends/wasm/jit/codegen/plan/block.js";
+import { buildJitCodegenEmissionPlan } from "#backends/wasm/jit/codegen/plan/emission.js";
 import { planJitCodegen } from "#backends/wasm/jit/codegen/plan/plan.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
 import type { JitIrOp } from "#backends/wasm/jit/ir/types.js";
@@ -1385,6 +1386,55 @@ test("jit IR block materializes the latest deferred flags on exit", async () => 
   strictEqual(result.state.eflags, preservedEflags);
   strictEqual(result.state.eip, startAddress + 8);
   strictEqual(result.state.instructionCount, 3);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
+test("jit IR block keeps mixed cached pending flag inputs stable after invalidation and recache", async () => {
+  const instructionBytes = [
+    [0x83, 0xc0, 0x01], // add eax, 1
+    [0x8b, 0x05, 0x60, 0x00, 0x00, 0x00], // mov eax, [0x60]
+    [0x40], // inc eax (preserves CF, updates the other ALU flags)
+    [0xcd, 0x2e] // int 0x2e
+  ];
+  const expectedFlags = {
+    CF: false,
+    OF: false,
+    SF: false,
+    ZF: true,
+    PF: true,
+    AF: true
+  };
+  let decodeEip = startAddress;
+  const block = buildJitIrBlock(instructionBytes.map((bytes) => {
+    const instruction = ok(decodeBytes(bytes, decodeEip));
+
+    decodeEip = instruction.nextEip;
+    return instruction;
+  }));
+  const codegenPlan = planJitCodegen(optimizeJitIrBlock(block));
+  const emissionPlan = buildJitCodegenEmissionPlan(buildJitCodegenIr(codegenPlan), codegenPlan);
+  const cachedAddEpochs = emissionPlan.valueCachePlan?.selectedValuesByEpoch.filter((epoch) =>
+    epoch.some(({ value }) =>
+      value.kind === "value.binary" &&
+        value.operator === "add" &&
+        value.a.kind === "reg" &&
+        value.a.reg === "eax" &&
+        value.b.kind === "const" &&
+        value.b.value === 1
+    )
+  ).length ?? 0;
+  const result = await runJitIrBlock(instructionBytes.flat(), createCpuState({
+    eax: 1,
+    eflags: (preservedEflags | allArithmeticEflags) >>> 0,
+    eip: startAddress
+  }), [{ address: 0x60, bytes: littleEndianBytes(0xffff_ffff, 32) }]);
+
+  strictEqual(cachedAddEpochs, 2);
+  strictEqual(result.state.eax, 0);
+  strictEqual(result.state.eflags, (preservedEflags | arithmeticEflags(expectedFlags)) >>> 0);
+  assertArithmeticFlags(result.state, expectedFlags, "cached pending flag input");
+  strictEqual(result.state.eip, startAddress + 12);
+  strictEqual(result.state.instructionCount, 4);
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 

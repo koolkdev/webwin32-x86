@@ -6,6 +6,12 @@ export type WasmBodyMemoryAccess = Readonly<{
   offset: number;
 }>;
 
+export type WasmBodyInstruction = Readonly<{
+  offset: number;
+  opcode: number;
+  local?: number;
+}>;
+
 export function extractOnlyWasmFunctionBody(moduleBytes: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
   let offset = 8;
 
@@ -112,6 +118,77 @@ export function wasmBodyOpcodes(functionBody: Uint8Array<ArrayBuffer>): readonly
   return opcodes;
 }
 
+export function wasmBodyInstructions(functionBody: Uint8Array<ArrayBuffer>): readonly WasmBodyInstruction[] {
+  const instructions: WasmBodyInstruction[] = [];
+  let offset = skipLocalDeclarations(functionBody);
+
+  while (offset < functionBody.length) {
+    const instructionOffset = offset;
+    const opcode = requiredByte(functionBody, offset);
+
+    offset += 1;
+
+    switch (opcode) {
+      case wasmOpcode.localGet:
+      case wasmOpcode.localSet:
+      case wasmOpcode.localTee: {
+        const local = readU32Leb128(functionBody, offset);
+
+        instructions.push({ offset: instructionOffset, opcode, local: local.value });
+        offset = local.nextOffset;
+        break;
+      }
+      case wasmOpcode.br:
+      case wasmOpcode.call:
+      case wasmOpcode.returnCall:
+      case wasmOpcode.memorySize:
+        instructions.push({ offset: instructionOffset, opcode });
+        offset = readU32Leb128(functionBody, offset).nextOffset;
+        break;
+      case wasmOpcode.brTable: {
+        const tableLength = readU32Leb128(functionBody, offset);
+
+        instructions.push({ offset: instructionOffset, opcode });
+        offset = tableLength.nextOffset;
+
+        for (let index = 0; index < tableLength.value; index += 1) {
+          offset = readU32Leb128(functionBody, offset).nextOffset;
+        }
+
+        offset = readU32Leb128(functionBody, offset).nextOffset;
+        break;
+      }
+      case wasmOpcode.block:
+      case wasmOpcode.loop:
+      case wasmOpcode.if:
+        instructions.push({ offset: instructionOffset, opcode });
+        offset += 1;
+        break;
+      case wasmOpcode.i32Const:
+      case wasmOpcode.i64Const:
+        instructions.push({ offset: instructionOffset, opcode });
+        offset = skipLeb128(functionBody, offset);
+        break;
+      case wasmOpcode.i32Load:
+      case wasmOpcode.i32Load8S:
+      case wasmOpcode.i32Load8U:
+      case wasmOpcode.i32Load16S:
+      case wasmOpcode.i32Load16U:
+      case wasmOpcode.i32Store:
+      case wasmOpcode.i32Store8:
+      case wasmOpcode.i32Store16:
+        instructions.push({ offset: instructionOffset, opcode });
+        offset = skipMemoryImmediate(functionBody, offset);
+        break;
+      default:
+        instructions.push({ offset: instructionOffset, opcode });
+        break;
+    }
+  }
+
+  return instructions;
+}
+
 export function wasmBodyMemoryAccesses(functionBody: Uint8Array<ArrayBuffer>): readonly WasmBodyMemoryAccess[] {
   const accesses: WasmBodyMemoryAccess[] = [];
   let offset = skipLocalDeclarations(functionBody);
@@ -196,6 +273,25 @@ export function wasmBodyMemoryAccesses(functionBody: Uint8Array<ArrayBuffer>): r
   }
 
   return accesses;
+}
+
+export function wasmBodyLocalCount(functionBody: Uint8Array<ArrayBuffer>): number {
+  const groups = readU32Leb128(functionBody, 0);
+  let total = 0;
+  let offset = groups.nextOffset;
+
+  for (let index = 0; index < groups.value; index += 1) {
+    const groupSize = readU32Leb128(functionBody, offset);
+
+    total += groupSize.value;
+    offset = groupSize.nextOffset + 1;
+  }
+
+  return total;
+}
+
+export function wasmOpcodeIsLocalWrite(opcode: number): boolean {
+  return opcode === wasmOpcode.localTee || opcode === wasmOpcode.localSet;
 }
 
 function skipLocalDeclarations(bytes: Uint8Array<ArrayBuffer>): number {

@@ -8,8 +8,9 @@ import {
   canInlineJitInstructionGet,
   jitInstructionStorageRefsMayAlias
 } from "./operand-analysis.js";
+import { planJitMaterializedValueUses } from "./materialized-values.js";
 import {
-  planJitExpressionValueCache,
+  planJitExpressionValueCacheForInstructions,
   type JitExpressionValueCachePlan
 } from "./value-cache.js";
 import type {
@@ -34,6 +35,7 @@ export type JitCodegenEmissionPlan = Readonly<{
   flagMaterializationRequirements: readonly JitFlagMaterializationRequirement[];
   exitStates: readonly JitExitState[];
   maxExitStateIndex: number;
+  valueCachePlan?: JitExpressionValueCachePlan;
 }>;
 
 export function buildJitCodegenEmissionPlan(
@@ -46,28 +48,43 @@ export function buildJitCodegenEmissionPlan(
     );
   }
 
+  const instructions = block.instructions.map((instruction, index) => {
+    const state = codegenPlan.instructionStates[index];
+
+    if (state === undefined) {
+      throw new Error(`missing JIT instruction state for codegen: ${index}`);
+    }
+
+    const expressionBlock = buildIrExpressionBlock(instruction.ir, jitExpressionOptions(instruction));
+
+    return {
+      ...state,
+      operands: instruction.operands,
+      expressionBlock
+    };
+  });
+  const materializedValueUsePlan = planJitMaterializedValueUses(
+    instructions,
+    codegenPlan
+  );
+  const { expressionUseIndexesByInstruction } = materializedValueUsePlan;
+  const valueCachePlan = planJitExpressionValueCacheForInstructions(
+    instructions.map((instruction, index) => ({
+      operands: instruction.operands,
+      expressionBlock: instruction.expressionBlock,
+      materializedValueExpressionUseIndexes: expressionUseIndexesByInstruction[index] ?? new Set()
+    }))
+  );
+
   return {
-    instructions: block.instructions.map((instruction, index) => {
-      const state = codegenPlan.instructionStates[index];
-
-      if (state === undefined) {
-        throw new Error(`missing JIT instruction state for codegen: ${index}`);
-      }
-
-      const expressionBlock = buildIrExpressionBlock(instruction.ir, jitExpressionOptions(instruction));
-      const valueCachePlan = planJitExpressionValueCache(instruction, expressionBlock);
-
-      return {
-        ...state,
-        operands: instruction.operands,
-        expressionBlock,
-        ...(valueCachePlan === undefined ? {} : { valueCachePlan })
-      };
-    }),
+    instructions: valueCachePlan === undefined
+      ? instructions
+      : instructions.map((instruction) => ({ ...instruction, valueCachePlan })),
     exitPoints: codegenPlan.exitPoints,
     flagMaterializationRequirements: codegenPlan.flagMaterializationRequirements,
     exitStates: codegenPlan.exitStates,
-    maxExitStateIndex: codegenPlan.maxExitStateIndex
+    maxExitStateIndex: codegenPlan.maxExitStateIndex,
+    ...(valueCachePlan === undefined ? {} : { valueCachePlan })
   };
 }
 

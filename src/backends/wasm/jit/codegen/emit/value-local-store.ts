@@ -1,8 +1,9 @@
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
-import type { WasmIrValueCache } from "#backends/wasm/codegen/emit.js";
-import type { IrStorageExpr } from "#backends/wasm/codegen/expressions.js";
+import type { WasmIrCachedValueLocal, WasmIrValueCache } from "#backends/wasm/codegen/emit.js";
+import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import type { ValueWidth } from "#backends/wasm/codegen/value-width.js";
+import type { ValueRef } from "#x86/ir/model/types.js";
 import {
   jitValueReadsReg,
   jitValuesEqual,
@@ -19,8 +20,20 @@ import { jitInstructionWrittenReg } from "#backends/wasm/jit/codegen/plan/operan
 
 export type { JitExpressionValueCachePlan, JitValueUseCount } from "#backends/wasm/jit/codegen/plan/value-cache.js";
 
+export type JitCachedValueUse = Readonly<{
+  valueWidth: ValueWidth;
+  local?: number;
+}>;
+
+export type JitCachedValueLocal = WasmIrCachedValueLocal;
+
 export type JitValueCacheRuntime = WasmIrValueCache & Readonly<{
+  beginInstruction(index: number): void;
   notifyWrite(target: IrStorageExpr, accessWidth: OperandWidth): void;
+  emitJitValueForUse(value: JitValue, emitter: () => ValueWidth): JitCachedValueUse;
+  captureJitValueForReuse(value: JitValue, emitter: () => ValueWidth): JitCachedValueLocal | undefined;
+  jitValueForExpression(value: IrValueExpr): JitValue | undefined;
+  jitValueForValueRef(value: ValueRef): JitValue | undefined;
 }>;
 
 type CachedJitValue = {
@@ -49,17 +62,21 @@ export class JitValueLocalStore {
   }
 
   emitForUse(value: JitValue, emitter: () => ValueWidth): ValueWidth {
+    return this.emitForUseWithLocal(value, emitter).valueWidth;
+  }
+
+  emitForUseWithLocal(value: JitValue, emitter: () => ValueWidth): JitCachedValueUse {
     const entry = this.#entryFor(value);
 
     if (entry === undefined) {
-      return emitter();
+      return { valueWidth: emitter() };
     }
 
     const local = this.#localForEntry(entry);
 
     if (entry.available) {
       this.#body.localGet(local);
-      return requiredValueWidth(entry);
+      return { valueWidth: requiredValueWidth(entry), local };
     }
 
     const valueWidth = emitter();
@@ -67,25 +84,38 @@ export class JitValueLocalStore {
     this.#body.localTee(local);
     entry.valueWidth = valueWidth;
     entry.available = true;
-    return valueWidth;
+    return { valueWidth, local };
   }
 
   // Pre-fill a selected cache entry for consumers that need the value later,
   // without leaving it on the stack. Returns true only when this call emitted
   // the expression and stored it with local.set.
-  maybeMaterializeForLater(value: JitValue, emitter: () => ValueWidth): boolean {
+  captureForReuse(
+    value: JitValue,
+    emitter: () => ValueWidth
+  ): JitCachedValueLocal | undefined {
     const entry = this.#entryFor(value);
 
-    if (entry === undefined || entry.available) {
-      return false;
+    if (entry === undefined) {
+      return undefined;
+    }
+
+    const local = this.#localForEntry(entry);
+
+    if (entry.available) {
+      return {
+        local,
+        valueWidth: requiredValueWidth(entry),
+        emitted: false
+      };
     }
 
     const valueWidth = emitter();
 
-    this.#body.localSet(this.#localForEntry(entry));
+    this.#body.localSet(local);
     entry.valueWidth = valueWidth;
     entry.available = true;
-    return true;
+    return { local, valueWidth, emitted: true };
   }
 
   forgetWhere(predicate: (value: JitValue) => boolean): void {
@@ -93,6 +123,7 @@ export class JitValueLocalStore {
       if (predicate(entry.value)) {
         entry.available = false;
         entry.valueWidth = undefined;
+        delete entry.local;
       }
     }
   }
@@ -120,26 +151,55 @@ export function createJitValueCacheRuntime(
     return undefined;
   }
 
-  const store = new JitValueLocalStore(body, plan.selectedUseCounts);
+  const cachePlan = plan;
+  const store = new JitValueLocalStore(body, cachePlan.selectedUseCounts);
   let currentEpoch = 0;
+  let currentInstructionIndex = 0;
 
   return {
-    emitForUse: (value, emitter) => {
-      const jitValue = plan.expressionValues.get(value);
+    beginInstruction: (index) => {
+      if (index < 0 || index >= cachePlan.instructionPlans.length) {
+        throw new Error(`JIT value cache instruction index out of range: ${index}`);
+      }
 
-      return jitValue !== undefined && valueIsSelected(plan.selectedValuesByEpoch[currentEpoch] ?? [], jitValue)
+      currentInstructionIndex = index;
+    },
+    emitForUse: (value, emitter) => {
+      const jitValue = currentInstructionPlan().expressionValues.get(value);
+
+      return jitValue !== undefined && valueIsSelected(cachePlan.selectedValuesByEpoch[currentEpoch] ?? [], jitValue)
         ? store.emitForUse(jitValue, emitter)
         : emitter();
     },
-    maybeMaterializeForLater: (value, emitter) => {
-      const jitValue = plan.expressionValues.get(value);
+    emitJitValueForUse: (value, emitter) =>
+      valueIsSelected(cachePlan.selectedValuesByEpoch[currentEpoch] ?? [], value)
+        ? store.emitForUseWithLocal(value, emitter)
+        : { valueWidth: emitter() },
+    captureForReuse: (value, emitter) => {
+      const jitValue = currentInstructionPlan().expressionValues.get(value);
 
-      return jitValue !== undefined && valueIsSelected(plan.selectedValuesByEpoch[currentEpoch] ?? [], jitValue)
-        ? store.maybeMaterializeForLater(jitValue, emitter)
-        : false;
+      return jitValue !== undefined && valueIsSelected(cachePlan.selectedValuesByEpoch[currentEpoch] ?? [], jitValue)
+        ? store.captureForReuse(jitValue, emitter)
+        : undefined;
+    },
+    captureJitValueForReuse: (value, emitter) =>
+      valueIsSelected(cachePlan.selectedValuesByEpoch[currentEpoch] ?? [], value)
+        ? store.captureForReuse(value, emitter)
+        : undefined,
+    jitValueForExpression: (value) =>
+      currentInstructionPlan().expressionValues.get(value) ?? jitValueForExpressionRef(value),
+    jitValueForValueRef: (value) => {
+      switch (value.kind) {
+        case "const":
+          return { kind: "const", type: value.type, value: value.value };
+        case "var":
+          return currentInstructionPlan().valueRefValues.get(value.id);
+        case "nextEip":
+          return undefined;
+      }
     },
     notifyWrite: (target, accessWidth) => {
-      const reg = jitInstructionWrittenReg(plan, target, accessWidth);
+      const reg = jitInstructionWrittenReg(currentInstructionPlan(), target, accessWidth);
 
       if (reg === undefined) {
         return;
@@ -148,9 +208,32 @@ export function createJitValueCacheRuntime(
       store.forgetWhere((value) =>
         jitValueReadsReg(value, reg) || jitValueUsesSymbolicReg(value, reg)
       );
-      currentEpoch = Math.min(currentEpoch + 1, plan.selectedValuesByEpoch.length - 1);
+      currentEpoch = Math.min(currentEpoch + 1, cachePlan.selectedValuesByEpoch.length - 1);
     }
   };
+
+  function currentInstructionPlan() {
+    const instructionPlan = cachePlan.instructionPlans[currentInstructionIndex];
+
+    if (instructionPlan === undefined) {
+      throw new Error(`missing JIT value cache instruction plan: ${currentInstructionIndex}`);
+    }
+
+    return instructionPlan;
+  }
+
+  function jitValueForExpressionRef(value: IrValueExpr): JitValue | undefined {
+    switch (value.kind) {
+      case "const":
+        return { kind: "const", type: value.type, value: value.value };
+      case "var":
+        return currentInstructionPlan().valueRefValues.get(value.id);
+      case "nextEip":
+        return undefined;
+      default:
+        return undefined;
+    }
+  }
 }
 
 function requiredValueWidth(entry: CachedJitValue): ValueWidth {

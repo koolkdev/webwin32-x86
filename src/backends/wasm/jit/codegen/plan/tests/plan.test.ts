@@ -3,11 +3,14 @@ import { test } from "node:test";
 
 import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/model/flag-effects.js";
+import { buildIrExpressionBlock } from "#backends/wasm/codegen/expressions.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
 import { buildJitCodegenIr } from "#backends/wasm/jit/codegen/plan/block.js";
 import { buildJitCodegenEmissionPlan } from "#backends/wasm/jit/codegen/plan/emission.js";
+import { planJitMaterializedValueUses } from "#backends/wasm/jit/codegen/plan/materialized-values.js";
 import { planJitCodegen } from "#backends/wasm/jit/codegen/plan/plan.js";
+import type { JitCodegenPlan, JitStateSnapshot } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitIrBlock } from "#backends/wasm/jit/ir/types.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
 import { onlyExit, startAddress } from "../../../optimization/tests/helpers.js";
@@ -156,3 +159,257 @@ test("buildJitCodegenEmissionPlan prepares expression blocks and value-cache spe
   strictEqual((instruction?.valueCachePlan?.selectedUseCounts.length ?? 0) > 0, true);
   strictEqual((instruction?.valueCachePlan?.selectedValuesByEpoch.length ?? 0) > 0, true);
 });
+
+test("buildJitCodegenEmissionPlan does not count overwritten materializations as exit-store uses", () => {
+  const block: JitIrBlock = {
+    instructions: [
+      {
+        instructionId: "materialize-before-overwrite",
+        eip: startAddress,
+        nextEip: startAddress + 1,
+        nextMode: "continue",
+        operands: [],
+        ir: [
+          { op: "get", dst: { kind: "var", id: 0 }, source: { kind: "reg", reg: "eax" }, accessWidth: 32 },
+          {
+            op: "value.binary",
+            type: "i32",
+            operator: "add",
+            dst: { kind: "var", id: 1 },
+            a: { kind: "var", id: 0 },
+            b: { kind: "const", type: "i32", value: 1 }
+          },
+          {
+            op: "set",
+            role: "registerMaterialization",
+            target: { kind: "reg", reg: "eax" },
+            value: { kind: "var", id: 1 }
+          },
+          { op: "next" }
+        ]
+      },
+      {
+        instructionId: "overwrite-before-exit",
+        eip: startAddress + 1,
+        nextEip: startAddress + 2,
+        nextMode: "exit",
+        operands: [],
+        ir: [
+          {
+            op: "set",
+            target: { kind: "reg", reg: "eax" },
+            value: { kind: "const", type: "i32", value: 0 },
+            accessWidth: 32
+          },
+          { op: "hostTrap", vector: { kind: "const", type: "i32", value: 0x2e } }
+        ]
+      }
+    ]
+  };
+  const plan: JitCodegenPlan = {
+    block,
+    instructionStates: [
+      {
+        instructionId: "materialize-before-overwrite",
+        eip: startAddress,
+        nextEip: startAddress + 1,
+        nextMode: "continue",
+        preInstructionState: snapshot("preInstruction", startAddress, 0),
+        postInstructionState: snapshot("postInstruction", startAddress + 1, 1, ["eax"]),
+        preInstructionExitPointCount: 0,
+        exitPointCount: 0
+      },
+      {
+        instructionId: "overwrite-before-exit",
+        eip: startAddress + 1,
+        nextEip: startAddress + 2,
+        nextMode: "exit",
+        preInstructionState: snapshot("preInstruction", startAddress + 1, 1, ["eax"]),
+        postInstructionState: snapshot("postInstruction", startAddress + 2, 2, ["eax"]),
+        preInstructionExitPointCount: 0,
+        exitPointCount: 1
+      }
+    ],
+    exitPoints: [{
+      instructionIndex: 1,
+      opIndex: 1,
+      exitReason: ExitReason.HOST_TRAP,
+      snapshot: snapshot("postInstruction", startAddress + 2, 2, ["eax"]),
+      exitStateIndex: 1,
+      requiredFlagCommitMask: 0
+    }],
+    flagMaterializationRequirements: [],
+    exitStates: [{ regs: [] }, { regs: ["eax"] }],
+    maxExitStateIndex: 1
+  };
+  const emissionPlan = buildJitCodegenEmissionPlan(block, plan);
+
+  strictEqual(emissionPlan.valueCachePlan, undefined);
+});
+
+test("buildJitCodegenEmissionPlan does not count same-instruction later materializations for earlier exits", () => {
+  const block: JitIrBlock = {
+    instructions: [{
+      instructionId: "fault-before-materialization",
+      eip: startAddress,
+      nextEip: startAddress + 1,
+      nextMode: "continue",
+      operands: [],
+      ir: [
+        {
+          op: "get",
+          dst: { kind: "var", id: 0 },
+          source: { kind: "mem", address: { kind: "const", type: "i32", value: 0x10000 } },
+          accessWidth: 32
+        },
+        { op: "get", dst: { kind: "var", id: 1 }, source: { kind: "reg", reg: "eax" }, accessWidth: 32 },
+        {
+          op: "value.binary",
+          type: "i32",
+          operator: "add",
+          dst: { kind: "var", id: 2 },
+          a: { kind: "var", id: 1 },
+          b: { kind: "const", type: "i32", value: 1 }
+        },
+        {
+          op: "set",
+          role: "registerMaterialization",
+          target: { kind: "reg", reg: "eax" },
+          value: { kind: "var", id: 2 },
+          accessWidth: 32
+        },
+        { op: "next" }
+      ]
+    }]
+  };
+  const plan: JitCodegenPlan = {
+    block,
+    instructionStates: [{
+      instructionId: "fault-before-materialization",
+      eip: startAddress,
+      nextEip: startAddress + 1,
+      nextMode: "continue",
+      preInstructionState: snapshot("preInstruction", startAddress, 0, ["eax"]),
+      postInstructionState: snapshot("postInstruction", startAddress + 1, 1, ["eax"]),
+      preInstructionExitPointCount: 1,
+      exitPointCount: 1
+    }],
+    exitPoints: [{
+      instructionIndex: 0,
+      opIndex: 0,
+      exitReason: ExitReason.MEMORY_READ_FAULT,
+      snapshot: snapshot("preInstruction", startAddress, 0, ["eax"]),
+      exitStateIndex: 1,
+      requiredFlagCommitMask: 0
+    }],
+    flagMaterializationRequirements: [],
+    exitStates: [{ regs: [] }, { regs: ["eax"] }],
+    maxExitStateIndex: 1
+  };
+  const emissionPlan = buildJitCodegenEmissionPlan(block, plan);
+
+  strictEqual(emissionPlan.valueCachePlan, undefined);
+});
+
+test("planJitMaterializedValueUses maps source materializations through inserted flag boundaries", () => {
+  const block: JitIrBlock = {
+    instructions: [{
+      instructionId: "boundary-before-materialization",
+      eip: startAddress,
+      nextEip: startAddress + 1,
+      nextMode: "exit",
+      operands: [],
+      ir: [
+        {
+          op: "get",
+          dst: { kind: "var", id: 0 },
+          source: { kind: "mem", address: { kind: "const", type: "i32", value: 0x10000 } },
+          accessWidth: 32
+        },
+        { op: "get", dst: { kind: "var", id: 1 }, source: { kind: "reg", reg: "eax" }, accessWidth: 32 },
+        {
+          op: "value.binary",
+          type: "i32",
+          operator: "add",
+          dst: { kind: "var", id: 2 },
+          a: { kind: "var", id: 1 },
+          b: { kind: "const", type: "i32", value: 1 }
+        },
+        {
+          op: "set",
+          role: "registerMaterialization",
+          target: { kind: "reg", reg: "eax" },
+          value: { kind: "var", id: 2 },
+          accessWidth: 32
+        },
+        { op: "hostTrap", vector: { kind: "const", type: "i32", value: 0x2e } }
+      ]
+    }]
+  };
+  const plan: JitCodegenPlan = {
+    block,
+    instructionStates: [{
+      instructionId: "boundary-before-materialization",
+      eip: startAddress,
+      nextEip: startAddress + 1,
+      nextMode: "exit",
+      preInstructionState: snapshot("preInstruction", startAddress, 0, [], IR_ALU_FLAG_MASK),
+      postInstructionState: snapshot("postInstruction", startAddress + 1, 1, ["eax"]),
+      preInstructionExitPointCount: 1,
+      exitPointCount: 2
+    }],
+    exitPoints: [
+      {
+        instructionIndex: 0,
+        opIndex: 0,
+        exitReason: ExitReason.MEMORY_READ_FAULT,
+        snapshot: snapshot("preInstruction", startAddress, 0, [], IR_ALU_FLAG_MASK),
+        exitStateIndex: 0,
+        requiredFlagCommitMask: IR_ALU_FLAG_MASK
+      },
+      {
+        instructionIndex: 0,
+        opIndex: 4,
+        exitReason: ExitReason.HOST_TRAP,
+        snapshot: snapshot("postInstruction", startAddress + 1, 1, ["eax"]),
+        exitStateIndex: 1,
+        requiredFlagCommitMask: 0
+      }
+    ],
+    flagMaterializationRequirements: [],
+    exitStates: [{ regs: [] }, { regs: ["eax"] }],
+    maxExitStateIndex: 1
+  };
+  const codegenIr = buildJitCodegenIr(plan);
+  const [instruction] = codegenIr.instructions;
+
+  if (instruction === undefined) {
+    throw new Error("missing codegen instruction");
+  }
+
+  const expressionBlock = buildIrExpressionBlock(instruction.ir);
+  const materializedValueUsePlan = planJitMaterializedValueUses([{ expressionBlock }], plan);
+  const boundaryIndex = expressionBlock.findIndex((op) => op.op === "flags.boundary");
+  const setIndex = expressionBlock.findIndex((op) => op.op === "set" && op.role === "registerMaterialization");
+
+  strictEqual(boundaryIndex !== -1 && setIndex !== -1 && boundaryIndex < setIndex, true);
+  deepStrictEqual([...(materializedValueUsePlan.expressionUseIndexesByInstruction[0] ?? new Set())], [setIndex]);
+});
+
+function snapshot(
+  kind: JitStateSnapshot["kind"],
+  eip: number,
+  instructionCountDelta: number,
+  committedRegs: JitStateSnapshot["committedRegs"] = [],
+  speculativeFlagMask = 0
+): JitStateSnapshot {
+  return {
+    kind,
+    eip,
+    instructionCountDelta,
+    committedRegs,
+    speculativeRegs: [],
+    committedFlags: { mask: 0 },
+    speculativeFlags: { mask: speculativeFlagMask }
+  };
+}
