@@ -5,7 +5,10 @@ import { ok, decodeBytes } from "#x86/isa/decoder/tests/helpers.js";
 import { IR_ALU_FLAG_MASK, IR_ALU_FLAG_MASKS } from "#x86/ir/model/flag-effects.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { buildJitIrBlock } from "#backends/wasm/jit/block.js";
+import { buildJitCodegenIr } from "#backends/wasm/jit/codegen/plan/block.js";
+import { buildJitCodegenEmissionPlan } from "#backends/wasm/jit/codegen/plan/emission.js";
 import { planJitCodegen } from "#backends/wasm/jit/codegen/plan/plan.js";
+import type { JitIrBlock } from "#backends/wasm/jit/ir/types.js";
 import { optimizeJitIrBlock } from "#backends/wasm/jit/optimization/optimize.js";
 import { onlyExit, startAddress } from "../../../optimization/tests/helpers.js";
 
@@ -104,4 +107,52 @@ test("planJitCodegen records flag materialization requirements before conditions
     strictEqual(exit.snapshot.kind, "postInstruction");
     strictEqual(exit.requiredFlagCommitMask, IR_ALU_FLAG_MASK);
   }
+});
+
+test("buildJitCodegenEmissionPlan prepares expression blocks and value-cache specs", () => {
+  const block: JitIrBlock = {
+    instructions: [{
+      instructionId: "cache-plan",
+      eip: startAddress,
+      nextEip: startAddress + 1,
+      nextMode: "exit",
+      operands: [],
+      ir: [
+        { op: "get", dst: { kind: "var", id: 0 }, source: { kind: "reg", reg: "eax" }, accessWidth: 32 },
+        {
+          op: "value.binary",
+          type: "i32",
+          operator: "add",
+          dst: { kind: "var", id: 1 },
+          a: { kind: "var", id: 0 },
+          b: { kind: "const", type: "i32", value: 1 }
+        },
+        { op: "get", dst: { kind: "var", id: 2 }, source: { kind: "reg", reg: "eax" }, accessWidth: 32 },
+        {
+          op: "value.binary",
+          type: "i32",
+          operator: "add",
+          dst: { kind: "var", id: 3 },
+          a: { kind: "var", id: 2 },
+          b: { kind: "const", type: "i32", value: 1 }
+        },
+        {
+          op: "conditionalJump",
+          condition: { kind: "const", type: "i32", value: 0 },
+          taken: { kind: "var", id: 1 },
+          notTaken: { kind: "var", id: 3 }
+        }
+      ]
+    }]
+  };
+  const codegenPlan = planJitCodegen(block);
+  const emissionPlan = buildJitCodegenEmissionPlan(buildJitCodegenIr(codegenPlan), codegenPlan);
+  const [instruction] = emissionPlan.instructions;
+
+  strictEqual(instruction?.instructionId, "cache-plan");
+  strictEqual(emissionPlan.exitPoints, codegenPlan.exitPoints);
+  strictEqual(emissionPlan.exitStates, codegenPlan.exitStates);
+  strictEqual(instruction?.expressionBlock.some((op) => op.op === "conditionalJump"), true);
+  strictEqual((instruction?.valueCachePlan?.selectedUseCounts.length ?? 0) > 0, true);
+  strictEqual((instruction?.valueCachePlan?.selectedValuesByEpoch.length ?? 0) > 0, true);
 });

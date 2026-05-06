@@ -11,6 +11,11 @@ import type { JitExitPoint } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitOperandBinding } from "#backends/wasm/jit/ir/operand-bindings.js";
 import type { JitIrContext } from "./ir-context.js";
 import {
+  canInlineJitInstructionGet,
+  jitInstructionStorageRefsMayAlias,
+  jitStorageRegisterAlias
+} from "#backends/wasm/jit/codegen/plan/operand-analysis.js";
+import {
   cleanValueWidth,
   constValueWidth,
   dirtyValueWidth,
@@ -22,31 +27,14 @@ import {
   type ValueWidth
 } from "#backends/wasm/codegen/value-width.js";
 
-export function canInlineJitGet(context: JitIrContext, source: StorageRef): boolean {
-  switch (source.kind) {
-    case "reg":
-      return true;
-    case "mem":
-      return false;
-    case "operand": {
-      const binding = operandBinding(context, source.index);
+export { canInlineJitInstructionGet, jitInstructionStorageRefsMayAlias } from "#backends/wasm/jit/codegen/plan/operand-analysis.js";
 
-      return binding.kind !== "static.mem";
-    }
-  }
+export function canInlineJitGet(context: JitIrContext, source: StorageRef): boolean {
+  return canInlineJitInstructionGet(context.currentInstruction(), source);
 }
 
 export function jitStorageRefsMayAlias(context: JitIrContext, write: StorageRef, read: StorageRef): boolean {
-  if (write.kind === "mem" || read.kind === "mem") {
-    return write.kind === "mem" && read.kind === "mem";
-  }
-
-  const writeAlias = storageRegisterAlias(context, write);
-  const readAlias = storageRegisterAlias(context, read);
-
-  return writeAlias !== undefined &&
-    readAlias !== undefined &&
-    registerAliasesMayOverlap(writeAlias, readAlias);
+  return jitInstructionStorageRefsMayAlias(context.currentInstruction(), write, read);
 }
 
 export function emitJitGet(
@@ -362,26 +350,6 @@ function operandBinding(context: JitIrContext, index: number): JitOperandBinding
   return binding;
 }
 
-function storageRegisterAlias(context: JitIrContext, storage: StorageRef | IrStorageExpr): RegisterAlias | undefined {
-  switch (storage.kind) {
-    case "reg":
-      return regAccess(storage.reg, 32);
-    case "mem":
-      return undefined;
-    case "operand": {
-      const binding = operandBinding(context, storage.index);
-
-      return binding.kind === "static.reg" ? binding.alias : undefined;
-    }
-  }
-}
-
-function registerAliasesMayOverlap(left: RegisterAlias, right: RegisterAlias): boolean {
-  return left.base === right.base &&
-    left.bitOffset < right.bitOffset + right.width &&
-    right.bitOffset < left.bitOffset + left.width;
-}
-
 function sourceLocalForSetValue(
   context: JitIrContext,
   target: RegisterAlias,
@@ -394,7 +362,7 @@ function sourceLocalForSetValue(
     return undefined;
   }
 
-  const sourceAlias = storageRegisterAlias(context, value.source);
+  const sourceAlias = jitStorageRegisterAlias(context.currentInstruction(), value.source);
 
   if (sourceAlias === undefined) {
     return undefined;

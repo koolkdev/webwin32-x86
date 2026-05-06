@@ -3,7 +3,7 @@ import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-bo
 import type { OperandWidth } from "#x86/isa/types.js";
 import type { ExitReason as ExitReasonValue } from "#backends/wasm/exit.js";
 import type { JitModuleLinkTable } from "#backends/wasm/jit/compiled-blocks/module-link-table.js";
-import { emitIrToWasm, type WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
+import { emitIrExpressionBlockToWasm, type WasmIrEmitHelpers } from "#backends/wasm/codegen/emit.js";
 import type {
   IrSetExprOp,
   IrStorageExpr,
@@ -18,27 +18,20 @@ import {
   emitJitNextEip
 } from "./control.js";
 import {
-  canInlineJitGet,
   emitJitAddress,
   emitJitGet,
   emitJitSet,
-  emitJitSetIf,
-  jitStorageRefsMayAlias
+  emitJitSetIf
 } from "./operands.js";
-import type { JitExitPoint, JitInstructionState } from "#backends/wasm/jit/codegen/plan/types.js";
+import type { JitExitPoint } from "#backends/wasm/jit/codegen/plan/types.js";
 import type { JitExitTarget, JitIrState } from "#backends/wasm/jit/state/state.js";
-import type { JitIrBlockInstruction } from "#backends/wasm/jit/ir/types.js";
+import {
+  createJitValueCacheRuntime,
+  type JitValueCacheRuntime
+} from "./value-local-store.js";
+import type { JitCodegenInstructionPlan } from "#backends/wasm/jit/codegen/plan/emission.js";
 
-export type JitIrInstructionContext = Pick<JitIrBlockInstruction, "ir" | "operands"> & Pick<
-  JitInstructionState,
-  | "instructionId"
-  | "eip"
-  | "nextEip"
-  | "nextMode"
-  | "preInstructionState"
-  | "postInstructionState"
-  | "preInstructionExitPointCount"
->;
+export type JitIrInstructionContext = JitCodegenInstructionPlan;
 
 export type JitLinkResolver = Readonly<{
   moduleTable?: JitModuleLinkTable;
@@ -145,24 +138,21 @@ function createJitIrContext(context: JitIrBlockEmitContext): JitIrContext {
 }
 
 function emitCurrentInstruction(jitContext: JitIrContext): void {
-  emitJitIrBlock(jitContext, jitContext.currentInstruction().ir);
+  emitJitIrBlock(jitContext, jitContext.currentInstruction());
 }
 
-function emitJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["ir"]): void {
-  emitIrToWasm(ir, {
+function emitJitIrBlock(jitContext: JitIrContext, instruction: JitIrInstructionContext): void {
+  const valueCache = createJitValueCacheRuntime(jitContext.body, instruction.valueCachePlan);
+
+  emitIrExpressionBlockToWasm(instruction.expressionBlock, {
     body: jitContext.body,
     scratch: jitContext.scratch,
-    expression: {
-      canInlineGet: (source) => canInlineJitGet(jitContext, source),
-      alias: {
-        storageMayAlias: (write, read) => jitStorageRefsMayAlias(jitContext, write, read)
-      }
-    },
+    ...(valueCache === undefined ? {} : { valueCache }),
     emitGet: (source, accessWidth, helpers, options) => emitJitGet(jitContext, source, accessWidth, helpers, options),
     emitSet: (target, value, accessWidth, helpers, op) =>
-      emitJitSetWithRole(jitContext, target, value, accessWidth, helpers, op),
+      emitJitSetWithRole(jitContext, valueCache, target, value, accessWidth, helpers, op),
     emitSetIf: (condition, target, value, accessWidth, helpers) =>
-      emitJitSetIf(jitContext, condition, target, value, accessWidth, helpers),
+      emitJitSetIfWithCacheInvalidation(jitContext, valueCache, condition, target, value, accessWidth, helpers),
     emitAddress: (source) => emitJitAddress(jitContext, source),
     emitSetFlags: (descriptor, helpers) =>
       jitContext.state.flags.emitSet(descriptor, helpers),
@@ -181,6 +171,7 @@ function emitJitIrBlock(jitContext: JitIrContext, ir: JitIrInstructionContext["i
 
 function emitJitSetWithRole(
   jitContext: JitIrContext,
+  valueCache: JitValueCacheRuntime | undefined,
   target: IrStorageExpr,
   value: IrValueExpr,
   accessWidth: OperandWidth,
@@ -190,6 +181,7 @@ function emitJitSetWithRole(
   emitJitSet(jitContext, target, value, accessWidth, helpers);
 
   if (op.role !== "registerMaterialization") {
+    valueCache?.notifyWrite(target, accessWidth);
     return;
   }
 
@@ -202,6 +194,20 @@ function emitJitSetWithRole(
   }
 
   jitContext.state.regs.commitPendingReg(target.reg);
+  valueCache?.notifyWrite(target, accessWidth);
+}
+
+function emitJitSetIfWithCacheInvalidation(
+  jitContext: JitIrContext,
+  valueCache: JitValueCacheRuntime | undefined,
+  condition: IrValueExpr,
+  target: IrStorageExpr,
+  value: IrValueExpr,
+  accessWidth: OperandWidth,
+  helpers: WasmIrEmitHelpers
+): void {
+  emitJitSetIf(jitContext, condition, target, value, accessWidth, helpers);
+  valueCache?.notifyWrite(target, accessWidth);
 }
 
 function beginInstruction(

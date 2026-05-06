@@ -37,6 +37,7 @@ export type WasmIrEmitContext = Readonly<{
   body: WasmFunctionBodyEncoder;
   scratch: WasmLocalScratchAllocator;
   expression?: IrExpressionOptions;
+  valueCache?: WasmIrValueCache;
   emitGet(
     source: IrStorageExpr,
     accessWidth: OperandWidth,
@@ -75,11 +76,16 @@ export type WasmIrEmitHelpers = Readonly<{
   emitMaskedValue(value: IrValueExpr, width: OperandWidth): ValueWidth;
 }>;
 
+export type WasmIrValueCache = Readonly<{
+  emitForUse(value: IrValueExpr, emitter: () => ValueWidth): ValueWidth;
+  maybeMaterializeForLater?(value: IrValueExpr, emitter: () => ValueWidth): boolean;
+}>;
+
 export function emitIrToWasm(block: IrExpressionInputBlock, context: WasmIrEmitContext): void {
   emitIrExpressionBlockToWasm(buildIrExpressionBlock(block, context.expression), context);
 }
 
-function emitIrExpressionBlockToWasm(block: IrExprBlock, context: WasmIrEmitContext): void {
+export function emitIrExpressionBlockToWasm(block: IrExprBlock, context: WasmIrEmitContext): void {
   new IrExprWasmEmitter(block, context).emit();
 }
 
@@ -158,7 +164,9 @@ class IrExprWasmEmitter {
   }
 
   #emitValue(value: IrValueExpr, options: WasmIrEmitValueOptions = {}): ValueWidth {
-    const valueWidth = this.#emitValueUnmasked(value, options);
+    const valueWidth = this.#context.valueCache === undefined
+      ? this.#emitValueUncached(value, options)
+      : this.#context.valueCache.emitForUse(value, () => this.#emitValueUncached(value, options));
 
     if (options.requestedWidth === undefined) {
       return valueWidth;
@@ -180,7 +188,7 @@ class IrExprWasmEmitter {
     return emitMaskValueToWidth(this.#context.body, width, this.#emitValue(value));
   }
 
-  #emitValueUnmasked(value: IrValueExpr, options: WasmIrEmitValueOptions): ValueWidth {
+  #emitValueUncached(value: IrValueExpr, options: WasmIrEmitValueOptions): ValueWidth {
     switch (value.kind) {
       case "var":
         this.#context.body.localGet(this.#wasmLocalForVar(value.id));

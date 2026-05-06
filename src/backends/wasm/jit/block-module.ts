@@ -8,15 +8,14 @@ import { encodeExit, ExitReason } from "#backends/wasm/exit.js";
 import { jitModuleLinkFallbackExportName } from "./compiled-blocks/module-link-table.js";
 import { validateJitIrBlock } from "./ir/validate.js";
 import { buildJitCodegenIr } from "./codegen/plan/block.js";
+import { buildJitCodegenEmissionPlan } from "./codegen/plan/emission.js";
 import { planJitCodegen } from "./codegen/plan/plan.js";
 import {
   emitJitIrWithContext,
-  type JitIrInstructionContext,
   type JitLinkEmitContext,
   type JitLinkResolver
 } from "./codegen/emit/ir-context.js";
 import { optimizeJitIrBlock } from "./optimization/optimize.js";
-import type { JitCodegenPlan } from "#backends/wasm/jit/codegen/plan/types.js";
 import { createJitIrState, type JitExitTarget, type JitIrState } from "./state/state.js";
 import type { JitIrBlock } from "./ir/types.js";
 
@@ -108,10 +107,11 @@ function encodeJitIrBlockFunctionBody(
 
   validateJitIrBlock(codegenIr);
 
+  const emissionPlan = buildJitCodegenEmissionPlan(codegenIr, codegenPlan);
   const body = new WasmFunctionBodyEncoder();
   const scratch = new WasmLocalScratchAllocator(body);
   const exitLocal = body.addLocal(wasmValueType.i64);
-  const state = createJitIrState(body, codegenPlan.exitStates);
+  const state = createJitIrState(body, emissionPlan.exitStates);
   const exit: JitExitTarget = { exitLocal, exitLabelDepth: state.maxExitStateIndex };
 
   state.emitLoadInstructionCount();
@@ -122,8 +122,8 @@ function encodeJitIrBlockFunctionBody(
     scratch,
     state,
     exit,
-    instructions: codegenInstructions(codegenIr, codegenPlan),
-    exitPoints: codegenPlan.exitPoints,
+    instructions: emissionPlan.instructions,
+    exitPoints: emissionPlan.exitPoints,
     ...(linking === undefined ? {} : { linking })
   });
   emitExitStateStores(body, state, exitLocal);
@@ -214,31 +214,6 @@ function emitLinkFallbackExports(
 
     module.exportFunction(jitModuleLinkFallbackExportName(targetEip), fallbackIndex);
   }
-}
-
-function codegenInstructions(
-  block: JitIrBlock,
-  codegenPlan: JitCodegenPlan
-): readonly JitIrInstructionContext[] {
-  if (block.instructions.length !== codegenPlan.instructionStates.length) {
-    throw new Error(
-      `JIT codegen instruction count mismatch: ${block.instructions.length} !== ${codegenPlan.instructionStates.length}`
-    );
-  }
-
-  return block.instructions.map((instruction, index) => {
-    const state = codegenPlan.instructionStates[index];
-
-    if (state === undefined) {
-      throw new Error(`missing JIT instruction state for codegen: ${index}`);
-    }
-
-    return {
-      ...state,
-      ir: instruction.ir,
-      operands: instruction.operands
-    };
-  });
 }
 
 function emitExitStateStores(
