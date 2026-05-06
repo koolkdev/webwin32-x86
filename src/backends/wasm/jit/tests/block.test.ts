@@ -1298,6 +1298,32 @@ test("jit IR block keeps cmovcc source memory faults unconditional", async () =>
   deepStrictEqual(result.exit, { exitReason: ExitReason.MEMORY_READ_FAULT, payload: 0x10000, detail: 4 });
 });
 
+test("jit IR block freezes conditional register values before later full-register copies", async () => {
+  const result = await runJitIrBlock(
+    [
+      0x0f, 0x44, 0xc1, // cmove eax, ecx
+      0x89, 0xc3, // mov ebx, eax
+      0x0f, 0x44, 0xc2 // cmove eax, edx
+    ],
+    createCpuState({
+      eax: 0x1111_1111,
+      ebx: 0xbbbb_bbbb,
+      ecx: 0x2222_2222,
+      edx: 0x3333_3333,
+      eflags: preservedEflags | zeroFlag,
+      eip: startAddress
+    })
+  );
+
+  strictEqual(result.state.eax, 0x3333_3333);
+  strictEqual(result.state.ebx, 0x2222_2222);
+  strictEqual(result.state.ecx, 0x2222_2222);
+  strictEqual(result.state.edx, 0x3333_3333);
+  strictEqual(result.state.eip, startAddress + 8);
+  strictEqual(result.state.instructionCount, 3);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + 8 });
+});
+
 test("jit IR block preserves committed conditional writes on later pre-instruction exits", async () => {
   const result = await runJitIrBlock(
     [

@@ -27,7 +27,6 @@ import {
   type ValueWidth
 } from "#backends/wasm/codegen/value-width.js";
 import {
-  fullRegisterLaneSourcesFrom,
   type FullRegisterLaneSources
 } from "#backends/wasm/jit/state/register-lanes.js";
 
@@ -202,7 +201,7 @@ function emitSetRegisterAlias(
   value: IrValueExpr,
   helpers: WasmIrEmitHelpers
 ): void {
-  const laneSources = laneSourcesForSetValue(context, target, value);
+  const laneSources = materializeLaneSourcesForSetValue(context, target, value);
 
   context.state.regs.emitWriteAlias(target, laneSources === undefined
     ? () => helpers.emitValue(value)
@@ -354,7 +353,7 @@ function operandBinding(context: JitIrContext, index: number): JitOperandBinding
   return binding;
 }
 
-function laneSourcesForSetValue(
+function materializeLaneSourcesForSetValue(
   context: JitIrContext,
   target: RegisterAlias,
   value: IrValueExpr
@@ -376,5 +375,7 @@ function laneSourcesForSetValue(
     return undefined;
   }
 
-  return fullRegisterLaneSourcesFrom(context.state.regs.localLaneSourcesForAlias(sourceAlias));
+  // This may emit and mutate register state by freezing/materializing the
+  // source before the destination records reusable stable lane sources.
+  return context.state.regs.ensureStableFullLaneSourcesForCopy(sourceAlias.base);
 }

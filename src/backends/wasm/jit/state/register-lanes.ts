@@ -18,38 +18,20 @@ export type FullRegisterLaneSources = readonly [
   LocalLaneSource
 ];
 
-export type LocalBackedLaneValue = Readonly<{
+export type LocalBackedByteLane = Readonly<{
   kind: "value";
   source: LocalLaneSource;
 }>;
 
-export type RegisterLaneValue = UnknownLaneSource | LocalBackedLaneValue;
+export type ByteLane = UnknownLaneSource | LocalBackedByteLane;
 
 export type RegValueState = {
-  // Full-register architectural value, or unknown when bytes/CPU state define it.
-  full: RegisterLaneValue;
-  // Per-byte architectural values; unknown bytes still come from CPU state memory.
-  bytes: RegisterLaneValue[];
-  // Exact partial-width values for direct alias reads and efficient merges.
-  partials: Map<string, LocalBackedLaneValue>;
-  // Local this state may mutate in place; not part of architectural contents.
-  mutableFullLocal?: number;
+  bytes: [ByteLane, ByteLane, ByteLane, ByteLane];
 };
 
 export type AliasByteRange = Readonly<{
   startByte: number;
   byteLength: number;
-}>;
-
-export type PartialLaneSource = Readonly<{
-  bitOffset: RegisterAlias["bitOffset"];
-  width: RegisterAlias["width"];
-  source: LocalLaneSource;
-}>;
-
-type LaneRange = Readonly<{
-  bitOffset: RegisterAlias["bitOffset"];
-  width: RegisterAlias["width"];
 }>;
 
 export const fullWidth = 32;
@@ -58,37 +40,42 @@ export const byteMask = 0xff;
 export const byteCount = 4;
 
 const unknownLaneSource: UnknownLaneSource = { kind: "unknown" };
+const fullLaneAlias: RegisterAlias = { name: "eax", base: "eax", bitOffset: 0, width: fullWidth };
 
 export function emptyRegValueState(): RegValueState {
   return {
-    full: unknownLaneSource,
-    bytes: new Array<RegisterLaneValue>(byteCount).fill(unknownLaneSource),
-    partials: new Map()
+    bytes: unknownByteLanes()
   };
 }
 
-export function isLocalBackedLaneValue(value: RegisterLaneValue | undefined): value is LocalBackedLaneValue {
+export function cloneRegValueState(state: RegValueState): RegValueState {
+  return {
+    bytes: [...state.bytes]
+  };
+}
+
+export function clearKnownBytes(state: RegValueState): void {
+  state.bytes = unknownByteLanes();
+}
+
+export function isLocalBackedByteLane(value: ByteLane | undefined): value is LocalBackedByteLane {
   return value?.kind === "value" && value.source.kind === "local";
 }
 
-export function hasPartialLocalValues(state: RegValueState): boolean {
-  return state.bytes.some(isLocalBackedLaneValue);
+export function hasKnownBytes(state: RegValueState): boolean {
+  return state.bytes.some(isLocalBackedByteLane);
 }
 
-export function allBytesHaveLocalValues(state: RegValueState): boolean {
-  return state.bytes.every(isLocalBackedLaneValue);
+export function allBytesKnown(state: RegValueState): boolean {
+  return state.bytes.every(isLocalBackedByteLane);
 }
 
-export function exactFullLocalSource(state: RegValueState | undefined): LocalLaneSource | undefined {
-  return localSourceForLaneValue(state?.full);
+export function exactFullLocal(state: RegValueState | undefined): LocalLaneSource | undefined {
+  return exactLocalForAlias(state, fullLaneAlias);
 }
 
 export function fullRegAccess(reg: Reg32): RegisterAlias {
   return { name: reg, base: reg, bitOffset: 0, width: fullWidth };
-}
-
-export function aliasMask(alias: RegisterAlias): number {
-  return (widthMask(alias.width) << alias.bitOffset) >>> 0;
 }
 
 export function aliasByteRange(alias: RegisterAlias): AliasByteRange {
@@ -98,26 +85,30 @@ export function aliasByteRange(alias: RegisterAlias): AliasByteRange {
   };
 }
 
-export function recordFullLocalValue(
-  state: RegValueState,
-  valueLocal: number,
-  options: Readonly<{ mutable?: boolean }> = {}
-): void {
-  state.full = localBackedLaneValue(valueLocal, 0, fullWidth);
-  state.partials.clear();
-
-  for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
-    state.bytes[byteIndex] = localBackedLaneValue(valueLocal, byteIndex * byteWidth, fullWidth);
-  }
-
-  if (options.mutable === true) {
-    state.mutableFullLocal = valueLocal;
-  } else {
-    delete state.mutableFullLocal;
-  }
+export function aliasMask(alias: RegisterAlias): number {
+  return (widthMask(alias.width) << alias.bitOffset) >>> 0;
 }
 
-export function fullLocalLaneSources(valueLocal: number): FullRegisterLaneSources {
+export function recordFullStableLocal(state: RegValueState, valueLocal: number): void {
+  recordAliasLaneSources(state, fullLaneAlias, stableFullLaneSources(valueLocal));
+}
+
+export function recordPartialStableLocal(state: RegValueState, alias: RegisterAlias, valueLocal: number): void {
+  const sources: LocalLaneSource[] = [];
+
+  for (let index = 0; index < alias.width / byteWidth; index += 1) {
+    sources.push({
+      kind: "local",
+      local: valueLocal,
+      bitOffset: index * byteWidth,
+      valueWidth: alias.width
+    });
+  }
+
+  recordAliasLaneSources(state, alias, sources);
+}
+
+export function stableFullLaneSources(valueLocal: number): FullRegisterLaneSources {
   return [
     { kind: "local", local: valueLocal, bitOffset: 0, valueWidth: fullWidth },
     { kind: "local", local: valueLocal, bitOffset: byteWidth, valueWidth: fullWidth },
@@ -137,33 +128,27 @@ export function fullRegisterLaneSourcesFrom(
   return sources;
 }
 
-export function recordFullLocalLaneSources(
+export function recordAliasLaneSources(
   state: RegValueState,
-  sources: FullRegisterLaneSources
+  alias: RegisterAlias,
+  sources: readonly LocalLaneSource[]
 ): void {
-  assertFullRegisterLaneSources(sources);
+  const { startByte, byteLength } = aliasByteRange(alias);
 
-  const fullSource = exactFullSourceForLaneSources(sources);
-
-  if (fullSource !== undefined) {
-    recordFullLocalValue(state, fullSource.local);
-    return;
+  if (sources.length !== byteLength) {
+    throw new Error(`register alias lane write needs ${byteLength} byte sources, got ${sources.length}`);
   }
 
-  state.full = unknownLaneSource;
-  state.partials.clear();
-
-  for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
-    const source = sources[byteIndex];
+  for (let index = 0; index < byteLength; index += 1) {
+    const source = sources[index];
 
     if (source === undefined) {
-      throw new Error(`missing full register lane source: ${byteIndex}`);
+      throw new Error(`missing register alias lane source: ${index}`);
     }
 
-    state.bytes[byteIndex] = { kind: "value", source };
+    assertLaneSourceCanSupplyByte(source);
+    state.bytes[startByte + index] = { kind: "value", source };
   }
-
-  delete state.mutableFullLocal;
 }
 
 export function assertFullRegisterLaneSources(
@@ -180,81 +165,23 @@ export function assertFullRegisterLaneSources(
       throw new Error(`missing full register lane source: ${byteIndex}`);
     }
 
-    if (source.bitOffset % byteWidth !== 0 || source.bitOffset < 0) {
-      throw new Error(`invalid full register lane bit offset at byte ${byteIndex}: ${source.bitOffset}`);
-    }
-
-    if (source.bitOffset + byteWidth > source.valueWidth) {
-      throw new Error(`full register lane source cannot supply byte ${byteIndex}`);
-    }
+    assertLaneSourceCanSupplyByte(source);
   }
 }
 
-export function recordPartialLocalValue(state: RegValueState, alias: RegisterAlias, valueLocal: number): void {
-  const { startByte, byteLength } = aliasByteRange(alias);
-
-  state.full = unknownLaneSource;
-  clearOverlappingPartialLanes(state, alias);
-  state.partials.set(aliasLaneKey(alias), localBackedLaneValue(valueLocal, 0, alias.width));
-
-  for (let index = 0; index < byteLength; index += 1) {
-    state.bytes[startByte + index] = localBackedLaneValue(valueLocal, index * byteWidth, alias.width);
-  }
-}
-
-export function mergePartialLocalValues(target: RegValueState, source: RegValueState): void {
-  const knownByteIndexes = source.bytes
-    .map((value, byteIndex) => isLocalBackedLaneValue(value) ? byteIndex : undefined)
-    .filter((byteIndex): byteIndex is number => byteIndex !== undefined);
-
-  if (knownByteIndexes.length === 0) {
-    return;
-  }
-
-  target.full = unknownLaneSource;
-  clearPartialLanesOverlappingBytes(target, knownByteIndexes);
-
-  for (const byteIndex of knownByteIndexes) {
-    const sourceByte = source.bytes[byteIndex];
-
-    if (isLocalBackedLaneValue(sourceByte)) {
-      target.bytes[byteIndex] = sourceByte;
-    }
-  }
-
-  for (const [key, value] of source.partials) {
-    target.partials.set(key, value);
-  }
-}
-
-export function exactLocalSourceForAlias(
-  alias: RegisterAlias,
-  pending: RegValueState | undefined,
-  committed: RegValueState | undefined
-): LocalLaneSource | undefined {
-  const pendingSource = exactLocalSourceForAliasInState(alias, pending);
-
-  if (pendingSource !== undefined) {
-    return pendingSource;
-  }
-
-  if (pending !== undefined && hasKnownBytesForAlias(pending, alias)) {
+export function laneSourcesForAlias(
+  state: RegValueState | undefined,
+  alias: RegisterAlias
+): readonly LocalLaneSource[] | undefined {
+  if (state === undefined) {
     return undefined;
   }
 
-  return exactLocalSourceForAliasInState(alias, committed);
-}
-
-export function localSourcesForAlias(
-  alias: RegisterAlias,
-  pending: RegValueState | undefined,
-  committed: RegValueState | undefined
-): readonly LocalLaneSource[] | undefined {
   const { startByte, byteLength } = aliasByteRange(alias);
   const sources: LocalLaneSource[] = [];
 
   for (let index = 0; index < byteLength; index += 1) {
-    const source = localSourceAt(startByte + index, pending, committed);
+    const source = localSourceForByteLane(state.bytes[startByte + index]);
 
     if (source === undefined) {
       return undefined;
@@ -266,34 +193,59 @@ export function localSourcesForAlias(
   return sources;
 }
 
-export function localSourceAt(
-  byteIndex: number,
-  pending: RegValueState | undefined,
-  committed: RegValueState | undefined
+export function exactLocalForAlias(
+  state: RegValueState | undefined,
+  alias: RegisterAlias
 ): LocalLaneSource | undefined {
-  const pendingByte = localSourceForLaneValue(pending?.bytes[byteIndex]);
-
-  if (pendingByte !== undefined) {
-    return pendingByte;
-  }
-
-  return localSourceForLaneValue(committed?.bytes[byteIndex]);
+  return exactLocalForLaneSources(laneSourcesForAlias(state, alias), alias.width);
 }
 
-export function stateUsesLocal(state: RegValueState, local: number): boolean {
-  if (exactFullLocalSource(state)?.local === local) {
-    return true;
+export function exactLocalForLaneSources(
+  sources: readonly LocalLaneSource[] | undefined,
+  width: OperandWidth
+): LocalLaneSource | undefined {
+  const first = sources?.[0];
+
+  if (sources === undefined || first === undefined) {
+    return undefined;
   }
 
-  return state.bytes.some((value) => localSourceForLaneValue(value)?.local === local) ||
-    [...state.partials.values()].some((value) => value.source.local === local);
+  const byteLength = width / byteWidth;
+
+  if (sources.length !== byteLength || first.bitOffset + width > first.valueWidth) {
+    return undefined;
+  }
+
+  for (let index = 0; index < byteLength; index += 1) {
+    const source = sources[index];
+
+    if (
+      source === undefined ||
+      source.local !== first.local ||
+      source.valueWidth !== first.valueWidth ||
+      source.bitOffset !== first.bitOffset + index * byteWidth
+    ) {
+      return undefined;
+    }
+  }
+
+  return {
+    kind: "local",
+    local: first.local,
+    bitOffset: first.bitOffset,
+    valueWidth: first.valueWidth
+  };
+}
+
+export function localSourceAt(state: RegValueState | undefined, byteIndex: number): LocalLaneSource | undefined {
+  return localSourceForByteLane(state?.bytes[byteIndex]);
 }
 
 export function knownByteLocalSources(state: RegValueState): readonly [number, LocalLaneSource][] {
   const sources: [number, LocalLaneSource][] = [];
 
   for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
-    const source = localSourceForLaneValue(state.bytes[byteIndex]);
+    const source = localSourceForByteLane(state.bytes[byteIndex]);
 
     if (source !== undefined) {
       sources.push([byteIndex, source]);
@@ -303,151 +255,20 @@ export function knownByteLocalSources(state: RegValueState): readonly [number, L
   return sources;
 }
 
-export function partialLaneLocalSources(state: RegValueState): readonly PartialLaneSource[] {
-  return [...state.partials.entries()]
-    .map(([key, value]) => ({ ...partialLaneFromKey(key), source: value.source }))
-    .sort((left, right) => left.bitOffset - right.bitOffset || right.width - left.width);
+function unknownByteLanes(): [ByteLane, ByteLane, ByteLane, ByteLane] {
+  return [unknownLaneSource, unknownLaneSource, unknownLaneSource, unknownLaneSource];
 }
 
-export function localMergeBaseForKnownBytes(state: RegValueState): number | undefined {
-  const localByteSets = new Map<number, Set<number>>();
-
-  for (const [byteIndex, source] of knownByteLocalSources(state)) {
-    if (source.bitOffset !== byteIndex * byteWidth) {
-      continue;
-    }
-
-    const byteSet = localByteSets.get(source.local);
-
-    if (byteSet === undefined) {
-      localByteSets.set(source.local, new Set([byteIndex]));
-    } else {
-      byteSet.add(byteIndex);
-    }
+function assertLaneSourceCanSupplyByte(source: LocalLaneSource): void {
+  if (source.bitOffset % byteWidth !== 0 || source.bitOffset < 0) {
+    throw new Error(`invalid register lane bit offset: ${source.bitOffset}`);
   }
 
-  // A merge base supplies any still-unknown high bytes. Only full-width locals
-  // can safely do that; requiring ownership of byte 3 prevents a low byte/word
-  // source from inventing the upper half of a register.
-  return [...localByteSets.entries()]
-    .filter(([, byteIndexes]) => byteIndexes.has(byteCount - 1))
-    .sort((left, right) => right[1].size - left[1].size)[0]?.[0];
-}
-
-function localBackedLaneValue(local: number, bitOffset: number, valueWidth: OperandWidth): LocalBackedLaneValue {
-  return {
-    kind: "value",
-    source: { kind: "local", local, bitOffset, valueWidth }
-  };
-}
-
-function exactFullSourceForLaneSources(sources: readonly LocalLaneSource[]): LocalLaneSource | undefined {
-  const first = sources[0];
-
-  if (first === undefined) {
-    return undefined;
-  }
-
-  for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
-    const source = sources[byteIndex];
-
-    if (
-      source === undefined ||
-      source.local !== first.local ||
-      source.valueWidth !== fullWidth ||
-      source.bitOffset !== byteIndex * byteWidth
-    ) {
-      return undefined;
-    }
-  }
-
-  return { kind: "local", local: first.local, bitOffset: 0, valueWidth: fullWidth };
-}
-
-function localSourceForLaneValue(value: RegisterLaneValue | undefined): LocalLaneSource | undefined {
-  return isLocalBackedLaneValue(value) ? value.source : undefined;
-}
-
-function exactLocalSourceForAliasInState(
-  alias: RegisterAlias,
-  state: RegValueState | undefined
-): LocalLaneSource | undefined {
-  if (state === undefined) {
-    return undefined;
-  }
-
-  if (alias.width === fullWidth && alias.bitOffset === 0) {
-    return exactFullLocalSource(state);
-  }
-
-  const partial = state.partials.get(aliasLaneKey(alias));
-
-  if (partial !== undefined) {
-    return partial.source;
-  }
-
-  const full = exactFullLocalSource(state);
-
-  return full === undefined
-    ? undefined
-    : { kind: "local", local: full.local, bitOffset: alias.bitOffset, valueWidth: full.valueWidth };
-}
-
-function hasKnownBytesForAlias(state: RegValueState, alias: RegisterAlias): boolean {
-  const { startByte, byteLength } = aliasByteRange(alias);
-
-  for (let index = 0; index < byteLength; index += 1) {
-    if (isLocalBackedLaneValue(state.bytes[startByte + index])) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function clearOverlappingPartialLanes(state: RegValueState, alias: RegisterAlias): void {
-  for (const key of state.partials.keys()) {
-    const lane = partialLaneFromKey(key);
-
-    if (aliasesOverlap(alias, lane)) {
-      state.partials.delete(key);
-    }
+  if (source.bitOffset + byteWidth > source.valueWidth) {
+    throw new Error(`register lane source cannot supply byte at bit offset ${source.bitOffset}`);
   }
 }
 
-function clearPartialLanesOverlappingBytes(state: RegValueState, byteIndexes: readonly number[]): void {
-  for (const key of state.partials.keys()) {
-    const lane = partialLaneFromKey(key);
-
-    if (byteIndexes.some((byteIndex) => laneOverlapsByte(lane, byteIndex))) {
-      state.partials.delete(key);
-    }
-  }
-}
-
-function aliasLaneKey(alias: RegisterAlias): string {
-  return `${alias.bitOffset}:${alias.width}`;
-}
-
-function partialLaneFromKey(key: string): LaneRange {
-  const [bitOffset, width] = key.split(":").map(Number);
-
-  if ((width !== 8 && width !== 16 && width !== 32) || (bitOffset !== 0 && bitOffset !== 8)) {
-    throw new Error(`invalid register lane key: ${key}`);
-  }
-
-  return { bitOffset, width };
-}
-
-function aliasesOverlap(left: LaneRange, right: LaneRange): boolean {
-  const leftEnd = left.bitOffset + left.width;
-  const rightEnd = right.bitOffset + right.width;
-
-  return left.bitOffset < rightEnd && right.bitOffset < leftEnd;
-}
-
-function laneOverlapsByte(lane: LaneRange, byteIndex: number): boolean {
-  const byteBitOffset = byteIndex * byteWidth;
-
-  return lane.bitOffset < byteBitOffset + byteWidth && byteBitOffset < lane.bitOffset + lane.width;
+function localSourceForByteLane(value: ByteLane | undefined): LocalLaneSource | undefined {
+  return isLocalBackedByteLane(value) ? value.source : undefined;
 }

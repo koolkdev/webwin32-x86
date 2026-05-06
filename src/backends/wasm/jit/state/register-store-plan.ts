@@ -1,10 +1,10 @@
 import type { LocalLaneSource, RegValueState } from "./register-lanes.js";
 import {
-  allBytesHaveLocalValues,
+  allBytesKnown,
   byteCount,
-  exactFullLocalSource,
-  hasPartialLocalValues,
-  isLocalBackedLaneValue
+  exactFullLocal,
+  hasKnownBytes,
+  isLocalBackedByteLane
 } from "./register-lanes.js";
 
 export type RegisterStoreOp =
@@ -16,7 +16,7 @@ export type RegisterStorePlan =
   | Readonly<{ kind: "partial"; stores: readonly RegisterStoreOp[] }>;
 
 export function planRegisterExitStore(state: RegValueState): RegisterStorePlan {
-  if (exactFullLocalSource(state) !== undefined || allBytesHaveLocalValues(state) || !hasPartialLocalValues(state)) {
+  if (exactFullLocal(state) !== undefined || allBytesKnown(state) || !hasKnownBytes(state)) {
     return { kind: "store32" };
   }
 
@@ -26,14 +26,14 @@ export function planRegisterExitStore(state: RegValueState): RegisterStorePlan {
   while (byteIndex < byteCount) {
     const source = state.bytes[byteIndex];
 
-    if (!isLocalBackedLaneValue(source)) {
+    if (!isLocalBackedByteLane(source)) {
       byteIndex += 1;
       continue;
     }
 
     const nextSource = state.bytes[byteIndex + 1];
 
-    if (isLocalBackedLaneValue(nextSource)) {
+    if (isLocalBackedByteLane(nextSource)) {
       stores.push({
         kind: "store16",
         byteIndex,

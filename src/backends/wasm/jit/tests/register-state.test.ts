@@ -22,7 +22,7 @@ import {
 import {
   assertFullRegisterLaneSources,
   emptyRegValueState,
-  recordPartialLocalValue,
+  recordPartialStableLocal,
   type FullRegisterLaneSources
 } from "#backends/wasm/jit/state/register-lanes.js";
 import { planRegisterExitStore } from "#backends/wasm/jit/state/register-store-plan.js";
@@ -120,9 +120,9 @@ test("jit register state exposes lane sources only when all requested bytes are 
   });
   regs.commitPending();
 
-  strictEqual(regs.localLaneSourcesForAlias(al)?.length, 1);
-  strictEqual(regs.localLaneSourcesForAlias(ax), undefined);
-  strictEqual(regs.localLaneSourcesForAlias(fullAlias("eax")), undefined);
+  strictEqual(regs.stableLaneSourcesForAlias(al)?.length, 1);
+  strictEqual(regs.stableLaneSourcesForAlias(ax), undefined);
+  strictEqual(regs.stableLaneSourcesForAlias(fullAlias("eax")), undefined);
 });
 
 test("jit register state copies full-register lane values without value emission", () => {
@@ -167,6 +167,110 @@ test("jit register state keeps copied lane values stable after later source full
 
   strictEqual(state.eax, 0x2222_2222);
   strictEqual(state.ebx, 0x1111_1111);
+});
+
+test("jit register state freezes committed conditional register values before later full copies", async () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAliasIf(
+    fullAlias("eax"),
+    () => {
+      body.i32Const(1);
+    },
+    () => {
+      body.i32Const(0x2222_2222);
+    }
+  );
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  emitCopyReg32(regs, "ebx", "eax");
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAliasIf(
+    fullAlias("eax"),
+    () => {
+      body.i32Const(1);
+    },
+    () => {
+      body.i32Const(0x3333_3333);
+    }
+  );
+  regs.commitPending();
+  regs.emitCommittedStore("eax");
+  regs.emitCommittedStore("ebx");
+  body.end();
+
+  const state = await runRegisterStateBody(body, createCpuState({ eax: 0x1111_1111 }));
+
+  strictEqual(state.eax, 0x3333_3333);
+  strictEqual(state.ebx, 0x2222_2222);
+});
+
+test("jit register state freezes pending conditional register values before pending full copies", async () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  emitWriteReg32(regs, "eax", () => {
+    body.i32Const(0x1111_1111);
+  });
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: true });
+  regs.emitWriteAliasIf(
+    fullAlias("eax"),
+    () => {
+      body.i32Const(1);
+    },
+    () => {
+      body.i32Const(0x2222_2222);
+    }
+  );
+  emitCopyReg32(regs, "ebx", "eax");
+  regs.commitPending();
+  regs.emitCommittedStore("eax");
+  regs.emitCommittedStore("ebx");
+  body.end();
+
+  const state = await runRegisterStateBody(body);
+
+  strictEqual(state.eax, 0x2222_2222);
+  strictEqual(state.ebx, 0x2222_2222);
+});
+
+test("jit register state freezes pending mutable copies without changing committed source", async () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  emitWriteReg32(regs, "eax", () => {
+    body.i32Const(0x1111_1111);
+  });
+  emitWriteReg32(regs, "ecx", () => {
+    body.i32Const(0x2222_2222);
+  });
+  regs.commitPending();
+
+  regs.beginInstruction({ preserveCommittedRegs: true });
+  regs.emitWriteAliasIf(
+    fullAlias("eax"),
+    () => {
+      body.i32Const(1);
+    },
+    () => regs.emitReadReg32("ecx")
+  );
+  emitCopyReg32(regs, "ebx", "eax");
+  // Simulates a pre-instruction exit store before pending writes are committed.
+  regs.emitCommittedStore("eax");
+  regs.commitPending();
+  regs.emitCommittedStore("ebx");
+  body.end();
+
+  const state = await runRegisterStateBody(body);
+
+  strictEqual(state.eax, 0x1111_1111);
+  strictEqual(state.ebx, 0x2222_2222);
 });
 
 test("jit register state keeps copied lane values stable after later destination partial writes", async () => {
@@ -504,7 +608,7 @@ test("jit register exit stores direct word partial writes without byte recomposi
 test("jit register exit store planner keeps isolated byte writes narrow", () => {
   const state = emptyRegValueState();
 
-  recordPartialLocalValue(state, ah, 7);
+  recordPartialStableLocal(state, ah, 7);
 
   deepStrictEqual(planRegisterExitStore(state), {
     kind: "partial",
@@ -521,8 +625,8 @@ test("jit register exit store planner keeps isolated byte writes narrow", () => 
 test("jit register exit store planner coalesces adjacent byte writes into word stores", () => {
   const state = emptyRegValueState();
 
-  recordPartialLocalValue(state, al, 7);
-  recordPartialLocalValue(state, ah, 8);
+  recordPartialStableLocal(state, al, 7);
+  recordPartialStableLocal(state, ah, 8);
 
   deepStrictEqual(planRegisterExitStore(state), {
     kind: "partial",
@@ -604,6 +708,42 @@ test("jit exit store snapshots require captured register state", () => {
   );
 });
 
+test("jit register exit store snapshots freeze conditional writes before later mutation", async () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAliasIf(
+    fullAlias("eax"),
+    () => {
+      body.i32Const(1);
+    },
+    () => {
+      body.i32Const(0x2222_2222);
+    }
+  );
+  regs.commitPending();
+  const snapshot = regs.captureCommittedExitStores(["eax"]);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAliasIf(
+    fullAlias("eax"),
+    () => {
+      body.i32Const(1);
+    },
+    () => {
+      body.i32Const(0x3333_3333);
+    }
+  );
+  regs.commitPending();
+  regs.emitExitSnapshotStore("eax", snapshot);
+  body.end();
+
+  const state = await runRegisterStateBody(body, createCpuState({ eax: 0x1111_1111 }));
+
+  strictEqual(state.eax, 0x2222_2222);
+});
+
 test("jit register exit store snapshots store committed registers on a later memory fault", async () => {
   const result = await runJitIrBlock(
     [
@@ -651,11 +791,7 @@ test("jit register pre-instruction exits store committed partial lanes", async (
 });
 
 function requiredLaneSources(regs: JitReg32State, reg: Reg32): FullRegisterLaneSources {
-  const laneSources = regs.localLaneSourcesForAlias(fullAlias(reg));
-
-  if (laneSources === undefined) {
-    throw new Error(`missing full lane sources for ${reg}`);
-  }
+  const laneSources = regs.ensureStableFullLaneSourcesForCopy(reg);
 
   assertFullRegisterLaneSources(laneSources);
   return laneSources;

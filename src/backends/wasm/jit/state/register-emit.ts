@@ -14,9 +14,8 @@ import {
   aliasMask,
   byteMask,
   byteWidth,
-  exactFullLocalSource,
+  exactFullLocal,
   knownByteLocalSources,
-  partialLaneLocalSources,
   type LocalLaneSource,
   type RegValueState
 } from "./register-lanes.js";
@@ -72,32 +71,11 @@ export function emitMergedBytes(
   state: RegValueState,
   options: Readonly<{ baseLocal?: number }> = {}
 ): void {
-  if (exactFullLocalSource(state) !== undefined) {
+  if (exactFullLocal(state) !== undefined) {
     return;
   }
 
-  const coveredBytes = new Set<number>();
-
-  for (const lane of partialLaneLocalSources(state)) {
-    if (lane.source.local === options.baseLocal && lane.source.bitOffset === lane.bitOffset) {
-      continue;
-    }
-
-    emitMergedPartialLane(body, lane);
-
-    const startByte = lane.bitOffset / byteWidth;
-    const byteLength = lane.width / byteWidth;
-
-    for (let index = 0; index < byteLength; index += 1) {
-      coveredBytes.add(startByte + index);
-    }
-  }
-
   for (const [byteIndex, source] of knownByteLocalSources(state)) {
-    if (coveredBytes.has(byteIndex)) {
-      continue;
-    }
-
     const shift = byteIndex * byteWidth;
 
     if (source.local === options.baseLocal && source.bitOffset === shift) {
@@ -115,30 +93,6 @@ export function emitMergedBytes(
 
     body.i32Or();
   }
-}
-
-function emitMergedPartialLane(
-  body: WasmFunctionBodyEncoder,
-  lane: Readonly<{
-    bitOffset: RegisterAlias["bitOffset"];
-    width: RegisterAlias["width"];
-    source: LocalLaneSource;
-  }>
-): void {
-  const shiftedMask = (widthMask(lane.width) << lane.bitOffset) >>> 0;
-
-  body.i32Const(i32(~shiftedMask)).i32And();
-  body.localGet(lane.source.local);
-
-  if (lane.source.bitOffset !== 0) {
-    body.i32Const(lane.source.bitOffset).i32ShrU();
-  }
-
-  if (lane.bitOffset !== 0) {
-    body.i32Const(lane.bitOffset).i32Shl();
-  }
-
-  body.i32Or();
 }
 
 export function emitExtractAliasFromLocal(
@@ -169,14 +123,20 @@ export function emitComposedLocalLaneSources(
   body: WasmFunctionBodyEncoder,
   sources: readonly LocalLaneSource[]
 ): void {
-  for (let index = 0; index < sources.length; index += 1) {
+  let index = 0;
+  let emittedGroups = 0;
+
+  while (index < sources.length) {
     const source = sources[index];
 
     if (source === undefined) {
       throw new Error(`missing byte source: ${index}`);
     }
 
-    emitLocalLaneSource(body, source);
+    const groupByteLength = contiguousSourceByteLength(sources, index);
+    const groupWidth = groupByteLength * byteWidth;
+
+    emitLocalLaneSourceGroup(body, source, groupWidth);
 
     const shift = index * byteWidth;
 
@@ -184,10 +144,60 @@ export function emitComposedLocalLaneSources(
       body.i32Const(shift).i32Shl();
     }
 
-    if (index !== 0) {
+    if (emittedGroups !== 0) {
       body.i32Or();
     }
+
+    emittedGroups += 1;
+    index += groupByteLength;
   }
+}
+
+function contiguousSourceByteLength(sources: readonly LocalLaneSource[], startIndex: number): number {
+  const first = sources[startIndex];
+
+  if (first === undefined) {
+    return 0;
+  }
+
+  let byteLength = 1;
+
+  while (startIndex + byteLength < sources.length) {
+    const source = sources[startIndex + byteLength];
+
+    if (
+      source === undefined ||
+      source.local !== first.local ||
+      source.valueWidth !== first.valueWidth ||
+      source.bitOffset !== first.bitOffset + byteLength * byteWidth
+    ) {
+      break;
+    }
+
+    byteLength += 1;
+  }
+
+  return byteLength;
+}
+
+function emitLocalLaneSourceGroup(
+  body: WasmFunctionBodyEncoder,
+  source: LocalLaneSource,
+  groupWidth: number
+): void {
+  body.localGet(source.local);
+
+  if (source.bitOffset !== 0) {
+    body.i32Const(source.bitOffset).i32ShrU();
+  }
+
+  if (groupWidth < 32 && source.bitOffset + groupWidth < source.valueWidth) {
+    body.i32Const(laneGroupMask(groupWidth)).i32And();
+  }
+}
+
+function laneGroupMask(width: number): number {
+  return width === 24 ? 0x00ff_ffff : widthMask(width as 8 | 16);
 }
 
 export function emitWordLocalLaneSourceForStore16(
