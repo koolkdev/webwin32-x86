@@ -1,12 +1,10 @@
 import type { Reg32 } from "#x86/isa/types.js";
 import {
-  allBytesKnown,
+  clearRegValueState,
   emptyRegValueState,
-  localSourceAt,
-  moveRegValueStateBytes,
-  recordOwnedByteLaneSource,
+  moveRegValueState,
   type RegValueState
-} from "./register-lanes.js";
+} from "./register-values.js";
 
 type RegisterMutableCells = Map<Reg32, number>;
 
@@ -57,23 +55,16 @@ export function commitPendingReg(storage: RegisterStateStorage, reg: Reg32): voi
 
   const target = committedStateForReg(storage, reg);
 
-  if (pendingMutableLocal !== undefined) {
-    moveRegValueStateBytes(
-      target,
-      pending === undefined ? emptyRegValueState().bytes : [...pending.bytes]
-    );
-    storage.committedMutableCells.set(reg, pendingMutableLocal);
-  } else if (pending !== undefined && allBytesKnown(pending)) {
-    moveRegValueStateBytes(target, [...pending.bytes]);
-    storage.committedMutableCells.delete(reg);
-  } else if (pending !== undefined) {
-    for (let byteIndex = 0; byteIndex < pending.bytes.length; byteIndex += 1) {
-      const source = localSourceAt(pending, byteIndex);
+  if (pending !== undefined) {
+    moveRegValueState(target, pending);
+  } else if (pendingMutableLocal !== undefined) {
+    clearRegValueState(target);
+  }
 
-      if (source !== undefined) {
-        recordOwnedByteLaneSource(target, byteIndex, source);
-      }
-    }
+  if (pendingMutableLocal !== undefined) {
+    storage.committedMutableCells.set(reg, pendingMutableLocal);
+  } else if (target.kind === "local" && target.width === 32) {
+    storage.committedMutableCells.delete(reg);
   }
 
   storage.pendingStates.delete(reg);

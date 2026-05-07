@@ -186,7 +186,7 @@ test("register value analysis folds low-word reads from tracked full registers",
   })), [{ opIndex: 3, reason: "blockEnd", regs: ["eax"] }]);
 });
 
-test("register value analysis folds same-lane reads after partial writes", () => {
+test("register value analysis folds same-prefix reads after partial writes", () => {
   const analysis = analyzeJitRegisterValues({
     instructions: [
       syntheticInstruction([

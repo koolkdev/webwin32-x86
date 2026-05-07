@@ -3,9 +3,6 @@ import { stateOffset } from "#backends/wasm/abi.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import {
   cleanValueWidth,
-  dirtyValueWidth,
-  emitMaskValueToWidth,
-  emitSignExtendValueToWidth,
   type WasmIrEmitValueOptions,
   type ValueWidth
 } from "#backends/wasm/codegen/value-width.js";
@@ -15,21 +12,15 @@ import {
   emitLoadStateU16,
   emitLoadStateU8
 } from "#backends/wasm/codegen/state.js";
+import { fullWidth } from "./register-values.js";
 import {
-  aliasByteRange,
-  byteWidth,
-  fullWidth,
-  type LocalLaneSource
-} from "./register-lanes.js";
-import {
-  emitComposedLocalLaneSources,
-  emitExtractAliasFromLocal
+  emitExtractAliasFromLocal,
+  offsetForAlias
 } from "./register-emit.js";
 import {
-  currentByteUsesMutableCell,
-  currentStableSourceAt,
-  exactStableSourceForAlias,
-  stableLaneSourcesForAlias
+  currentAliasCanLoadFromState,
+  currentExactSourceForAlias,
+  currentKnownPrefixForAlias
 } from "./register-state-queries.js";
 import type { RegisterStateStorage } from "./register-state-storage.js";
 import type { RegisterValueEmitter } from "./register-value-emitter.js";
@@ -41,49 +32,25 @@ export function emitReadRegisterAlias(
   alias: RegisterAlias,
   options: WasmIrEmitValueOptions = {}
 ): ValueWidth {
-  const exactSource = exactStableSourceForAlias(storage, alias);
+  const exactSource = currentExactSourceForAlias(storage, alias);
 
   if (exactSource !== undefined) {
-    return emitExactSourceForAlias(body, exactSource, alias, options);
+    return emitExtractAliasFromLocal(body, exactSource, alias, options);
   }
 
-  const localSources = stableLaneSourcesForAlias(storage, alias);
+  const prefixSource = currentKnownPrefixForAlias(storage, alias);
 
-  if (localSources !== undefined) {
-    emitComposedLocalLaneSources(body, localSources);
-    return options.signed === true && alias.width < fullWidth
-      ? emitSignExtendValueToWidth(body, alias.width as 8 | 16)
-      : cleanValueWidth(alias.width);
+  if (prefixSource !== undefined) {
+    return emitExtractAliasFromLocal(body, prefixSource, alias, options);
   }
 
-  if (canLoadAliasFromState(storage, alias)) {
+  if (alias.width !== fullWidth && currentAliasCanLoadFromState(storage, alias)) {
     return emitLoadAliasFromState(body, alias, options);
   }
 
   const fullLocal = values.materializeCurrentFull(alias.base);
 
-  return emitExtractAliasFromLocal(body, fullLocal, alias, options);
-}
-
-function canLoadAliasFromState(storage: RegisterStateStorage, alias: RegisterAlias): boolean {
-  if (alias.width === fullWidth) {
-    return false;
-  }
-
-  const { startByte, byteLength } = aliasByteRange(alias);
-
-  for (let index = 0; index < byteLength; index += 1) {
-    const byteIndex = startByte + index;
-
-    if (
-      currentStableSourceAt(storage, alias.base, byteIndex) !== undefined ||
-      currentByteUsesMutableCell(storage, alias.base, byteIndex)
-    ) {
-      return false;
-    }
-  }
-
-  return true;
+  return emitExtractAliasFromLocal(body, { kind: "local", local: fullLocal, width: fullWidth }, alias, options);
 }
 
 function emitLoadAliasFromState(
@@ -91,7 +58,7 @@ function emitLoadAliasFromState(
   alias: RegisterAlias,
   options: WasmIrEmitValueOptions
 ): ValueWidth {
-  const offset = stateOffset[alias.base] + alias.bitOffset / byteWidth;
+  const offset = stateOffset[alias.base] + offsetForAlias(alias);
 
   switch (alias.width) {
     case 8:
@@ -111,31 +78,4 @@ function emitLoadAliasFromState(
     case 32:
       throw new Error("full-width aliases must use full state loads");
   }
-}
-
-function emitExactSourceForAlias(
-  body: WasmFunctionBodyEncoder,
-  source: LocalLaneSource,
-  alias: RegisterAlias,
-  options: WasmIrEmitValueOptions
-): ValueWidth {
-  body.localGet(source.local);
-
-  if (source.bitOffset !== 0) {
-    body.i32Const(source.bitOffset).i32ShrU();
-  }
-
-  if (options.signed === true && alias.width < fullWidth) {
-    return emitSignExtendValueToWidth(body, alias.width as 8 | 16);
-  }
-
-  if (source.bitOffset === 0 && source.valueWidth <= alias.width) {
-    return cleanValueWidth(alias.width);
-  }
-
-  if (options.widthInsensitive === true && alias.width < fullWidth) {
-    return dirtyValueWidth(alias.width);
-  }
-
-  return emitMaskValueToWidth(body, alias.width);
 }

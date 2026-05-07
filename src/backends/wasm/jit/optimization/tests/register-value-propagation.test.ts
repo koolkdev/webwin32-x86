@@ -190,7 +190,7 @@ test("register-value-propagation folds high-byte aliases through an unsigned shi
   ]);
 });
 
-test("register-value-propagation does not fold unrelated partial lanes", () => {
+test("register-value-propagation does not fold unrelated partial prefixes", () => {
   const result = propagateJitRegisterValues({
     instructions: [
       withRegisterAliases(
@@ -294,7 +294,7 @@ test("register-value-propagation does not fold full reads from stale full values
   strictEqual(countOps(result.block, "get"), 2);
 });
 
-test("register-value-propagation drops partial lane values that depend on materialized clobbered registers", () => {
+test("register-value-propagation drops partial prefix values that depend on materialized clobbered registers", () => {
   const result = propagateJitRegisterValues({
     instructions: [
       syntheticInstruction([
@@ -313,7 +313,7 @@ test("register-value-propagation drops partial lane values that depend on materi
   strictEqual(countOps(result.block, "get"), 2);
 });
 
-test("register-value-propagation folds partial lane values before delayed symbolic clobbers", () => {
+test("register-value-propagation folds partial prefix values before delayed symbolic clobbers", () => {
   const result = propagateJitRegisterValues({
     instructions: [
       syntheticInstruction([
@@ -335,7 +335,7 @@ test("register-value-propagation folds partial lane values before delayed symbol
     "get",
     "set",
     "value.const",
-    "get:symbolicRead",
+    "value.binary:and",
     "set",
     "set:registerMaterialization",
     "next"
@@ -343,7 +343,7 @@ test("register-value-propagation folds partial lane values before delayed symbol
   deepStrictEqual(setRegs(result.block), ["eax", "ebx", "ecx"]);
 });
 
-test("register-value-propagation folds same-lane partial reads without removing partial writes", () => {
+test("register-value-propagation folds same-prefix partial reads without removing partial writes", () => {
   const result = propagateJitRegisterValues({
     instructions: [
       syntheticInstruction([

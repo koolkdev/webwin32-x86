@@ -1,99 +1,77 @@
 import type { RegisterAlias, Reg32 } from "#x86/isa/types.js";
 import {
-  aliasByteRange,
-  allBytesKnown,
-  exactLocalForLaneSources,
-  hasKnownBytes,
-  localSourceAt,
-  type LocalLaneSource
-} from "./register-lanes.js";
+  aliasOverlapsKnownPrefix,
+  exactSourceForAlias,
+  fullRegAccess,
+  hasFullValue,
+  hasKnownPrefix,
+  knownPrefixForAlias,
+  knownPrefixForReg,
+  type LocalRegValueSource
+} from "./register-values.js";
 import type { RegisterStateStorage } from "./register-state-storage.js";
 
-export function stableLaneSourcesForAlias(
+export function currentKnownPrefixForAlias(
   storage: RegisterStateStorage,
   alias: RegisterAlias
-): readonly LocalLaneSource[] | undefined {
-  const { startByte, byteLength } = aliasByteRange(alias);
-  const sources: LocalLaneSource[] = [];
-
-  for (let index = 0; index < byteLength; index += 1) {
-    const source = currentStableSourceAt(storage, alias.base, startByte + index);
-
-    if (source === undefined) {
-      return undefined;
-    }
-
-    sources.push(source);
-  }
-
-  return sources;
+): LocalRegValueSource | undefined {
+  return currentSourceForAlias(storage, alias, knownPrefixForAlias);
 }
 
-export function exactStableSourceForAlias(
+export function currentExactSourceForAlias(
   storage: RegisterStateStorage,
   alias: RegisterAlias
-): LocalLaneSource | undefined {
-  return exactLocalForLaneSources(stableLaneSourcesForAlias(storage, alias), alias.width);
+): LocalRegValueSource | undefined {
+  return currentSourceForAlias(storage, alias, exactSourceForAlias);
 }
 
-export function currentStableSourceAt(
+export function currentKnownPrefixForReg(
   storage: RegisterStateStorage,
-  reg: Reg32,
-  byteIndex: number
-): LocalLaneSource | undefined {
+  reg: Reg32
+): LocalRegValueSource | undefined {
   const pending = storage.pendingStates.get(reg);
 
   if (pending !== undefined) {
-    const pendingSource = localSourceAt(pending, byteIndex);
+    const pendingPrefix = knownPrefixForReg(pending);
 
-    if (pendingSource !== undefined) {
-      return pendingSource;
-    }
-
-    if (storage.pendingMutableCells.has(reg)) {
-      return undefined;
+    if (pendingPrefix !== undefined || storage.pendingMutableCells.has(reg)) {
+      return pendingPrefix;
     }
   }
 
-  const committedSource = localSourceAt(storage.committedStates.get(reg), byteIndex);
-
-  if (committedSource !== undefined) {
-    return committedSource;
-  }
-
-  return undefined;
+  return knownPrefixForReg(storage.committedStates.get(reg));
 }
 
-export function currentByteUsesMutableCell(
+export function currentAliasCanLoadFromState(
   storage: RegisterStateStorage,
-  reg: Reg32,
-  byteIndex: number
+  alias: RegisterAlias
 ): boolean {
-  const pending = storage.pendingStates.get(reg);
+  const pending = storage.pendingStates.get(alias.base);
 
   if (pending !== undefined) {
-    if (localSourceAt(pending, byteIndex) !== undefined) {
+    if (aliasOverlapsKnownPrefix(pending, alias) || storage.pendingMutableCells.has(alias.base)) {
       return false;
     }
-
-    if (storage.pendingMutableCells.has(reg)) {
-      return true;
-    }
   }
 
-  if (localSourceAt(storage.committedStates.get(reg), byteIndex) !== undefined) {
+  const committed = storage.committedStates.get(alias.base);
+
+  if (aliasOverlapsKnownPrefix(committed, alias) || storage.committedMutableCells.has(alias.base)) {
     return false;
   }
 
-  return storage.committedMutableCells.has(reg);
+  return true;
 }
 
 export function currentValueUsesMutableCell(storage: RegisterStateStorage, reg: Reg32): boolean {
+  if (storage.pendingMutableCells.has(reg)) {
+    return true;
+  }
+
   const pending = storage.pendingStates.get(reg);
 
   if (pending !== undefined) {
-    return storage.pendingMutableCells.has(reg) ||
-      (storage.committedMutableCells.has(reg) && !allBytesKnown(pending));
+    return !hasFullValue(pending) && storage.committedMutableCells.has(reg);
   }
 
   return storage.committedMutableCells.has(reg);
@@ -103,20 +81,51 @@ export function currentUncoveredMutableCell(storage: RegisterStateStorage, reg: 
   const pending = storage.pendingStates.get(reg);
   const pendingMutableLocal = storage.pendingMutableCells.get(reg);
 
-  if (pendingMutableLocal !== undefined && (pending === undefined || !hasKnownBytes(pending))) {
+  if (pendingMutableLocal !== undefined && !hasKnownPrefix(pending)) {
     return pendingMutableLocal;
   }
 
-  if (pending !== undefined && hasKnownBytes(pending)) {
+  if (pending !== undefined && hasKnownPrefix(pending)) {
     return undefined;
   }
 
   const committedMutableLocal = storage.committedMutableCells.get(reg);
-  const committed = storage.committedStates.get(reg);
 
-  if (committedMutableLocal !== undefined && (committed === undefined || !hasKnownBytes(committed))) {
+  if (committedMutableLocal !== undefined && !hasKnownPrefix(storage.committedStates.get(reg))) {
     return committedMutableLocal;
   }
 
   return undefined;
+}
+
+function currentSourceForAlias(
+  storage: RegisterStateStorage,
+  alias: RegisterAlias,
+  select: (
+    state: Parameters<typeof exactSourceForAlias>[0],
+    alias: RegisterAlias
+  ) => LocalRegValueSource | undefined
+): LocalRegValueSource | undefined {
+  const pending = storage.pendingStates.get(alias.base);
+
+  if (pending !== undefined) {
+    const pendingSource = select(pending, alias);
+
+    if (pendingSource !== undefined) {
+      return pendingSource;
+    }
+
+    if (aliasOverlapsKnownPrefix(pending, alias) || storage.pendingMutableCells.has(alias.base)) {
+      return undefined;
+    }
+  }
+
+  return select(storage.committedStates.get(alias.base), alias);
+}
+
+export function currentExactFullSource(
+  storage: RegisterStateStorage,
+  reg: Reg32
+): LocalRegValueSource | undefined {
+  return currentExactSourceForAlias(storage, fullRegAccess(reg));
 }

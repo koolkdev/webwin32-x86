@@ -8,19 +8,20 @@ import {
   type ValueWidth
 } from "#backends/wasm/codegen/value-width.js";
 import {
-  allBytesKnown,
+  clearRegValueState,
   cloneRegValueState,
   fullRegAccess,
   fullWidth,
-  recordOwnedAliasLaneSources,
-  recordFullStableLocal,
-  recordPartialStableLocal,
-  type FullRegisterLaneSources,
-  type LocalLaneSource,
+  recordRegValueSource,
+  recordStableRegValue,
+  type LocalRegValueSource,
   type RegValueState
-} from "./register-lanes.js";
-import { emitStoreAliasValueIntoFullLocal } from "./register-emit.js";
-import { stableLaneSourcesForAlias } from "./register-state-queries.js";
+} from "./register-values.js";
+import {
+  emitComposedPrefixLocal,
+  emitStoreAliasValueIntoFullLocal
+} from "./register-emit.js";
+import { currentKnownPrefixForAlias, currentKnownPrefixForReg } from "./register-state-queries.js";
 import {
   assertNoPending,
   commitPendingReg as commitPendingRegInStorage,
@@ -39,7 +40,7 @@ export type JitReg32InstructionOptions = Readonly<{
 
 export type JitReg32WriteSource = (() => ValueWidth | void) | Readonly<{
   emitValue: () => ValueWidth | void;
-  laneSources?: FullRegisterLaneSources;
+  prefixSource?: LocalRegValueSource | undefined;
 }>;
 
 export type JitReg32ExitStoreSnapshot = ReadonlyMap<Reg32, RegValueState>;
@@ -50,8 +51,8 @@ export type JitReg32State = Readonly<{
   commitPendingReg(reg: Reg32): void;
   emitReadReg32(reg: Reg32): ValueWidth;
   emitReadAlias(alias: RegisterAlias, options?: WasmIrEmitValueOptions): ValueWidth;
-  stableLaneSourcesForAlias(alias: RegisterAlias): readonly LocalLaneSource[] | undefined;
-  ensureStableFullLaneSourcesForCopy(reg: Reg32): FullRegisterLaneSources;
+  knownPrefixForAlias(alias: RegisterAlias): LocalRegValueSource | undefined;
+  ensureStableFullValueForCopy(reg: Reg32): LocalRegValueSource;
   emitWriteAlias(alias: RegisterAlias, source: JitReg32WriteSource): void;
   emitWriteAliasIf(
     alias: RegisterAlias,
@@ -75,8 +76,8 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
     },
     emitReadReg32: (reg) => emitReadAlias(fullRegAccess(reg)),
     emitReadAlias,
-    stableLaneSourcesForAlias: (alias) => stableLaneSourcesForAlias(storage, alias),
-    ensureStableFullLaneSourcesForCopy: values.ensureStableFullLaneSourcesForCopy,
+    knownPrefixForAlias: (alias) => currentKnownPrefixForAlias(storage, alias),
+    ensureStableFullValueForCopy: values.ensureStableFullValueForCopy,
     emitWriteAlias,
     emitWriteAliasIf,
     captureCommittedExitStores,
@@ -100,13 +101,18 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
 
   function emitWriteAlias(alias: RegisterAlias, source: JitReg32WriteSource): void {
     const writeSource = normalizeWriteSource(source);
+    const currentPrefix = currentKnownPrefixForReg(storage, alias.base);
     const state = writableStateForReg(storage, alias.base, preserveCommittedRegs);
 
     if (alias.width === fullWidth) {
       writableMutableCells(storage, preserveCommittedRegs).delete(alias.base);
 
-      if (writeSource.laneSources !== undefined) {
-        recordOwnedAliasLaneSources(state, alias, writeSource.laneSources);
+      if (writeSource.prefixSource !== undefined) {
+        if (writeSource.prefixSource.width !== fullWidth) {
+          throw new Error(`full-register writes need a 32-bit prefix source, got ${writeSource.prefixSource.width}`);
+        }
+
+        recordRegValueSource(state, writeSource.prefixSource);
         return;
       }
 
@@ -114,17 +120,36 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
       const local = body.addLocal(wasmValueType.i32);
 
       body.localSet(local);
-      recordFullStableLocal(state, local);
+      recordStableRegValue(state, local, fullWidth);
+      return;
+    }
+
+    if (alias.bitOffset !== 0) {
+      // High-byte and other non-prefix aliases fall back to a mutable full register.
+      const fullLocal = values.ensureMutableCell(alias.base, preserveCommittedRegs);
+      const valueLocal = localForMaskedValue(alias.width, writeSource.emitValue);
+
+      emitStoreAliasValueIntoFullLocal(body, fullLocal, alias, valueLocal);
+      clearRegValueState(state);
       return;
     }
 
     const valueLocal = localForMaskedValue(alias.width, writeSource.emitValue);
+    const composedWidth = composedWriteWidth(currentPrefix, alias.width);
 
-    recordPartialStableLocal(state, alias, valueLocal);
+    if (composedWidth !== undefined && currentPrefix !== undefined) {
+      // Keep AL/AX writes in the prefix model by composing them into the known low bits.
+      const composedLocal = emitComposedPrefixLocal(body, currentPrefix, valueLocal, alias.width);
 
-    if (allBytesKnown(state)) {
-      writableMutableCells(storage, preserveCommittedRegs).delete(alias.base);
+      recordStableRegValue(state, composedLocal, composedWidth);
+
+      if (composedWidth === fullWidth) {
+        writableMutableCells(storage, preserveCommittedRegs).delete(alias.base);
+      }
+      return;
     }
+
+    recordStableRegValue(state, valueLocal, alias.width);
   }
 
   function emitWriteAliasIf(
@@ -200,9 +225,24 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
   }
 }
 
+function composedWriteWidth(
+  currentPrefix: LocalRegValueSource | undefined,
+  writeWidth: OperandWidth
+): 16 | 32 | undefined {
+  if (currentPrefix?.width === 32 && (writeWidth === 8 || writeWidth === 16)) {
+    return 32;
+  }
+
+  if (currentPrefix?.width === 16 && writeWidth === 8) {
+    return 16;
+  }
+
+  return undefined;
+}
+
 function normalizeWriteSource(source: JitReg32WriteSource): Readonly<{
   emitValue: () => ValueWidth | void;
-  laneSources?: FullRegisterLaneSources;
+  prefixSource?: LocalRegValueSource | undefined;
 }> {
   return typeof source === "function" ? { emitValue: source } : source;
 }

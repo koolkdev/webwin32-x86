@@ -27,8 +27,8 @@ import {
   type ValueWidth
 } from "#backends/wasm/codegen/value-width.js";
 import {
-  type FullRegisterLaneSources
-} from "#backends/wasm/jit/state/register-lanes.js";
+  type LocalRegValueSource
+} from "#backends/wasm/jit/state/register-values.js";
 
 export { canInlineJitInstructionGet, jitInstructionStorageRefsMayAlias } from "#backends/wasm/jit/codegen/plan/operand-analysis.js";
 
@@ -201,13 +201,13 @@ function emitSetRegisterAlias(
   value: IrValueExpr,
   helpers: WasmIrEmitHelpers
 ): void {
-  const laneSources = materializeLaneSourcesForSetValue(context, target, value);
+  const prefixSource = materializeFullPrefixForSetValue(context, target, value);
 
-  context.state.regs.emitWriteAlias(target, laneSources === undefined
+  context.state.regs.emitWriteAlias(target, prefixSource === undefined
     ? () => helpers.emitValue(value)
     : {
         emitValue: () => helpers.emitValue(value),
-        laneSources
+        prefixSource
       });
 }
 
@@ -353,12 +353,12 @@ function operandBinding(context: JitIrContext, index: number): JitOperandBinding
   return binding;
 }
 
-function materializeLaneSourcesForSetValue(
+function materializeFullPrefixForSetValue(
   context: JitIrContext,
   target: RegisterAlias,
   value: IrValueExpr
-): FullRegisterLaneSources | undefined {
-  // Only exact full-width register sources can copy known lane values.
+): LocalRegValueSource | undefined {
+  // Only exact full-width register sources can copy known values.
   // Expressions, constants, memory loads, signed/narrow reads, and conditionals
   // all continue through the normal value-emission path.
   if (target.width !== 32 || value.kind !== "source" || value.accessWidth !== 32 || value.signed === true) {
@@ -376,6 +376,6 @@ function materializeLaneSourcesForSetValue(
   }
 
   // This may emit and mutate register state by freezing/materializing the
-  // source before the destination records reusable stable lane sources.
-  return context.state.regs.ensureStableFullLaneSourcesForCopy(sourceAlias.base);
+  // source before the destination records a reusable stable full prefix.
+  return context.state.regs.ensureStableFullValueForCopy(sourceAlias.base);
 }

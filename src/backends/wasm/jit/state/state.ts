@@ -180,7 +180,7 @@ export function createJitIrState(
     }
 
     // Deferred exit blocks store this snapshot after later code may have run.
-    // Capture lane/local sources at the exit point.
+    // Capture prefix locals at the exit point.
     exitRegisterStoreSnapshots.set(index, regs.captureCommittedExitStores(snapshot.regs));
   }
 

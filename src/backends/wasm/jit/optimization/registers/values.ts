@@ -14,7 +14,7 @@ import {
   createRegisterAccessState,
   writeRegisterAccess,
   type JitRegisterAccessState
-} from "#backends/wasm/jit/ir/register-lane-values.js";
+} from "#backends/wasm/jit/ir/register-prefix-values.js";
 
 export class JitRegisterValues {
   private readonly values = new Map<Reg32, JitRegisterAccessState>();
@@ -37,7 +37,9 @@ export class JitRegisterValues {
   }
 
   get(reg: Reg32): JitValue | undefined {
-    return this.values.get(reg)?.full;
+    const prefix = this.values.get(reg)?.prefix;
+
+    return prefix?.width === 32 ? prefix.value : undefined;
   }
 
   has(reg: Reg32): boolean {
@@ -100,19 +102,16 @@ export class JitRegisterValues {
     options: Readonly<{ includeSymbolicRegs?: boolean }> = {}
   ): void {
     for (const [reg, state] of this.values) {
-      if (state.full !== undefined) {
+      const prefix = state.prefix;
+
+      if (prefix === undefined || prefix.width === 32) {
         continue;
       }
 
-      const values = [
-        ...state.bytes.flatMap((value) => value === undefined ? [] : [value]),
-        ...state.lanes.values()
-      ];
-
-      if (values.some((value) =>
-        jitValueReadsReg(value, clobberedReg) ||
-        (options.includeSymbolicRegs === true && jitValueUsesSymbolicReg(value, clobberedReg))
-      )) {
+      if (
+        jitValueReadsReg(prefix.value, clobberedReg) ||
+        (options.includeSymbolicRegs === true && jitValueUsesSymbolicReg(prefix.value, clobberedReg))
+      ) {
         this.delete(reg);
       }
     }
@@ -162,7 +161,7 @@ export class JitRegisterValues {
 
   private fullValueEntries(): readonly [Reg32, JitValue][] {
     return [...this.values].flatMap(([reg, state]) =>
-      state.full === undefined ? [] : [[reg, state.full]]
+      state.prefix?.width === 32 ? [[reg, state.prefix.value]] : []
     );
   }
 }

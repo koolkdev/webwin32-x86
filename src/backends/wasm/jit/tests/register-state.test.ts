@@ -14,20 +14,19 @@ import { createJitIrState } from "#backends/wasm/jit/state/state.js";
 import { createJitReg32State, type JitReg32State } from "#backends/wasm/jit/state/register-state.js";
 import type { ValueWidth } from "#backends/wasm/codegen/value-width.js";
 import {
-  emitLocalLaneSourceForStore8,
   emitStoreStateU16,
-  emitStoreStateU8,
-  emitWordLocalLaneSourceForStore16
+  emitStoreStateU8
 } from "#backends/wasm/jit/state/register-emit.js";
 import {
-  assertFullRegisterLaneSources,
+  clearRegValueState,
+  cloneRegValueState,
   emptyRegValueState,
-  ownedStableFullLaneSources,
-  recordPartialStableLocal,
-  type FullRegisterLaneSources,
-  type LocalLaneSourceOwner
-} from "#backends/wasm/jit/state/register-lanes.js";
-import { planRegisterExitStore } from "#backends/wasm/jit/state/register-store-plan.js";
+  exactSourceForAlias,
+  recordStableRegValue,
+  type LocalRegValueSource,
+  type Owner
+} from "#backends/wasm/jit/state/register-values.js";
+import { emitStoreRegState } from "#backends/wasm/jit/state/register-state-store.js";
 import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
 import { runJitIrBlock } from "./helpers.js";
 
@@ -51,68 +50,77 @@ function emitWriteReg32(
 
 function emitCopyReg32(regs: JitReg32State, target: Reg32, source: Reg32): void {
   regs.emitWriteAlias(fullAlias(target), {
-    emitValue: unexpectedLaneCopyFallback,
-    laneSources: requiredLaneSources(regs, source)
+    emitValue: unexpectedFullCopyFallback,
+    prefixSource: requiredFullPrefix(regs, source)
   });
 }
 
-test("jit register state releases lane handles after full overwrite", () => {
-  const body = new WasmFunctionBodyEncoder();
-  const regs = createJitReg32State(body);
-  const local = body.addLocal(wasmValueType.i32);
-  const owner = trackedLaneOwner();
+test("jit register value state releases the old owner after overwrite", () => {
+  const state = emptyRegValueState();
+  const owner = trackedOwner();
 
-  regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitWriteAlias(fullAlias("eax"), {
-    emitValue: unexpectedLaneCopyFallback,
-    laneSources: ownedStableFullLaneSources(local, owner)
-  });
-
-  strictEqual(owner.releaseCount(), 0);
-
-  emitWriteReg32(regs, "eax", () => {
-    body.i32Const(1);
-  });
-  body.end();
-
-  strictEqual(owner.releaseCount(), 4);
-});
-
-test("jit register state releases only overlapping lane handles after partial overwrite", () => {
-  const body = new WasmFunctionBodyEncoder();
-  const regs = createJitReg32State(body);
-  const local = body.addLocal(wasmValueType.i32);
-  const owner = trackedLaneOwner();
-
-  regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitWriteAlias(fullAlias("eax"), {
-    emitValue: unexpectedLaneCopyFallback,
-    laneSources: ownedStableFullLaneSources(local, owner)
-  });
-  regs.emitWriteAlias(al, () => {
-    body.i32Const(0x44);
-  });
+  recordStableRegValue(state, 1, 32, owner);
+  recordStableRegValue(state, 2, 8);
 
   strictEqual(owner.releaseCount(), 1);
+});
 
-  regs.emitWriteAlias(ah, () => {
-    body.i32Const(0x33);
-  });
-  body.end();
+test("jit register value state clone retains the owner", () => {
+  const state = emptyRegValueState();
+  const owner = trackedOwner();
 
+  recordStableRegValue(state, 1, 32, owner);
+  const clone = cloneRegValueState(state);
+
+  clearRegValueState(state);
+  strictEqual(owner.releaseCount(), 1);
+
+  clearRegValueState(clone);
   strictEqual(owner.releaseCount(), 2);
 });
 
-test("jit register state transfers pending lane handles when committing", () => {
+test("jit register value state clearing releases the owner", () => {
+  const state = emptyRegValueState();
+  const owner = trackedOwner();
+
+  recordStableRegValue(state, 1, 16, owner);
+  clearRegValueState(state);
+
+  strictEqual(owner.releaseCount(), 1);
+});
+
+test("jit register value state exact aliases use only low prefixes", () => {
+  const state = emptyRegValueState();
+
+  recordStableRegValue(state, 1, 8);
+  strictEqual(exactSourceForAlias(state, al)?.local, 1);
+  strictEqual(exactSourceForAlias(state, ax), undefined);
+  strictEqual(exactSourceForAlias(state, fullAlias("eax")), undefined);
+  strictEqual(exactSourceForAlias(state, ah), undefined);
+
+  recordStableRegValue(state, 2, 16);
+  strictEqual(exactSourceForAlias(state, al)?.local, 2);
+  strictEqual(exactSourceForAlias(state, ax)?.local, 2);
+  strictEqual(exactSourceForAlias(state, fullAlias("eax")), undefined);
+  strictEqual(exactSourceForAlias(state, ah), undefined);
+
+  recordStableRegValue(state, 3, 32);
+  strictEqual(exactSourceForAlias(state, al)?.local, 3);
+  strictEqual(exactSourceForAlias(state, ax)?.local, 3);
+  strictEqual(exactSourceForAlias(state, fullAlias("eax"))?.local, 3);
+  strictEqual(exactSourceForAlias(state, ah), undefined);
+});
+
+test("jit register state transfers pending prefix owners when committing", () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
   const local = body.addLocal(wasmValueType.i32);
-  const owner = trackedLaneOwner();
+  const owner = trackedOwner();
 
   regs.beginInstruction({ preserveCommittedRegs: true });
   regs.emitWriteAlias(fullAlias("eax"), {
-    emitValue: unexpectedLaneCopyFallback,
-    laneSources: ownedStableFullLaneSources(local, owner)
+    emitValue: unexpectedFullCopyFallback,
+    prefixSource: fullPrefix(local, owner)
   });
   regs.commitPending();
 
@@ -124,7 +132,7 @@ test("jit register state transfers pending lane handles when committing", () => 
   });
   body.end();
 
-  strictEqual(owner.releaseCount(), 4);
+  strictEqual(owner.releaseCount(), 1);
 });
 
 test("jit register state writes register-only instructions to committed locals", () => {
@@ -183,7 +191,7 @@ test("jit register state returns to committed writes after pre-instruction exits
   strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.localSet), 2);
 });
 
-test("jit register state exposes lane sources only when all requested bytes are known", () => {
+test("jit register state exposes prefixes only when the alias is covered", () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
@@ -193,12 +201,12 @@ test("jit register state exposes lane sources only when all requested bytes are 
   });
   regs.commitPending();
 
-  strictEqual(regs.stableLaneSourcesForAlias(al)?.length, 1);
-  strictEqual(regs.stableLaneSourcesForAlias(ax), undefined);
-  strictEqual(regs.stableLaneSourcesForAlias(fullAlias("eax")), undefined);
+  strictEqual(regs.knownPrefixForAlias(al)?.width, 8);
+  strictEqual(regs.knownPrefixForAlias(ax), undefined);
+  strictEqual(regs.knownPrefixForAlias(fullAlias("eax")), undefined);
 });
 
-test("jit register state copies full-register lane values without value emission", () => {
+test("jit register state copies full-register prefix values without value emission", () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
@@ -215,7 +223,7 @@ test("jit register state copies full-register lane values without value emission
   strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.localSet), 1);
 });
 
-test("jit register state keeps copied lane values stable after later source full writes", async () => {
+test("jit register state keeps copied prefix values stable after later source full writes", async () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
@@ -346,7 +354,7 @@ test("jit register state freezes pending mutable copies without changing committ
   strictEqual(state.ebx, 0x2222_2222);
 });
 
-test("jit register state keeps copied lane values stable after later destination partial writes", async () => {
+test("jit register state keeps copied prefix values stable after later destination partial writes", async () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
@@ -370,12 +378,12 @@ test("jit register state keeps copied lane values stable after later destination
   const opcodes = wasmBodyOpcodes(body.encode());
   const state = await runRegisterStateBody(body);
 
-  strictEqual(countOpcode(opcodes, wasmOpcode.localSet), 2);
+  strictEqual(countOpcode(opcodes, wasmOpcode.localSet), 3);
   strictEqual(state.eax, 0x1122_3344);
   strictEqual(state.ebx, 0x1122_33aa);
 });
 
-test("jit register state keeps copied lane values stable after later source partial writes", async () => {
+test("jit register state keeps copied prefix values stable after later source partial writes", async () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
@@ -402,7 +410,7 @@ test("jit register state keeps copied lane values stable after later source part
   strictEqual(state.ebx, 0x1122_3344);
 });
 
-test("jit register state copied lane values preserve committed locals while writes are pending", async () => {
+test("jit register state copied prefix values preserve committed locals while writes are pending", async () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
@@ -448,7 +456,7 @@ test("jit register state feeds later instructions from committed register values
   deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
 });
 
-test("jit register state reads known partial lanes without loading the full register", () => {
+test("jit register state reads known partial prefixes without loading the full register", () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
@@ -465,7 +473,7 @@ test("jit register state reads known partial lanes without loading the full regi
   strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.i32Load), 0);
 });
 
-test("jit register state reads back partial lane writes", async () => {
+test("jit register state reads back high-byte fallback writes", async () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
@@ -514,7 +522,7 @@ test("jit register state masks low aliases read from full local-backed values", 
   strictEqual(state.ecx, 0x3344);
 });
 
-test("jit register state materializes full registers when a wider read needs unknown lanes", () => {
+test("jit register state materializes full registers when a wider read needs unknown bits", () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
@@ -531,7 +539,7 @@ test("jit register state materializes full registers when a wider read needs unk
   strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.i32Load), 1);
 });
 
-test("jit register state materializes full registers after partial writes when full reads need unknown lanes", () => {
+test("jit register state materializes full registers after partial writes when full reads need unknown bits", () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
@@ -548,7 +556,7 @@ test("jit register state materializes full registers after partial writes when f
   strictEqual(countOpcode(wasmBodyOpcodes(body.encode()), wasmOpcode.i32Load), 1);
 });
 
-test("jit register state full reads merge partial writes with unknown lanes", async () => {
+test("jit register state full reads merge partial writes with unknown bits", async () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
@@ -575,12 +583,12 @@ test("jit register state full reads merge partial writes with unknown lanes", as
   strictEqual(state.ebx, 0x1122_bbaa);
 });
 
-test("jit register exit stores use byte stores for isolated partial writes", () => {
+test("jit register exit stores use byte stores for low-byte prefixes", () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitWriteAlias(ah, () => {
+  regs.emitWriteAlias(al, () => {
     body.i32Const(0x05);
   });
   regs.commitPending();
@@ -596,67 +604,7 @@ test("jit register exit stores use byte stores for isolated partial writes", () 
   strictEqual(countOpcode(opcodes, wasmOpcode.i32And), 1);
 });
 
-test("jit register store8 byte source shifts without a redundant byte mask", () => {
-  const body = new WasmFunctionBodyEncoder();
-
-  emitStoreStateU8(body, 0, () => {
-    emitLocalLaneSourceForStore8(body, { kind: "local", local: 0, bitOffset: 8, valueWidth: 32 });
-  });
-  body.end();
-
-  const opcodes = wasmBodyOpcodes(body.encode());
-
-  strictEqual(countOpcode(opcodes, wasmOpcode.localGet), 1);
-  strictEqual(countOpcode(opcodes, wasmOpcode.i32ShrU), 1);
-  strictEqual(countOpcode(opcodes, wasmOpcode.i32And), 0);
-  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store8), 1);
-});
-
-test("jit register store16 word source shifts without a redundant word mask", () => {
-  const body = new WasmFunctionBodyEncoder();
-
-  emitStoreStateU16(body, 0, () => {
-    emitWordLocalLaneSourceForStore16(body, [
-      { kind: "local", local: 0, bitOffset: 8, valueWidth: 32 },
-      { kind: "local", local: 0, bitOffset: 16, valueWidth: 32 }
-    ]);
-  });
-  body.end();
-
-  const opcodes = wasmBodyOpcodes(body.encode());
-
-  strictEqual(countOpcode(opcodes, wasmOpcode.localGet), 1);
-  strictEqual(countOpcode(opcodes, wasmOpcode.i32ShrU), 1);
-  strictEqual(countOpcode(opcodes, wasmOpcode.i32And), 0);
-  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store16), 1);
-});
-
-test("jit register exit stores coalesce al and ah partial writes into a word store", () => {
-  const body = new WasmFunctionBodyEncoder();
-  const regs = createJitReg32State(body);
-
-  regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitWriteAlias(al, () => {
-    body.i32Const(0x05);
-  });
-  regs.commitPending();
-  regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitWriteAlias(ah, () => {
-    body.i32Const(0x05);
-  });
-  regs.commitPending();
-  regs.emitCommittedStore("eax");
-  body.end();
-
-  const opcodes = wasmBodyOpcodes(body.encode());
-
-  strictEqual(countOpcode(opcodes, wasmOpcode.i32Load), 0);
-  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store), 0);
-  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store8), 0);
-  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store16), 1);
-});
-
-test("jit register exit stores direct word partial writes without byte recomposition", () => {
+test("jit register exit stores use word stores for low-word prefixes", () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
@@ -678,56 +626,95 @@ test("jit register exit stores direct word partial writes without byte recomposi
   strictEqual(countOpcode(opcodes, wasmOpcode.i32Or), 0);
 });
 
-test("jit register exit store planner keeps isolated byte writes narrow", () => {
-  const state = emptyRegValueState();
-
-  recordPartialStableLocal(state, ah, 7);
-
-  deepStrictEqual(planRegisterExitStore(state), {
-    kind: "partial",
-    stores: [
-      {
-        kind: "store8",
-        byteIndex: 1,
-        source: { kind: "local", local: 7, bitOffset: 0, valueWidth: 8 }
-      }
-    ]
-  });
-});
-
-test("jit register exit store planner coalesces adjacent byte writes into word stores", () => {
-  const state = emptyRegValueState();
-
-  recordPartialStableLocal(state, al, 7);
-  recordPartialStableLocal(state, ah, 8);
-
-  deepStrictEqual(planRegisterExitStore(state), {
-    kind: "partial",
-    stores: [
-      {
-        kind: "store16",
-        byteIndex: 0,
-        sources: [
-          { kind: "local", local: 7, bitOffset: 0, valueWidth: 8 },
-          { kind: "local", local: 8, bitOffset: 0, valueWidth: 8 }
-        ]
-      }
-    ]
-  });
-});
-
-test("jit register state keeps byte-only alu updates narrow", () => {
+test("jit register exit stores keep composed ax/al writes as a word prefix", () => {
   const body = new WasmFunctionBodyEncoder();
   const regs = createJitReg32State(body);
 
   regs.beginInstruction({ preserveCommittedRegs: false });
-  regs.emitWriteAlias(ah, () => {
-    body.i32Const(0x05);
+  regs.emitWriteAlias(ax, () => {
+    body.i32Const(0x1234);
+  });
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAlias(al, () => {
+    body.i32Const(0x56);
+  });
+  regs.commitPending();
+  regs.emitCommittedStore("eax");
+  body.end();
+
+  const opcodes = wasmBodyOpcodes(body.encode());
+
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Load), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store8), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store16), 1);
+});
+
+test("jit register high-byte writes use the mutable full-register fallback", async () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAlias(ax, () => {
+    body.i32Const(0x1234);
   });
   regs.commitPending();
   regs.beginInstruction({ preserveCommittedRegs: false });
   regs.emitWriteAlias(ah, () => {
-    regs.emitReadAlias(ah);
+    body.i32Const(0x56);
+  });
+  regs.commitPending();
+  regs.emitCommittedStore("eax");
+  body.end();
+
+  const state = await runRegisterStateBody(body, createCpuState({ eax: 0xabcd_0000 }));
+
+  strictEqual(state.eax, 0xabcd_5634);
+});
+
+test("jit register exit store skips unknown state", () => {
+  const body = new WasmFunctionBodyEncoder();
+
+  emitStoreRegState(body, "eax", emptyRegValueState());
+  body.end();
+
+  const opcodes = wasmBodyOpcodes(body.encode());
+
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store8), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store16), 0);
+});
+
+test("jit register direct store helpers emit narrow stores", () => {
+  const body = new WasmFunctionBodyEncoder();
+
+  emitStoreStateU8(body, 0, () => {
+    body.localGet(0);
+  });
+  emitStoreStateU16(body, 0, () => {
+    body.localGet(0);
+  });
+  body.end();
+
+  const opcodes = wasmBodyOpcodes(body.encode());
+
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store8), 1);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Store16), 1);
+});
+
+test("jit register state keeps low-byte alu updates narrow", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAlias(al, () => {
+    body.i32Const(0x05);
+  });
+  regs.commitPending();
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAlias(al, () => {
+    regs.emitReadAlias(al);
     regs.emitReadAlias(bl);
     body.i32Xor();
   });
@@ -844,7 +831,7 @@ test("jit register exit store snapshots store committed registers on a later mem
   strictEqual(result.state.instructionCount, 42);
 });
 
-test("jit register pre-instruction exits store committed partial lanes", async () => {
+test("jit register pre-instruction exits store committed high-byte fallback writes", async () => {
   const result = await runJitIrBlock(
     [
       0xb4, 0x55, // mov ah, 0x55
@@ -863,31 +850,34 @@ test("jit register pre-instruction exits store committed partial lanes", async (
   strictEqual(result.state.instructionCount, 11);
 });
 
-function requiredLaneSources(regs: JitReg32State, reg: Reg32): FullRegisterLaneSources {
-  const laneSources = regs.ensureStableFullLaneSourcesForCopy(reg);
-
-  assertFullRegisterLaneSources(laneSources);
-  return laneSources;
+function requiredFullPrefix(regs: JitReg32State, reg: Reg32): LocalRegValueSource {
+  return regs.ensureStableFullValueForCopy(reg);
 }
 
-function trackedLaneOwner(): LocalLaneSourceOwner & Readonly<{
+function fullPrefix(local: number, owner?: Owner | undefined): LocalRegValueSource {
+  return owner === undefined
+    ? { kind: "local", local, width: 32 }
+    : { kind: "local", local, width: 32, owner };
+}
+
+function trackedOwner(): Owner & Readonly<{
   releaseCount(): number;
 }> {
   const counter = { releases: 0 };
 
-  return createTrackedLaneOwner(counter);
+  return createTrackedOwner(counter);
 }
 
-function createTrackedLaneOwner(counter: { releases: number }): LocalLaneSourceOwner & Readonly<{
+function createTrackedOwner(counter: { releases: number }): Owner & Readonly<{
   releaseCount(): number;
 }> {
   let released = false;
 
   return {
-    retain: () => createTrackedLaneOwner(counter),
+    retain: () => createTrackedOwner(counter),
     release: () => {
       if (released) {
-        throw new Error("tracked lane owner released twice");
+        throw new Error("tracked owner released twice");
       }
 
       released = true;
@@ -897,8 +887,8 @@ function createTrackedLaneOwner(counter: { releases: number }): LocalLaneSourceO
   };
 }
 
-function unexpectedLaneCopyFallback(): never {
-  throw new Error("known full-register lane copies should not emit their fallback value");
+function unexpectedFullCopyFallback(): never {
+  throw new Error("known full-register copies should not emit their fallback value");
 }
 
 async function runRegisterStateBody(

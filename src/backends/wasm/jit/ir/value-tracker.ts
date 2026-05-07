@@ -11,7 +11,7 @@ import {
 import {
   jitStorageRegisterAccess,
   type JitRegisterValueMap
-} from "#backends/wasm/jit/ir/register-lane-values.js";
+} from "#backends/wasm/jit/ir/register-prefix-values.js";
 import type { Reg32 } from "#x86/isa/types.js";
 
 export class JitValueTracker {

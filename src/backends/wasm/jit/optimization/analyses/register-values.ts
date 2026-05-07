@@ -9,7 +9,7 @@ import {
   jitValueUsesSymbolicReg,
   type JitValue
 } from "#backends/wasm/jit/ir/values.js";
-import { jitStorageRegisterAccess } from "#backends/wasm/jit/ir/register-lane-values.js";
+import { jitStorageRegisterAccess } from "#backends/wasm/jit/ir/register-prefix-values.js";
 import { JitRegisterValues } from "#backends/wasm/jit/optimization/registers/values.js";
 import {
   shouldMaterializeRepeatedRegisterRead,

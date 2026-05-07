@@ -708,7 +708,122 @@ test("jit IR block materializes partial register writes before full-register cop
   deepStrictEqual(result.exit, { exitReason: ExitReason.FALLTHROUGH, payload: startAddress + 4 });
 });
 
-test("jit IR block reads known partial register lanes across instructions", async () => {
+test("jit IR block composes AX then AL without loading EAX for exit stores", async () => {
+  const instructionBytes = [
+    [0x66, 0x89, 0xc8], // mov ax, cx
+    [0x88, 0xd0], // mov al, dl
+    [0xcd, 0x2e] // int 0x2e
+  ];
+  const block = decodedBlock(instructionBytes);
+  const result = await runJitIrBlock(instructionBytes.flat(), createCpuState({
+    eax: 0xaaaa_0000,
+    ecx: 0xbbbb_1234,
+    edx: 0xcccc_cc56,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0xaaaa_1256);
+  deepStrictEqual(registerStateMemoryAccesses(block, stateOffset.eax), [
+    { opcode: wasmOpcode.i32Store16, offset: stateOffset.eax }
+  ]);
+});
+
+test("jit IR block composes EAX then AL without loading EAX from CPU state", async () => {
+  const instructionBytes = [
+    [0x89, 0xc8], // mov eax, ecx
+    [0x88, 0xd0], // mov al, dl
+    [0xcd, 0x2e] // int 0x2e
+  ];
+  const block = decodedBlock(instructionBytes);
+  const result = await runJitIrBlock(instructionBytes.flat(), createCpuState({
+    eax: 0xaaaa_aaaa,
+    ecx: 0xbbbb_1234,
+    edx: 0xcccc_cc56,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0xbbbb_1256);
+  deepStrictEqual(registerStateMemoryAccesses(block, stateOffset.eax), [
+    { opcode: wasmOpcode.i32Store, offset: stateOffset.eax }
+  ]);
+});
+
+test("jit IR block composes EAX then AX without loading EAX from CPU state", async () => {
+  const instructionBytes = [
+    [0x89, 0xc8], // mov eax, ecx
+    [0x66, 0x89, 0xd0], // mov ax, dx
+    [0xcd, 0x2e] // int 0x2e
+  ];
+  const block = decodedBlock(instructionBytes);
+  const result = await runJitIrBlock(instructionBytes.flat(), createCpuState({
+    eax: 0xaaaa_aaaa,
+    ecx: 0xbbbb_1234,
+    edx: 0xcccc_5678,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0xbbbb_5678);
+  deepStrictEqual(registerStateMemoryAccesses(block, stateOffset.eax), [
+    { opcode: wasmOpcode.i32Store, offset: stateOffset.eax }
+  ]);
+});
+
+test("jit IR block keeps AX then AH correct through mutable fallback", async () => {
+  const result = await runJitIrBlock([
+    0x66, 0x89, 0xc8, // mov ax, cx
+    0x88, 0xd4, // mov ah, dl
+    0xcd, 0x2e // int 0x2e
+  ], createCpuState({
+    eax: 0xaaaa_0000,
+    ecx: 0xbbbb_1234,
+    edx: 0xcccc_cc56,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0xaaaa_5634);
+  deepStrictEqual(result.exit, { exitReason: ExitReason.HOST_TRAP, payload: 0x2e });
+});
+
+test("jit IR block exit stores AL and AX immediates without full EAX loads", async () => {
+  const alBytes = [[0xb0, 0x34], [0xcd, 0x2e]]; // mov al, 0x34; int 0x2e
+  const axBytes = [[0x66, 0xb8, 0x34, 0x12], [0xcd, 0x2e]]; // mov ax, 0x1234; int 0x2e
+  const alBlock = decodedBlock(alBytes);
+  const axBlock = decodedBlock(axBytes);
+  const alResult = await runJitIrBlock(alBytes.flat(), createCpuState({ eax: 0xaaaa_aa00, eip: startAddress }));
+  const axResult = await runJitIrBlock(axBytes.flat(), createCpuState({ eax: 0xaaaa_0000, eip: startAddress }));
+
+  strictEqual(alResult.state.eax, 0xaaaa_aa34);
+  strictEqual(axResult.state.eax, 0xaaaa_1234);
+  deepStrictEqual(registerStateMemoryAccesses(alBlock, stateOffset.eax), [
+    { opcode: wasmOpcode.i32Store8, offset: stateOffset.eax }
+  ]);
+  deepStrictEqual(registerStateMemoryAccesses(axBlock, stateOffset.eax), [
+    { opcode: wasmOpcode.i32Store16, offset: stateOffset.eax }
+  ]);
+});
+
+test("jit IR block loads and merges EAX only when a full read needs an AX prefix", async () => {
+  const instructionBytes = [
+    [0x66, 0xb8, 0x34, 0x12], // mov ax, 0x1234
+    [0x89, 0xc3], // mov ebx, eax
+    [0xcd, 0x2e] // int 0x2e
+  ];
+  const block = decodedBlock(instructionBytes);
+  const result = await runJitIrBlock(instructionBytes.flat(), createCpuState({
+    eax: 0xaaaa_0000,
+    ebx: 0xbbbb_bbbb,
+    eip: startAddress
+  }));
+
+  strictEqual(result.state.eax, 0xaaaa_1234);
+  strictEqual(result.state.ebx, 0xaaaa_1234);
+  deepStrictEqual(registerStateMemoryAccesses(block, stateOffset.eax), [
+    { opcode: wasmOpcode.i32Load, offset: stateOffset.eax },
+    { opcode: wasmOpcode.i32Store, offset: stateOffset.eax }
+  ]);
+});
+
+test("jit IR block reads known partial register prefixes across instructions", async () => {
   const result = await runJitIrBlock([
     0xb0, 0x78, // mov al, 0x78
     0x88, 0xc3, // mov bl, al
@@ -873,7 +988,7 @@ test("jit IR block handles partial-width ALU register writeback", async () => {
   strictEqual(result.state.instructionCount, 1);
 });
 
-test("jit IR block keeps partial-width immediate ALU inside the destination lane", async () => {
+test("jit IR block keeps partial-width immediate ALU inside the destination alias", async () => {
   const cases = [
     {
       name: "ADD AX wraps at 16 bits",
@@ -1182,7 +1297,7 @@ test("jit IR block omits narrow bitwise operand masks", () => {
   assertNoOperandMaskBefore(singleInstructionBodyOpcodes([0x66, 0x0d, 0x32, 0x04]), wasmOpcode.i32Or);
 });
 
-test("jit IR block keeps cold AH xor state traffic byte-width", async () => {
+test("jit IR block uses full-register fallback for cold AH xor writeback", async () => {
   const bytes = [0x80, 0xf4, 0x05]; // xor ah, 5
   const block = buildJitIrBlock([ok(decodeBytes(bytes, startAddress))]);
   const result = await runJitIrBlock(bytes, createCpuState({
@@ -1197,7 +1312,8 @@ test("jit IR block keeps cold AH xor state traffic byte-width", async () => {
   strictEqual(result.state.instructionCount, 1);
   deepStrictEqual(registerStateMemoryAccesses(block, stateOffset.eax), [
     { opcode: wasmOpcode.i32Load8U, offset: stateOffset.eax + 1 },
-    { opcode: wasmOpcode.i32Store8, offset: stateOffset.eax + 1 }
+    { opcode: wasmOpcode.i32Load, offset: stateOffset.eax },
+    { opcode: wasmOpcode.i32Store, offset: stateOffset.eax }
   ]);
 });
 
@@ -1915,6 +2031,20 @@ function readGuestValue(view: DataView, address: number, width: 8 | 16 | 32): nu
     case 32:
       return view.getUint32(address, true);
   }
+}
+
+function decodedBlock(instructionBytes: readonly (readonly number[])[]): ReturnType<typeof buildJitIrBlock> {
+  const instructions = [];
+  let decodeEip = startAddress;
+
+  for (const bytes of instructionBytes) {
+    const instruction = ok(decodeBytes(bytes, decodeEip));
+
+    instructions.push(instruction);
+    decodeEip = instruction.nextEip;
+  }
+
+  return buildJitIrBlock(instructions);
 }
 
 function singleInstructionBodyOpcodes(bytes: readonly number[]): readonly number[] {

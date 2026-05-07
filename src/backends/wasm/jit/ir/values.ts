@@ -11,7 +11,7 @@ import {
   registerValueEntryHasFullValue,
   type JitRegisterAccess,
   type JitRegisterValueMap
-} from "#backends/wasm/jit/ir/register-lane-values.js";
+} from "#backends/wasm/jit/ir/register-prefix-values.js";
 
 export type JitBinaryValue = Readonly<{
   kind: "value.binary";

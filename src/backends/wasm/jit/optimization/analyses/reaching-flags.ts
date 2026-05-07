@@ -12,7 +12,7 @@ import {
   type JitBarrierAnalysis
 } from "#backends/wasm/jit/ir/barriers.js";
 import { jitConditionUseAt } from "#backends/wasm/jit/ir/effects.js";
-import { jitStorageRegisterAccess } from "#backends/wasm/jit/ir/register-lane-values.js";
+import { jitStorageRegisterAccess } from "#backends/wasm/jit/ir/register-prefix-values.js";
 import { JitValueTracker } from "#backends/wasm/jit/ir/value-tracker.js";
 import { JitRegisterValues } from "#backends/wasm/jit/optimization/registers/values.js";
 import {

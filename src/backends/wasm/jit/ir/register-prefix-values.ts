@@ -10,24 +10,22 @@ export type JitRegisterAccess = Readonly<{
   bitOffset: RegisterAlias["bitOffset"];
 }>;
 
+export type JitRegisterPrefixValue = Readonly<{
+  width: OperandWidth;
+  value: JitValue;
+}>;
+
 export type JitRegisterAccessState = {
-  full?: JitValue;
-  bytes: (JitValue | undefined)[];
-  lanes: Map<string, JitValue>;
+  prefix?: JitRegisterPrefixValue | undefined;
 };
 
 export type JitRegisterValueEntry = JitValue | JitRegisterAccessState;
 export type JitRegisterValueMap = ReadonlyMap<Reg32, JitRegisterValueEntry>;
 
-const byteWidth = 8;
 const fullWidth = 32;
-const fullByteCount = fullWidth / byteWidth;
 
 export function createRegisterAccessState(): JitRegisterAccessState {
-  return {
-    bytes: Array.from({ length: fullByteCount }, () => undefined),
-    lanes: new Map()
-  };
+  return {};
 }
 
 export function readRegisterAccess(
@@ -35,29 +33,13 @@ export function readRegisterAccess(
   width: OperandWidth,
   bitOffset: RegisterAlias["bitOffset"]
 ): JitValue | undefined {
-  if (regState === undefined) {
+  const prefix = regState?.prefix;
+
+  if (prefix === undefined || bitOffset + width > prefix.width) {
     return undefined;
   }
 
-  if (width === fullWidth) {
-    return bitOffset === 0 ? regState.full : undefined;
-  }
-
-  const exactLane = regState.lanes.get(registerAccessKey(width, bitOffset));
-
-  if (exactLane !== undefined) {
-    return exactLane;
-  }
-
-  if (regState.full !== undefined) {
-    return extractJitRegisterAccessValue(regState.full, width, bitOffset);
-  }
-
-  if (width === byteWidth) {
-    return regState.bytes[bitOffset / byteWidth];
-  }
-
-  return undefined;
+  return extractJitRegisterAccessValue(prefix.value, width, bitOffset);
 }
 
 export function writeRegisterAccess(
@@ -66,25 +48,12 @@ export function writeRegisterAccess(
   bitOffset: RegisterAlias["bitOffset"],
   value: JitValue
 ): void {
-  if (width === fullWidth) {
-    regState.full = value;
-    clearByteValues(regState);
-    regState.lanes.clear();
+  if (bitOffset !== 0) {
+    delete regState.prefix;
     return;
   }
 
-  delete regState.full;
-  clearOverlappingLanes(regState, width, bitOffset);
-  regState.lanes.set(registerAccessKey(width, bitOffset), value);
-
-  const startByte = bitOffset / byteWidth;
-  const byteLength = width / byteWidth;
-
-  for (let index = 0; index < byteLength; index += 1) {
-    const byteBitOffset = index === 0 ? 0 : 8;
-
-    regState.bytes[startByte + index] = extractJitRegisterAccessValue(value, byteWidth, byteBitOffset);
-  }
+  regState.prefix = { width, value };
 }
 
 export function extractJitRegisterAccessValue(
@@ -174,7 +143,11 @@ export function fullRegisterValueForEntry(entry: JitRegisterValueEntry | undefin
     return undefined;
   }
 
-  return jitRegisterValueEntryIsState(entry) ? entry.full : entry;
+  if (!jitRegisterValueEntryIsState(entry)) {
+    return entry;
+  }
+
+  return entry.prefix?.width === fullWidth ? entry.prefix.value : undefined;
 }
 
 export function registerValueEntryHasFullValue(entry: JitRegisterValueEntry | undefined): boolean {
@@ -183,53 +156,4 @@ export function registerValueEntryHasFullValue(entry: JitRegisterValueEntry | un
 
 function jitRegisterValueEntryIsState(entry: JitRegisterValueEntry): entry is JitRegisterAccessState {
   return !("kind" in entry);
-}
-
-function registerAccessKey(width: OperandWidth, bitOffset: RegisterAlias["bitOffset"]): string {
-  return `${bitOffset}:${width}`;
-}
-
-function clearByteValues(regState: JitRegisterAccessState): void {
-  for (let index = 0; index < fullByteCount; index += 1) {
-    regState.bytes[index] = undefined;
-  }
-}
-
-function clearOverlappingLanes(
-  regState: JitRegisterAccessState,
-  width: OperandWidth,
-  bitOffset: RegisterAlias["bitOffset"]
-): void {
-  for (const key of regState.lanes.keys()) {
-    const lane = registerAccessFromKey(key);
-
-    if (registerAccessesOverlap(width, bitOffset, lane.width, lane.bitOffset)) {
-      regState.lanes.delete(key);
-    }
-  }
-}
-
-function registerAccessFromKey(key: string): Readonly<{
-  width: OperandWidth;
-  bitOffset: RegisterAlias["bitOffset"];
-}> {
-  const [bitOffset, width] = key.split(":").map(Number);
-
-  if ((width !== 8 && width !== 16 && width !== 32) || (bitOffset !== 0 && bitOffset !== 8)) {
-    throw new Error(`invalid register access key: ${key}`);
-  }
-
-  return { width, bitOffset };
-}
-
-function registerAccessesOverlap(
-  width: OperandWidth,
-  bitOffset: RegisterAlias["bitOffset"],
-  otherWidth: OperandWidth,
-  otherBitOffset: RegisterAlias["bitOffset"]
-): boolean {
-  const end = bitOffset + width;
-  const otherEnd = otherBitOffset + otherWidth;
-
-  return bitOffset < otherEnd && otherBitOffset < end;
 }

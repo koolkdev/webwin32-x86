@@ -27,7 +27,6 @@ import type { JitStateSnapshot } from "#backends/wasm/jit/codegen/plan/types.js"
 import { createJitIrState } from "#backends/wasm/jit/state/state.js";
 import type { Reg32 } from "#x86/isa/types.js";
 import { createJitReg32State } from "#backends/wasm/jit/state/register-state.js";
-import { ownedStableFullLaneSources } from "#backends/wasm/jit/state/register-lanes.js";
 import { emitPlannedExpression } from "./expression-cache-test-helpers.js";
 
 test("JitValueLocalStore reuses one local for equal non-trivial values", () => {
@@ -259,7 +258,7 @@ test("JitValueLocalStore keeps pinned exit snapshot locals out of reuse", () => 
   regs.beginInstruction({ preserveCommittedRegs: false });
   regs.emitWriteAlias({ name: "eax", base: "eax", bitOffset: 0, width: 32 }, {
     emitValue: unexpectedEmitter,
-    laneSources: ownedStableFullLaneSources(captured.local, captured)
+    prefixSource: { kind: "local", local: captured.local, width: 32, owner: captured }
   });
   regs.commitPending();
 

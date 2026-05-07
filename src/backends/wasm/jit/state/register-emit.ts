@@ -2,6 +2,7 @@ import { widthMask, type RegisterAlias } from "#x86/isa/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
 import { wasmMemoryIndex } from "#backends/wasm/abi.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
+import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import {
   cleanValueWidth,
   dirtyValueWidth,
@@ -11,14 +12,11 @@ import {
   type ValueWidth
 } from "#backends/wasm/codegen/value-width.js";
 import {
-  aliasMask,
-  byteMask,
   byteWidth,
-  exactFullLocal,
-  knownByteLocalSources,
-  type LocalLaneSource,
+  fullWidth,
+  type LocalRegValueSource,
   type RegValueState
-} from "./register-lanes.js";
+} from "./register-values.js";
 
 export function emitStoreStateU8(
   body: WasmFunctionBodyEncoder,
@@ -54,7 +52,7 @@ export function emitStoreAliasValueIntoFullLocal(
   alias: RegisterAlias,
   valueLocal: number
 ): void {
-  const shiftedMask = aliasMask(alias);
+  const shiftedMask = (widthMask(alias.width) << alias.bitOffset) >>> 0;
 
   body.localGet(fullLocal).i32Const(i32(~shiftedMask)).i32And();
   body.localGet(valueLocal);
@@ -66,173 +64,73 @@ export function emitStoreAliasValueIntoFullLocal(
   body.i32Or().localSet(fullLocal);
 }
 
-export function emitMergedBytes(
+export function emitMergedPrefix(
   body: WasmFunctionBodyEncoder,
-  state: RegValueState,
+  state: RegValueState | undefined,
   options: Readonly<{ baseLocal?: number }> = {}
 ): void {
-  if (exactFullLocal(state) !== undefined) {
+  if (state?.kind !== "local" || state.width === fullWidth) {
     return;
   }
 
-  for (const [byteIndex, source] of knownByteLocalSources(state)) {
-    const shift = byteIndex * byteWidth;
-
-    if (source.local === options.baseLocal && source.bitOffset === shift) {
-      continue;
-    }
-
-    const shiftedMask = byteMask << shift;
-
-    body.i32Const(i32(~shiftedMask)).i32And();
-    emitLocalLaneSource(body, source);
-
-    if (shift !== 0) {
-      body.i32Const(shift).i32Shl();
-    }
-
-    body.i32Or();
+  if (state.local === options.baseLocal) {
+    return;
   }
+
+  const prefixMask = widthMask(state.width);
+
+  body.i32Const(i32(~prefixMask)).i32And();
+  body.localGet(state.local).i32Or();
 }
 
 export function emitExtractAliasFromLocal(
   body: WasmFunctionBodyEncoder,
-  local: number,
+  source: LocalRegValueSource,
   alias: RegisterAlias,
   options: WasmIrEmitValueOptions = {}
 ): ValueWidth {
-  body.localGet(local);
+  body.localGet(source.local);
 
   if (alias.bitOffset !== 0) {
     body.i32Const(alias.bitOffset).i32ShrU();
   }
 
-  if (options.signed === true && alias.width < 32) {
+  if (options.signed === true && alias.width < fullWidth) {
     return emitSignExtendValueToWidth(body, alias.width as 8 | 16);
   }
 
-  if (options.widthInsensitive === true && alias.width < 32) {
+  if (alias.bitOffset === 0 && source.width <= alias.width) {
+    return cleanValueWidth(alias.width);
+  }
+
+  if (options.widthInsensitive === true && alias.width < fullWidth) {
     return dirtyValueWidth(alias.width);
   }
 
-  emitMaskValueToWidth(body, alias.width);
-  return cleanValueWidth(alias.width);
+  return emitMaskValueToWidth(body, alias.width);
 }
 
-export function emitComposedLocalLaneSources(
+export function emitLocalPrefixForStore(
   body: WasmFunctionBodyEncoder,
-  sources: readonly LocalLaneSource[]
-): void {
-  let index = 0;
-  let emittedGroups = 0;
-
-  while (index < sources.length) {
-    const source = sources[index];
-
-    if (source === undefined) {
-      throw new Error(`missing byte source: ${index}`);
-    }
-
-    const groupByteLength = contiguousSourceByteLength(sources, index);
-    const groupWidth = groupByteLength * byteWidth;
-
-    emitLocalLaneSourceGroup(body, source, groupWidth);
-
-    const shift = index * byteWidth;
-
-    if (shift !== 0) {
-      body.i32Const(shift).i32Shl();
-    }
-
-    if (emittedGroups !== 0) {
-      body.i32Or();
-    }
-
-    emittedGroups += 1;
-    index += groupByteLength;
-  }
-}
-
-function contiguousSourceByteLength(sources: readonly LocalLaneSource[], startIndex: number): number {
-  const first = sources[startIndex];
-
-  if (first === undefined) {
-    return 0;
-  }
-
-  let byteLength = 1;
-
-  while (startIndex + byteLength < sources.length) {
-    const source = sources[startIndex + byteLength];
-
-    if (
-      source === undefined ||
-      source.local !== first.local ||
-      source.valueWidth !== first.valueWidth ||
-      source.bitOffset !== first.bitOffset + byteLength * byteWidth
-    ) {
-      break;
-    }
-
-    byteLength += 1;
-  }
-
-  return byteLength;
-}
-
-function emitLocalLaneSourceGroup(
-  body: WasmFunctionBodyEncoder,
-  source: LocalLaneSource,
-  groupWidth: number
+  source: LocalRegValueSource
 ): void {
   body.localGet(source.local);
-
-  if (source.bitOffset !== 0) {
-    body.i32Const(source.bitOffset).i32ShrU();
-  }
-
-  if (groupWidth < 32 && source.bitOffset + groupWidth < source.valueWidth) {
-    body.i32Const(laneGroupMask(groupWidth)).i32And();
-  }
 }
 
-function laneGroupMask(width: number): number {
-  return width === 24 ? 0x00ff_ffff : widthMask(width as 8 | 16);
-}
-
-export function emitWordLocalLaneSourceForStore16(
+export function emitComposedPrefixLocal(
   body: WasmFunctionBodyEncoder,
-  sources: readonly [LocalLaneSource, LocalLaneSource]
-): void {
-  const [lowByte, highByte] = sources;
+  current: LocalRegValueSource,
+  valueLocal: number,
+  valueWidth: 8 | 16
+): number {
+  const local = body.addLocal(wasmValueType.i32);
+  const replacementMask = widthMask(valueWidth);
 
-  if (highByte.local === lowByte.local && highByte.bitOffset === lowByte.bitOffset + byteWidth) {
-    body.localGet(lowByte.local);
-
-    if (lowByte.bitOffset !== 0) {
-      body.i32Const(lowByte.bitOffset).i32ShrU();
-    }
-
-    return;
-  }
-
-  emitComposedLocalLaneSources(body, sources);
+  body.localGet(current.local).i32Const(i32(~replacementMask)).i32And();
+  body.localGet(valueLocal).i32Or().localSet(local);
+  return local;
 }
 
-export function emitLocalLaneSource(body: WasmFunctionBodyEncoder, source: LocalLaneSource): void {
-  body.localGet(source.local);
-
-  if (source.bitOffset !== 0) {
-    body.i32Const(source.bitOffset).i32ShrU();
-  }
-
-  body.i32Const(byteMask).i32And();
-}
-
-export function emitLocalLaneSourceForStore8(body: WasmFunctionBodyEncoder, source: LocalLaneSource): void {
-  body.localGet(source.local);
-
-  if (source.bitOffset !== 0) {
-    body.i32Const(source.bitOffset).i32ShrU();
-  }
+export function offsetForAlias(alias: RegisterAlias): number {
+  return alias.bitOffset / byteWidth;
 }

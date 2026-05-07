@@ -4,26 +4,17 @@ import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-bo
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import { emitLoadStateU32 } from "#backends/wasm/codegen/state.js";
 import {
-  clearKnownBytes,
-  exactFullLocal,
-  fullRegAccess,
-  fullRegisterLaneSourcesFrom,
-  hasKnownBytes,
-  laneSourcesForAlias,
-  recordFullStableLocal,
-  retainFullRegisterLaneSources,
-  stableFullLaneSources,
-  type FullRegisterLaneSources
-} from "./register-lanes.js";
+  clearRegValueState,
+  hasKnownPrefix,
+  recordStableRegValue,
+  retainedRegValueSource,
+  type LocalRegValueSource
+} from "./register-values.js";
+import { emitMergedPrefix } from "./register-emit.js";
 import {
-  emitComposedLocalLaneSources,
-  emitMergedBytes
-} from "./register-emit.js";
-import {
+  currentExactFullSource,
   currentUncoveredMutableCell,
-  currentValueUsesMutableCell,
-  exactStableSourceForAlias,
-  stableLaneSourcesForAlias
+  currentValueUsesMutableCell
 } from "./register-state-queries.js";
 import {
   committedStateForReg,
@@ -37,8 +28,8 @@ export type RegisterValueEmitter = Readonly<{
   materializeCurrentFull(reg: Reg32): number;
   emitCurrentFullValue(reg: Reg32): void;
   emitCommittedFullValue(reg: Reg32): void;
-  ensureStableFullLaneSourcesForCopy(reg: Reg32): FullRegisterLaneSources;
-  freezeMutableRegister(reg: Reg32): FullRegisterLaneSources;
+  ensureStableFullValueForCopy(reg: Reg32): LocalRegValueSource;
+  freezeMutableRegister(reg: Reg32): LocalRegValueSource;
   freezeCommittedRegister(reg: Reg32): void;
   ensureMutableCell(reg: Reg32, preserveCommittedRegs: boolean): number;
 }>;
@@ -51,17 +42,17 @@ export function createRegisterValueEmitter(
     materializeCurrentFull,
     emitCurrentFullValue,
     emitCommittedFullValue,
-    ensureStableFullLaneSourcesForCopy,
+    ensureStableFullValueForCopy,
     freezeMutableRegister,
     freezeCommittedRegister,
     ensureMutableCell
   };
 
-  function ensureStableFullLaneSourcesForCopy(reg: Reg32): FullRegisterLaneSources {
-    const stableSources = fullRegisterLaneSourcesFrom(stableLaneSourcesForAlias(storage, fullRegAccess(reg)));
+  function ensureStableFullValueForCopy(reg: Reg32): LocalRegValueSource {
+    const stableSource = currentExactFullSource(storage, reg);
 
-    if (stableSources !== undefined) {
-      return retainFullRegisterLaneSources(stableSources);
+    if (stableSource !== undefined) {
+      return retainedRegValueSource(stableSource);
     }
 
     if (currentValueUsesMutableCell(storage, reg)) {
@@ -70,12 +61,12 @@ export function createRegisterValueEmitter(
 
     const local = materializeCurrentFull(reg);
 
-    return stableFullLaneSources(local);
+    return { kind: "local", local, width: 32 };
   }
 
-  function freezeMutableRegister(reg: Reg32): FullRegisterLaneSources {
+  function freezeMutableRegister(reg: Reg32): LocalRegValueSource {
     if (!currentValueUsesMutableCell(storage, reg)) {
-      return ensureStableFullLaneSourcesForCopy(reg);
+      return ensureStableFullValueForCopy(reg);
     }
 
     const local = body.addLocal(wasmValueType.i32);
@@ -84,11 +75,11 @@ export function createRegisterValueEmitter(
     body.localSet(local);
     recordCurrentFullStableLocal(reg, local);
 
-    return stableFullLaneSources(local);
+    return { kind: "local", local, width: 32 };
   }
 
   function materializeCurrentFull(reg: Reg32): number {
-    const fullSource = exactStableSourceForAlias(storage, fullRegAccess(reg));
+    const fullSource = currentExactFullSource(storage, reg);
 
     if (fullSource !== undefined) {
       return fullSource.local;
@@ -110,32 +101,22 @@ export function createRegisterValueEmitter(
 
   function emitCurrentFullValue(reg: Reg32): void {
     const pending = storage.pendingStates.get(reg);
+    const pendingMutableLocal = storage.pendingMutableCells.get(reg);
+
+    if (pendingMutableLocal !== undefined) {
+      body.localGet(pendingMutableLocal);
+      emitMergedPrefix(body, pending, { baseLocal: pendingMutableLocal });
+      return;
+    }
 
     if (pending !== undefined) {
-      const pendingMutableLocal = storage.pendingMutableCells.get(reg);
-
-      if (pendingMutableLocal !== undefined) {
-        body.localGet(pendingMutableLocal);
-        emitMergedBytes(body, pending, { baseLocal: pendingMutableLocal });
-        return;
-      }
-
-      const pendingFullSource = exactFullLocal(pending);
-
-      if (pendingFullSource !== undefined) {
-        body.localGet(pendingFullSource.local);
-        return;
-      }
-
-      const pendingSources = laneSourcesForAlias(pending, fullRegAccess(reg));
-
-      if (pendingSources !== undefined) {
-        emitComposedLocalLaneSources(body, pendingSources);
+      if (pending.kind === "local" && pending.width === 32) {
+        body.localGet(pending.local);
         return;
       }
 
       emitCommittedFullValue(reg);
-      emitMergedBytes(body, pending);
+      emitMergedPrefix(body, pending);
       return;
     }
 
@@ -148,32 +129,17 @@ export function createRegisterValueEmitter(
 
     if (mutableLocal !== undefined) {
       body.localGet(mutableLocal);
-
-      if (state !== undefined) {
-        emitMergedBytes(body, state, { baseLocal: mutableLocal });
-      }
+      emitMergedPrefix(body, state, { baseLocal: mutableLocal });
       return;
     }
 
-    const fullSource = exactFullLocal(state);
-
-    if (fullSource !== undefined) {
-      body.localGet(fullSource.local);
-      return;
-    }
-
-    const sources = laneSourcesForAlias(state, fullRegAccess(reg));
-
-    if (sources !== undefined) {
-      emitComposedLocalLaneSources(body, sources);
+    if (state?.kind === "local" && state.width === 32) {
+      body.localGet(state.local);
       return;
     }
 
     emitLoadStateU32(body, stateOffset[reg]);
-
-    if (state !== undefined) {
-      emitMergedBytes(body, state);
-    }
+    emitMergedPrefix(body, state);
   }
 
   function ensureMutableCell(reg: Reg32, preserveCommittedRegs: boolean): number {
@@ -182,10 +148,10 @@ export function createRegisterValueEmitter(
     const local = cells.get(reg);
 
     if (local !== undefined) {
-      if (hasKnownBytes(state)) {
+      if (hasKnownPrefix(state)) {
         emitCurrentFullValue(reg);
         body.localSet(local);
-        clearKnownBytes(state);
+        clearRegValueState(state);
       }
 
       return local;
@@ -195,7 +161,7 @@ export function createRegisterValueEmitter(
 
     emitCurrentFullValue(reg);
     body.localSet(detachedLocal);
-    clearKnownBytes(state);
+    clearRegValueState(state);
     cells.set(reg, detachedLocal);
     return detachedLocal;
   }
@@ -209,18 +175,18 @@ export function createRegisterValueEmitter(
 
     emitCommittedFullValue(reg);
     body.localSet(local);
-    recordFullStableLocal(committedStateForReg(storage, reg), local);
+    recordStableRegValue(committedStateForReg(storage, reg), local, 32);
     storage.committedMutableCells.delete(reg);
   }
 
   function recordCurrentFullStableLocal(reg: Reg32, local: number): void {
     if (storage.pendingStates.has(reg) || storage.pendingMutableCells.has(reg)) {
-      recordFullStableLocal(stateForReg(storage.pendingStates, reg), local);
+      recordStableRegValue(stateForReg(storage.pendingStates, reg), local, 32);
       storage.pendingMutableCells.delete(reg);
       return;
     }
 
-    recordFullStableLocal(committedStateForReg(storage, reg), local);
+    recordStableRegValue(committedStateForReg(storage, reg), local, 32);
     storage.committedMutableCells.delete(reg);
   }
 }
