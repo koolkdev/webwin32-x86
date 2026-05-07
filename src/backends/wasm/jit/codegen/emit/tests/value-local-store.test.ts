@@ -79,6 +79,42 @@ test("JitValueLocalStore reuses structurally equal binary expressions", () => {
   deepStrictEqual(localOpcodes(opcodes), [wasmOpcode.localTee, wasmOpcode.localGet]);
 });
 
+test("JitValueLocalStore reuses high-cost retained expressions through one local", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const first = highCostValue();
+  const second = highCostValue();
+  const store = new JitValueLocalStore(body, useCounts([{ value: first, useCount: 2 }]));
+  let emitted = 0;
+
+  store.emitForUse(first, () => emitHighCostValue(body, () => { emitted += 1; }));
+  store.emitForUse(second, unexpectedEmitter);
+  body.end();
+
+  const opcodes = wasmBodyOpcodes(body.encode());
+
+  strictEqual(emitted, 1);
+  strictEqual(wasmBodyLocalCount(body.encode()), 1);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Or), 1);
+  deepStrictEqual(localOpcodes(opcodes), [wasmOpcode.localTee, wasmOpcode.localGet]);
+});
+
+test("JitValueLocalStore does not cache single-use high-cost retained expressions", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const value = highCostValue();
+  const store = new JitValueLocalStore(body, useCounts([{ value, useCount: 1 }]));
+  let emitted = 0;
+
+  store.emitForUse(value, () => emitHighCostValue(body, () => { emitted += 1; }));
+  body.end();
+
+  const opcodes = wasmBodyOpcodes(body.encode());
+
+  strictEqual(emitted, 1);
+  strictEqual(wasmBodyLocalCount(body.encode()), 0);
+  strictEqual(countOpcode(opcodes, wasmOpcode.i32Or), 1);
+  deepStrictEqual(localOpcodes(opcodes), []);
+});
+
 test("JitValueLocalStore does not cache constants", () => {
   const body = new WasmFunctionBodyEncoder();
   const value = { kind: "const", type: "i32", value: 7 } as const satisfies JitValue;
@@ -442,6 +478,22 @@ function addValue(reg: "eax" | "ebx", value: number): JitValue {
   };
 }
 
+function highCostValue(): JitValue {
+  return {
+    kind: "value.binary",
+    type: "i32",
+    operator: "or",
+    a: {
+      kind: "value.binary",
+      type: "i32",
+      operator: "xor",
+      a: addValue("eax", 1),
+      b: addValue("ebx", 2)
+    },
+    b: { kind: "reg", reg: "edx" }
+  };
+}
+
 function useCounts(counts: readonly JitValueUseCount[]): readonly JitValueUseCount[] {
   return counts;
 }
@@ -485,6 +537,12 @@ function emitXorOfAdds(body: WasmFunctionBodyEncoder, onEmit: () => void): Value
   body.i32Const(10).i32Const(1).i32Add();
   body.i32Const(20).i32Const(2).i32Add();
   body.i32Xor();
+  return cleanValueWidth(32);
+}
+
+function emitHighCostValue(body: WasmFunctionBodyEncoder, onEmit: () => void): ValueWidth {
+  emitXorOfAdds(body, onEmit);
+  body.i32Const(30).i32Or();
   return cleanValueWidth(32);
 }
 

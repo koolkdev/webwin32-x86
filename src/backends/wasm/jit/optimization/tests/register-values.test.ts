@@ -1,6 +1,7 @@
 import { deepStrictEqual, strictEqual, throws } from "node:assert";
 import { test } from "node:test";
 
+import type { IrBlock } from "#x86/ir/model/types.js";
 import { ExitReason } from "#backends/wasm/exit.js";
 import { indexJitEffects } from "#backends/wasm/jit/ir/effects.js";
 import {
@@ -82,9 +83,8 @@ test("register value analysis tracks foldable register reads", () => {
   strictEqual(analysis.producers.length, 1);
   deepStrictEqual(analysis.reads.map((read) => ({
     reg: read.reg,
-    folded: read.folded,
     reason: read.reason
-  })), [{ reg: "eax", folded: true, reason: "get" }]);
+  })), [{ reg: "eax", reason: "get" }]);
   deepStrictEqual(analysis.folds.map((fold) => ({
     opIndex: fold.opIndex,
     kind: fold.kind,
@@ -268,6 +268,26 @@ test("register value analysis keeps immediately exiting writes concrete", () => 
   deepStrictEqual(analysis.materializations, []);
 });
 
+test("register value analysis retains high-cost symbolic expressions", () => {
+  const analysis = analyzeJitRegisterValues({
+    instructions: [
+      syntheticInstruction([
+        ...highCostExpressionOps(0),
+        { op: "set", target: { kind: "reg", reg: "ebx" }, value: v(6) },
+        { op: "next" }
+      ])
+    ]
+  });
+
+  strictEqual(analysis.producers.length, 1);
+  strictEqual(analysis.producers[0]?.retained, true);
+  deepStrictEqual(analysis.materializations.map((entry) => ({
+    opIndex: entry.opIndex,
+    reason: entry.reason,
+    regs: entry.regs
+  })), [{ opIndex: 8, reason: "blockEnd", regs: ["ebx"] }]);
+});
+
 test("register value analysis validation rejects missing materialization values", () => {
   throws(() => validateJitRegisterValueAnalysis(analysisWithMaterialization({
     instructionIndex: 0,
@@ -300,4 +320,16 @@ function analysisWithMaterialization(
     materializations: [materialization],
     finalValues: new Map()
   };
+}
+
+function highCostExpressionOps(baseId: number): IrBlock {
+  return [
+    { op: "get", dst: v(baseId), source: { kind: "reg", reg: "eax" } },
+    { op: "get", dst: v(baseId + 1), source: { kind: "reg", reg: "ecx" } },
+    { op: "value.binary", type: "i32", operator: "add", dst: v(baseId + 2), a: v(baseId), b: c32(1) },
+    { op: "value.binary", type: "i32", operator: "add", dst: v(baseId + 3), a: v(baseId + 1), b: c32(2) },
+    { op: "value.binary", type: "i32", operator: "xor", dst: v(baseId + 4), a: v(baseId + 2), b: v(baseId + 3) },
+    { op: "get", dst: v(baseId + 5), source: { kind: "reg", reg: "edx" } },
+    { op: "value.binary", type: "i32", operator: "or", dst: v(baseId + 6), a: v(baseId + 4), b: v(baseId + 5) }
+  ];
 }

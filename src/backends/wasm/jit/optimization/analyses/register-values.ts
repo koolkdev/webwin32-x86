@@ -12,10 +12,6 @@ import {
 import { jitStorageRegisterAccess } from "#backends/wasm/jit/ir/register-prefix-values.js";
 import { JitRegisterValues } from "#backends/wasm/jit/optimization/registers/values.js";
 import {
-  shouldMaterializeRepeatedRegisterRead,
-  shouldRetainRegisterValue
-} from "#backends/wasm/jit/optimization/registers/policy.js";
-import {
   analyzeJitBarriers,
   jitInstructionHasBarrier,
   jitOpBarriersAt,
@@ -36,7 +32,6 @@ export type JitRegisterValueRead = Readonly<{
   opIndex: number;
   reg: Reg32;
   value: JitValue;
-  folded: boolean;
   reason: "get" | "address";
 }>;
 
@@ -54,8 +49,7 @@ export type JitRegisterMaterializationReason =
   | "read"
   | "clobber"
   | "conditionalWrite"
-  | "blockEnd"
-  | "policy";
+  | "blockEnd";
 
 export type JitRegisterMaterialization = Readonly<{
   instructionIndex: number;
@@ -173,19 +167,8 @@ function analyzeInstruction(
         const value = registers.valueForStorage(op.source, instruction.operands, accessWidth, op.signed === true);
 
         if (reg !== undefined && value !== undefined && registers.hasStorageValue(op.source, instruction.operands, accessWidth)) {
-          if (registers.get(reg) !== undefined && shouldMaterializeRepeatedRegisterRead(reg, value, registers)) {
-            materializeRegs(registers, materializations, [reg], {
-              instructionIndex,
-              opIndex,
-              phase: "beforeOp",
-              reason: "policy"
-            });
-            reads.push({ instructionIndex, opIndex, reg, value, folded: false, reason: "get" });
-          } else {
-            registers.recordRead(reg);
-            reads.push({ instructionIndex, opIndex, reg, value, folded: true, reason: "get" });
-            folds.push({ instructionIndex, opIndex, kind: "get", value, regs: [reg] });
-          }
+          reads.push({ instructionIndex, opIndex, reg, value, reason: "get" });
+          folds.push({ instructionIndex, opIndex, kind: "get", value, regs: [reg] });
         }
 
         if (reg !== undefined && value === undefined && registers.get(reg) !== undefined) {
@@ -202,19 +185,6 @@ function analyzeInstruction(
       }
       case "address": {
         const readRegs = registers.regsReadByEffectiveAddress(op.operand, instruction.operands);
-        const repeatedRegs = readRegs.filter((reg) => {
-          const value = registers.get(reg);
-
-          return value !== undefined && shouldMaterializeRepeatedRegisterRead(reg, value, registers);
-        });
-
-        materializeRegs(registers, materializations, repeatedRegs, {
-          instructionIndex,
-          opIndex,
-          phase: "beforeOp",
-          reason: "policy"
-        });
-
         const value = registers.valueForEffectiveAddress(op.operand, instruction.operands);
 
         if (value === undefined) {
@@ -231,8 +201,7 @@ function analyzeInstruction(
             const regValue = registers.get(reg);
 
             if (regValue !== undefined) {
-              registers.recordRead(reg);
-              reads.push({ instructionIndex, opIndex, reg, value: regValue, folded: true, reason: "address" });
+              reads.push({ instructionIndex, opIndex, reg, value: regValue, reason: "address" });
             }
           }
         }
@@ -261,10 +230,12 @@ function analyzeInstruction(
         const value = values.valueFor(op.value);
         const accessWidth = op.accessWidth ?? 32;
         const access = jitStorageRegisterAccess(op.target, instruction.operands, accessWidth);
+        // Retention is a semantic decision, not a profitability decision. Pure JitValue
+        // trees may stay symbolic; barriers/materialization handle lifetime safety, and
+        // the value-cache plan decides whether repeated emission deserves a Wasm local.
         const retained = access !== undefined &&
           access.width === 32 &&
           value !== undefined &&
-          shouldRetainRegisterValue(value) &&
           (
             !isImmediatelyMaterializedAtExit(instruction, instructionIndex, opIndex, barriers) ||
             jitValueIsSymbolicReg(value, access.reg)

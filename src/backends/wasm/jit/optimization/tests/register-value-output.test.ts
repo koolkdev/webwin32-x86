@@ -12,6 +12,7 @@ function runRegisterValuePass(block: JitIrBlock): Readonly<{
   block: JitIrBlock;
   registerValuePropagation: Readonly<{
     removedSetCount: number;
+    foldedReadCount: number;
     materializedSetCount: number;
   }>;
 }> {
@@ -21,6 +22,7 @@ function runRegisterValuePass(block: JitIrBlock): Readonly<{
     block: result.block,
     registerValuePropagation: {
       removedSetCount: result.registerValuePropagation.removedSetCount,
+      foldedReadCount: result.registerValuePropagation.foldedReadCount,
       materializedSetCount: result.registerValuePropagation.materializedSetCount
     }
   };
@@ -45,7 +47,7 @@ test("runRegisterValuePass keeps transient register calculations unmaterialized 
   deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax", "ebx"]);
 });
 
-test("runRegisterValuePass materializes repeated expensive register-value reads", () => {
+test("runRegisterValuePass folds repeated expensive register-value reads until exit", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const xorEax = ok(decodeBytes([0x83, 0xf0, 0x02], movEaxEcx.nextEip));
   const addEbxEax = ok(decodeBytes([0x01, 0xc3], xorEax.nextEip));
@@ -60,11 +62,12 @@ test("runRegisterValuePass materializes repeated expensive register-value reads"
   ]));
 
   strictEqual(folded.registerValuePropagation.removedSetCount, 4);
+  strictEqual(folded.registerValuePropagation.foldedReadCount, 3);
   strictEqual(folded.registerValuePropagation.materializedSetCount, 3);
   deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax", "edx", "ebx"]);
 });
 
-test("runRegisterValuePass keeps oversized expressions concrete", () => {
+test("runRegisterValuePass retains oversized expressions symbolically", () => {
   const movEaxEcx = ok(decodeBytes([0x89, 0xc8], startAddress));
   const xor1 = ok(decodeBytes([0x83, 0xf0, 0x01], movEaxEcx.nextEip));
   const xor2 = ok(decodeBytes([0x83, 0xf0, 0x02], xor1.nextEip));
@@ -80,8 +83,9 @@ test("runRegisterValuePass keeps oversized expressions concrete", () => {
     trap
   ]));
 
-  strictEqual(folded.registerValuePropagation.removedSetCount, 4);
-  strictEqual(folded.registerValuePropagation.materializedSetCount, 0);
+  strictEqual(folded.registerValuePropagation.removedSetCount, 5);
+  strictEqual(folded.registerValuePropagation.foldedReadCount, 4);
+  strictEqual(folded.registerValuePropagation.materializedSetCount, 1);
   deepStrictEqual(setTargetRegs(folded.block.instructions), ["eax"]);
 });
 

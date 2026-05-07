@@ -18,7 +18,6 @@ import {
 
 export class JitRegisterValues {
   private readonly values = new Map<Reg32, JitRegisterAccessState>();
-  private readonly readCounts = new Map<Reg32, number>();
 
   get trackedValues(): ReadonlyMap<Reg32, JitValue> {
     return new Map(this.fullValueEntries());
@@ -79,7 +78,6 @@ export class JitRegisterValues {
 
   set(reg: Reg32, value: JitValue): void {
     writeRegisterAccess(this.writableState(reg), 32, 0, value);
-    this.readCounts.set(reg, 0);
   }
 
   write(
@@ -89,12 +87,10 @@ export class JitRegisterValues {
     value: JitValue
   ): void {
     writeRegisterAccess(this.writableState(reg), width, bitOffset, value);
-    this.readCounts.set(reg, 0);
   }
 
   delete(reg: Reg32): void {
     this.values.delete(reg);
-    this.readCounts.delete(reg);
   }
 
   deletePartialDependencies(
@@ -119,31 +115,6 @@ export class JitRegisterValues {
 
   clear(): void {
     this.values.clear();
-    this.readCounts.clear();
-  }
-
-  readCount(reg: Reg32): number {
-    return this.readCounts.get(reg) ?? 0;
-  }
-
-  recordRead(reg: Reg32): void {
-    this.readCounts.set(reg, this.readCount(reg) + 1);
-  }
-
-  clearReadCounts(): void {
-    this.readCounts.clear();
-  }
-
-  resetReadCount(reg: Reg32): void {
-    this.readCounts.delete(reg);
-  }
-
-  syncReadCounts(): void {
-    for (const reg of this.readCounts.keys()) {
-      if (!this.values.has(reg)) {
-        this.readCounts.delete(reg);
-      }
-    }
   }
 
   private writableState(reg: Reg32): JitRegisterAccessState {
