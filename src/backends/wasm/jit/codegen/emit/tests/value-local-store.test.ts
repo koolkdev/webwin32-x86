@@ -26,6 +26,8 @@ import { emitJitIrWithContext } from "#backends/wasm/jit/codegen/emit/ir-context
 import type { JitStateSnapshot } from "#backends/wasm/jit/codegen/plan/types.js";
 import { createJitIrState } from "#backends/wasm/jit/state/state.js";
 import type { Reg32 } from "#x86/isa/types.js";
+import { createJitReg32State } from "#backends/wasm/jit/state/register-state.js";
+import { ownedStableFullLaneSources } from "#backends/wasm/jit/state/register-lanes.js";
 import { emitPlannedExpression } from "./expression-cache-test-helpers.js";
 
 test("JitValueLocalStore reuses one local for equal non-trivial values", () => {
@@ -215,6 +217,70 @@ test("JitValueLocalStore retires locals that become escaped while available", ()
 
   strictEqual(rematerialized.local === first.local, false);
   deepStrictEqual(localOpcodes(wasmBodyOpcodes(body.encode())), [wasmOpcode.localTee, wasmOpcode.localSet]);
+});
+
+test("JitValueLocalStore reuses retired escaped locals after owners release", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const value = addValue("eax", 1);
+  const store = new JitValueLocalStore(body, useCounts([{ value, useCount: 4 }]));
+  const first = store.captureForReuse(value, () => emitAdd(body, () => {}));
+
+  if (first === undefined) {
+    throw new Error("expected first materialization");
+  }
+
+  store.forgetWhere((candidate) => candidate.kind === "value.binary");
+  first.release();
+
+  const second = store.captureForReuse(value, () => emitAdd(body, () => {}));
+
+  if (second === undefined) {
+    throw new Error("expected second materialization");
+  }
+
+  body.end();
+
+  strictEqual(second.local, first.local);
+  strictEqual(wasmBodyLocalCount(body.encode()), 1);
+  deepStrictEqual(localOpcodes(wasmBodyOpcodes(body.encode())), [wasmOpcode.localSet, wasmOpcode.localSet]);
+});
+
+test("JitValueLocalStore keeps pinned exit snapshot locals out of reuse", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const value = addValue("eax", 1);
+  const store = new JitValueLocalStore(body, useCounts([{ value, useCount: 4 }]));
+  const regs = createJitReg32State(body);
+  const captured = store.captureForReuse(value, () => emitAdd(body, () => {}));
+
+  if (captured === undefined) {
+    throw new Error("expected captured cached local");
+  }
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAlias({ name: "eax", base: "eax", bitOffset: 0, width: 32 }, {
+    emitValue: unexpectedEmitter,
+    laneSources: ownedStableFullLaneSources(captured.local, captured)
+  });
+  regs.commitPending();
+
+  const snapshot = regs.captureCommittedExitStores(["eax"]);
+
+  regs.emitWriteAlias({ name: "eax", base: "eax", bitOffset: 0, width: 32 }, () => {
+    body.i32Const(2);
+    return cleanValueWidth(32);
+  });
+  store.forgetWhere((candidate) => candidate.kind === "value.binary");
+
+  const rematerialized = store.captureForReuse(value, () => emitAdd(body, () => {}));
+
+  if (rematerialized === undefined) {
+    throw new Error("expected rematerialized cached local");
+  }
+
+  regs.emitExitSnapshotStore("eax", snapshot);
+  body.end();
+
+  strictEqual(rematerialized.local === captured.local, false);
 });
 
 test("JIT expression emission uses local.tee for cached optimized expression vars", () => {

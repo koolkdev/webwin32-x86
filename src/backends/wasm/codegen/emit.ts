@@ -76,9 +76,14 @@ export type WasmIrEmitHelpers = Readonly<{
   emitMaskedValue(value: IrValueExpr, width: OperandWidth): ValueWidth;
 }>;
 
-export type WasmIrCachedValueLocal = Readonly<{
+export type WasmIrCachedValueHandle = Readonly<{
   local: number;
   valueWidth: ValueWidth;
+  retain(): WasmIrCachedValueHandle;
+  release(): void;
+}>;
+
+export type WasmIrCachedValueLocal = WasmIrCachedValueHandle & Readonly<{
   emitted: boolean;
 }>;
 

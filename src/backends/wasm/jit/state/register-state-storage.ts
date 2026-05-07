@@ -3,6 +3,8 @@ import {
   allBytesKnown,
   emptyRegValueState,
   localSourceAt,
+  moveRegValueStateBytes,
+  recordOwnedByteLaneSource,
   type RegValueState
 } from "./register-lanes.js";
 
@@ -56,17 +58,20 @@ export function commitPendingReg(storage: RegisterStateStorage, reg: Reg32): voi
   const target = committedStateForReg(storage, reg);
 
   if (pendingMutableLocal !== undefined) {
-    target.bytes = pending === undefined ? emptyRegValueState().bytes : [...pending.bytes];
+    moveRegValueStateBytes(
+      target,
+      pending === undefined ? emptyRegValueState().bytes : [...pending.bytes]
+    );
     storage.committedMutableCells.set(reg, pendingMutableLocal);
   } else if (pending !== undefined && allBytesKnown(pending)) {
-    target.bytes = [...pending.bytes];
+    moveRegValueStateBytes(target, [...pending.bytes]);
     storage.committedMutableCells.delete(reg);
   } else if (pending !== undefined) {
     for (let byteIndex = 0; byteIndex < pending.bytes.length; byteIndex += 1) {
       const source = localSourceAt(pending, byteIndex);
 
       if (source !== undefined) {
-        target.bytes[byteIndex] = { kind: "value", source };
+        recordOwnedByteLaneSource(target, byteIndex, source);
       }
     }
   }

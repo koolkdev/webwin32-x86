@@ -6,7 +6,7 @@ import type { CpuState } from "#x86/state/cpu-state.js";
 import type { RegisterAlias, Reg32 } from "#x86/isa/types.js";
 import { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { WasmModuleEncoder } from "#backends/wasm/encoder/module.js";
-import { wasmOpcode } from "#backends/wasm/encoder/types.js";
+import { wasmOpcode, wasmValueType } from "#backends/wasm/encoder/types.js";
 import { wasmImport } from "#backends/wasm/abi.js";
 import { readWasmCpuState, writeWasmCpuState } from "#backends/wasm/state-layout.js";
 import { ExitReason } from "#backends/wasm/exit.js";
@@ -22,8 +22,10 @@ import {
 import {
   assertFullRegisterLaneSources,
   emptyRegValueState,
+  ownedStableFullLaneSources,
   recordPartialStableLocal,
-  type FullRegisterLaneSources
+  type FullRegisterLaneSources,
+  type LocalLaneSourceOwner
 } from "#backends/wasm/jit/state/register-lanes.js";
 import { planRegisterExitStore } from "#backends/wasm/jit/state/register-store-plan.js";
 import { wasmBodyOpcodes } from "#backends/wasm/tests/body-opcodes.js";
@@ -53,6 +55,77 @@ function emitCopyReg32(regs: JitReg32State, target: Reg32, source: Reg32): void 
     laneSources: requiredLaneSources(regs, source)
   });
 }
+
+test("jit register state releases lane handles after full overwrite", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+  const local = body.addLocal(wasmValueType.i32);
+  const owner = trackedLaneOwner();
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAlias(fullAlias("eax"), {
+    emitValue: unexpectedLaneCopyFallback,
+    laneSources: ownedStableFullLaneSources(local, owner)
+  });
+
+  strictEqual(owner.releaseCount(), 0);
+
+  emitWriteReg32(regs, "eax", () => {
+    body.i32Const(1);
+  });
+  body.end();
+
+  strictEqual(owner.releaseCount(), 4);
+});
+
+test("jit register state releases only overlapping lane handles after partial overwrite", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+  const local = body.addLocal(wasmValueType.i32);
+  const owner = trackedLaneOwner();
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  regs.emitWriteAlias(fullAlias("eax"), {
+    emitValue: unexpectedLaneCopyFallback,
+    laneSources: ownedStableFullLaneSources(local, owner)
+  });
+  regs.emitWriteAlias(al, () => {
+    body.i32Const(0x44);
+  });
+
+  strictEqual(owner.releaseCount(), 1);
+
+  regs.emitWriteAlias(ah, () => {
+    body.i32Const(0x33);
+  });
+  body.end();
+
+  strictEqual(owner.releaseCount(), 2);
+});
+
+test("jit register state transfers pending lane handles when committing", () => {
+  const body = new WasmFunctionBodyEncoder();
+  const regs = createJitReg32State(body);
+  const local = body.addLocal(wasmValueType.i32);
+  const owner = trackedLaneOwner();
+
+  regs.beginInstruction({ preserveCommittedRegs: true });
+  regs.emitWriteAlias(fullAlias("eax"), {
+    emitValue: unexpectedLaneCopyFallback,
+    laneSources: ownedStableFullLaneSources(local, owner)
+  });
+  regs.commitPending();
+
+  strictEqual(owner.releaseCount(), 0);
+
+  regs.beginInstruction({ preserveCommittedRegs: false });
+  emitWriteReg32(regs, "eax", () => {
+    body.i32Const(1);
+  });
+  body.end();
+
+  strictEqual(owner.releaseCount(), 4);
+});
 
 test("jit register state writes register-only instructions to committed locals", () => {
   const body = new WasmFunctionBodyEncoder();
@@ -795,6 +868,33 @@ function requiredLaneSources(regs: JitReg32State, reg: Reg32): FullRegisterLaneS
 
   assertFullRegisterLaneSources(laneSources);
   return laneSources;
+}
+
+function trackedLaneOwner(): LocalLaneSourceOwner & Readonly<{
+  releaseCount(): number;
+}> {
+  const counter = { releases: 0 };
+
+  return createTrackedLaneOwner(counter);
+}
+
+function createTrackedLaneOwner(counter: { releases: number }): LocalLaneSourceOwner & Readonly<{
+  releaseCount(): number;
+}> {
+  let released = false;
+
+  return {
+    retain: () => createTrackedLaneOwner(counter),
+    release: () => {
+      if (released) {
+        throw new Error("tracked lane owner released twice");
+      }
+
+      released = true;
+      counter.releases += 1;
+    },
+    releaseCount: () => counter.releases
+  };
 }
 
 function unexpectedLaneCopyFallback(): never {

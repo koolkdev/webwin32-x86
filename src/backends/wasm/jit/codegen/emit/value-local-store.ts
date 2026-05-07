@@ -1,6 +1,10 @@
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
-import type { WasmIrCachedValueLocal, WasmIrValueCache } from "#backends/wasm/codegen/emit.js";
+import type {
+  WasmIrCachedValueHandle,
+  WasmIrCachedValueLocal,
+  WasmIrValueCache
+} from "#backends/wasm/codegen/emit.js";
 import type { IrStorageExpr, IrValueExpr } from "#backends/wasm/codegen/expressions.js";
 import type { ValueWidth } from "#backends/wasm/codegen/value-width.js";
 import type { ValueRef } from "#x86/ir/model/types.js";
@@ -25,6 +29,7 @@ export type JitCachedValueUse = Readonly<{
   local?: number;
 }>;
 
+export type JitCachedValueHandle = WasmIrCachedValueHandle;
 export type JitCachedValueLocal = WasmIrCachedValueLocal;
 
 export type JitValueCacheRuntime = WasmIrValueCache & Readonly<{
@@ -38,15 +43,21 @@ export type JitValueCacheRuntime = WasmIrValueCache & Readonly<{
 
 type CachedJitValue = {
   readonly value: JitValue;
-  local?: number | undefined;
+  local?: CachedJitLocal | undefined;
   valueWidth: ValueWidth | undefined;
   available: boolean;
-  escaped: boolean;
+};
+
+type CachedJitLocal = {
+  local: number;
+  ownerCount: number;
+  entry?: CachedJitValue | undefined;
 };
 
 export class JitValueLocalStore {
   readonly #body: WasmFunctionBodyEncoder;
   readonly #entries = new Map<string, CachedJitValue>();
+  readonly #freeLocals: CachedJitLocal[] = [];
 
   constructor(body: WasmFunctionBodyEncoder, useCounts: readonly JitValueUseCount[]) {
     this.#body = body;
@@ -56,8 +67,7 @@ export class JitValueLocalStore {
         this.#entries.set(jitValueKey(useCount.value), {
           value: useCount.value,
           valueWidth: undefined,
-          available: false,
-          escaped: false
+          available: false
         });
       }
     }
@@ -74,7 +84,7 @@ export class JitValueLocalStore {
       return { valueWidth: emitter() };
     }
 
-    const local = this.#localForEntry(entry);
+    const local = this.#localForEntry(entry).local;
 
     if (entry.available) {
       this.#body.localGet(local);
@@ -102,12 +112,11 @@ export class JitValueLocalStore {
       return undefined;
     }
 
-    const local = this.#localForEntry(entry);
-    entry.escaped = true;
+    const cacheLocal = this.#localForEntry(entry);
 
     if (entry.available) {
       return {
-        local,
+        ...this.#handleForLocal(cacheLocal, requiredValueWidth(entry)),
         valueWidth: requiredValueWidth(entry),
         emitted: false
       };
@@ -115,10 +124,14 @@ export class JitValueLocalStore {
 
     const valueWidth = emitter();
 
-    this.#body.localSet(local);
+    this.#body.localSet(cacheLocal.local);
     entry.valueWidth = valueWidth;
     entry.available = true;
-    return { local, valueWidth, emitted: true };
+    return {
+      ...this.#handleForLocal(cacheLocal, valueWidth),
+      valueWidth,
+      emitted: true
+    };
   }
 
   forgetWhere(predicate: (value: JitValue) => boolean): void {
@@ -127,9 +140,9 @@ export class JitValueLocalStore {
         entry.available = false;
         entry.valueWidth = undefined;
 
-        if (entry.escaped) {
+        if (entry.local !== undefined && entry.local.ownerCount !== 0) {
+          entry.local.entry = undefined;
           entry.local = undefined;
-          entry.escaped = false;
         }
       }
     }
@@ -141,12 +154,52 @@ export class JitValueLocalStore {
     return entry !== undefined && jitValuesEqual(entry.value, value) ? entry : undefined;
   }
 
-  #localForEntry(entry: CachedJitValue): number {
+  #localForEntry(entry: CachedJitValue): CachedJitLocal {
     if (entry.local === undefined) {
-      entry.local = this.#body.addLocal(wasmValueType.i32);
+      const cacheLocal = this.#freeLocals.pop() ?? {
+        local: this.#body.addLocal(wasmValueType.i32),
+        ownerCount: 0
+      };
+
+      cacheLocal.entry = entry;
+      entry.local = cacheLocal;
     }
 
     return entry.local;
+  }
+
+  #handleForLocal(cacheLocal: CachedJitLocal, valueWidth: ValueWidth): JitCachedValueHandle {
+    cacheLocal.ownerCount += 1;
+
+    let released = false;
+
+    return {
+      local: cacheLocal.local,
+      valueWidth,
+      retain: () => {
+        if (released) {
+          throw new Error("JIT cached value handle was retained after release");
+        }
+
+        return this.#handleForLocal(cacheLocal, valueWidth);
+      },
+      release: () => {
+        if (released) {
+          throw new Error("JIT cached value handle was released more than once");
+        }
+
+        released = true;
+        cacheLocal.ownerCount -= 1;
+
+        if (cacheLocal.ownerCount < 0) {
+          throw new Error("JIT cached value handle owner count became negative");
+        }
+
+        if (cacheLocal.ownerCount === 0 && cacheLocal.entry === undefined) {
+          this.#freeLocals.push(cacheLocal);
+        }
+      }
+    };
   }
 }
 

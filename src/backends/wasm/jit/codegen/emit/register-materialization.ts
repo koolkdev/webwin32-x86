@@ -5,7 +5,7 @@ import type { OperandWidth } from "#x86/isa/types.js";
 import type { JitIrContext } from "./ir-context.js";
 import { emitJitSet } from "./operands.js";
 import type { JitValueCacheRuntime } from "./value-local-store.js";
-import { stableFullLaneSources } from "#backends/wasm/jit/state/register-lanes.js";
+import { ownedStableFullLaneSources } from "#backends/wasm/jit/state/register-lanes.js";
 
 export function emitJitRegisterMaterialization(
   jitContext: JitIrContext,
@@ -52,17 +52,24 @@ function emitRegisterMaterializationFromCapturedReuseValue(
     return false;
   }
 
+  const laneSources = valueWidthIsCleanForWidth(captured.valueWidth, 32)
+    ? ownedStableFullLaneSources(captured.local, captured)
+    : undefined;
+
   jitContext.state.regs.emitWriteAlias(
     { name: target.reg, base: target.reg, bitOffset: 0, width: 32 },
     {
-      ...(valueWidthIsCleanForWidth(captured.valueWidth, 32)
-        ? { laneSources: stableFullLaneSources(captured.local) }
-        : {}),
+      ...(laneSources === undefined ? {} : { laneSources }),
       emitValue: () => {
         jitContext.body.localGet(captured.local);
         return captured.valueWidth;
       }
     }
   );
+
+  if (laneSources === undefined) {
+    captured.release();
+  }
+
   return true;
 }

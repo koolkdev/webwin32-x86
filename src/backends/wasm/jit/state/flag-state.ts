@@ -25,7 +25,10 @@ import {
   emitMaskValueToWidth,
   type ValueWidth
 } from "#backends/wasm/codegen/value-width.js";
-import type { JitValueCacheRuntime } from "#backends/wasm/jit/codegen/emit/value-local-store.js";
+import type {
+  JitCachedValueHandle,
+  JitValueCacheRuntime
+} from "#backends/wasm/jit/codegen/emit/value-local-store.js";
 
 type PendingFlags = Readonly<{
   producer: IrFlagSetOp["producer"];
@@ -36,7 +39,7 @@ type PendingFlags = Readonly<{
 }>;
 
 type PendingInput =
-  | Readonly<{ kind: "local"; local: number; valueWidth: ValueWidth }>
+  | Readonly<{ kind: "local"; local: number; valueWidth: ValueWidth; handle?: JitCachedValueHandle | undefined }>
   | Readonly<{ kind: "value"; value: ValueRef }>;
 
 type PendingInputRefs = Readonly<{
@@ -76,6 +79,7 @@ export function createJitFlagState(
   const flagSources = new Map<number, FlagSource>(
     aluFlagMasks.map((mask) => [mask, incomingFlagSource])
   );
+  const releasedPendingFlags = new WeakSet<PendingFlags>();
   let aluFlagsLocalDirty = false;
   let materializedMask = 0;
 
@@ -181,7 +185,8 @@ export function createJitFlagState(
       : {
           kind: "local",
           local: materialized.local,
-          valueWidth: materialized.valueWidth
+          valueWidth: materialized.valueWidth,
+          handle: materialized
         };
   }
 
@@ -391,9 +396,49 @@ export function createJitFlagState(
   }
 
   function setSource(mask: number, source: FlagSource): void {
+    const replacedPending = new Set<PendingFlags>();
+
     for (const flagMask of aluFlagMasks) {
       if ((mask & flagMask) !== 0) {
+        const previous = requiredSource(flagMask);
+
+        if (
+          previous.kind === "pending" &&
+          (source.kind !== "pending" || previous.pending !== source.pending)
+        ) {
+          replacedPending.add(previous.pending);
+        }
+
         flagSources.set(flagMask, source);
+      }
+    }
+
+    for (const pendingFlags of replacedPending) {
+      releasePendingFlagsIfUnreferenced(pendingFlags);
+    }
+  }
+
+  function releasePendingFlagsIfUnreferenced(pendingFlags: PendingFlags): void {
+    if (releasedPendingFlags.has(pendingFlags)) {
+      return;
+    }
+
+    for (const flagMask of aluFlagMasks) {
+      const source = requiredSource(flagMask);
+
+      if (source.kind === "pending" && source.pending === pendingFlags) {
+        return;
+      }
+    }
+
+    releasedPendingFlags.add(pendingFlags);
+    releasePendingFlagInputs(pendingFlags);
+  }
+
+  function releasePendingFlagInputs(pendingFlags: PendingFlags): void {
+    for (const input of pendingFlags.inputs.values()) {
+      if (input.kind === "local") {
+        input.handle?.release();
       }
     }
   }

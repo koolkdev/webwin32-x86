@@ -4,11 +4,17 @@ export type UnknownLaneSource = Readonly<{
   kind: "unknown";
 }>;
 
+export type LocalLaneSourceOwner = Readonly<{
+  retain(): LocalLaneSourceOwner;
+  release(): void;
+}>;
+
 export type LocalLaneSource = Readonly<{
   kind: "local";
   local: number;
   bitOffset: number;
   valueWidth: OperandWidth;
+  owner?: LocalLaneSourceOwner | undefined;
 }>;
 
 export type FullRegisterLaneSources = readonly [
@@ -50,12 +56,25 @@ export function emptyRegValueState(): RegValueState {
 
 export function cloneRegValueState(state: RegValueState): RegValueState {
   return {
-    bytes: [...state.bytes]
+    bytes: state.bytes.map(clonePinnedByteLane) as [ByteLane, ByteLane, ByteLane, ByteLane]
   };
 }
 
 export function clearKnownBytes(state: RegValueState): void {
+  const previous = [...state.bytes] as [ByteLane, ByteLane, ByteLane, ByteLane];
+
   state.bytes = unknownByteLanes();
+  releaseRemovedLaneOwners(previous, state);
+}
+
+export function moveRegValueStateBytes(
+  state: RegValueState,
+  bytes: [ByteLane, ByteLane, ByteLane, ByteLane]
+): void {
+  const previous = [...state.bytes] as [ByteLane, ByteLane, ByteLane, ByteLane];
+
+  state.bytes = bytes;
+  releaseRemovedLaneOwners(previous, state);
 }
 
 export function isLocalBackedByteLane(value: ByteLane | undefined): value is LocalBackedByteLane {
@@ -89,32 +108,52 @@ export function aliasMask(alias: RegisterAlias): number {
   return (widthMask(alias.width) << alias.bitOffset) >>> 0;
 }
 
-export function recordFullStableLocal(state: RegValueState, valueLocal: number): void {
-  recordAliasLaneSources(state, fullLaneAlias, stableFullLaneSources(valueLocal));
+export function recordFullStableLocal(
+  state: RegValueState,
+  valueLocal: number
+): void {
+  recordOwnedAliasLaneSources(state, fullLaneAlias, stableFullLaneSources(valueLocal));
 }
 
-export function recordPartialStableLocal(state: RegValueState, alias: RegisterAlias, valueLocal: number): void {
+export function recordPartialStableLocal(
+  state: RegValueState,
+  alias: RegisterAlias,
+  valueLocal: number
+): void {
   const sources: LocalLaneSource[] = [];
 
   for (let index = 0; index < alias.width / byteWidth; index += 1) {
-    sources.push({
-      kind: "local",
-      local: valueLocal,
-      bitOffset: index * byteWidth,
-      valueWidth: alias.width
-    });
+    sources.push(localLaneSource(valueLocal, index * byteWidth, alias.width));
   }
 
-  recordAliasLaneSources(state, alias, sources);
+  recordOwnedAliasLaneSources(state, alias, sources);
 }
 
 export function stableFullLaneSources(valueLocal: number): FullRegisterLaneSources {
   return [
-    { kind: "local", local: valueLocal, bitOffset: 0, valueWidth: fullWidth },
-    { kind: "local", local: valueLocal, bitOffset: byteWidth, valueWidth: fullWidth },
-    { kind: "local", local: valueLocal, bitOffset: 2 * byteWidth, valueWidth: fullWidth },
-    { kind: "local", local: valueLocal, bitOffset: 3 * byteWidth, valueWidth: fullWidth }
+    localLaneSource(valueLocal, 0, fullWidth),
+    localLaneSource(valueLocal, byteWidth, fullWidth),
+    localLaneSource(valueLocal, 2 * byteWidth, fullWidth),
+    localLaneSource(valueLocal, 3 * byteWidth, fullWidth)
   ];
+}
+
+export function ownedStableFullLaneSources(
+  valueLocal: number,
+  owner: LocalLaneSourceOwner
+): FullRegisterLaneSources {
+  return [
+    localLaneSource(valueLocal, 0, fullWidth, ownerForLane(owner, 0)),
+    localLaneSource(valueLocal, byteWidth, fullWidth, ownerForLane(owner, 1)),
+    localLaneSource(valueLocal, 2 * byteWidth, fullWidth, ownerForLane(owner, 2)),
+    localLaneSource(valueLocal, 3 * byteWidth, fullWidth, ownerForLane(owner, 3))
+  ];
+}
+
+export function retainFullRegisterLaneSources(
+  sources: FullRegisterLaneSources
+): FullRegisterLaneSources {
+  return sources.map(retainLaneSource) as unknown as FullRegisterLaneSources;
 }
 
 export function fullRegisterLaneSourcesFrom(
@@ -128,12 +167,13 @@ export function fullRegisterLaneSourcesFrom(
   return sources;
 }
 
-export function recordAliasLaneSources(
+export function recordOwnedAliasLaneSources(
   state: RegValueState,
   alias: RegisterAlias,
   sources: readonly LocalLaneSource[]
 ): void {
   const { startByte, byteLength } = aliasByteRange(alias);
+  const previous = [...state.bytes] as [ByteLane, ByteLane, ByteLane, ByteLane];
 
   if (sources.length !== byteLength) {
     throw new Error(`register alias lane write needs ${byteLength} byte sources, got ${sources.length}`);
@@ -149,6 +189,20 @@ export function recordAliasLaneSources(
     assertLaneSourceCanSupplyByte(source);
     state.bytes[startByte + index] = { kind: "value", source };
   }
+
+  releaseRemovedLaneOwners(previous, state);
+}
+
+export function recordOwnedByteLaneSource(
+  state: RegValueState,
+  byteIndex: number,
+  source: LocalLaneSource
+): void {
+  const previous = [...state.bytes] as [ByteLane, ByteLane, ByteLane, ByteLane];
+
+  assertLaneSourceCanSupplyByte(source);
+  state.bytes[byteIndex] = { kind: "value", source };
+  releaseRemovedLaneOwners(previous, state);
 }
 
 export function assertFullRegisterLaneSources(
@@ -257,6 +311,69 @@ export function knownByteLocalSources(state: RegValueState): readonly [number, L
 
 function unknownByteLanes(): [ByteLane, ByteLane, ByteLane, ByteLane] {
   return [unknownLaneSource, unknownLaneSource, unknownLaneSource, unknownLaneSource];
+}
+
+function localLaneSource(
+  local: number,
+  bitOffset: number,
+  valueWidth: OperandWidth,
+  owner?: LocalLaneSourceOwner | undefined
+): LocalLaneSource {
+  return owner === undefined
+    ? { kind: "local", local, bitOffset, valueWidth }
+    : { kind: "local", local, bitOffset, valueWidth, owner };
+}
+
+function ownerForLane(
+  owner: LocalLaneSourceOwner | undefined,
+  index: number
+): LocalLaneSourceOwner | undefined {
+  if (owner === undefined) {
+    return undefined;
+  }
+
+  return index === 0 ? owner : owner.retain();
+}
+
+function retainLaneSource(source: LocalLaneSource): LocalLaneSource {
+  return localLaneSource(source.local, source.bitOffset, source.valueWidth, source.owner?.retain());
+}
+
+function clonePinnedByteLane(lane: ByteLane): ByteLane {
+  if (!isLocalBackedByteLane(lane)) {
+    return lane;
+  }
+
+  return {
+    kind: "value",
+    source: retainLaneSource(lane.source)
+  };
+}
+
+function releaseRemovedLaneOwners(
+  previous: readonly ByteLane[],
+  state: RegValueState
+): void {
+  const retainedOwners = new Set<LocalLaneSourceOwner>();
+
+  for (const lane of state.bytes) {
+    const owner = localSourceForByteLane(lane)?.owner;
+
+    if (owner !== undefined) {
+      retainedOwners.add(owner);
+    }
+  }
+
+  const releasedOwners = new Set<LocalLaneSourceOwner>();
+
+  for (const lane of previous) {
+    const owner = localSourceForByteLane(lane)?.owner;
+
+    if (owner !== undefined && !retainedOwners.has(owner) && !releasedOwners.has(owner)) {
+      releasedOwners.add(owner);
+      owner.release();
+    }
+  }
 }
 
 function assertLaneSourceCanSupplyByte(source: LocalLaneSource): void {

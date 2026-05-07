@@ -11,6 +11,7 @@ import {
   hasKnownBytes,
   laneSourcesForAlias,
   recordFullStableLocal,
+  retainFullRegisterLaneSources,
   stableFullLaneSources,
   type FullRegisterLaneSources
 } from "./register-lanes.js";
@@ -60,7 +61,7 @@ export function createRegisterValueEmitter(
     const stableSources = fullRegisterLaneSourcesFrom(stableLaneSourcesForAlias(storage, fullRegAccess(reg)));
 
     if (stableSources !== undefined) {
-      return stableSources;
+      return retainFullRegisterLaneSources(stableSources);
     }
 
     if (currentValueUsesMutableCell(storage, reg)) {

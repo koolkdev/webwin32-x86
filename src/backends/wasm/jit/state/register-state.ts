@@ -12,7 +12,7 @@ import {
   cloneRegValueState,
   fullRegAccess,
   fullWidth,
-  recordAliasLaneSources,
+  recordOwnedAliasLaneSources,
   recordFullStableLocal,
   recordPartialStableLocal,
   type FullRegisterLaneSources,
@@ -106,7 +106,7 @@ export function createJitReg32State(body: WasmFunctionBodyEncoder): JitReg32Stat
       writableMutableCells(storage, preserveCommittedRegs).delete(alias.base);
 
       if (writeSource.laneSources !== undefined) {
-        recordAliasLaneSources(state, alias, writeSource.laneSources);
+        recordOwnedAliasLaneSources(state, alias, writeSource.laneSources);
         return;
       }
 
