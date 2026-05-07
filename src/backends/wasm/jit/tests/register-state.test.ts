@@ -16,7 +16,7 @@ import type { ValueWidth } from "#backends/wasm/codegen/value-width.js";
 import {
   emitStoreStateU16,
   emitStoreStateU8
-} from "#backends/wasm/jit/state/register-emit.js";
+} from "#backends/wasm/codegen/state.js";
 import {
   clearRegValueState,
   cloneRegValueState,

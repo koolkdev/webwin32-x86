@@ -10,21 +10,22 @@ import {
   retainedRegValueSource,
   type LocalRegValueSource
 } from "./register-values.js";
-import { emitMergedPrefix } from "./register-emit.js";
 import {
+  clearWritableMutableCell,
+  committedMutableCell,
+  committedStateForReg,
   currentExactFullSource,
   currentUncoveredMutableCell,
-  currentValueUsesMutableCell
-} from "./register-state-queries.js";
-import {
-  committedStateForReg,
-  stateForReg,
-  writableMutableCells,
+  currentValueUsesMutableCell,
+  hasCommittedMutableCell,
+  pendingMutableCell,
+  recordWritableMutableCell,
   writableStateForReg,
   type RegisterStateStorage
-} from "./register-state-storage.js";
+} from "./register-storage.js";
+import { emitMergedPrefix } from "./register-prefix-emit.js";
 
-export type RegisterValueEmitter = Readonly<{
+export type RegisterMaterializer = Readonly<{
   materializeCurrentFull(reg: Reg32): number;
   emitCurrentFullValue(reg: Reg32): void;
   emitCommittedFullValue(reg: Reg32): void;
@@ -34,10 +35,10 @@ export type RegisterValueEmitter = Readonly<{
   ensureMutableCell(reg: Reg32, preserveCommittedRegs: boolean): number;
 }>;
 
-export function createRegisterValueEmitter(
+export function createRegisterMaterializer(
   body: WasmFunctionBodyEncoder,
   storage: RegisterStateStorage
-): RegisterValueEmitter {
+): RegisterMaterializer {
   return {
     materializeCurrentFull,
     emitCurrentFullValue,
@@ -101,7 +102,7 @@ export function createRegisterValueEmitter(
 
   function emitCurrentFullValue(reg: Reg32): void {
     const pending = storage.pendingStates.get(reg);
-    const pendingMutableLocal = storage.pendingMutableCells.get(reg);
+    const pendingMutableLocal = pendingMutableCell(storage, reg);
 
     if (pendingMutableLocal !== undefined) {
       body.localGet(pendingMutableLocal);
@@ -125,7 +126,7 @@ export function createRegisterValueEmitter(
 
   function emitCommittedFullValue(reg: Reg32): void {
     const state = storage.committedStates.get(reg);
-    const mutableLocal = storage.committedMutableCells.get(reg);
+    const mutableLocal = committedMutableCell(storage, reg);
 
     if (mutableLocal !== undefined) {
       body.localGet(mutableLocal);
@@ -144,8 +145,9 @@ export function createRegisterValueEmitter(
 
   function ensureMutableCell(reg: Reg32, preserveCommittedRegs: boolean): number {
     const state = writableStateForReg(storage, reg, preserveCommittedRegs);
-    const cells = writableMutableCells(storage, preserveCommittedRegs);
-    const local = cells.get(reg);
+    const local = preserveCommittedRegs
+      ? pendingMutableCell(storage, reg)
+      : committedMutableCell(storage, reg);
 
     if (local !== undefined) {
       if (hasKnownPrefix(state)) {
@@ -162,12 +164,12 @@ export function createRegisterValueEmitter(
     emitCurrentFullValue(reg);
     body.localSet(detachedLocal);
     clearRegValueState(state);
-    cells.set(reg, detachedLocal);
+    recordWritableMutableCell(storage, reg, detachedLocal, preserveCommittedRegs);
     return detachedLocal;
   }
 
   function freezeCommittedRegister(reg: Reg32): void {
-    if (!storage.committedMutableCells.has(reg)) {
+    if (!hasCommittedMutableCell(storage, reg)) {
       return;
     }
 
@@ -176,17 +178,17 @@ export function createRegisterValueEmitter(
     emitCommittedFullValue(reg);
     body.localSet(local);
     recordStableRegValue(committedStateForReg(storage, reg), local, 32);
-    storage.committedMutableCells.delete(reg);
+    clearWritableMutableCell(storage, reg, false);
   }
 
   function recordCurrentFullStableLocal(reg: Reg32, local: number): void {
-    if (storage.pendingStates.has(reg) || storage.pendingMutableCells.has(reg)) {
-      recordStableRegValue(stateForReg(storage.pendingStates, reg), local, 32);
-      storage.pendingMutableCells.delete(reg);
+    if (storage.pendingStates.has(reg) || pendingMutableCell(storage, reg) !== undefined) {
+      recordStableRegValue(writableStateForReg(storage, reg, true), local, 32);
+      clearWritableMutableCell(storage, reg, true);
       return;
     }
 
     recordStableRegValue(committedStateForReg(storage, reg), local, 32);
-    storage.committedMutableCells.delete(reg);
+    clearWritableMutableCell(storage, reg, false);
   }
 }

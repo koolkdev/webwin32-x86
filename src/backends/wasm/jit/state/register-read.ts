@@ -16,19 +16,19 @@ import { fullWidth } from "./register-values.js";
 import {
   emitExtractAliasFromLocal,
   offsetForAlias
-} from "./register-emit.js";
+} from "./register-prefix-emit.js";
 import {
   currentAliasCanLoadFromState,
   currentExactSourceForAlias,
-  currentKnownPrefixForAlias
-} from "./register-state-queries.js";
-import type { RegisterStateStorage } from "./register-state-storage.js";
-import type { RegisterValueEmitter } from "./register-value-emitter.js";
+  currentKnownPrefixForAlias,
+  type RegisterStateStorage
+} from "./register-storage.js";
+import type { RegisterMaterializer } from "./register-materialization.js";
 
 export function emitReadRegisterAlias(
   body: WasmFunctionBodyEncoder,
   storage: RegisterStateStorage,
-  values: RegisterValueEmitter,
+  values: RegisterMaterializer,
   alias: RegisterAlias,
   options: WasmIrEmitValueOptions = {}
 ): ValueWidth {

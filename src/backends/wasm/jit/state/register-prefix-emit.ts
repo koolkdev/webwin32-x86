@@ -1,6 +1,5 @@
 import { widthMask, type RegisterAlias } from "#x86/isa/types.js";
 import { i32 } from "#x86/state/cpu-state.js";
-import { wasmMemoryIndex } from "#backends/wasm/abi.js";
 import type { WasmFunctionBodyEncoder } from "#backends/wasm/encoder/function-body.js";
 import { wasmValueType } from "#backends/wasm/encoder/types.js";
 import {
@@ -17,34 +16,6 @@ import {
   type LocalRegValueSource,
   type RegValueState
 } from "./register-values.js";
-
-export function emitStoreStateU8(
-  body: WasmFunctionBodyEncoder,
-  offset: number,
-  emitValue: () => void
-): void {
-  body.i32Const(0);
-  emitValue();
-  body.i32Store8({
-    align: 0,
-    memoryIndex: wasmMemoryIndex.state,
-    offset
-  });
-}
-
-export function emitStoreStateU16(
-  body: WasmFunctionBodyEncoder,
-  offset: number,
-  emitValue: () => void
-): void {
-  body.i32Const(0);
-  emitValue();
-  body.i32Store16({
-    align: offset % 2 === 0 ? 1 : 0,
-    memoryIndex: wasmMemoryIndex.state,
-    offset
-  });
-}
 
 export function emitStoreAliasValueIntoFullLocal(
   body: WasmFunctionBodyEncoder,
@@ -108,13 +79,6 @@ export function emitExtractAliasFromLocal(
   }
 
   return emitMaskValueToWidth(body, alias.width);
-}
-
-export function emitLocalPrefixForStore(
-  body: WasmFunctionBodyEncoder,
-  source: LocalRegValueSource
-): void {
-  body.localGet(source.local);
 }
 
 export function emitComposedPrefixLocal(

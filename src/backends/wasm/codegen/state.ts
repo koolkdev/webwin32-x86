@@ -51,6 +51,26 @@ export function emitStoreStateStackU32(body: WasmFunctionBodyEncoder, offset: nu
   });
 }
 
+export function emitStoreStateU8(body: WasmFunctionBodyEncoder, offset: number, emitValue: () => void): void {
+  body.i32Const(0);
+  emitValue();
+  body.i32Store8({
+    align: 0,
+    memoryIndex: wasmMemoryIndex.state,
+    offset
+  });
+}
+
+export function emitStoreStateU16(body: WasmFunctionBodyEncoder, offset: number, emitValue: () => void): void {
+  body.i32Const(0);
+  emitValue();
+  body.i32Store16({
+    align: offset % 2 === 0 ? 1 : 0,
+    memoryIndex: wasmMemoryIndex.state,
+    offset
+  });
+}
+
 export function emitStoreStateU32(body: WasmFunctionBodyEncoder, offset: number, emitValue: () => void): void {
   body.i32Const(0);
   emitValue();
